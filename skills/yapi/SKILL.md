@@ -70,6 +70,7 @@ Flags worth setting when another program drives yapi:
 | `-ne`, `-ns`, `-nc` | Start without extensions, skills or context files |
 | `--offline` | Skip startup network work, as `PI_OFFLINE=1` does |
 | `--approve` or `--no-approve` | Trust or ignore project-local files for this run without prompting |
+| `--project-dir <dir>` | Take project files, trust and context files from another folder while tools run in the working folder |
 | `--append-system-prompt <text or file>` | Add instructions for this run |
 
 Exit code 0 means the run finished. A provider error ends print mode with a non-zero code and the message on stderr.

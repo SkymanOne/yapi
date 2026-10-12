@@ -609,6 +609,11 @@ impl AgentSession {
         lock(&self.inner.settings).project_trusted()
     }
 
+    /// The directory this session's project files come from.
+    pub fn project_dir(&self) -> PathBuf {
+        lock(&self.inner.settings).project_dir().to_path_buf()
+    }
+
     /// Sets a global setting and writes `settings.json`.
     pub fn set_global_setting(
         &self,

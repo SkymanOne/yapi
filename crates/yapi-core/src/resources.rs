@@ -156,15 +156,15 @@ fn context_file_in(dir: &Path) -> Option<ContextFile> {
     None
 }
 
-/// The global context file from the agent directory, then those of `cwd` and its
-/// ancestors, outermost first.
-pub fn context_files(cwd: &Path, agent_dir: &Path) -> Vec<ContextFile> {
+/// The global context file from the agent directory, then those of
+/// `project_dir` and its ancestors, outermost first.
+pub fn context_files(project_dir: &Path, agent_dir: &Path) -> Vec<ContextFile> {
     let mut files = Vec::new();
     if let Some(global) = context_file_in(agent_dir) {
         files.push(global);
     }
     let mut ancestors = Vec::new();
-    for dir in cwd.ancestors() {
+    for dir in project_dir.ancestors() {
         if let Some(file) = context_file_in(dir)
             && !files
                 .iter()
@@ -643,15 +643,15 @@ pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> Strin
     }
 }
 
-/// `SYSTEM.md` replacing the default prompt: the trusted project's, else the
-/// global one.
+/// `SYSTEM.md` replacing the default prompt: the trusted project's in
+/// `project_dir`, else the global one.
 pub fn system_prompt_file(
-    cwd: &Path,
+    project_dir: &Path,
     agent_dir: &Path,
     project_trusted: bool,
     name: &str,
 ) -> Option<String> {
-    let project = cwd.join(PROJECT_DIR).join(name);
+    let project = project_dir.join(PROJECT_DIR).join(name);
     if project_trusted && project.exists() {
         return read_text(&project);
     }

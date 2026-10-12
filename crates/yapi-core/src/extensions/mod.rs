@@ -123,6 +123,9 @@ pub struct Context {
     pub cwd: PathBuf,
     /// The agent directory.
     pub agent_dir: PathBuf,
+    /// The directory the session's project files come from: the working
+    /// directory unless the run names another.
+    pub project_dir: PathBuf,
     /// Whether the project's resources are trusted.
     pub project_trusted: bool,
     /// The mode.

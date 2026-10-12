@@ -78,6 +78,8 @@ pub struct Args {
     pub tui_mode: Option<String>,
     pub verbose: bool,
     pub project_trust_override: Option<bool>,
+    /// yapi's `--project-dir`; absolute once `main` has checked it.
+    pub project_dir: Option<std::path::PathBuf>,
     pub messages: Vec<String>,
     pub file_args: Vec<String>,
     pub unknown_flags: IndexMap<String, FlagValue>,
@@ -254,6 +256,13 @@ pub fn parse(args: &[String]) -> Args {
             "--verbose" => result.verbose = true,
             "--approve" | "-a" => result.project_trust_override = Some(true),
             "--no-approve" | "-na" => result.project_trust_override = Some(false),
+            "--project-dir" => {
+                if has_next {
+                    result.project_dir = Some(take().into());
+                } else {
+                    error(&mut result, "--project-dir requires a directory".into());
+                }
+            }
             "--offline" => result.offline = true,
             _ if arg.starts_with('@') => result.file_args.push(arg[1..].to_owned()),
             _ if arg.starts_with("--") => {
@@ -329,5 +338,14 @@ mod tests {
 
         let parsed = args(&["-p", "--model", "m", "--", "@a", "-b"]);
         assert!(parsed.messages == ["-b"] && parsed.file_args == ["a"]);
+
+        let parsed = args(&["--project-dir", "../app", "hi"]);
+        assert_eq!(parsed.project_dir, Some("../app".into()));
+        assert_eq!(parsed.messages, ["hi"]);
+        let parsed = args(&["--project-dir"]);
+        assert_eq!(
+            parsed.diagnostics[0].message,
+            "--project-dir requires a directory"
+        );
     }
 }

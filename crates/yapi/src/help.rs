@@ -81,6 +81,7 @@ pub fn text(bold: bool, flags: &[yapi_ext::Flag]) -> String {
   --tui-mode <mode>              TUI mode: fullscreen (default) or regular
   --approve, -a                  Trust project-local files for this run
   --no-approve, -na              Ignore project-local files for this run
+  --project-dir <dir>            Load project files and AGENTS.md from <dir> instead of the working directory
   --offline                      Disable startup network operations (same as PI_OFFLINE=1)
   --                             End option parsing; treat remaining arguments as messages/files
   --help, -h                     Show this help

@@ -1074,7 +1074,9 @@ impl App {
         for text in history {
             self.add_to_history(&text);
         }
-        if !self.session.project_trusted() && yapi_core::trust::requires_trust(&self.cwd) {
+        if !self.session.project_trusted()
+            && yapi_core::trust::requires_trust(&self.session.project_dir())
+        {
             let spacer = !self.chat.is_empty();
             let notice = lines::styled(
                 format!(
