@@ -366,7 +366,6 @@ async fn run(parsed: &mut args::Args) -> u8 {
                 verbose: parsed.verbose,
                 initial,
                 initial_images,
-                extension_warnings: extensions.warnings.clone(),
                 factory: startup::factory(parsed, extensions, true),
                 use_theme: parsed.use_theme.clone(),
                 model_fallback: startup.model_fallback,

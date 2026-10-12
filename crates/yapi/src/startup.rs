@@ -790,6 +790,9 @@ fn build(
         docs,
     });
     session.set_scoped_models(scoped);
+    for (path, warning) in &extensions.warnings {
+        session.add_extension_warning(path.clone(), warning.clone());
+    }
     Ok((session, fallback))
 }
 
