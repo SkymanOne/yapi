@@ -857,6 +857,8 @@ async fn project_dir_supplies_the_project() {
             text("approved"),
             text("cwd trusted"),
             text("project trusted"),
+            common::reply(&[call("toolu_3", "cwd_tool", json!({}))], "tool_use", 0),
+            text("no project dir"),
         ],
     })
     .await
@@ -884,7 +886,7 @@ async fn project_dir_supplies_the_project() {
         write(
             dir.join(".yapi/extensions/marker.ts"),
             &format!(
-                "export default function (pi) {{\n\tpi.registerTool({{\n\t\tname: \"{name}_tool\", label: \"{name}\", description: \"The {name} tool.\", parameters: {{ type: \"object\", properties: {{}} }},\n\t\tasync execute(_id, _params, _signal, _update, ctx) {{\n\t\t\treturn {{ content: [{{ type: \"text\", text: `ctx.cwd=${{ctx.cwd}}` }}] }};\n\t\t}},\n\t}});\n}}\n"
+                "export default function (pi) {{\n\tpi.registerTool({{\n\t\tname: \"{name}_tool\", label: \"{name}\", description: \"The {name} tool.\", parameters: {{ type: \"object\", properties: {{}} }},\n\t\tasync execute(_id, _params, _signal, _update, ctx) {{\n\t\t\tconst {{ projectDir }} = globalThis.__yapi.request(\"session.context\", {{}});\n\t\t\treturn {{ content: [{{ type: \"text\", text: `ctx.cwd=${{ctx.cwd}} projectDir=${{projectDir}}` }}] }};\n\t\t}},\n\t}});\n}}\n"
             ),
         );
     }
@@ -908,8 +910,6 @@ async fn project_dir_supplies_the_project() {
                 "--no-session",
                 "--model",
                 "anthropic/claude-sonnet-4-5:off",
-                "--project-dir",
-                "../project",
             ])
             .args(extra)
             .arg("hi")
@@ -938,14 +938,15 @@ async fn project_dir_supplies_the_project() {
     };
 
     // Untrusted, the project gives its context files only.
-    let request = run(&[]);
+    let project_flag = ["--project-dir", "../project"];
+    let request = run(&project_flag);
     assert!(request.contains("project-agents-marker"), "{request}");
     assert!(!request.contains("cwd-agents-marker"), "{request}");
     assert!(!loaded(&request, "project") && !loaded(&request, "cwd"));
     assert!(!request.contains("settings-skill"), "{request}");
 
     // `--approve` trusts the project; tools run in the working directory.
-    run(&["--approve"]);
+    run(&[&project_flag[..], &["--approve"]].concat());
     let requests = server.requests();
     let first = &requests[1].body;
     assert!(loaded(first, "project") && !loaded(first, "cwd"), "{first}");
@@ -963,8 +964,9 @@ async fn project_dir_supplies_the_project() {
         blocks.find(|block| block["tool_use_id"] == id).unwrap()["content"].to_string()
     };
     assert!(result("toolu_1").contains(&shown), "{results}");
+    let project_shown = project.display().to_string();
     assert!(
-        result("toolu_2").contains(&format!("ctx.cwd={shown}")),
+        result("toolu_2").contains(&format!("ctx.cwd={shown} projectDir={project_shown}")),
         "{results}"
     );
 
@@ -976,11 +978,20 @@ async fn project_dir_supplies_the_project() {
         );
     };
     trust(&work);
-    let request = run(&[]);
+    let request = run(&project_flag);
     assert!(!loaded(&request, "project") && !loaded(&request, "cwd"));
     trust(&project);
-    let request = run(&[]);
+    let request = run(&project_flag);
     assert!(loaded(&request, "project") && !loaded(&request, "cwd"));
+
+    // Without the flag, the working directory is the project.
+    run(&["--approve"]);
+    let requests = server.requests();
+    let results = &requests[requests.len() - 1].body;
+    assert!(
+        results.contains(&format!("ctx.cwd={shown} projectDir={shown}")),
+        "{results}"
+    );
 
     let output = common::yapi(&home)
         .args(["-p", "--project-dir", "missing", "hi"])

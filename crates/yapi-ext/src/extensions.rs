@@ -718,6 +718,7 @@ fn ctx_data(
         "model": session.and_then(AgentSession::model),
         "thinkingLevel": session.map(|session| session.thinking_level().as_str()),
         "projectTrusted": trusted,
+        "projectDir": session.map(AgentSession::project_dir),
         "aborted": cancel.is_cancelled(),
     })
 }
