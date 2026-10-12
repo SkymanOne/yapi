@@ -20,7 +20,7 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 ## An extension breaks startup
 
-`yapi -ne` starts without extensions. `yapi config` then turns the failing extension off.
+`yapi -ne` starts without extensions, including the built-in MCP and llama.cpp extensions. `yapi config` then turns the failing extension off.
 
 ## Reporting a problem
 

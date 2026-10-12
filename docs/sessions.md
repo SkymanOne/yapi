@@ -18,7 +18,7 @@ Inside yapi, `/resume` opens the session picker, `/new` starts a fresh session a
 
 A session is a tree. When you go back to an earlier message, the abandoned branch is kept, so no work is lost.
 
-- `/tree` shows every branch and jumps to any earlier point. Pressing Escape twice on an empty editor opens it too.
+- `/tree` shows every branch and jumps to any earlier point. By default, pressing Escape twice on an empty editor opens it too. The `doubleEscapeAction` setting changes this to `fork` or `none`.
 - `/fork` starts a new session from an earlier message.
 - `/clone` duplicates the current session.
 
@@ -28,6 +28,6 @@ Long sessions fill the model's context window. yapi summarizes older messages au
 
 ## Export and import
 
-`/export` writes the session to a standalone HTML file, and `yapi --export <session>` does the same from the command line. `/export <path>.jsonl` writes a copy of the session file instead.
+`/export` writes the session to a standalone HTML file. `yapi --export <file>.jsonl [output.html]` does the same for a session file from the command line. `/export <path>.jsonl` writes the current branch as a new session file, without the other branches.
 
 `/import <path>.jsonl` copies a session file into the project's session folder and resumes it.

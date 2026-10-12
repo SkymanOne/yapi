@@ -86,7 +86,7 @@ For an older yapi, replace `latest/download` with `download/v<version>`, where `
 
 ## Upgrade
 
-yapi does not update itself. `yapi update` updates packages and model catalogs only. Upgrade yapi the same way you installed it:
+yapi does not update itself. `yapi update` prints how to upgrade, `yapi update --extensions` updates packages and `yapi update --models` updates model catalogs. Upgrade yapi the same way you installed it:
 
 | Installed with | Upgrade |
 |---|---|

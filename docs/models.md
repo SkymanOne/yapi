@@ -65,7 +65,7 @@ Add providers, models and overrides to `~/.yapi/agent/models.json`. The format i
 
 ## Catalog updates
 
-Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after `/login` and with `yapi update --models`. It keeps them in `~/.yapi/agent/models-store.json` for offline use. `--offline` or `PI_OFFLINE=1` turns fetching off.
+Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after `/login` and with `yapi update --models`. It keeps them in `~/.yapi/agent/models-store.json` for offline use. `--offline`, or setting `PI_OFFLINE`, turns off the automatic fetches. `yapi update --models` fetches regardless.
 
 ## Classifier and image models
 

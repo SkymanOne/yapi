@@ -38,7 +38,7 @@ yapi --mode rpc --no-session
 | `--model <pattern>` | Choose the model |
 | `--tools read,grep,find,ls` | Allow only these tools, here read-only ones |
 | `--no-tools` | Disable all tools |
-| `-ne` | Start without extensions |
+| `-ne` | Start without extensions, including the built-in MCP and llama.cpp extensions |
 | `--offline` | Skip startup network work |
 | `--project-dir <dir>` | Take the project from another folder. See [Project trust](security.md#project-trust). |
 

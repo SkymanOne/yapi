@@ -23,6 +23,7 @@ yapi new shout
 ```text
 shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
+├── .gitignore
 ├── Cargo.toml           a cdylib crate that depends on yapi-extension-api at tag v0.1.0
 ├── README.md
 ├── extensions/          where the built extension goes
@@ -325,7 +326,7 @@ yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "<releas
 
 `widgets::tui` holds them, such as `select_list::SelectList`, `editor::Editor`, `text_input::TextInput`, `settings_list::SettingsList`, and the `Text`, `Box` and border layouts in `lines`. They render styled lines, and `widgets::to_ansi` turns those into a component's lines, with pi-tui's cursor marker where a cursor belongs. `widgets::style` and `widgets::bg_style` give a theme token's style for the widgets' themes, and `widgets::keybindings` the key bindings their `handle_input` takes. The module also has `Text`, a component with pi-tui's `Text` layout, and pi-tui's `visible_width`, `truncate_to_width` and `wrap_text_with_ansi` for text with escape sequences.
 
-The widgets add 100 to 300 KB to an extension that uses them. A built extension without the feature stays near 170 KB.
+A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.
 
 ### Terminal input and completion
 

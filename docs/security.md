@@ -38,7 +38,7 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 The host checks every file, process, network and environment access against the extension's grants. In v0.1, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
-The process grant implies the other three. A process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
+A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
 An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant.
 
@@ -50,11 +50,13 @@ Extensions share Pi's `pi.events` bus, so every extension receives the events of
 
 ## Project trust
 
-Files in a project's `.yapi` folder can change how yapi behaves and can run code. The first time yapi starts in a project that has them, it asks whether to trust the folder. Until the folder is trusted, yapi loads nothing from `.yapi` or `.agents/skills`, and no project extension runs.
+Files in a project's `.yapi` folder can change how yapi behaves and can run code: `settings.json`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md`, as well as an `.agents/skills` folder in the project or a parent folder. Until the project is trusted, yapi loads none of them, and no project extension runs.
+
+The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.
 
 - yapi saves the decision in `~/.yapi/agent/trust.json`. `/trust` changes it later.
 - `--approve` and `--no-approve` decide for one run.
-- `"defaultProjectTrust": "always"` in global settings skips the question.
+- `"defaultProjectTrust"` in global settings set to `"always"` or `"never"` decides without asking.
 
 `AGENTS.md` and `CLAUDE.md` load whether or not the project is trusted. Treat their contents as untrusted input as well.
 

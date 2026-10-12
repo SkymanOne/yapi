@@ -2,7 +2,7 @@
 
 yapi follows Pi `v1.0.0` and behaves like Pi except as listed here. Any other difference is a bug. Please [report it](https://github.com/SkymanOne/yapi/issues).
 
-yapi is tested against Pi itself. 293 end-to-end scenarios compare yapi with Pi's recorded output: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
+yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
 
 ## Extensions
 
@@ -36,7 +36,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | npm configuration | npm reads all its configuration files and settings | Registries and credentials from `~/.npmrc`, or the file `npm_config_userconfig` names, and from `npm_config_*` variables. Other settings, such as `cafile`, are ignored. |
 | Project folder | The working folder | `--project-dir <dir>`, a yapi-only flag, takes the project's files, trust and `AGENTS.md` from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent's project. See [Project trust](security.md#project-trust). |
 | Package manifests | The `pi` key | A `yapi` key of the same shape takes precedence, so one package can ship a native build for yapi. |
-| Self-update | `pi update` | `yapi update` updates packages and models only. See [Install](install.md#upgrade). |
+| Self-update | `pi update` updates Pi | `yapi update` prints how to upgrade instead. `--extensions` and `--models` update packages and model catalogs. See [Install](install.md#upgrade). |
 | `new` | `pi new ...` is a prompt | `yapi new` creates a native extension. Quote a prompt that starts with `new`. |
 
 ## Interface and providers

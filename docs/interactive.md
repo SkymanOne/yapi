@@ -36,7 +36,7 @@ These are the defaults. `/hotkeys` shows the bindings in effect, and `~/.yapi/ag
 | Enter | Send the message, or steer the current turn while yapi works |
 | Alt+Enter | Queue a follow-up for when yapi finishes |
 | Shift+Enter | Insert a new line |
-| Escape | Stop the agent. Twice on an empty editor opens the session tree. |
+| Escape | Stop the agent. Twice on an empty editor opens the session tree, or what the `doubleEscapeAction` setting chooses. |
 | Ctrl+C | Clear the editor. Twice quits. |
 | Ctrl+D | Quit when the editor is empty |
 | Ctrl+O | Expand or collapse tool output |
@@ -66,15 +66,15 @@ Type `/` to list commands. Prompt templates, skills (`/skill:name`) and extensio
 | `/copy`, `/export` | Copy the last answer or export the session to HTML |
 | `/login`, `/logout` | Manage provider credentials |
 | `/import` | Copy a session file into the session folder and resume it |
-| `/llama` | Load, unload and download models on a llama.cpp server |
-| `/mcp` | Manage MCP servers |
+| `/llama` | Load, unload and download models on a llama.cpp server. Built-in extension. |
+| `/mcp` | Manage MCP servers. Built-in extension. |
 | `/trust` | Change whether the project's `.yapi` folder is trusted |
 | `/reload` | Reload settings, keybindings, skills, themes and extensions from disk |
 | `/hotkeys` | Show every key binding |
 | `/debug` | Write the screen, the session's messages and recent extension output to `~/.yapi/agent/yapi-debug.log` |
 | `/quit` | Quit yapi |
 
-The `/debug` log can hold private data from messages and extension output. Read it before you attach it to a bug report.
+`/llama` and `/mcp` come from built-in extensions, so `-ne` removes them. The `/debug` log can hold private data from messages and extension output. Read it before you attach it to a bug report.
 
 ## Run a shell command
 

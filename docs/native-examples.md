@@ -144,7 +144,7 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 
 ## custom-footer
 
-`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it.
+`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it. `ui.footerData` is an internal request, so the example may need changes in a later release.
 
 ```rust
 api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {

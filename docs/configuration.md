@@ -5,7 +5,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 | What | Where |
 |---|---|
 | Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
-| Project instructions | `AGENTS.md` or `CLAUDE.md` in the project, its parent folders and `~/.yapi/agent` |
+| Project instructions | `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` in the project, its parent folders and `~/.yapi/agent` |
 | System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/` |
 | Skills | `~/.yapi/agent/skills`, `~/.agents/skills`, `.yapi/skills` and `.agents/skills` |
 | Prompt templates | `~/.yapi/agent/prompts` and `.yapi/prompts` |
@@ -20,7 +20,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 
 ## Project instructions
 
-yapi reads `AGENTS.md`, or `CLAUDE.md`, from the working folder and each parent folder, and adds them to the system prompt. Use them for build commands, conventions and anything else the agent should know about the project.
+yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. Use them for build commands, conventions and anything else the agent should know about the project.
 
 ## Skills and prompt templates
 
@@ -51,7 +51,7 @@ Choose a theme in `/settings` or with `"theme"` in settings. `--use-theme <name>
 yapi prepares images in prompts, `@path` arguments and tool results before they reach the model:
 
 - BMP images are converted to PNG.
-- With `"images": {"autoResize": true}`, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MB, or the model's own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.
+- With `"images": {"autoResize": true}`, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.
 - An image that cannot be converted or made to fit is left out, with a note that says so.
 - `"images": {"blockImages": true}` keeps all images from the model.
 

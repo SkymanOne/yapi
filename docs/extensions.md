@@ -23,7 +23,7 @@ The two types differ in runtime, isolation and portability:
 | API | Pi's `ExtensionAPI` from Pi 1.0, with the exceptions in [Differences from Pi](compat.md#extensions) | yapi's Rust SDK, unstable until yapi 1.0 |
 | Dependencies | npm packages in plain JavaScript | Rust crates that build for `wasm32-wasip2` |
 | Build | None. yapi strips TypeScript types on load and caches the result. | `cargo build` for `wasm32-wasip2`. Packages ship the built `.wasm` file. |
-| Size | Source files and their npm dependencies | One `.wasm` file, about 170 KB without the widgets feature |
+| Size | Source files and their npm dependencies | One `.wasm` file, about 210 KB without the widgets feature |
 
 Pi extensions are the better choice when:
 
