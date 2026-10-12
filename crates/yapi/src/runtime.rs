@@ -20,8 +20,12 @@ use yapi_types::message::Message;
 use yapi_types::session::FileEntry;
 
 /// Builds a session around a session file, with the startup options of the
-/// process.
-pub type SessionFactory = Box<dyn Fn(SessionManager) -> anyhow::Result<AgentSession>>;
+/// process, once the session it replaces has shut down.
+pub type SessionFactory = Arc<
+    dyn Fn(SessionManager) -> futures_util::future::BoxFuture<'static, anyhow::Result<AgentSession>>
+        + Send
+        + Sync,
+>;
 
 /// A session's file as pi's events report it; `None` in memory.
 pub fn file_of(manager: &SessionManager) -> Option<String> {
@@ -339,7 +343,9 @@ impl Runtime {
         current.abort_bash();
         current.wait_for_idle().await;
         current.shutdown_for(reason, file_of(&manager)).await;
-        let session = (self.factory)(manager).map_err(|error| error.to_string())?;
+        let session = (self.factory)(manager)
+            .await
+            .map_err(|error| error.to_string())?;
         if reason == Replacement::Reload {
             session.keep_selection(&current);
         }

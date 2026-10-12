@@ -301,6 +301,9 @@ struct Inner {
     mcp_servers: Mutex<McpServers>,
     /// Registered MCP servers reported as connected by no extension.
     unhandled_mcp_servers: Mutex<std::collections::HashSet<String>>,
+    /// Extensions that failed to load for the session, by path, with pi's
+    /// message.
+    extension_load_errors: Mutex<Vec<(String, String)>>,
 }
 
 /// A blocking extension dialog's kind and title.
@@ -499,6 +502,7 @@ impl AgentSession {
                 ui_prompts: Mutex::new((0, None)),
                 mcp_servers: Mutex::default(),
                 unhandled_mcp_servers: Mutex::default(),
+                extension_load_errors: Mutex::default(),
                 nested: crate::nested::NestedCalls::default(),
             }),
         }

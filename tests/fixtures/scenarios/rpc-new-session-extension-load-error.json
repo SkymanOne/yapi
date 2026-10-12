@@ -1,0 +1,59 @@
+{
+  "exitCode": 0,
+  "stdout": [
+    {
+      "id": "<id-1>",
+      "type": "response",
+      "command": "new_session",
+      "success": true,
+      "data": {
+        "cancelled": false
+      }
+    },
+    {
+      "id": "<id-2>",
+      "type": "response",
+      "command": "get_commands",
+      "success": true,
+      "data": {
+        "commands": [
+          {
+            "name": "steady",
+            "description": "Always loads",
+            "source": "extension",
+            "sourceInfo": {
+              "path": "<cwd>/steady.ts",
+              "source": "cli",
+              "scope": "temporary",
+              "origin": "top-level"
+            }
+          },
+          {
+            "name": "llama",
+            "description": "Manage llama.cpp router models",
+            "source": "extension",
+            "sourceInfo": {
+              "path": "builtin:llama.cpp",
+              "source": "builtin",
+              "scope": "temporary",
+              "origin": "top-level"
+            }
+          },
+          {
+            "name": "mcp",
+            "description": "Manage MCP servers: sign in, reconnect, enable or disable, and change exposure",
+            "source": "extension",
+            "sourceInfo": {
+              "path": "builtin:mcp",
+              "source": "builtin",
+              "scope": "temporary",
+              "origin": "top-level"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "stderr": "",
+  "requests": []
+}

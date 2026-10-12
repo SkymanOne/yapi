@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use reqwest::Url;
 use serde_json::{Map, Value};
 use yapi_types::config::ConfigFile;
+use yapi_types::extension_event::RegisteredMcpServer;
 
 use crate::config::PROJECT_DIR;
 
@@ -239,6 +240,31 @@ pub struct LoadedConfig {
 /// `mcp__<server>` with `-` as `_`, the prefix of the server's tool names.
 pub fn namespace(server: &str) -> String {
     format!("mcp__{}", server.replace('-', "_"))
+}
+
+/// pi's checks of server `name`, which an extension registers, against the
+/// servers that extensions of other runtimes registered: neither the name
+/// nor its tools' namespace may be theirs. The error is pi's.
+pub fn check_registration<'a, I>(others: I, name: &str) -> Result<(), String>
+where
+    I: IntoIterator<Item = &'a RegisteredMcpServer>,
+    I::IntoIter: Clone,
+{
+    let mut others = others.into_iter();
+    if let Some(theirs) = others.clone().find(|server| server.name == name) {
+        return Err(format!(
+            "MCP server \"{name}\" is already registered by extension \"{}\"",
+            theirs.extension_path
+        ));
+    }
+    let ours = namespace(name);
+    if let Some(theirs) = others.find(|server| namespace(&server.name) == ours) {
+        return Err(format!(
+            "MCP server \"{name}\" conflicts with registered server \"{}\"",
+            theirs.name
+        ));
+    }
+    Ok(())
 }
 
 const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "[::1]"];

@@ -75,6 +75,14 @@ pub trait Bridge: Send + Sync {
         Err(format!("{kind} is not available here"))
     }
 
+    /// Refuses MCP server `name`, which an extension registers, with pi's
+    /// error when an extension of another runtime registered the name or
+    /// its tools' namespace. Runs on the instance's thread. Hosts without
+    /// other runtimes accept every name.
+    fn check_mcp_server(&self, _name: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Starts operation `kind`; the guest gets its result when it completes.
     fn start(&self, kind: &str, _payload: Value) -> BoxFuture<'static, Result<Value, String>> {
         let message = format!("{kind} is not available here");

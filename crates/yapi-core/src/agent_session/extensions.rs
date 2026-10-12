@@ -24,6 +24,7 @@ use yapi_types::sync::{lock, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::extensions::{Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers};
+use crate::mcp::config::check_registration;
 use crate::messages::convert_to_llm;
 use crate::time::now_ms;
 
@@ -515,6 +516,17 @@ fn set_tool_result_key(event: &mut serde_json::Map<String, Value>, key: &str, va
     event.shift_insert(index, key.to_owned(), value);
 }
 
+/// The servers in `registered` that runtimes other than `owner` registered.
+fn others(
+    registered: &indexmap::IndexMap<String, (u64, RegisteredMcpServer)>,
+    owner: u64,
+) -> impl Iterator<Item = &RegisteredMcpServer> + Clone {
+    registered
+        .values()
+        .filter(move |(runtime, _)| *runtime != owner)
+        .map(|(_, server)| server)
+}
+
 impl AgentSession {
     /// The context extensions get, with `cancel` for the operation at hand.
     pub(super) fn extension_context(&self, cancel: CancellationToken) -> Context {
@@ -831,26 +843,7 @@ impl AgentSession {
         let changed = {
             let (registered, reported) = &mut *lock(&self.inner.mcp_servers);
             for server in &servers {
-                if let Some((runtime, theirs)) = registered.get(&server.name)
-                    && *runtime != owner
-                {
-                    return Err(format!(
-                        "MCP server \"{}\" is already registered by extension \"{}\"",
-                        server.name, theirs.extension_path
-                    ));
-                }
-                let namespace = crate::mcp::config::namespace(&server.name);
-                if let Some(name) = registered.iter().find_map(|(name, (runtime, _))| {
-                    (*runtime != owner
-                        && *name != server.name
-                        && crate::mcp::config::namespace(name) == namespace)
-                        .then_some(name)
-                }) {
-                    return Err(format!(
-                        "MCP server \"{}\" conflicts with registered server \"{name}\"",
-                        server.name
-                    ));
-                }
+                check_registration(others(registered, owner), &server.name)?;
             }
             let before = registered.clone();
             // As in pi's registry, a server registered again keeps its place.
@@ -868,6 +861,13 @@ impl AgentSession {
             self.report_unhandled_mcp_servers();
         }
         Ok(())
+    }
+
+    /// pi's checks of server `name`, which an extension of runtime `owner`
+    /// registers, against the servers of the other runtimes, without
+    /// registering it.
+    pub fn check_mcp_server(&self, owner: u64, name: &str) -> Result<(), String> {
+        check_registration(others(&lock(&self.inner.mcp_servers).0, owner), name)
     }
 
     /// pi's `reportUnhandledMcpServers`: when no extension handles
@@ -898,6 +898,21 @@ impl AgentSession {
             .values()
             .map(|(_, server)| server.clone())
             .collect()
+    }
+
+    /// Records the extension at `path`, whose factory failed with `error` as
+    /// the extensions loaded for this session. The factories of every
+    /// session after the first run again then, as pi loads the extensions
+    /// for each runtime.
+    pub fn add_extension_load_error(&self, path: String, error: String) {
+        lock(&self.inner.extension_load_errors).push((path, error));
+    }
+
+    /// The extensions that failed to load for this session, by path, with
+    /// pi's message, which pi's interactive mode lists under
+    /// `[Extension issues]`.
+    pub fn extension_load_errors(&self) -> Vec<(String, String)> {
+        lock(&self.inner.extension_load_errors).clone()
     }
 
     /// Waits until the events announced so far have reached extensions.

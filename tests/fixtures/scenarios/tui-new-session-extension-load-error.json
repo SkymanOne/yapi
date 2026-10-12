@@ -1,0 +1,22 @@
+{
+  "exitCode": -1,
+  "stdout": "",
+  "stderr": "",
+  "requests": [],
+  "screen": [
+    "[Extensions]",
+    "  steady.ts",
+    "",
+    "[Extension issues]",
+    "  ~/project/flaky.ts",
+    "    Failed to load extension: flaky.ts loads only once",
+    "",
+    " ✓ New session started",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "/fl",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "~/project",
+    "0.0%/1.0M (auto)                                              (anthropic) claude-sonnet-4-5 • medium"
+  ]
+}

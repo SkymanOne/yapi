@@ -427,11 +427,30 @@ pub fn start(
 
 /// pi's runtime factory for the sessions that replace the first: each is
 /// built around its file in its working directory, with the settings on disk
-/// then, as the first one was from the arguments.
+/// then, as the first one was from the arguments. As pi creates a runtime,
+/// the extensions' factories run first, so the session gets their
+/// registrations, and the extensions that failed to load are its
+/// `[Extension issues]`.
 pub fn factory(args: &Args, extensions: Extensions) -> crate::runtime::SessionFactory {
-    let args = args.clone();
-    Box::new(move |session| {
-        build(&args, session, false, &extensions, None).map(|(session, _)| session)
+    let args = Arc::new(args.clone());
+    let extensions = Arc::new(extensions);
+    Arc::new(move |session| {
+        let (args, extensions) = (args.clone(), extensions.clone());
+        Box::pin(async move {
+            for host in &extensions.hosts {
+                host.reload().await;
+            }
+            let (session, _) = build(&args, session, false, &extensions, None)?;
+            for host in &extensions.hosts {
+                for error in host.errors() {
+                    session.add_extension_load_error(
+                        error.path.to_string_lossy().into_owned(),
+                        error.error,
+                    );
+                }
+            }
+            Ok(session)
+        })
     })
 }
 

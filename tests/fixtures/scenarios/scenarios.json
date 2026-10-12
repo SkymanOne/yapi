@@ -323,6 +323,30 @@
     "tty": {"cols": 100, "rows": 40, "keys": ["Read hello.txt", "\r", "/new\r"]}
   },
   {
+    "name": "tui-new-session-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/new\r", "/fl"]}
+  },
+  {
+    "name": "tui-reload-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/reload\r", "/fl"]}
+  },
+  {
+    "name": "rpc-new-session-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--mode", "rpc", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "rpc": [
+      {"send": {"id": "new", "type": "new_session"}},
+      {"send": {"id": "commands", "type": "get_commands"}}
+    ]
+  },
+  {
     "name": "tui-name",
     "cassette": "anthropic-messages/tool-call.json",
     "args": ["--model", "anthropic/claude-sonnet-4-5"],
@@ -588,6 +612,12 @@
       {"send": {"id": "more", "type": "prompt", "message": "/more"}},
       {"send": {"id": "show", "type": "prompt", "message": "/show"}, "until": "message_end"}
     ]
+  },
+  {
+    "name": "mcp-registered-clash-print",
+    "cassette": "none.json",
+    "args": ["-p", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "a.ts", "-e", "b.ts", "-e", "c.ts", "-e", "d.ts", "hi"],
+    "files": {"a.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"shared\", { command: \"python3\", enabled: false });\n\tpi.registerMcpServer(\"my-docs\", { command: \"python3\", enabled: false });\n}\n", "b.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"own\", { command: \"python3\", enabled: false });\n\tpi.registerMcpServer(\"shared\", { command: \"python3\", enabled: false });\n}\n", "c.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"my_docs\", { command: \"python3\", enabled: false });\n}\n", "d.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"own\", { command: \"python3\", enabled: false });\n}\n"}
   },
   {
     "name": "tui-login-menu",

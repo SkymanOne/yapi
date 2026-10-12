@@ -10,6 +10,8 @@
 	const EventEmitter = yapi.EventEmitter;
 
 	const extensions = new Map();
+	/** The factory of every extension whose module loaded, in load order. */
+	const factories = [];
 	const flagValues = new Map();
 	let bound = false;
 
@@ -222,8 +224,9 @@
 				extension.providers = extension.providers.filter((provider) => provider.name !== name);
 			},
 			registerMcpServer(name, config) {
-				// The host checks the config and the grant its transport needs,
-				// and gives the config with legacy exposure names replaced.
+				// The host checks the config, the grant its transport needs and
+				// the servers of other runtimes, while extensions load too, and
+				// gives the config with legacy exposure names replaced.
 				const validated = yapi.request("mcp.validate", { name, config: plain(config), extension: extension.path });
 				const owner = mcpServers().find((server) => server.name === name)?.extensionPath;
 				if (owner !== undefined && owner !== extension.path) {
@@ -388,6 +391,7 @@
 		}
 		const factory = module?.default;
 		if (typeof factory !== "function") return { id, path, error: `Extension does not export a valid factory function: ${path}` };
+		factories.push({ id, path, factory });
 		return instantiate(id, path, factory);
 	}
 
@@ -1328,11 +1332,12 @@
 			terminalListeners.clear();
 			completionWrappers.length = 0;
 			completions = hostCompletions;
+			// As in pi's fresh runtime, the stale extensions' registrations,
+			// such as MCP server names, do not count while the factories run,
+			// and an extension that failed in an earlier session loads again.
+			extensions.clear();
 			const results = [];
-			for (const [id, extension] of [...extensions]) {
-				extensions.delete(id);
-				results.push(await instantiate(id, extension.path, extension.factory));
-			}
+			for (const { id, path, factory } of factories) results.push(await instantiate(id, path, factory));
 			return { extensions: results };
 		},
 		flags(payload) {
