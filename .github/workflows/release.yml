@@ -17,6 +17,7 @@ on:
       - scripts/check-release.sh
       - scripts/release-notes.sh
       - scripts/third-party-notices.sh
+      - guest/Cargo.toml
       - crates/yapi-types/Cargo.toml
       - crates/yapi-tui/Cargo.toml
       - guest/yapi-extension-api/Cargo.toml
@@ -44,11 +45,18 @@ jobs:
         with:
           persist-credentials: false
       - id: tag
-        name: Match the tag to the version in Cargo.toml and CHANGELOG.md
+        name: Match the tag to the versions in Cargo.toml, guest/Cargo.toml and CHANGELOG.md
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+          # yapi-extension-api takes the guest workspace's version and is
+          # published with yapi-types and yapi-tui at the same version.
+          guest=$(sed -n 's/^version = "\(.*\)"$/\1/p' guest/Cargo.toml | head -n 1)
+          if [ "$guest" != "$version" ]; then
+            echo "::error::guest/Cargo.toml has version $guest, not Cargo.toml's $version"
             exit 1
           fi
           scripts/release-notes.sh "$version" >/dev/null
