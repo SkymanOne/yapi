@@ -108,6 +108,11 @@ pub(crate) type Bus = Arc<Mutex<Vec<Weak<ExtensionHost>>>>;
 /// runtime holds no more than these.
 const QUEUED_EVENTS: usize = 64;
 
+/// How long a native tool that waits for its abort has to return before it
+/// is dropped: twice the 5 seconds pi's `subagent` example and yapi give a
+/// process between SIGTERM and SIGKILL, so the tool can stop one and report.
+const ABORT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl std::fmt::Debug for ExtensionHost {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExtensionHost")
@@ -292,7 +297,9 @@ impl ExtensionHost {
 
     /// Runs guest call `kind` for operation `payload.id`. When `cancel`
     /// fires first, aborts the operation's signal and waits for the call to
-    /// end, as pi awaits an aborted operation.
+    /// end, as pi awaits an aborted operation. A call still running
+    /// [`ABORT_DEADLINE`] later is aborted again, which drops a native
+    /// tool and which the JS runtime ignores.
     async fn call_abortable(
         &self,
         kind: &str,
@@ -300,16 +307,16 @@ impl ExtensionHost {
         cancel: &CancellationToken,
     ) -> Result<Value, Error> {
         let mut call = std::pin::pin!(self.instance.call(kind, payload));
-        match cancel.run_until_cancelled(&mut call).await {
-            Some(result) => result,
-            None => {
-                let _ = self
-                    .instance
-                    .call("abort", &json!({"id": payload["id"]}))
-                    .await;
-                call.await
-            }
+        if let Some(result) = cancel.run_until_cancelled(&mut call).await {
+            return result;
         }
+        let abort = json!({"id": payload["id"]});
+        let _ = self.instance.call("abort", &abort).await;
+        if let Ok(result) = tokio::time::timeout(ABORT_DEADLINE, &mut call).await {
+            return result;
+        }
+        let _ = self.instance.call("abort", &abort).await;
+        call.await
     }
 
     /// Streams `request` through the extension that implements its API, as

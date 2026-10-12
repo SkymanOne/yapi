@@ -153,7 +153,7 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi instal
 | `request` | Call any host action by name with a JSON payload and get its answer at once |
 | `extension_path` | The extension's `.wasm` file, and the root of the package it was installed from |
 | `op` | Start a host operation by name, such as a dialog or an HTTP request, and await its answer |
-| `Context` | The mode, the working folder and the rest of Pi's `ctx`. `Context::update` shows a running tool's progress. |
+| `Context` | The mode, the working folder and the rest of Pi's `ctx`. In a tool, `Context::update` shows progress, `Context::tool_call_id` is the call's id, and `Context::aborted` resolves when the user aborts the run. See [Background work and cancellation](#background-work-and-cancellation). |
 | `Component` | A piece of interface that renders lines for a width and handles keys and mouse events. See [Interface components](#interface-components). |
 | `Context::custom`, `Context::set_widget`, `Context::set_footer`, `Context::set_header`, `Context::set_editor_component` | Show components, as Pi's `ctx.ui` does |
 | `Tool::render_call`, `Tool::render_result`, `Api::register_message_renderer` | Draw tool calls, tool results and custom messages in the transcript |
@@ -161,7 +161,7 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi instal
 | `theme`, `request_render`, `parse_key`, `terminal_size`, `editor_focused` | Style text in the session's theme, render components again, name keys, read the terminal's size, and tell whether the prompt editor has the keyboard |
 | `widgets` | pi-tui's widgets, such as `SelectList` and `Editor`, with the `widgets` feature |
 
-[Native extension examples](native-examples.md) walks through sixteen complete extensions, from a minimal starting point to a modal editor, a question tool with its own rendering and a select list.
+[Native extension examples](native-examples.md) walks through seventeen complete extensions, from a minimal starting point to a modal editor, a question tool with its own rendering and a select list.
 
 ### Host requests
 
@@ -403,6 +403,27 @@ yapi renders a component through the WIT world's `render` export and delivers ke
 Handlers are `async`. While one waits for a host operation, other handlers, tool calls and background tasks run. `spawn` runs a future in the background, after the handler that started it has returned, as a Pi extension does with a promise it does not await. A background task can report its result with the `session.sendMessage` request, with `"triggerTurn": true` to start a turn when the agent is idle.
 
 When the user aborts a run, yapi drops the futures of the extension tools still running in it, which kills the processes they hold. Background tasks keep running until they finish or the extension stops.
+
+A tool that calls `Context::aborted` gets the abort instead, as a Pi tool's `signal` does. The future resolves when the user aborts the run. The tool keeps running to stop its work, and the result it returns becomes the tool's result, such as the output so far. A tool that has not returned 10 seconds after the abort is dropped. That is twice the 5 seconds that yapi and Pi's `subagent` example give a process between SIGTERM and SIGKILL, so a tool can stop one and report. Race the future against the work with `futures::select!` or a small helper, such as `race` in the [countdown example](native-examples.md#countdown):
+
+```rust
+let mut process = Process::spawn(&json!({"command": "make", "args": ["test"]}))?;
+let mut output = Vec::new();
+loop {
+    match race(process.next(), ctx.aborted()).await {
+        Ok(Some(ProcessEvent::Stdout(bytes))) => output.extend(bytes),
+        Ok(Some(_)) => {}
+        Ok(None) => break,
+        Err(()) => {
+            process.kill("SIGTERM");
+            while process.next().await.is_some() {}
+            output.extend(b"\n[stopped]");
+            break;
+        }
+    }
+}
+Ok(ToolResult::text(String::from_utf8_lossy(&output)))
+```
 
 ## Limits
 

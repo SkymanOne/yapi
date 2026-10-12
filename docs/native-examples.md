@@ -1,6 +1,6 @@
 # Native extension examples
 
-The repository has sixteen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so the Rust and TypeScript versions can be read side by side. `subagent` is tested against a real yapi in `crates/yapi/tests/subagent.rs`, `event-bus` with Pi extensions in `crates/yapi-ext/tests/bus.rs`, and the others in `crates/yapi-ext/tests/native.rs`. Terminal scenarios also compare the screens of nine examples against Pi running the TypeScript versions.
+The repository has seventeen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so the Rust and TypeScript versions can be read side by side. `subagent` is tested against a real yapi in `crates/yapi/tests/subagent.rs`, `event-bus` with Pi extensions in `crates/yapi-ext/tests/bus.rs`, and the others in `crates/yapi-ext/tests/native.rs`. Terminal scenarios also compare the screens of nine examples against Pi running the TypeScript versions.
 
 | Example | Shows | Pi counterpart |
 |---|---|---|
@@ -20,6 +20,7 @@ The repository has sixteen native extensions in [`guest/examples`](https://githu
 | [`select-menu`](#select-menu) | A `SelectList` widget in a custom component | None |
 | [`input-hooks`](#input-hooks) | A terminal input listener that reads the editor, an autocomplete provider and a shortcut | None |
 | [`crash-recovery`](#crash-recovery) | What yapi does when an extension panics | None |
+| [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
 
 Five of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
 
@@ -327,3 +328,22 @@ fn render(&mut self, _width: usize) -> Vec<String> {
     vec![format!("> {}", self.text)]
 }
 ```
+
+## countdown
+
+A `countdown` tool that counts down from `seconds` and shows each second as progress. When the user aborts the run, it stops with its own result, such as `Stopped with 7 seconds left`, and its details name the call with `Context::tool_call_id`. Stopping takes `cleanup` seconds, as stopping a process can. With a `cleanup` over 10 seconds yapi drops the tool instead. A `wait` tool ignores aborts, so yapi drops it at once.
+
+```rust
+for left in (1..=seconds).rev() {
+    ctx.update(&ToolResult::text(format!("{left}...")));
+    if race(sleep(1000), ctx.aborted()).await.is_err() {
+        sleep(cleanup * 1000).await;
+        return Ok(
+            ToolResult::text(format!("Stopped with {left} seconds left"))
+                .with_details(details),
+        );
+    }
+}
+```
+
+`race` polls two futures until one finishes, so the tool needs no other crate. `futures::select!` does the same.

@@ -63,7 +63,7 @@ pub use input::{
     editor_text,
 };
 pub use process::{Process, ProcessEvent};
-use task::LocalFuture;
+use task::{LocalFuture, Signal};
 pub use task::{op, sleep, spawn};
 pub use ui::{
     Component, CustomOptions, Done, EditorComponent, OverlayHandle, Placement, Theme, Widget,
@@ -99,6 +99,7 @@ use bindings::yapi::extension::types::Outcome;
 pub struct Context {
     data: Value,
     tool_call_id: Option<String>,
+    signal: Rc<Signal>,
 }
 
 impl Context {
@@ -120,6 +121,24 @@ impl Context {
     /// Everything the host sent.
     pub fn data(&self) -> &Value {
         &self.data
+    }
+
+    /// The id of the tool call this context runs, pi's `toolCallId`; `None`
+    /// outside a tool.
+    pub fn tool_call_id(&self) -> Option<&str> {
+        self.tool_call_id.as_deref()
+    }
+
+    /// Resolves once the user aborts the run of this tool call, as pi's
+    /// `signal` fires. Never resolves outside a tool.
+    ///
+    /// A tool that has called it keeps running after an abort, and yapi
+    /// uses the result it returns, such as partial output. One that has not
+    /// returned 10 seconds after the abort is dropped. A tool that never
+    /// calls it is dropped at once.
+    pub fn aborted(&self) -> impl Future<Output = ()> + 'static {
+        self.signal.watched.set(true);
+        Signal::wait(self.signal.clone())
     }
 
     /// Shows `partial` as the running tool's progress, as pi's `onUpdate`
@@ -209,7 +228,8 @@ pub struct RenderContext<'a> {
 impl Tool {
     /// A tool named `name` taking arguments that match the JSON Schema
     /// `parameters`. When the run is aborted, yapi drops the future
-    /// `execute` returned, which kills the processes it holds.
+    /// `execute` returned, which kills the processes it holds, unless the
+    /// tool waits for [`Context::aborted`].
     pub fn new<R>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -595,18 +615,19 @@ struct State {
     package_root: Option<String>,
     flag_values: HashMap<String, Value>,
     /// Running calls the host may abort, by the host's id for them: the
-    /// task and the call's id.
-    abortable: HashMap<u64, (u64, u64)>,
+    /// task, the call's id and its abort signal.
+    abortable: HashMap<u64, (u64, u64, Rc<Signal>)>,
 }
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
 }
 
-fn context(payload: &Value) -> Context {
+fn context(payload: &Value, signal: &Rc<Signal>) -> Context {
     Context {
         data: payload["ctx"].clone(),
         tool_call_id: payload["toolCallId"].as_str().map(str::to_owned),
+        signal: signal.clone(),
     }
 }
 
@@ -626,8 +647,14 @@ fn registered<T>(find: impl FnOnce(&Api) -> Option<T>) -> Option<T> {
     STATE.with(|state| state.borrow().api.as_ref().and_then(find))
 }
 
-/// Call `kind` with `payload`: what it answers once it completes.
-fn call(init: fn(&mut Api), kind: &str, payload: Value) -> LocalFuture<Result<Value, String>> {
+/// Call `kind` with `payload`, which `signal` aborts: what it answers once
+/// it completes.
+fn call(
+    init: fn(&mut Api),
+    kind: &str,
+    payload: Value,
+    signal: &Rc<Signal>,
+) -> LocalFuture<Result<Value, String>> {
     let answer = |value: Result<Value, String>| -> LocalFuture<Result<Value, String>> {
         Box::pin(std::future::ready(value))
     };
@@ -683,7 +710,7 @@ fn call(init: fn(&mut Api), kind: &str, payload: Value) -> LocalFuture<Result<Va
             answer(Ok(Value::Null))
         }
         "tool" => {
-            let ctx = context(&payload);
+            let ctx = context(&payload, signal);
             let name = payload["name"].as_str().unwrap_or_default().to_owned();
             let execute = registered(|api| {
                 let tool = api.tools.iter().find(|tool| tool.name == name)?;
@@ -696,7 +723,7 @@ fn call(init: fn(&mut Api), kind: &str, payload: Value) -> LocalFuture<Result<Va
             })
         }
         "command" | "shortcut" => {
-            let ctx = context(&payload);
+            let ctx = context(&payload, signal);
             let shortcut = kind == "shortcut";
             let name = payload[if shortcut { "shortcut" } else { "name" }]
                 .as_str()
@@ -721,7 +748,7 @@ fn call(init: fn(&mut Api), kind: &str, payload: Value) -> LocalFuture<Result<Va
             })
         }
         "emit" => {
-            let ctx = context(&payload);
+            let ctx = context(&payload, signal);
             let event = payload["event"].clone();
             let kind = event["type"].as_str().unwrap_or_default().to_owned();
             let handlers: Vec<_> = registered(|api| {
@@ -755,10 +782,21 @@ fn call(init: fn(&mut Api), kind: &str, payload: Value) -> LocalFuture<Result<Va
             })
         }
         "abort" => {
-            let aborted = payload["id"]
-                .as_u64()
-                .and_then(|id| STATE.with(|state| state.borrow_mut().abortable.remove(&id)));
-            if let Some((task, call)) = aborted
+            // The first abort of a tool that waits for it fires its signal.
+            // Any other abort drops the tool, as the host's second one does
+            // once the tool outlasts its deadline.
+            let dropped = payload["id"].as_u64().and_then(|id| {
+                STATE.with(|state| {
+                    let mut state = state.borrow_mut();
+                    let (_, _, signal) = state.abortable.get(&id)?;
+                    if signal.watched.get() && !signal.aborted.get() {
+                        signal.abort();
+                        return None;
+                    }
+                    state.abortable.remove(&id)
+                })
+            });
+            if let Some((task, call, _)) = dropped
                 && task::cancel(task)
             {
                 task::report(Outcome::Failed((call, "This operation was aborted".into())));
@@ -821,7 +859,8 @@ pub fn dispatch(init: fn(&mut Api), id: u64, kind: &str, payload: &str) -> Vec<O
     let payload: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
     // The host aborts a tool call by the id in its payload.
     let abortable = payload["id"].as_u64().filter(|_| kind == "tool");
-    let answer = call(init, kind, payload);
+    let signal = Rc::default();
+    let answer = call(init, kind, payload, &signal);
     let task = spawn(async move {
         let outcome = match answer.await {
             Ok(value) => Outcome::Done((id, value.to_string())),
@@ -833,7 +872,7 @@ pub fn dispatch(init: fn(&mut Api), id: u64, kind: &str, payload: &str) -> Vec<O
         task::report(outcome);
     });
     if let Some(op) = abortable {
-        STATE.with(|state| state.borrow_mut().abortable.insert(op, (task, id)));
+        STATE.with(|state| state.borrow_mut().abortable.insert(op, (task, id, signal)));
     }
     task::run()
 }

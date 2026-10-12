@@ -1,0 +1,16 @@
+[package]
+name = "countdown"
+description = "An example native yapi extension. A tool that stops with its own result when the run is aborted, and one that ignores aborts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+yapi-extension-api = { path = "../../yapi-extension-api" }
+
+[lints]
+workspace = true
