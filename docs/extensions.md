@@ -17,7 +17,8 @@ The two types differ in runtime, isolation and portability:
 | Runs in | Pi and yapi | yapi only |
 | Runtime | QuickJS-NG, a JavaScript interpreter without a JIT compiler, compiled to WebAssembly | Machine code that Wasmtime compiles from the extension's WebAssembly |
 | Instance | One instance shared by all Pi extensions | An instance of its own |
-| Limits | 1 GiB of memory and 60 seconds per call, shared by all Pi extensions | 1 GiB of memory and 60 seconds per call, for this extension alone |
+| Memory | 1 GiB for all Pi extensions together | 1 GiB for this extension alone |
+| Compute | 60 seconds per call. While one Pi extension computes, the others wait. | 60 seconds per call, without blocking other extensions |
 | After a crash | The shared instance restarts and every Pi extension reloads | Only this extension restarts |
 | API | Pi's `ExtensionAPI` from Pi 1.0, with the exceptions in [Differences from Pi](compat.md#extensions) | yapi's Rust SDK, unstable until yapi 1.0 |
 | Dependencies | npm packages in plain JavaScript | Rust crates that build for `wasm32-wasip2` |

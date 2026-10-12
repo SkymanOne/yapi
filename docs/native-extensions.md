@@ -404,4 +404,4 @@ Ok(ToolResult::text(String::from_utf8_lossy(&output)))
 
 ## Limits
 
-Each call into an extension may compute for 60 seconds without waiting on yapi, and each extension may use 1 GiB of memory.
+Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.

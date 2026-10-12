@@ -32,7 +32,7 @@ Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from
 
 An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.
 
-Each call into an instance may compute for 60 seconds without waiting on yapi, and each instance may use 1 GiB of memory. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.
+Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.
 
 ### Grants
 
