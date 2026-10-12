@@ -3379,7 +3379,9 @@ impl App {
             // The extensions' factories run again as the replacement is
             // built, after the current session's extensions stop.
             old.shutdown_for(reason, target).await;
-            let built = factory(manager).await.map_err(|error| error.to_string());
+            let built = factory(manager, reason)
+                .await
+                .map_err(|error| error.to_string());
             let replaced = Replaced {
                 reason,
                 previous,
@@ -4617,7 +4619,7 @@ mod tests {
             verbose: false,
             initial: Vec::new(),
             initial_images: Vec::new(),
-            factory: Arc::new(|manager| Box::pin(async move { Ok(session_around(manager)) })),
+            factory: Arc::new(|manager, _| Box::pin(async move { Ok(session_around(manager)) })),
             use_theme: None,
             model_fallback: None,
             model_network: false,

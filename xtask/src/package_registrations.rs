@@ -133,7 +133,7 @@ async fn load(
     let mut packages = PackageManager::new(cwd.clone(), agent.clone(), settings, npm::config());
     let mut install_errors = Vec::new();
     packages
-        .install_missing(|error| install_errors.push(error))
+        .install_missing(|_, error| install_errors.push(error))
         .await;
     if let Some(error) = install_errors.first() {
         return Ok(json!({"version": version, "install": error}));

@@ -637,7 +637,7 @@ impl PackageManager {
     /// pi's startup install: the configured npm and git packages that are
     /// missing, the project's first, each identity once. `on_error` receives
     /// the failures.
-    pub async fn install_missing(&mut self, mut on_error: impl FnMut(String)) {
+    pub async fn install_missing(&mut self, mut on_error: impl FnMut(&str, String)) {
         let mut identities: Vec<String> = Vec::new();
         for scope in [Scope::Project, Scope::Global] {
             for entry in self.packages(scope) {
@@ -663,7 +663,10 @@ impl PackageManager {
                     Source::Local { .. } => Ok(()),
                 };
                 if let Err(err) = installed {
-                    on_error(format!("Failed to install {configured}: {err}"));
+                    on_error(
+                        &configured,
+                        format!("Failed to install {configured}: {err}"),
+                    );
                 }
             }
         }
