@@ -20,7 +20,7 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 ## An extension breaks startup
 
-`yapi -ne` starts without extensions. Then turn the failing one off with `yapi config`.
+`yapi -ne` starts without extensions. `yapi config` then turns the failing extension off.
 
 ## Reporting a problem
 

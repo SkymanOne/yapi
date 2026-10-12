@@ -1,8 +1,8 @@
 # Use yapi in the terminal
 
-Run `yapi` from the folder you want to work in. If you have not installed yapi or chosen a model yet, follow the [Quickstart](quickstart.md).
+Run `yapi` from the folder to work in. To install yapi and choose a model first, follow the [Quickstart](quickstart.md).
 
-The transcript shows your prompts, the model's responses, tool calls and their results. You type prompts and commands in the editor at the bottom. The footer shows the folder, the model, context usage and cost.
+The transcript shows your prompts, the model's responses, tool calls and their results. Prompts and commands go in the editor at the bottom. The footer shows the folder, the model, context usage and cost.
 
 ## Enter a prompt
 
@@ -18,7 +18,7 @@ yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, a
 
 ## Change direction
 
-You can send more input while yapi works:
+Input sent while yapi works changes what it does next:
 
 | What you want | Action |
 |---|---|

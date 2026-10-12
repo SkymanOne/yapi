@@ -13,7 +13,7 @@
 - [Use yapi in the terminal](interactive.md)
 - [Choose a model](models.md)
 - [Manage sessions](sessions.md)
-- [Run yapi safely](security.md)
+- [Security model and sandboxing](security.md)
 - [Automate yapi](automation.md)
 
 # Customize yapi
@@ -32,6 +32,7 @@
 # Reference
 
 - [Differences from Pi](compat.md)
+- [Roadmap](roadmap.md)
 - [Performance](performance.md)
 - [Troubleshooting](troubleshooting.md)
 - [Contributing](contributing.md)

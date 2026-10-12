@@ -62,10 +62,6 @@ The client reads registries and credentials from `npm_config_*` environment vari
 
 Pi's `npmCommand` setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.
 
-## Planned: manifests and registry
+## Planned features
 
-These features are planned and not available yet.
-
-- Packages declare the grants they need, such as file, process, network or environment access. You approve them, and yapi runs the package with only those grants. Events on the `pi.events` bus then reach only packages with the same grants, unless your settings allow more. A package's own manifest cannot allow it.
-- A `yapi.toml` file at a project's root lists the packages, extensions and skills the project uses, so anyone who checks out the project installs the same set, as `Cargo.toml` does for Rust.
-- A central registry of yapi packages, so manifests can name packages and versions instead of npm or git sources.
+Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the [Roadmap](roadmap.md).

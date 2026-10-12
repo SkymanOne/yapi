@@ -18,7 +18,7 @@ yapi --version
 
 ## 2. Start yapi
 
-Change to the folder you want yapi to work in, then start it:
+Start yapi in the folder it should work in:
 
 ```sh
 cd ~/code/my-project
@@ -46,7 +46,7 @@ Find why `cargo test` fails and fix it
 
 `@path` attaches a file. `!command` runs a shell command and sends its output to the model, and `!!command` runs it without sending the output. Press Escape to stop the agent and Ctrl+C twice to quit.
 
-Review the changes when yapi finishes. Use version control for important work, and a container for untrusted or unattended work. See [Run yapi safely](security.md).
+Review the changes when yapi finishes. Keep important work under version control, and use a container for untrusted or unattended work. See [Security model and sandboxing](security.md).
 
 ## Continue later
 
@@ -66,7 +66,7 @@ Use `/resume` to choose another session. See [Manage sessions](sessions.md).
 
 ### Choose how to customize yapi
 
-Start with the simplest mechanism that meets your need:
+Start with the simplest mechanism that meets the need:
 
 | Need | Start with |
 |---|---|

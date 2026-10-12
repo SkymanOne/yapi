@@ -15,7 +15,7 @@
 
 # yapi
 
-yapi is a coding agent for the terminal, written in Rust. It is a reimplementation of [Pi](https://pi.dev) `v1.0.0` that reads Pi's settings, sessions, credentials and packages unchanged, and ships as one native binary with no Node.js dependency.
+yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](https://pi.dev) `v1.0.0`, reads Pi's settings, sessions, credentials and packages without conversion, and ships as a single native binary with no Node.js dependency.
 
 ![yapi in a terminal, answering a question about this repository](assets/screenshot.png)
 
@@ -36,13 +36,13 @@ cd /path/to/project
 yapi
 ```
 
-Run `/login` to connect a subscription or API key, then give yapi a task. If you already use Pi, `yapi import pi` copies your settings, credentials, sessions and packages.
+Run `/login` to connect a subscription or API key, then give yapi a task. Existing Pi users can copy their settings, credentials, sessions and packages with `yapi import pi`.
 
-See the [documentation](https://skymanone.github.io/yapi/) for setup and usage.
+The [documentation](https://skymanone.github.io/yapi/) covers setup and usage.
 
 ## yapi and Pi
 
-yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC protocols and extension API. It differs in how it runs:
+yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC protocols and extension API. The main differences are in how it runs:
 
 | | Pi | yapi |
 |---|---|---|
@@ -55,6 +55,26 @@ yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC p
 Figures are medians on GitHub's hosted Linux runner. [Performance](https://skymanone.github.io/yapi/performance.html) describes the method and has the macOS results.
 
 Compatibility is tested against Pi itself. All 79 of Pi's example extensions, and 418 of the 500 most-downloaded Pi packages on npm, load and register the same tools, commands and event handlers as in Pi. [Differences from Pi](https://skymanone.github.io/yapi/compat.html) lists every known difference.
+
+## Extensions
+
+Pi extensions in TypeScript or JavaScript run unchanged in a bundled QuickJS-NG runtime, so existing Pi packages work without Node.js. Native extensions are written in Rust and compiled to WebAssembly components. They run in an instance of their own as compiled code, at the cost of a build step and an API that is unstable until yapi 1.0. `yapi new` creates one. [Choose an extension type](https://skymanone.github.io/yapi/extensions.html#choose-an-extension-type) compares the two.
+
+## Security model and sandboxing
+
+yapi's built-in tools run with the permissions of the user who starts it, and yapi does not ask before each tool call. For untrusted repositories or unattended work, run yapi in a container or virtual machine.
+
+Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network and environment access against grants. In v0.1 every package receives Pi's default grants, so an extension can do what it could do in Pi. Codemode scripts run with no file, process or network access. [Security model and sandboxing](https://skymanone.github.io/yapi/security.html) has the details.
+
+## Roadmap
+
+- Per-package grants that you approve, so each package runs with only the access it declares
+- Project manifests (`yapi.toml`) that pin the packages and skills a project uses
+- A registry for yapi packages
+- A stable native extension API in yapi 1.0
+- The Pi features not yet ported, listed in [Differences from Pi](https://skymanone.github.io/yapi/compat.html#open-gaps)
+
+The [Roadmap](https://skymanone.github.io/yapi/roadmap.html) has the details.
 
 ## Agent skills
 

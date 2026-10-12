@@ -1,6 +1,6 @@
 # Coming from Pi
 
-yapi reads Pi's formats but keeps its own folders, so the two never write the same files. Copy your Pi setup once:
+yapi reads Pi's formats but keeps its own folders, so the two never write the same files. To copy an existing Pi setup, run:
 
 ```sh
 yapi import pi
@@ -10,7 +10,7 @@ The command copies Pi's agent folder, `~/.pi/agent` or `PI_CODING_AGENT_DIR`, in
 
 Files yapi already has are kept, except a `settings.json` that holds only the version yapi recorded on first start. Pi's `lastChangelogVersion` is left out, because it holds Pi's version.
 
-Afterwards, yapi and Pi work side by side, and each opens the other's session files.
+After the import, yapi and Pi work side by side, and each opens the other's session files.
 
 ## Names that change
 
@@ -26,4 +26,4 @@ Only the two directory variables are renamed. Provider keys and every other `PI_
 
 ## What differs
 
-A few behaviors differ on purpose, such as the startup header and features tied to Pi's online services. [Differences from Pi](compat.md) lists each one with its reason.
+Some behaviors differ by design, such as the startup header and features tied to Pi's online services. [Differences from Pi](compat.md) lists each one with its reason.
