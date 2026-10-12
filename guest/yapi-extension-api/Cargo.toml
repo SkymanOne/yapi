@@ -4,17 +4,22 @@ description = "Write native yapi extensions in Rust: tools, commands, flags and 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+repository = "https://github.com/SkymanOne/yapi"
+# Published to crates.io with yapi-types and yapi-tui on each release.
+publish = true
 
 [dependencies]
 base64 = "0.22"
 serde_json = "1"
 wit-bindgen = "0.62"
-yapi-tui = { path = "../../crates/yapi-tui", optional = true }
+yapi-tui = { path = "../../crates/yapi-tui", version = "0.1.0", optional = true }
 
 [features]
 # pi-tui's widgets from yapi-tui, such as `SelectList` and `Editor`.
 widgets = ["dep:yapi-tui"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

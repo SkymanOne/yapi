@@ -24,7 +24,7 @@ yapi new shout
 shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api at tag v0.1.0
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.1.0
 ├── README.md
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
@@ -37,11 +37,11 @@ The package takes the directory's name, or the one `--name` gives. Names use low
 cargo generate --git https://github.com/SkymanOne/yapi --tag v0.1.0 crates/yapi/templates/extension
 ```
 
-To start without the template, create a library crate with `crate-type = ["cdylib"]` and depend on the SDK at the yapi release you target:
+To start without the template, create a library crate with `crate-type = ["cdylib"]` and depend on the SDK version of the yapi release you target:
 
 ```toml
 [dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "v0.1.0" }
+yapi-extension-api = "0.1.0"
 ```
 
 An extension registers its features in an init function and exports it with `extension!`. Tools, commands and event handlers are `async` closures:
@@ -321,7 +321,7 @@ The `widgets` feature adds yapi's ports of pi-tui's widgets, which match pi-tui'
 
 ```toml
 [dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "<release>", features = ["widgets"] }
+yapi-extension-api = { version = "0.1.0", features = ["widgets"] }
 ```
 
 `widgets::tui` holds them, such as `select_list::SelectList`, `editor::Editor`, `text_input::TextInput`, `settings_list::SettingsList`, and the `Text`, `Box` and border layouts in `lines`. They render styled lines, and `widgets::to_ansi` turns those into a component's lines, with pi-tui's cursor marker where a cursor belongs. `widgets::style` and `widgets::bg_style` give a theme token's style for the widgets' themes, and `widgets::keybindings` the key bindings their `handle_input` takes. The module also has `Text`, a component with pi-tui's `Text` layout, and pi-tui's `visible_width`, `truncate_to_width` and `wrap_text_with_ansi` for text with escape sequences.

@@ -6,7 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+# Published to crates.io for yapi-extension-api's widgets feature.
+publish = true
 
 [dependencies]
 indexmap.workspace = true
