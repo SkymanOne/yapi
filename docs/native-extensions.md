@@ -1,6 +1,6 @@
 # Native extensions in Rust
 
-Native extensions are WebAssembly components written in Rust with the `yapi-extension-api` crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi's JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one `.wasm` file of a few hundred kilobytes.
+Native extensions are WebAssembly components written in Rust with the [`yapi-extension-api`](https://docs.rs/yapi-extension-api) crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi's JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one `.wasm` file of a few hundred kilobytes.
 
 The native extension API is unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests may change in any release before then, and extensions may need to be rebuilt. Pi extensions are not affected.
 
