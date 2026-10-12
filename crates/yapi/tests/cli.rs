@@ -1007,3 +1007,110 @@ async fn project_dir_supplies_the_project() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// A native extension reads the session's project as its factory runs: the
+/// working directory, or the one `--project-dir` names, at startup, in a new
+/// session, which keeps the runtime, and after a reload, which starts a new
+/// one whose runs count from one. Without the flag, a session in another
+/// directory, which starts a new runtime too, takes that directory's project,
+/// in its new sessions and reloads as well.
+#[test]
+fn native_extensions_read_the_project_as_they_load() {
+    use serde_json::{Value, json};
+    use std::io::{BufRead as _, Write as _};
+    let home = common::scratch("load-project-dir");
+    let (work, project) = (home.join("work"), home.join("project"));
+    for dir in [&work, &project] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let (work, project) = (
+        work.canonicalize().unwrap(),
+        project.canonicalize().unwrap(),
+    );
+    let elsewhere = home.join("elsewhere.jsonl");
+    std::fs::write(
+        &elsewhere,
+        format!(
+            "{}\n",
+            json!({"type": "session", "version": 3, "id": "elsewhere", "timestamp": "2026-01-01T00:00:00.000Z", "cwd": project})
+        ),
+    )
+    .unwrap();
+    let fixture = common::repo().join("crates/yapi-ext/tests/fixtures/project-dir.wasm");
+    // The description of `/project` after each command: the run of the
+    // factory and the directory it read.
+    let described = |extra: &[&str], commands: &[Value]| {
+        let mut child = common::yapi(&work)
+            .args(["--mode", "rpc", "--no-session", "-e"])
+            .arg(&fixture)
+            .args(extra)
+            .env("PI_OFFLINE", "1")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+        let mut ask = |command: &Value| {
+            writeln!(stdin, "{command}").unwrap();
+            loop {
+                let event: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+                if event["type"] == "response" && event["id"] == command["id"] {
+                    return event;
+                }
+            }
+        };
+        let mut seen = Vec::new();
+        for command in [&[json!({"type": "get_commands"})][..], commands].concat() {
+            let mut command = command.clone();
+            command["id"] = json!(seen.len());
+            ask(&command);
+            // `/project` reloads after its prompt answers.
+            for _ in 0..500 {
+                let commands = ask(&json!({"id": "get", "type": "get_commands"}));
+                let project = commands["data"]["commands"].as_array().unwrap().iter();
+                let text = project
+                    .filter(|it| it["name"] == "project")
+                    .map(|it| it["description"].as_str().unwrap().to_owned())
+                    .next()
+                    .unwrap();
+                if seen.last() != Some(&text) {
+                    seen.push(text);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        drop(stdin);
+        child.wait().unwrap();
+        seen
+    };
+    let reload = json!({"type": "prompt", "message": "/project"});
+    let new_and_reload = [json!({"type": "new_session"}), reload.clone()];
+    let (work, project) = (work.display(), project.display());
+    assert_eq!(
+        described(&["--project-dir", "../project"], &new_and_reload),
+        [
+            format!("Run 1 for {project}"),
+            format!("Run 2 for {project}"),
+            format!("Run 1 for {project}"),
+        ]
+    );
+    let switch = json!({"type": "switch_session", "sessionPath": elsewhere});
+    assert_eq!(
+        described(
+            &[],
+            &[&new_and_reload[..], &[switch], &new_and_reload[..]].concat()
+        ),
+        [
+            format!("Run 1 for {work}"),
+            format!("Run 2 for {work}"),
+            format!("Run 1 for {work}"),
+            format!("Run 1 for {project}"),
+            format!("Run 2 for {project}"),
+            format!("Run 1 for {project}"),
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

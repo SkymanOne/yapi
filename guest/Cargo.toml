@@ -19,6 +19,7 @@ members = [
     "examples/subagent",
     "examples/todo",
     "fixtures/mcp-at-load",
+    "fixtures/project-dir",
     "yapi-extension-api",
     "yapi-js",
 ]

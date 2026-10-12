@@ -131,7 +131,7 @@ impl ExtensionHost {
         sources: &[SourceInfo],
     ) -> Result<Arc<ExtensionHost>, Error> {
         let names: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
-        let bridge = SessionBridge::new(engine, names.join(", "));
+        let bridge = SessionBridge::new(engine, names.join(", "), &options);
         let instance = Instance::start(engine, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, sources).await
     }
@@ -144,7 +144,7 @@ impl ExtensionHost {
         source: &SourceInfo,
     ) -> Result<Arc<ExtensionHost>, Error> {
         let component = engine.native(std::path::Path::new(&source.path))?;
-        let bridge = SessionBridge::new(engine, source.path.clone());
+        let bridge = SessionBridge::new(engine, source.path.clone(), &options);
         let instance =
             Instance::start_component(engine, component, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, std::slice::from_ref(source)).await
@@ -1333,6 +1333,8 @@ struct SessionBridge {
     /// The MCP servers the runtime reported as its factories ran, before it
     /// bound to a session, for the session it binds to.
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
+    /// The project directory of the sessions the factories run for.
+    project_dir: PathBuf,
 }
 
 fn not_bound() -> String {
@@ -1341,7 +1343,7 @@ fn not_bound() -> String {
 }
 
 impl SessionBridge {
-    fn new(engine: &Engine, name: String) -> Arc<SessionBridge> {
+    fn new(engine: &Engine, name: String, options: &Options) -> Arc<SessionBridge> {
         Arc::new(SessionBridge {
             name,
             codemode: Arc::new(crate::codemode::Runner::with_engine(
@@ -1361,6 +1363,7 @@ impl SessionBridge {
             owner: OnceLock::new(),
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
+            project_dir: options.project_dir.clone(),
         })
     }
 
@@ -1863,6 +1866,14 @@ impl Bridge for SessionBridge {
             let servers = serde_json::from_value(payload["servers"].clone())
                 .map_err(|err| err.to_string())?;
             return self.set_mcp_servers(servers).map(|()| Value::Null);
+        }
+        // Factories read it as they run, before their session exists.
+        if kind == "projectDir" {
+            let dir = match self.session() {
+                Some(session) => session.project_dir(),
+                None => self.project_dir.clone(),
+            };
+            return Ok(Value::String(dir.to_string_lossy().into_owned()));
         }
         let session = self.session().ok_or_else(not_bound)?;
         // Events the session announces reach extensions from the runtime,

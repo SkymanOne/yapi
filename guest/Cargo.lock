@@ -465,6 +465,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-dir"
+version = "0.1.0"
+dependencies = [
+ "yapi-extension-api",
+]
+
+[[package]]
 name = "protected-paths"
 version = "0.1.0"
 dependencies = [
