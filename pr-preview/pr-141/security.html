@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ce4df1e8.js";
+            window.path_to_searchindex_js = "searchindex-abb914c7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -210,7 +210,7 @@
 <p>Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from yapi’s own memory. The sandbox limits what extension code can do directly. It does not restrict the built-in tools, child processes or MCP servers.</p>
 <h3 id="instances-and-limits"><a class="header" href="#instances-and-limits">Instances and limits</a></h3>
 <p>An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
-<p>Each call into an instance may compute for 60 seconds without waiting on yapi, and each instance may use 1 GiB of memory. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.</p>
+<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.</p>
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
 <p>The host checks every file, process, network and environment access against the extension’s grants. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="roadmap.html#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>The process grant implies the other three. A process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>

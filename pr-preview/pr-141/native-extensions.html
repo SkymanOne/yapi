@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ce4df1e8.js";
+            window.path_to_searchindex_js = "searchindex-abb914c7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -509,7 +509,7 @@ loop {
 Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <span class="boring">}</span></code></pre>
 <h2 id="limits"><a class="header" href="#limits">Limits</a></h2>
-<p>Each call into an extension may compute for 60 seconds without waiting on yapi, and each extension may use 1 GiB of memory.</p>
+<p>Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.</p>
 
                     </main>
 

@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ce4df1e8.js";
+            window.path_to_searchindex_js = "searchindex-abb914c7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -198,7 +198,8 @@
 <tr><td>Runs in</td><td>Pi and yapi</td><td>yapi only</td></tr>
 <tr><td>Runtime</td><td>QuickJS-NG, a JavaScript interpreter without a JIT compiler, compiled to WebAssembly</td><td>Machine code that Wasmtime compiles from the extension’s WebAssembly</td></tr>
 <tr><td>Instance</td><td>One instance shared by all Pi extensions</td><td>An instance of its own</td></tr>
-<tr><td>Limits</td><td>1 GiB of memory and 60 seconds per call, shared by all Pi extensions</td><td>1 GiB of memory and 60 seconds per call, for this extension alone</td></tr>
+<tr><td>Memory</td><td>1 GiB for all Pi extensions together</td><td>1 GiB for this extension alone</td></tr>
+<tr><td>Compute</td><td>60 seconds per call. While one Pi extension computes, the others wait.</td><td>60 seconds per call, without blocking other extensions</td></tr>
 <tr><td>After a crash</td><td>The shared instance restarts and every Pi extension reloads</td><td>Only this extension restarts</td></tr>
 <tr><td>API</td><td>Pi’s <code>ExtensionAPI</code> from Pi 1.0, with the exceptions in <a href="compat.html#extensions">Differences from Pi</a></td><td>yapi’s Rust SDK, unstable until yapi 1.0</td></tr>
 <tr><td>Dependencies</td><td>npm packages in plain JavaScript</td><td>Rust crates that build for <code>wasm32-wasip2</code></td></tr>
