@@ -17,13 +17,14 @@ const RUNTIME_INPUTS: [&str; 4] = [
     "guest/yapi-js",
     "wit",
 ];
-/// Files and directories the examples are built from, with the crates the
-/// SDK's `widgets` feature takes from yapi's workspace.
-const EXAMPLE_INPUTS: [&str; 10] = [
+/// Files and directories the examples and fixtures are built from, with the
+/// crates the SDK's `widgets` feature takes from yapi's workspace.
+const EXAMPLE_INPUTS: [&str; 11] = [
     "guest/Cargo.toml",
     "guest/Cargo.lock",
     "guest/yapi-extension-api",
     "guest/examples",
+    "guest/fixtures",
     "wit",
     "crates/yapi-tui/Cargo.toml",
     "crates/yapi-tui/src",
@@ -33,8 +34,9 @@ const EXAMPLE_INPUTS: [&str; 10] = [
 ];
 /// The JS runtime yapi embeds.
 const ARTIFACT: &str = "crates/yapi-ext/yapi-js.wasm";
-/// The Rust SDK's example extensions, one crate each; test fixtures.
-const EXAMPLES: &str = "guest/examples";
+/// The Rust SDK's example extensions, and extensions only tests use, one
+/// crate each; test fixtures.
+const EXAMPLES: [&str; 2] = ["guest/examples", "guest/fixtures"];
 /// Where each example's build lands, as `<crate>.wasm`.
 const FIXTURES: &str = "crates/yapi-ext/tests/fixtures";
 const RECORD: &str = "crates/yapi-ext/yapi-js.wasm.inputs";
@@ -167,13 +169,16 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The example crates, named after their directories, in name order.
+/// The example and fixture crates, named after their directories, in name
+/// order.
 fn examples() -> anyhow::Result<Vec<String>> {
     let mut names = Vec::new();
-    for entry in fs::read_dir(EXAMPLES).with_context(|| format!("reading {EXAMPLES}"))? {
-        let entry = entry?;
-        if entry.path().join("Cargo.toml").is_file() {
-            names.push(entry.file_name().to_string_lossy().into_owned());
+    for dir in EXAMPLES {
+        for entry in fs::read_dir(dir).with_context(|| format!("reading {dir}"))? {
+            let entry = entry?;
+            if entry.path().join("Cargo.toml").is_file() {
+                names.push(entry.file_name().to_string_lossy().into_owned());
+            }
         }
     }
     names.sort();

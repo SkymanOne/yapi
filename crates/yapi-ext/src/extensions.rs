@@ -205,6 +205,7 @@ impl ExtensionHost {
         // The next session does not exist yet: until it binds, MCP servers
         // are checked against the runtimes that ran before this one.
         *lock(&self.bridge.session) = WeakSession::default();
+        *lock(&self.bridge.held_mcp_servers) = None;
         self.runs.fetch_add(1, Ordering::SeqCst);
         match self.instance.call("reload", &Value::Null).await {
             Ok(result) => {
@@ -366,6 +367,7 @@ impl ExtensionHost {
 
     /// The MCP servers the loaded extensions registered as they loaded.
     fn loaded_mcp_servers(&self) -> Vec<RegisteredMcpServer> {
+        let held = lock(&self.bridge.held_mcp_servers).clone();
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| {
@@ -378,6 +380,7 @@ impl ExtensionHost {
                         extension_path: path.clone(),
                     })
             })
+            .chain(held.into_iter().flatten())
             .collect()
     }
 
@@ -421,6 +424,12 @@ impl ExtensionHost {
             return true;
         }
         *lock(&self.bridge.session) = ctx.session.clone();
+        let held = lock(&self.bridge.held_mcp_servers).take();
+        if let Some(servers) = held {
+            // Checked as the factories ran, so only a race refuses them,
+            // and the JS runtime's bind ignores that too.
+            let _ = self.bridge.set_mcp_servers(servers);
+        }
         // The guest reads the state as it binds; later states follow it.
         let terminal = ctx.ui.terminal().map(|state| self.forward_terminal(state));
         if let Some(previous) = std::mem::replace(&mut *lock(&self.terminal), terminal) {
@@ -1298,6 +1307,9 @@ struct SessionBridge {
     bus: Bus,
     /// Runs scripts of the codemode tool the facade's `createCodemodeExtension` registers.
     codemode: Arc<crate::codemode::Runner>,
+    /// The MCP servers the runtime reported as its factories ran, before it
+    /// bound to a session, for the session it binds to.
+    held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
 }
 
 fn not_bound() -> String {
@@ -1325,6 +1337,7 @@ impl SessionBridge {
             next_id: AtomicU64::new(1),
             owner: OnceLock::new(),
             bus: engine.bus.clone(),
+            held_mcp_servers: Mutex::default(),
         })
     }
 
@@ -1355,6 +1368,24 @@ impl SessionBridge {
 
     fn spawn(&self, future: impl std::future::Future<Output = ()> + Send + 'static) {
         self.runtime.spawn(future);
+    }
+
+    /// Sets the MCP servers the runtime's extensions registered, in the
+    /// session the runtime is bound to. Before it binds, as its factories
+    /// run, checks them as pi checks registrations made while extensions
+    /// load, and holds them for the session, which connects them as it
+    /// starts.
+    fn set_mcp_servers(&self, servers: Vec<RegisteredMcpServer>) -> Result<(), String> {
+        if let Some(session) = self.session() {
+            // `mcp_servers_change` reaches extensions from the runtime.
+            let _runtime = self.runtime.enter();
+            return session.set_mcp_servers(self.runtime_id, servers);
+        }
+        for server in &servers {
+            self.check_mcp_server(&server.name)?;
+        }
+        *lock(&self.held_mcp_servers) = Some(servers);
+        Ok(())
     }
 
     /// Holds `job`, an update or a nested call of tool call `id` in the
@@ -1805,17 +1836,16 @@ impl Bridge for SessionBridge {
             }
             return Ok(Value::Null);
         }
+        if kind == "mcp.servers" {
+            let servers = serde_json::from_value(payload["servers"].clone())
+                .map_err(|err| err.to_string())?;
+            return self.set_mcp_servers(servers).map(|()| Value::Null);
+        }
         let session = self.session().ok_or_else(not_bound)?;
         // Events the session announces reach extensions from the runtime,
         // such as `ui_prompt_start` and `mcp_servers_change`.
         let _runtime = self.runtime.enter();
         match kind {
-            "mcp.servers" => {
-                let servers =
-                    serde_json::from_value(payload["servers"].clone()).map_err(|err| err.to_string())?;
-                session.set_mcp_servers(self.runtime_id, servers)?;
-                Ok(Value::Null)
-            }
             "session.sendMessage" => {
                 let message = custom_message(&payload["message"]);
                 let options = &payload["options"];

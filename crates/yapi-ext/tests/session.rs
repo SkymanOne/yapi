@@ -13,6 +13,7 @@ use std::sync::Arc;
 use common::{cli_source, custom_entries, engine, options, scratch, session, text_of};
 use serde_json::{Value, json};
 use yapi_ai::faux::{Faux, Response};
+use yapi_core::agent_session::{AgentSession, Replacement};
 use yapi_core::extensions::{
     ComponentHost, ExtensionUi, Mode, NoUi, NotifyKind, Placement, RemoteComponent, TerminalState,
     Widget,
@@ -772,6 +773,99 @@ async fn runtimes_check_mcp_servers_against_this_run_for_a_new_session() {
             ("kept".to_owned(), path("first.ts")),
             ("moved".to_owned(), path("first.ts")),
         ]
+    );
+}
+
+/// The native fixture that reports the MCP server `at-load` with the
+/// `mcp.servers` request as it loads.
+fn mcp_at_load() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp-at-load.wasm")
+}
+
+/// The names of the MCP servers extensions registered for `session`.
+fn mcp_server_names(session: &AgentSession) -> Vec<String> {
+    session
+        .mcp_servers()
+        .into_iter()
+        .map(|server| server.name)
+        .collect()
+}
+
+/// MCP servers a native extension reports as it loads, before it is bound to
+/// a session, reach the session as it starts, as pi's registrations made
+/// while extensions load do: at startup, in a new session and after
+/// `/reload`.
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_servers_a_native_extension_reports_as_it_loads_reach_its_session() {
+    let dir = scratch("native-mcp-at-load");
+    let host = ExtensionHost::load_native(&engine(), options(&dir), &cli_source(&mcp_at_load()))
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    for replaced in [None, Some(Replacement::New), Some(Replacement::Reload)] {
+        if replaced.is_some() {
+            host.reload().await;
+        }
+        let session = session(&Faux::new([]), &dir, host.for_session());
+        session
+            .bind_extensions(
+                Arc::new(NoUi),
+                Mode::Print,
+                None,
+                replaced.map(|reason| (reason, None)),
+            )
+            .await;
+        assert_eq!(custom_entries(&session, "servers"), [json!("ok")]);
+        assert_eq!(mcp_server_names(&session), ["at-load"]);
+        session.shutdown().await;
+    }
+}
+
+/// As pi checks a registration at the call, an MCP server that a native
+/// extension reports as it loads is refused, with pi's message, when an
+/// extension that loaded earlier registered its name. A report after the
+/// session started is announced, as pi announces registrations made after
+/// its extensions bound, even when it is the native extension's first.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_native_extension_reports_mcp_servers_as_pi_registers_them() {
+    let dir = scratch("native-mcp-clash");
+    let owner = dir.join("owner.ts");
+    std::fs::write(
+        &owner,
+        "export default function (pi) {\n\tpi.registerMcpServer(\"at-load\", { command: \"python3\", enabled: false });\n\tpi.on(\"mcp_servers_change\", (event) => pi.appendEntry(\"change\", event.servers.map((server) => server.name)));\n}\n",
+    )
+    .unwrap();
+    let engine = engine();
+    let js = ExtensionHost::load(&engine, options(&dir), &[cli_source(&owner)])
+        .await
+        .unwrap();
+    let native = ExtensionHost::load_native(&engine, options(&dir), &cli_source(&mcp_at_load()))
+        .await
+        .unwrap();
+    let extensions = js.for_session().into_iter().chain(native.for_session());
+    let session = session(&Faux::new([]), &dir, extensions.collect());
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(
+        custom_entries(&session, "servers"),
+        [json!(format!(
+            "MCP server \"at-load\" is already registered by extension \"{}\"",
+            owner.display()
+        ))]
+    );
+    assert_eq!(mcp_server_names(&session), ["at-load"]);
+    session.prompt("/servers later", Vec::new()).await.unwrap();
+    assert_eq!(mcp_server_names(&session), ["at-load", "later"]);
+    for _ in 0..500 {
+        if !custom_entries(&session, "change").is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        custom_entries(&session, "change"),
+        [json!(["at-load", "later"])]
     );
 }
 

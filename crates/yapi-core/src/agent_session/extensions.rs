@@ -830,18 +830,19 @@ impl AgentSession {
     }
 
     /// Sets the MCP servers that extension runtime `owner` registered, and
-    /// announces `mcp_servers_change` when they changed. A runtime's first
-    /// report holds the servers registered while it loaded, which the MCP
-    /// extension reads when the session starts. Nothing changes when a
-    /// server's name, or its tools' namespace, belongs to another runtime,
-    /// and the error is pi's for that registration.
+    /// announces `mcp_servers_change` when they changed after the extensions
+    /// started. Reports before then, as runtimes bind, hold the servers
+    /// registered while extensions loaded, which the MCP extension reads
+    /// when the session starts. Nothing changes when a server's name, or its
+    /// tools' namespace, belongs to another runtime, and the error is pi's
+    /// for that registration.
     pub fn set_mcp_servers(
         &self,
         owner: u64,
         servers: Vec<RegisteredMcpServer>,
     ) -> Result<(), String> {
         let changed = {
-            let (registered, reported) = &mut *lock(&self.inner.mcp_servers);
+            let (registered, started) = &mut *lock(&self.inner.mcp_servers);
             for server in &servers {
                 check_registration(others(registered, owner), &server.name)?;
             }
@@ -853,7 +854,7 @@ impl AgentSession {
             for server in servers {
                 registered.insert(server.name.clone(), (owner, server));
             }
-            !reported.insert(owner) && *registered != before
+            *started && *registered != before
         };
         if changed {
             let servers = self.mcp_servers();
@@ -1066,6 +1067,7 @@ impl AgentSession {
         for extension in &self.inner.extensions {
             extension.session_start(&ctx).await;
         }
+        lock(&self.inner.mcp_servers).1 = true;
         let (reason, previous) = match replaced {
             Some((reason, previous)) => (Some(reason), reason.reported(previous)),
             None => (None, None),

@@ -1,0 +1,16 @@
+[package]
+name = "mcp-at-load"
+description = "A test fixture: MCP servers a native extension reports with the internal mcp.servers request as it loads."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+yapi-extension-api = { path = "../../yapi-extension-api" }
+
+[lints]
+workspace = true

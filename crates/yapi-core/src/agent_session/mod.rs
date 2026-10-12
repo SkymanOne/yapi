@@ -296,8 +296,8 @@ struct Inner {
     /// outermost.
     ui_prompts: Mutex<(usize, Option<UiPrompt>)>,
     /// MCP servers extensions registered, by name in registration order,
-    /// with the extension runtime that reported each, and the runtimes that
-    /// reported.
+    /// with the extension runtime that reported each, and whether the
+    /// extensions have started, so changes are announced.
     mcp_servers: Mutex<McpServers>,
     /// Registered MCP servers reported as connected by no extension.
     unhandled_mcp_servers: Mutex<std::collections::HashSet<String>>,
@@ -310,10 +310,7 @@ struct Inner {
 type UiPrompt = (String, Option<String>);
 
 /// See [`Inner::mcp_servers`].
-type McpServers = (
-    IndexMap<String, (u64, RegisteredMcpServer)>,
-    std::collections::HashSet<u64>,
-);
+type McpServers = (IndexMap<String, (u64, RegisteredMcpServer)>, bool);
 
 /// Counts an operation in [`Inner::compacting`] while alive.
 struct Compacting<'a>(&'a AtomicUsize);
