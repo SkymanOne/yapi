@@ -304,6 +304,9 @@ struct Inner {
     /// Extensions that failed to load for the session, by path, with pi's
     /// message.
     extension_load_errors: Mutex<Vec<(String, String)>>,
+    /// Extensions that were not loaded for the session, by path, with pi's
+    /// warning.
+    extension_warnings: Mutex<Vec<(String, String)>>,
 }
 
 /// A blocking extension dialog's kind and title.
@@ -500,6 +503,7 @@ impl AgentSession {
                 mcp_servers: Mutex::default(),
                 unhandled_mcp_servers: Mutex::default(),
                 extension_load_errors: Mutex::default(),
+                extension_warnings: Mutex::default(),
                 nested: crate::nested::NestedCalls::default(),
             }),
         }

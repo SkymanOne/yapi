@@ -337,6 +337,27 @@
     "tty": {"cols": 100, "rows": 40, "keys": ["/reload\r", "/fl"]}
   },
   {
+    "name": "tui-reload-extension-files",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5"],
+    "agentFiles": {"extensions/edit.ts": "import { unlinkSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { version } from \"./lib/version.ts\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(`version-${version}`, { description: \"Registered by the first edit.ts\", handler: async () => {} });\n\tpi.registerCommand(\"change\", {\n\t\tdescription: \"Edits, adds and removes extension files\",\n\t\thandler: async () => {\n\t\t\tconst file = (name: string) => join(__dirname, name);\n\t\t\twriteFileSync(file(\"lib/version.ts\"), 'export const version = \"v2\";\\n');\n\t\t\twriteFileSync(file(\"edit.ts\"), 'import { version } from \"./lib/version.ts\";\\nexport default function (pi) {\\n\\tpi.registerCommand(\"edited-\" + version, { description: \"Registered by the edited edit.ts\", handler: async () => {} });\\n}\\n');\n\t\t\twriteFileSync(file(\"added.ts\"), 'export default function (pi) {\\n\\tpi.registerCommand(\"added\", { description: \"Registered by added.ts\", handler: async () => {} });\\n}\\n');\n\t\t\tunlinkSync(file(\"gone.ts\"));\n\t\t},\n\t});\n}\n", "extensions/lib/version.ts": "export const version = \"v1\";\n", "extensions/gone.ts": "export default function (pi) {\n\tpi.registerCommand(\"gone\", { description: \"Registered by gone.ts\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/change\r", "/reload\r", "/edited"]}
+  },
+  {
+    "name": "tui-reload-codemode-replaced",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "ext.ts"],
+    "files": {"ext.ts": "import { readFileSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport { Type } from \"typebox\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"replace\", {\n\t\tdescription: \"Rewrites this extension\",\n\t\thandler: async () => writeFileSync(join(__dirname, \"ext.ts\"), readFileSync(join(__dirname, \"with-tool.txt\"), \"utf8\")),\n\t});\n}\n", "with-tool.txt": "import { readFileSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport { Type } from \"typebox\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerTool({\n\t\tname: \"codemode\",\n\t\tlabel: \"codemode\",\n\t\tdescription: \"Runs my scripts\",\n\t\tparameters: Type.Object({}),\n\t\tasync execute() {\n\t\t\treturn { content: [{ type: \"text\", text: \"mine\" }], details: {} };\n\t\t},\n\t});\n}\n"},
+    "tty": {"cols": 120, "rows": 40, "keys": ["/replace\r", "/reload\r"]}
+  },
+  {
+    "name": "tui-reload-codemode-restored",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "ext.ts"],
+    "files": {"ext.ts": "import { readFileSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport { Type } from \"typebox\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerTool({\n\t\tname: \"codemode\",\n\t\tlabel: \"codemode\",\n\t\tdescription: \"Runs my scripts\",\n\t\tparameters: Type.Object({}),\n\t\tasync execute() {\n\t\t\treturn { content: [{ type: \"text\", text: \"mine\" }], details: {} };\n\t\t},\n\t});\n\tpi.registerCommand(\"restore\", {\n\t\tdescription: \"Rewrites this extension\",\n\t\thandler: async () => writeFileSync(join(__dirname, \"ext.ts\"), readFileSync(join(__dirname, \"plain.txt\"), \"utf8\")),\n\t});\n}\n", "plain.txt": "import { readFileSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport { Type } from \"typebox\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"plain\", { description: \"Registers no tool\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 120, "rows": 40, "keys": ["/restore\r", "/reload\r"]}
+  },
+  {
     "name": "rpc-new-session-extension-load-error",
     "cassette": "none.json",
     "args": ["--mode", "rpc", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],

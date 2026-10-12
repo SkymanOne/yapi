@@ -366,8 +366,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
                 verbose: parsed.verbose,
                 initial,
                 initial_images,
-                extension_warnings: extensions.warnings.clone(),
-                factory: startup::factory(parsed, extensions),
+                factory: startup::factory(parsed, extensions, true),
                 use_theme: parsed.use_theme.clone(),
                 model_fallback: startup.model_fallback,
                 model_network: model_network(parsed),
@@ -407,7 +406,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
         }
         // pi's RPC mode starts without a model, on a placeholder; prompts
         // then fail with the missing-key message.
-        return modes::rpc::run(startup.session, startup::factory(parsed, extensions)).await;
+        return modes::rpc::run(startup.session, startup::factory(parsed, extensions, false)).await;
     }
     // pi's print mode kills running commands and exits with the signal's
     // code on SIGTERM and SIGHUP. The run stays alive until they are killed:
@@ -415,7 +414,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
     let print = modes::print::run(
         startup,
         parsed.mode == Some(Mode::Json),
-        startup::factory(parsed, extensions),
+        startup::factory(parsed, extensions, false),
     );
     tokio::pin!(print);
     tokio::select! {

@@ -1,0 +1,19 @@
+{
+  "exitCode": -1,
+  "stdout": "",
+  "stderr": "",
+  "requests": [],
+  "screen": [
+    "[Extensions]",
+    "  added.ts, edit.ts",
+    "",
+    " Reloaded keybindings, extensions, skills, prompts, themes, and context files",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "/edited",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "→ edited-v2   [u] Registered by the edited edit.ts",
+    "~/project",
+    "0.0%/1.0M (auto)                                              (anthropic) claude-sonnet-4-5 • medium"
+  ]
+}

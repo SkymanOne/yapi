@@ -924,6 +924,19 @@ impl AgentSession {
         lock(&self.inner.extension_load_errors).clone()
     }
 
+    /// Records the extension at `path`, which was not loaded for this
+    /// session, with pi's `warning`.
+    pub fn add_extension_warning(&self, path: String, warning: String) {
+        lock(&self.inner.extension_warnings).push((path, warning));
+    }
+
+    /// The extensions that were not loaded for this session, by path, with
+    /// pi's warning, which pi's interactive mode lists under
+    /// `[Extension issues]`.
+    pub fn extension_warnings(&self) -> Vec<(String, String)> {
+        lock(&self.inner.extension_warnings).clone()
+    }
+
     /// Waits until the events announced so far have reached extensions.
     pub async fn flush_announcements(&self) {
         let _turn = self.inner.announcing.lock().await;

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use yapi_ai::api::Apis;
 use yapi_ai::registry::ModelRegistry;
-use yapi_core::agent_session::{AgentSession, Resources, SessionConfig};
+use yapi_core::agent_session::{AgentSession, Replacement, Resources, SessionConfig};
 use yapi_core::config::{SESSION_DIR_ENV, agent_dir, default_session_dir};
 use yapi_core::extensions::discovery::is_native;
 use yapi_core::model_resolver::{
@@ -24,6 +24,7 @@ use yapi_core::trust::{TrustStore, resolve_trusted};
 use yapi_ext::ExtensionHost;
 use yapi_types::message::{ImageContent, ThinkingLevel};
 use yapi_types::rpc::SourceInfo;
+use yapi_types::sync::lock;
 
 use crate::args::{Args, FlagValue};
 
@@ -442,24 +443,34 @@ pub fn start(
 /// then, as the first one was from the arguments. As pi creates a runtime,
 /// the extensions' factories run first, so the session gets their
 /// registrations, and the extensions that failed to load are its
-/// `[Extension issues]`.
-pub fn factory(args: &Args, extensions: Extensions) -> crate::runtime::SessionFactory {
+/// `[Extension issues]`. A reload loads the extensions anew from the files
+/// on disk, as pi imports them again, with the terminal's size when
+/// `terminal`.
+pub fn factory(
+    args: &Args,
+    extensions: Extensions,
+    terminal: bool,
+) -> crate::runtime::SessionFactory {
     let args = Arc::new(args.clone());
-    let extensions = Arc::new(extensions);
-    Arc::new(move |session| {
-        let (args, extensions) = (args.clone(), extensions.clone());
+    let current = Arc::new(std::sync::Mutex::new(Arc::new(extensions)));
+    Arc::new(move |session, reason| {
+        let (args, current) = (args.clone(), current.clone());
         Box::pin(async move {
-            for host in &extensions.hosts {
-                host.reload().await;
-            }
-            let (session, _) = build(&args, session, false, &extensions, None)?;
-            for host in &extensions.hosts {
-                for error in host.errors() {
-                    session.add_extension_load_error(
-                        error.path.to_string_lossy().into_owned(),
-                        error.error,
-                    );
+            let extensions = if reason == Replacement::Reload {
+                let size = terminal.then(yapi_tui::terminal::size);
+                let reloaded = Arc::new(reload_extensions(&args, size).await?);
+                *lock(&current) = Arc::clone(&reloaded);
+                reloaded
+            } else {
+                let extensions = Arc::clone(&lock(&current));
+                for host in &extensions.hosts {
+                    host.reload().await;
                 }
+                extensions
+            };
+            let (session, _) = build(&args, session, false, &extensions, None)?;
+            for (path, error) in extensions.failures() {
+                session.add_extension_load_error(path, error);
             }
             Ok(session)
         })
@@ -779,6 +790,9 @@ fn build(
         docs,
     });
     session.set_scoped_models(scoped);
+    for (path, warning) in &extensions.warnings {
+        session.add_extension_warning(path.clone(), warning.clone());
+    }
     Ok((session, fallback))
 }
 
@@ -896,31 +910,77 @@ pub async fn load_extensions(
         loaded: None,
     };
     let run = run_settings(args).map_err(|err| fail(err.to_string()))?;
+    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, |_, message| {
+        eprintln!("Warning: {message}");
+    })
+    .await
+    .map_err(fail)?;
+    let mut messages: Vec<String> = extensions
+        .failures()
+        .into_iter()
+        .map(|(path, error)| format!("Failed to load extension \"{path}\": {error}"))
+        .collect();
+    let load_failed = !messages.is_empty();
+    messages.extend(flag_errors);
+    if !messages.is_empty() {
+        return Err(ExtensionErrors {
+            messages,
+            load_failed,
+            loaded: Some(Box::new((extensions, run))),
+        });
+    }
+    Ok((extensions, run))
+}
+
+/// The extensions as the settings and files on disk give them now, for
+/// pi's reload, which imports every extension file again. Packages that fail
+/// to install are listed with the extensions that failed to load, and the
+/// command line's flags apply to the extensions that still register them.
+async fn reload_extensions(
+    args: &Args,
+    terminal_size: Option<(usize, usize)>,
+) -> anyhow::Result<Extensions> {
+    let run = run_settings(args)?;
+    let mut uninstalled = Vec::new();
+    let (mut extensions, _) = start_extensions(args, &run, terminal_size, |source, message| {
+        uninstalled.push((source.to_owned(), message));
+    })
+    .await
+    .map_err(anyhow::Error::msg)?;
+    extensions.issues.splice(0..0, uninstalled);
+    Ok(extensions)
+}
+
+/// Installs missing packages, reporting failures to `install_failed` with
+/// their sources, and starts the extensions found in `run`'s directory with
+/// the command line's flag values. Returns the problems with the flags too;
+/// an error means no extension could start.
+async fn start_extensions(
+    args: &Args,
+    run: &RunSettings,
+    terminal_size: Option<(usize, usize)>,
+    install_failed: impl FnMut(&str, String) + Send,
+) -> Result<(Extensions, Vec<String>), String> {
     let cwd = run.cwd.clone();
     let agent_dir = agent_dir();
-    let settings = run.settings.clone();
     let mut packages = yapi_core::packages::PackageManager::new(
-        settings.project_dir().to_path_buf(),
+        run.settings.project_dir().to_path_buf(),
         agent_dir.clone(),
-        settings,
+        run.settings.clone(),
         yapi_core::packages::npm::config(),
     );
     let offline = args.offline || yapi_core::tools::external::offline();
     // Installs missing packages; what they provide comes from pi's resolver.
     if !offline {
-        packages
-            .install_missing(|message| eprintln!("Warning: {message}"))
-            .await;
+        packages.install_missing(install_failed).await;
     }
-    let mut messages = Vec::new();
+    let mut issues = Vec::new();
     let mut missing = Vec::new();
     let mut requested = Vec::new();
     for path in &args.extensions {
         if let Some(name) = path.strip_prefix(BUILTIN_PREFIX) {
             if !BUILTINS.contains(&name) {
-                missing.push(format!(
-                    "Failed to load extension \"{path}\": Unknown built-in extension: {path}"
-                ));
+                missing.push((path.clone(), format!("Unknown built-in extension: {path}")));
             }
             continue;
         }
@@ -930,7 +990,7 @@ pub async fn load_extensions(
             match packages.install_temporary(path, offline).await {
                 Ok(Some(root)) => requested.push((root, false)),
                 Ok(None) => {}
-                Err(err) => return Err(fail(format!("Failed to install {path}: {err}"))),
+                Err(err) => return Err(format!("Failed to install {path}: {err}")),
             }
             continue;
         }
@@ -938,10 +998,9 @@ pub async fn load_extensions(
         if resolved.exists() {
             requested.push((resolved, true));
         } else {
-            missing.push(format!(
-                "Failed to load extension \"{0}\": Extension path does not exist: {0}",
-                resolved.display()
-            ));
+            let resolved = resolved.display().to_string();
+            let error = format!("Extension path does not exist: {resolved}");
+            missing.push((resolved, error));
         }
     }
     let mut themes = Vec::new();
@@ -981,8 +1040,8 @@ pub async fn load_extensions(
     let mut hosts = Vec::new();
     if !sources.is_empty() {
         let cache = agent_dir.join("cache");
-        let engine = yapi_ext::Engine::new(Some(&cache.join("wasm")))
-            .map_err(|err| fail(err.to_string()))?;
+        let engine =
+            yapi_ext::Engine::new(Some(&cache.join("wasm"))).map_err(|err| err.to_string())?;
         let mut options = yapi_ext::Options::new(cwd.clone());
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
@@ -993,35 +1052,23 @@ pub async fn load_extensions(
         if !js.is_empty() {
             let host = ExtensionHost::load(&engine, options.clone(), &js)
                 .await
-                .map_err(|err| fail(err.to_string()))?;
+                .map_err(|err| err.to_string())?;
             hosts.push(host);
         }
         for source in &native {
             match ExtensionHost::load_native(&engine, options.clone(), source).await {
                 Ok(host) => hosts.push(host),
-                Err(err) => messages.push(format!(
-                    "Failed to load extension \"{}\": {err}",
-                    source.path
-                )),
-            }
-        }
-        for host in &hosts {
-            for error in host.errors() {
-                messages.push(format!(
-                    "Failed to load extension \"{}\": {}",
-                    error.path.display(),
-                    error.error
-                ));
+                Err(err) => issues.push((source.path.clone(), err.to_string())),
             }
         }
     }
-    messages.append(&mut missing);
-    messages.extend(conflicts(&hosts));
-    let load_failed = !messages.is_empty();
+    issues.append(&mut missing);
+    issues.extend(conflicts(&hosts));
 
     // pi's applyExtensionFlagValues.
     let flags: Vec<yapi_ext::Flag> = hosts.iter().flat_map(|host| host.flags()).collect();
     let mut values = serde_json::Map::new();
+    let mut flag_errors = Vec::new();
     let mut unknown = Vec::new();
     for (name, value) in &args.unknown_flags {
         let Some(flag) = flags.iter().find(|flag| flag.name == *name) else {
@@ -1036,43 +1083,38 @@ pub async fn load_extensions(
                 values.insert(name.clone(), serde_json::Value::String(text.clone()));
             }
             (true, FlagValue::Present) => {
-                messages.push(format!("Extension flag \"--{name}\" requires a value"));
+                flag_errors.push(format!("Extension flag \"--{name}\" requires a value"));
             }
         }
     }
     if !unknown.is_empty() {
         let plural = if unknown.len() == 1 { "" } else { "s" };
-        messages.push(format!("Unknown option{plural}: {}", unknown.join(", ")));
+        flag_errors.push(format!("Unknown option{plural}: {}", unknown.join(", ")));
+    }
+    if !values.is_empty() {
+        for host in &hosts {
+            host.set_flags(values.clone())
+                .await
+                .map_err(|err| err.to_string())?;
+        }
     }
     let extensions = Extensions {
         warnings: replaced_builtin(&hosts, args, &run.settings)
             .into_iter()
             .collect(),
         hosts,
+        issues,
         skills,
         prompts,
         themes,
     };
-    if !messages.is_empty() {
-        return Err(ExtensionErrors {
-            messages,
-            load_failed,
-            loaded: Some(Box::new((extensions, run))),
-        });
-    }
-    if !values.is_empty() {
-        for host in &extensions.hosts {
-            host.set_flags(values.clone())
-                .await
-                .map_err(|err| fail(err.to_string()))?;
-        }
-    }
-    Ok((extensions, run))
+    Ok((extensions, flag_errors))
 }
 
 /// pi's extension conflicts: each tool or flag that an extension registers
-/// after an earlier extension, in load order, registered the same name.
-fn conflicts(hosts: &[Arc<ExtensionHost>]) -> Vec<String> {
+/// after an earlier extension, in load order, registered the same name, by
+/// the later extension's path.
+fn conflicts(hosts: &[Arc<ExtensionHost>]) -> Vec<(String, String)> {
     let mut owners = std::collections::HashMap::<(&str, String), String>::new();
     let mut messages = Vec::new();
     for extension in hosts.iter().flat_map(|host| host.registrations()) {
@@ -1085,8 +1127,9 @@ fn conflicts(hosts: &[Arc<ExtensionHost>]) -> Vec<String> {
                 .filter_map(|item| item["name"].as_str());
             for name in names {
                 match owners.get(&(kind, name.to_owned())) {
-                    Some(owner) if owner != path => messages.push(format!(
-                        "Failed to load extension \"{path}\": {label}{name}\" conflicts with {owner}"
+                    Some(owner) if owner != path => messages.push((
+                        path.to_owned(),
+                        format!("{label}{name}\" conflicts with {owner}"),
                     )),
                     Some(_) => {}
                     None => {
@@ -1140,12 +1183,28 @@ pub struct Extensions {
     pub hosts: Vec<Arc<ExtensionHost>>,
     /// Warnings about extensions that were not loaded, by path.
     pub warnings: Vec<(String, String)>,
+    /// Why the extensions without a host did not load and the conflicts
+    /// between those that did, by path, with pi's messages.
+    issues: Vec<(String, String)>,
     /// Package skills with their packages as sources.
     pub skills: Vec<SourceInfo>,
     /// Package prompt templates with their packages as sources.
     pub prompts: Vec<SourceInfo>,
     /// Package themes with their packages as sources.
     pub themes: Vec<SourceInfo>,
+}
+
+impl Extensions {
+    /// The extensions that failed to load in the latest run of each host's
+    /// factories, then the [`Extensions::issues`].
+    fn failures(&self) -> Vec<(String, String)> {
+        self.hosts
+            .iter()
+            .flat_map(|host| host.errors())
+            .map(|error| (error.path.to_string_lossy().into_owned(), error.error))
+            .chain(self.issues.iter().cloned())
+            .collect()
+    }
 }
 
 #[cfg(test)]

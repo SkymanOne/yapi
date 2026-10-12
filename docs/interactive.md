@@ -44,7 +44,7 @@ Type `/` to list commands. The most used ones:
 | `/llama` | Load, unload and download models on a llama.cpp server |
 | `/mcp` | Manage MCP servers: sign in, reconnect, enable or disable them, and change their exposure |
 | `/trust` | Change whether the project's `.yapi` folder is trusted |
-| `/reload` | Reload settings, keybindings, extensions, skills and themes |
+| `/reload` | Reload settings, keybindings, skills, themes and extensions, which load again from disk |
 | `/hotkeys` | Show every key binding |
 | `/debug` | Write the rendered screen, the session's messages and the last 200 lines of extension output to `~/.yapi/agent/yapi-debug.log`. Read the file before you attach it to a bug report, because messages and extension output can hold private data. |
 | `/quit` | Quit yapi |

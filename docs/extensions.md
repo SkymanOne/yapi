@@ -61,6 +61,8 @@ yapi loads extensions from:
 
 `yapi -ne` starts without extensions.
 
+`/reload` loads the extensions again from disk, as Pi does. Edited files, new and removed files and rebuilt native extensions take effect, and packages added to settings are installed.
+
 ## Writing a Pi extension
 
 Extensions use Pi's API. Save this as `~/.yapi/agent/extensions/hello.ts`:
