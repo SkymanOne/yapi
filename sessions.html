@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Sessions - yapi</title>
+        <title>Manage sessions - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,38 +179,38 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="sessions"><a class="header" href="#sessions">Sessions</a></h1>
-<p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s session format, so Pi and yapi open each other’s sessions.</p>
-<h2 id="continuing-work"><a class="header" href="#continuing-work">Continuing work</a></h2>
-<pre><code class="language-sh">yapi -c                      # continue the last session in this project
+                        <h1 id="manage-sessions"><a class="header" href="#manage-sessions">Manage sessions</a></h1>
+<p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s, so Pi and yapi open each other’s sessions.</p>
+<h2 id="continue-work"><a class="header" href="#continue-work">Continue work</a></h2>
+<pre><code class="language-sh">yapi -c                      # continue the last session in this folder
 yapi -r                      # pick a session to resume
 yapi --session 3f2a          # open a session by file or id prefix
-yapi --fork 3f2a             # copy an existing session into a new one
+yapi --fork 3f2a             # copy a session into a new one
 yapi --no-session            # do not save this run
 </code></pre>
-<p>Inside yapi, <code>/resume</code> opens the session picker and <code>/new</code> starts a fresh session.</p>
-<h2 id="branches"><a class="header" href="#branches">Branches</a></h2>
-<p>A session is a tree. Going back to an earlier message keeps the abandoned branch, so no work is lost.</p>
+<p>Inside yapi, <code>/resume</code> opens the session picker, <code>/new</code> starts a fresh session and <code>/name</code> names the current one.</p>
+<h2 id="branch-a-session"><a class="header" href="#branch-a-session">Branch a session</a></h2>
+<p>A session is a tree. When you go back to an earlier message, the abandoned branch is kept, so no work is lost.</p>
 <ul>
-<li><code>/tree</code> shows every branch and jumps to any earlier point. Escape twice on an empty editor opens it too.</li>
+<li><code>/tree</code> shows every branch and jumps to any earlier point. By default, pressing Escape twice on an empty editor opens it too. The <code>doubleEscapeAction</code> setting changes this to <code>fork</code> or <code>none</code>.</li>
 <li><code>/fork</code> starts a new session from an earlier message.</li>
 <li><code>/clone</code> duplicates the current session.</li>
 </ul>
-<h2 id="compaction"><a class="header" href="#compaction">Compaction</a></h2>
-<p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens, as Pi does. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
-<h2 id="export"><a class="header" href="#export">Export</a></h2>
-<p><code>/export</code> writes the session to a standalone HTML file, and <code>yapi --export &lt;session&gt;</code> does the same from the command line. <code>/export &lt;path&gt;.jsonl</code> writes a copy of the session file instead.</p>
+<h2 id="compact-context"><a class="header" href="#compact-context">Compact context</a></h2>
+<p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
+<h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
+<p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
 <p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="interactive.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="models.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="automation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="security.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -220,11 +220,11 @@ yapi --no-session            # do not save this run
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="interactive.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="models.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="automation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="security.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

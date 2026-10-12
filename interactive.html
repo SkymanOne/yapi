@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Interactive mode - yapi</title>
+        <title>Use yapi in the terminal - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,26 +179,51 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive mode</a></h1>
-<p>Running <code>yapi</code> with no message starts the interactive terminal interface. The transcript fills the screen, and the editor at the bottom takes your message.</p>
+                        <h1 id="use-yapi-in-the-terminal"><a class="header" href="#use-yapi-in-the-terminal">Use yapi in the terminal</a></h1>
+<p>Run <code>yapi</code> from the folder to work in. To install yapi and choose a model first, follow the <a href="quickstart.html">Quickstart</a>.</p>
+<p>The transcript shows your prompts, the model’s responses, tool calls and their results. Prompts and commands go in the editor at the bottom. The footer shows the folder, the model, context usage and cost.</p>
+<h2 id="enter-a-prompt"><a class="header" href="#enter-a-prompt">Enter a prompt</a></h2>
+<p>Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G opens the prompt in <code>$EDITOR</code>.</p>
+<ul>
+<li><code>@path</code> attaches a file. Tab completes the path.</li>
+<li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.</li>
+<li>Up recalls earlier prompts.</li>
+</ul>
+<h2 id="follow-the-work"><a class="header" href="#follow-the-work">Follow the work</a></h2>
+<p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
+<h2 id="change-direction"><a class="header" href="#change-direction">Change direction</a></h2>
+<p>Input sent while yapi works changes what it does next:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>What you want</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td>Adjust the current task</td><td>Type a message and press Enter</td></tr>
+<tr><td>Add work after the current task</td><td>Type a message and press Alt+Enter</td></tr>
+<tr><td>Edit queued messages</td><td>Press Alt+Up</td></tr>
+<tr><td>Stop the current task</td><td>Press Escape</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="keys"><a class="header" href="#keys">Keys</a></h2>
-<p>These are the defaults. <code>/hotkeys</code> shows the bindings in effect, and <code>~/.yapi/agent/keybindings.json</code> changes them in Pi’s format.</p>
+<p>These are the defaults. <code>/hotkeys</code> shows the bindings in effect, and <code>~/.yapi/agent/keybindings.json</code> changes them.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Key</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td>Enter</td><td>Send the message. While yapi works, it steers the current turn.</td></tr>
+<tr><td>Enter</td><td>Send the message, or steer the current turn while yapi works</td></tr>
 <tr><td>Alt+Enter</td><td>Queue a follow-up for when yapi finishes</td></tr>
 <tr><td>Shift+Enter</td><td>Insert a new line</td></tr>
-<tr><td>Escape</td><td>Interrupt the agent. Twice on an empty editor opens the session tree.</td></tr>
+<tr><td>Escape</td><td>Stop the agent. Twice on an empty editor opens the session tree, or what the <code>doubleEscapeAction</code> setting chooses.</td></tr>
 <tr><td>Ctrl+C</td><td>Clear the editor. Twice quits.</td></tr>
 <tr><td>Ctrl+D</td><td>Quit when the editor is empty</td></tr>
 <tr><td>Ctrl+O</td><td>Expand or collapse tool output</td></tr>
 <tr><td>Ctrl+T</td><td>Show or hide thinking</td></tr>
 <tr><td>Ctrl+G</td><td>Write the message in <code>$EDITOR</code></td></tr>
-<tr><td>Ctrl+V</td><td>Paste copied files’ paths (macOS), an image or text from the clipboard. An image is saved to a temporary file, and its path goes in the editor.</td></tr>
+<tr><td>Ctrl+V</td><td>Paste from the clipboard</td></tr>
 <tr><td>Ctrl+L</td><td>Open the model selector</td></tr>
 <tr><td>Ctrl+P</td><td>Cycle models</td></tr>
 <tr><td>Shift+Tab</td><td>Cycle the thinking level</td></tr>
@@ -208,7 +233,7 @@
 </table>
 </div>
 <h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
-<p>Type <code>/</code> to list commands. The most used ones:</p>
+<p>Type <code>/</code> to list commands. Prompt templates, skills (<code>/skill:name</code>) and extension commands appear in the same list.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -226,37 +251,43 @@
 <tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
 <tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
 <tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
-<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage MCP servers: sign in, reconnect, enable or disable them, and change their exposure</td></tr>
+<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage MCP servers. Built-in extension.</td></tr>
 <tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
-<tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions, which load again from disk</td></tr>
+<tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
-<tr><td><code>/debug</code></td><td>Write the rendered screen, the session’s messages and the last 200 lines of extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Read the file before you attach it to a bug report, because messages and extension output can hold private data.</td></tr>
+<tr><td><code>/debug</code></td><td>Write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code></td></tr>
 <tr><td><code>/quit</code></td><td>Quit yapi</td></tr>
 </tbody>
 </table>
 </div>
-<p>Prompt templates, skills (<code>/skill:name</code>) and extension commands appear in the same list.</p>
-<h2 id="message-shortcuts"><a class="header" href="#message-shortcuts">Message shortcuts</a></h2>
-<ul>
-<li><code>@path</code> attaches a file. Tab completes the path.</li>
-<li><code>!command</code> runs a shell command and adds its output to the conversation.</li>
-<li><code>!!command</code> runs a shell command without adding its output.</li>
-</ul>
+<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
+<h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
+<p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
+<pre><code class="language-text">!git status
+</code></pre>
+<p>Use <code>!!</code> to run a command without sending its output to the model.</p>
 <h2 id="display-modes"><a class="header" href="#display-modes">Display modes</a></h2>
 <p>yapi draws in fullscreen mode by default. Regular mode keeps the transcript in the terminal’s scrollback instead. Switch with <code>/settings</code> or <code>--tui-mode regular</code>.</p>
-<p>In fullscreen mode yapi handles the mouse itself. The wheel scrolls the transcript, five times as far with Alt held. A fast spin scrolls up to six lines per step, except in a local macOS terminal, which speeds up the wheel itself. Set “Fullscreen wheel scrolling” in <code>/settings</code> to a fixed number of lines per step instead. Drag to select text. A double click selects a word, keeping a path or a hyphenated name whole, and a triple click selects a line. Dragging past the top or bottom of the transcript scrolls it. Releasing the button copies the selection and shows “Copied!” at the top right. With “Fullscreen copy on select” off in <code>/settings</code>, the selection stays highlighted until Ctrl+X copies it.</p>
-<p>When the terminal shows <a href="configuration.html#links">hyperlinks</a>, a click on a web or mail link opens it in the browser or mail app, and a click on a file link shows the file in its folder without opening it. Other links do not open, so a click never starts a program. A click in the editor moves its cursor there. In the completion list, a click chooses an item and the wheel moves the highlight. The lists of <code>/settings</code>, <code>/thinking</code> and their submenus work the same way. A click in a selector’s search field or a dialog’s input moves its cursor. A click on a tool call, a run of thinking, a skill or a compaction or branch summary expands or collapses that one item. Ctrl+O then sets every item to its new state, and Ctrl+T shows or hides all thinking again. Click “Jump to latest message” to scroll to the end. Drag the scrollbar’s thumb, or click its track to jump there. Pointing at the scrollbar shows it when “Fullscreen scrollbar” is <code>auto</code>. Inside tmux, Zellij or GNU Screen the terminal reports the pointer only while a button is held, so pointing does not show it there.</p>
+<p>In fullscreen mode, yapi handles the mouse:</p>
+<ul>
+<li>The wheel scrolls the transcript. Hold Alt to scroll five times as far. “Fullscreen wheel scrolling” in <code>/settings</code> sets a fixed number of lines per step.</li>
+<li>Drag to select text. A double click selects a word or path, and a triple click selects a line. Releasing the button copies the selection. With “Fullscreen copy on select” off, press Ctrl+X to copy it.</li>
+<li>A click on a tool call, thinking, a skill or a summary expands or collapses it. Ctrl+O and Ctrl+T still set every item at once.</li>
+<li>A click on a web or mail link opens it, and a click on a file link shows the file in its folder. Other links do not open, so a click never starts a program. See <a href="configuration.html#links">Links</a>.</li>
+<li>A click in the editor, a list or a dialog moves the cursor or chooses the item.</li>
+<li>Drag the scrollbar’s thumb, or click its track to jump. With “Fullscreen scrollbar” set to <code>auto</code>, pointing at the scrollbar shows it, except inside tmux, Zellij and GNU Screen.</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="models.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="migrating.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="sessions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="models.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -266,11 +297,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="models.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="migrating.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="sessions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="models.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

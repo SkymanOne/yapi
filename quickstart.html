@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,40 +180,70 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
-<h2 id="connect-a-model"><a class="header" href="#connect-a-model">Connect a model</a></h2>
-<p>Set an API key for your provider:</p>
-<pre><code class="language-sh">export ANTHROPIC_API_KEY=sk-ant-...
+<p>yapi runs in your terminal and works with the files on your machine. It needs a model, through a subscription, an API key or a local server.</p>
+<h2 id="1-install-yapi"><a class="header" href="#1-install-yapi">1. Install yapi</a></h2>
+<p>On Linux or macOS, run the install script:</p>
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 </code></pre>
-<p>You can also start yapi and run <code>/login</code> to sign in with a Claude, ChatGPT or GitHub Copilot subscription, or to save an API key. <a href="models.html">Models and sign-in</a> lists every provider.</p>
-<h2 id="start-a-session"><a class="header" href="#start-a-session">Start a session</a></h2>
-<p>Start yapi in the folder you want it to work in:</p>
+<p>It installs <code>yapi</code> in <code>~/.local/bin</code>. <a href="install.html">Install yapi</a> covers the other methods. Check the installation:</p>
+<pre><code class="language-sh">yapi --version
+</code></pre>
+<h2 id="2-start-yapi"><a class="header" href="#2-start-yapi">2. Start yapi</a></h2>
+<p>Start yapi in the folder it should work in:</p>
 <pre><code class="language-sh">cd ~/code/my-project
 yapi
 </code></pre>
-<p>Type a task and press Enter. yapi works with four tools by default: <code>read</code>, <code>bash</code>, <code>edit</code> and <code>write</code>. Each tool call appears in the transcript as it runs. Press Escape to interrupt the agent and Ctrl+C twice to quit.</p>
-<h2 id="first-tasks"><a class="header" href="#first-tasks">First tasks</a></h2>
+<p>yapi uses the working folder to find files, project instructions and configuration, and to group saved sessions.</p>
+<h2 id="3-choose-a-model"><a class="header" href="#3-choose-a-model">3. Choose a model</a></h2>
+<p>Run <code>/login</code>, choose a provider and follow the prompts to sign in with a subscription or save an API key. Run <code>/model</code> to choose another model.</p>
+<p>yapi also reads API keys from the environment, such as <code>ANTHROPIC_API_KEY</code>. <a href="models.html">Choose a model</a> lists every provider.</p>
+<h2 id="4-give-yapi-a-task"><a class="header" href="#4-give-yapi-a-task">4. Give yapi a task</a></h2>
+<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It does not ask before each tool call.</p>
 <pre><code class="language-text">Explain how requests flow through src/server.rs
 Find why `cargo test` fails and fix it
 @Cargo.toml Which dependencies are outdated?
 !git status
 </code></pre>
-<p><code>@path</code> attaches a file to the message. <code>!command</code> runs a shell command and shows its output to the model, and <code>!!command</code> runs one without sending the output.</p>
+<p><code>@path</code> attaches a file. <code>!command</code> runs a shell command and sends its output to the model, and <code>!!command</code> runs it without sending the output. Press Escape to stop the agent and Ctrl+C twice to quit.</p>
+<p>Review the changes when yapi finishes. Keep important work under version control, and use a container for untrusted or unattended work. See <a href="security.html">Security model and sandboxing</a>.</p>
+<h2 id="continue-later"><a class="header" href="#continue-later">Continue later</a></h2>
+<p>yapi saves sessions automatically. To resume the most recent session in a folder, run:</p>
+<pre><code class="language-sh">yapi -c
+</code></pre>
+<p>Use <code>/resume</code> to choose another session. See <a href="sessions.html">Manage sessions</a>.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
-<li><a href="interactive.html">Interactive mode</a> covers keys and slash commands.</li>
-<li><a href="sessions.html">Sessions</a> explains how to continue and branch work.</li>
-<li><a href="configuration.html">Configuration</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
+<li><a href="interactive.html">Use yapi in the terminal</a> covers keys, commands and queued messages.</li>
+<li><a href="configuration.html">Configure yapi</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
+<li><a href="migrating.html">Coming from Pi</a> shows how to copy a Pi setup with <code>yapi import pi</code>.</li>
 </ul>
+<h3 id="choose-how-to-customize-yapi"><a class="header" href="#choose-how-to-customize-yapi">Choose how to customize yapi</a></h3>
+<p>Start with the simplest mechanism that meets the need:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Need</th><th>Start with</th></tr>
+</thead>
+<tbody>
+<tr><td>Instructions yapi follows in a project</td><td><a href="configuration.html#project-instructions"><code>AGENTS.md</code></a></td></tr>
+<tr><td>A reusable prompt in the <code>/</code> menu</td><td><a href="configuration.html#skills-and-prompt-templates">Prompt template</a></td></tr>
+<tr><td>Task-specific instructions and files</td><td><a href="configuration.html#skills-and-prompt-templates">Skill</a></td></tr>
+<tr><td>Tools from an external server</td><td><a href="mcp.html">MCP server</a></td></tr>
+<tr><td>New tools, commands or event handlers</td><td><a href="extensions.html">Extension</a></td></tr>
+<tr><td>Several resources to share</td><td><a href="packages.html">Package</a></td></tr>
+</tbody>
+</table>
+</div>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="install.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="models.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="install.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -223,11 +253,11 @@ Find why `cargo test` fails and fix it
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="install.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="models.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="install.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

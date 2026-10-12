@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="native-extension-examples"><a class="header" href="#native-extension-examples">Native extension examples</a></h1>
-<p>The repository has seventeen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Eleven are ports of Pi’s own examples, so the Rust and TypeScript versions can be read side by side. <code>subagent</code> is tested against a real yapi in <code>crates/yapi/tests/subagent.rs</code>, <code>event-bus</code> with Pi extensions in <code>crates/yapi-ext/tests/bus.rs</code>, and the others in <code>crates/yapi-ext/tests/native.rs</code>. Terminal scenarios also compare the screens of nine examples against Pi running the TypeScript versions.</p>
+<p>The repository has seventeen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Eleven are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -312,7 +312,7 @@ let todos = STATE.with(|cell| cell.borrow().todos.clone());
 ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 <span class="boring">}</span></code></pre>
 <h2 id="custom-footer"><a class="header" href="#custom-footer">custom-footer</a></h2>
-<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it.</p>
+<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it. <code>ui.footerData</code> is an internal request, so the example may need changes in a later release.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
@@ -496,7 +496,7 @@ api.on("session_start", |_event, ctx| async move {
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="packages.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="agent-skills.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -510,7 +510,7 @@ api.on("session_start", |_event, ctx| async move {
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="packages.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="agent-skills.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

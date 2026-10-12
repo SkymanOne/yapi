@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Print, JSON and RPC modes - yapi</title>
+        <title>Automate yapi - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,8 +179,8 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="print-json-and-rpc-modes"><a class="header" href="#print-json-and-rpc-modes">Print, JSON and RPC modes</a></h1>
-<p>yapi runs without its interface for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi unchanged.</p>
+                        <h1 id="automate-yapi"><a class="header" href="#automate-yapi">Automate yapi</a></h1>
+<p>yapi runs without its interface for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
 <h2 id="print-mode"><a class="header" href="#print-mode">Print mode</a></h2>
 <p><code>-p</code> sends one message, prints the answer and exits:</p>
 <pre><code class="language-sh">yapi -p "Summarize the open TODOs in src/"
@@ -189,14 +189,13 @@ yapi -p @report.md @chart.png "What does the chart show?"
 </code></pre>
 <p>Piped input becomes part of the first message, and <code>@path</code> attaches files and images.</p>
 <h2 id="json-mode"><a class="header" href="#json-mode">JSON mode</a></h2>
-<p><code>--mode json</code> prints one JSON event per line for the whole run: message updates, tool calls, tool results and the final state. The events are described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/json.md">JSON documentation</a>.</p>
+<p><code>--mode json</code> prints one JSON event per line for the whole run: message updates, tool calls, tool results and the final state. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/json.md">JSON documentation</a> describes the events.</p>
 <pre><code class="language-sh">yapi --mode json -p "List the crates in this workspace"
 </code></pre>
 <h2 id="rpc-mode"><a class="header" href="#rpc-mode">RPC mode</a></h2>
-<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs. The commands are listed in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a>.</p>
+<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a> lists the commands, and Pi’s <code>RpcClient</code> works with yapi.</p>
 <pre><code class="language-sh">yapi --mode rpc --no-session
 </code></pre>
-<p>Pi’s <code>RpcClient</code> example drives yapi in the test suite.</p>
 <h2 id="useful-flags"><a class="header" href="#useful-flags">Useful flags</a></h2>
 <div class="table-wrapper">
 <table>
@@ -208,9 +207,9 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td><code>--model &lt;pattern&gt;</code></td><td>Choose the model</td></tr>
 <tr><td><code>--tools read,grep,find,ls</code></td><td>Allow only these tools, here read-only ones</td></tr>
 <tr><td><code>--no-tools</code></td><td>Disable all tools</td></tr>
-<tr><td><code>-ne</code></td><td>Start without extensions</td></tr>
+<tr><td><code>-ne</code></td><td>Start without extensions, including the built-in MCP and llama.cpp extensions</td></tr>
 <tr><td><code>--offline</code></td><td>Skip startup network work</td></tr>
-<tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="configuration.html#project-trust">Project trust</a></td></tr>
+<tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -220,7 +219,7 @@ yapi -p @report.md @chart.png "What does the chart show?"
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="sessions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="security.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -234,7 +233,7 @@ yapi -p @report.md @chart.png "What does the chart show?"
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="sessions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="security.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

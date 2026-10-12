@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="agent-skills"><a class="header" href="#agent-skills">Agent skills</a></h1>
-<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. They follow the format Pi and yapi load, and other agents that read Agent Skills, such as Claude Code, can use them too.</p>
+<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. yapi and Pi load them, and so do other agents that read Agent Skills, such as Claude Code.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -188,33 +188,33 @@
 </thead>
 <tbody>
 <tr><td><code>yapi</code></td><td>Install and run yapi, hand it tasks from scripts or other agents in print, JSON or RPC mode, choose models and credentials, and manage sessions, packages and settings. <code>scripts/ask.py</code> sends one prompt over RPC and prints the answer.</td></tr>
-<tr><td><code>yapi-extension</code></td><td>Write, test and package Pi extensions in TypeScript and native extensions in Rust. It has a template for Pi extensions, uses <code>yapi new</code> for native ones, notes on where yapi’s runtime differs from Pi, and <code>scripts/check-extension.py</code>, which loads extensions without a model and reports their commands and load errors.</td></tr>
+<tr><td><code>yapi-extension</code></td><td>Write, test and package Pi extensions in TypeScript and native extensions in Rust. It includes a template for Pi extensions and notes on where yapi’s runtime differs from Pi. <code>scripts/check-extension.py</code> loads extensions without a model and reports their commands and load errors.</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="install-them"><a class="header" href="#install-them">Install them</a></h2>
-<p>In yapi or Pi, install the repository at a release tag as a package. Its <code>skills</code> folder becomes available in every project:</p>
+<h2 id="install-the-skills"><a class="header" href="#install-the-skills">Install the skills</a></h2>
+<p>In yapi or Pi, install the repository at a release tag as a package:</p>
 <pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.1.0
 </code></pre>
-<p>yapi clones the whole repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag, and <code>yapi update</code> keeps it there. To update the skills, install the tag of a newer release. Installed without a tag, the package follows the repository’s main branch, and <code>yapi update</code> brings it up to date, including skills for features not yet released.</p>
-<p>To use one skill without the rest of the repository, copy its folder into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
+<p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
+<p>To use the skills without the rest of the repository, copy their folders into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
 <pre><code class="language-sh">cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 </code></pre>
-<h2 id="use-them"><a class="header" href="#use-them">Use them</a></h2>
-<p>The agent loads a skill when a task matches its description. To load one explicitly in yapi or Pi, run <code>/skill:yapi</code> or <code>/skill:yapi-extension</code>, followed by the request:</p>
+<h2 id="use-the-skills"><a class="header" href="#use-the-skills">Use the skills</a></h2>
+<p>The agent loads a skill when a task matches its description. To load one explicitly in yapi or Pi, run <code>/skill:yapi</code> or <code>/skill:yapi-extension</code> followed by the request:</p>
 <pre><code class="language-text">/skill:yapi-extension add a /standup command that summarizes today's git commits
 </code></pre>
-<p>The skills’ helper scripts need Python 3 and a <code>yapi</code> executable on <code>PATH</code>, or its path in <code>--yapi</code>.</p>
+<p>The helper scripts need Python 3 and <code>yapi</code> on <code>PATH</code>, or its path in <code>--yapi</code>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="mcp.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="native-examples.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="migrating.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="compat.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -224,11 +224,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="mcp.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="native-examples.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="migrating.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="compat.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

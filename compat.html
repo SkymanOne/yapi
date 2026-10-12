@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="differences-from-pi"><a class="header" href="#differences-from-pi">Differences from Pi</a></h1>
-<p>yapi follows Pi <code>v1.0.0</code> and reads Pi’s settings, sessions, credentials and packages. It behaves like Pi except as listed here. Any other difference is a bug: please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>.</p>
+<p>yapi follows Pi <code>v1.0.0</code> and behaves like Pi except as listed here. Any other difference is a bug. Please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>.</p>
+<p>yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. <a href="extensions.html#compatibility-with-pi">Extensions</a> has the extension and package results.</p>
 <h2 id="extensions"><a class="header" href="#extensions">Extensions</a></h2>
 <p>Pi extensions run unchanged, in WebAssembly rather than Node.js.</p>
 <div class="table-wrapper">
@@ -189,7 +190,7 @@
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See the <a href="configuration.html#security-model">security model</a>.</td></tr>
+<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See <a href="security.html#sandboxing">Sandboxing</a>.</td></tr>
 <tr><td>Node APIs</td><td>All of Node</td><td><a href="extensions.html#how-pi-extensions-run">Shims</a>. Sockets, servers, <code>http</code> requests, <code>worker_threads</code>, <code>node:sqlite</code>, <code>zlib</code>, <code>vm</code> and <code>child_process.fork</code> throw when used. <code>require()</code> of an ES module fails.</td></tr>
 <tr><td>Native addons</td><td>Loaded</td><td>Installed, never built. Loading one fails.</td></tr>
 <tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. Other exports throw when called, and built-in tool factories reject custom <code>operations</code>.</td></tr>
@@ -218,9 +219,9 @@
 <tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
-<tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="configuration.html#project-trust">Project trust</a>.</td></tr>
+<tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code></td><td><code>yapi update</code> updates packages and models only. See <a href="install.html#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="install.html#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>
@@ -243,8 +244,8 @@
 </tbody>
 </table>
 </div>
-<h2 id="open-gaps"><a class="header" href="#open-gaps">Open Gaps</a></h2>
-<p>Pi features yapi does not have yet, or has only in part. Each row links its issue, and the row goes when the gap closes.</p>
+<h2 id="open-gaps"><a class="header" href="#open-gaps">Open gaps</a></h2>
+<p>Pi features yapi does not have yet, or has only in part. Each row links its issue.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -269,11 +270,11 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="migrating.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="agent-skills.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="performance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="roadmap.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -283,11 +284,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="migrating.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="agent-skills.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="performance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="roadmap.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

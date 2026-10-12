@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,11 +180,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="native-extensions-in-rust"><a class="header" href="#native-extensions-in-rust">Native extensions in Rust</a></h1>
-<p>Native extensions are WebAssembly components written in Rust with the <code>yapi-extension-api</code> crate. They register tools, commands, flags and event handlers like Pi extensions, and use Pi’s JSON shapes for events and results.</p>
-<p>Native extensions can also draw their own interface with components, as Pi extensions do with pi-tui. A native extension needs no JavaScript runtime and runs in a WebAssembly instance of its own. A built extension is one <code>.wasm</code> file of a few hundred kilobytes.</p>
-<p>Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests they use may change in any release before then, and extensions may need to be rebuilt. Pi extensions from npm use Pi’s extension API and are not affected.</p>
+<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of a few hundred kilobytes.</p>
+<p>The native extension API is unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests may change in any release before then, and extensions may need to be rebuilt. Pi extensions are not affected.</p>
 <h2 id="create-an-extension"><a class="header" href="#create-an-extension">Create an extension</a></h2>
-<p>Add the <code>wasm32-wasip2</code> target to your toolchain once:</p>
+<p>The SDK needs Rust 1.88 or newer, or 1.91 with the <code>widgets</code> feature. Add the <code>wasm32-wasip2</code> target to your Rust toolchain:</p>
 <pre><code class="language-sh">rustup target add wasm32-wasip2
 </code></pre>
 <p>Create a project:</p>
@@ -193,20 +192,21 @@
 <p><code>yapi new</code> writes a Cargo project that is also a yapi package:</p>
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api at tag v0.1.0
+├── .gitignore
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.1.0
 ├── README.md
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
-<p>The package takes the directory’s name, and <code>--name</code> sets another. The name has lowercase ASCII letters, digits, <code>-</code> and <code>_</code> and starts with a letter, so both Cargo and npm accept it. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>, which also asks for the name:</p>
+<p>The package takes the directory’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
 <pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.1.0 crates/yapi/templates/extension
 </code></pre>
-<p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK at the yapi release you target:</p>
+<p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "v0.1.0" }
+yapi-extension-api = "0.1.0"
 </code></pre>
-<p>An extension registers what it offers in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
+<p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>// src/lib.rs
@@ -235,17 +235,17 @@ fn init(api: &amp;mut Api) {
 
 yapi_extension_api::extension!(init);
 <span class="boring">}</span></code></pre>
-<p>Build it, and copy the build into the package:</p>
+<p>Build it and copy the result into the package:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 </code></pre>
 <p>A crate without the template’s <code>.cargo/config.toml</code> builds with <code>cargo build --release --target wasm32-wasip2</code>.</p>
 <h2 id="try-it"><a class="header" href="#try-it">Try it</a></h2>
-<p>Load the package for a single run without installing it:</p>
+<p>Load the package for one run without installing it:</p>
 <pre><code class="language-sh">yapi -e .
 </code></pre>
 <p><code>-e</code> also takes the <code>.wasm</code> file itself.</p>
-<p>To check that the package loads without a model or the network, run <a href="https://github.com/SkymanOne/yapi/blob/main/skills/yapi-extension/scripts/check-extension.py"><code>check-extension.py</code></a> from the <a href="agent-skills.html">agent skills</a>. It prints the commands the extensions registered and every load error, and exits with 1 on an error:</p>
+<p>To check that the package loads without a model or network access, run <a href="https://github.com/SkymanOne/yapi/blob/main/skills/yapi-extension/scripts/check-extension.py"><code>check-extension.py</code></a> from the <a href="agent-skills.html">agent skills</a>. It prints the registered commands and any load errors, and exits with status 1 on an error:</p>
 <pre><code class="language-sh">python3 check-extension.py .
 </code></pre>
 <h2 id="install-it"><a class="header" href="#install-it">Install it</a></h2>
@@ -253,13 +253,13 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 <pre><code class="language-sh">yapi install .       # for every project
 yapi install . -l    # for this project only
 </code></pre>
-<p>yapi records the path in <code>settings.json</code> and loads the file from where it is, so a rebuild takes effect the next time yapi starts. <code>yapi list</code> shows the installed extension and <code>yapi remove &lt;path&gt;</code> uninstalls it. <code>yapi config</code> turns it off without removing it.</p>
+<p>yapi records the path in <code>settings.json</code> and loads the file in place, so a rebuild takes effect after <code>/reload</code> or a restart. <code>yapi list</code> shows the extension, <code>yapi remove &lt;path&gt;</code> uninstalls it and <code>yapi config</code> turns it off.</p>
 <h2 id="share-it"><a class="header" href="#share-it">Share it</a></h2>
-<p>A native extension is shared as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> already is one: commit <code>extensions/shout.wasm</code> with the sources, push the repository, and others install it by its URL:</p>
+<p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/you/shout
 </code></pre>
-<p>To publish on npm, run <code>npm publish</code>, then install with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
-<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in a package’s <code>extensions</code> folder. A manifest names the files, and yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
+<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
+<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
 <pre><code class="language-json">{
   "name": "shout",
   "version": "0.1.0",
@@ -267,7 +267,7 @@ yapi install . -l    # for this project only
   "yapi": { "extensions": ["./dist/shout.wasm"] }
 }
 </code></pre>
-<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi installs prebuilt files and never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox. For the same reason yapi skips npm lifecycle scripts.</p>
+<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox.</p>
 <h2 id="api"><a class="header" href="#api">API</a></h2>
 <div class="table-wrapper">
 <table>
@@ -301,7 +301,7 @@ yapi install . -l    # for this project only
 </tbody>
 </table>
 </div>
-<p><a href="native-examples.html">Native extension examples</a> walks through seventeen complete extensions, from a minimal starting point to a modal editor, a question tool with its own rendering and a select list.</p>
+<p><a href="native-examples.html">Native extension examples</a> walks through seventeen complete extensions.</p>
 <h3 id="host-requests"><a class="header" href="#host-requests">Host requests</a></h3>
 <p><code>request(kind, payload)</code> sends a request to yapi and returns its JSON answer. yapi supports these kinds for native extensions:</p>
 <div class="table-wrapper">
@@ -374,9 +374,9 @@ fn init(api: &amp;mut Api) {
     });
 }
 <span class="boring">}</span></code></pre>
-<p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. yapi then delivers the event to the handlers of every other extension, after <code>emit</code> has returned. The data reaches them as a JSON copy. Events from one extension arrive in the order it emitted them.</p>
-<p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again, as Pi drops the handlers of a session’s extensions when the session is replaced.</p>
-<p>A runtime that is busy, such as one computing in a handler, holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
+<p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. Other extensions receive a JSON copy of the data after <code>emit</code> returns, in the order the extension emitted it.</p>
+<p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again.</p>
+<p>A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
 <h2 id="interface-components"><a class="header" href="#interface-components">Interface components</a></h2>
 <p>A component implements the <code>Component</code> trait. <code>render</code> returns the lines to show at a width, as text with ANSI escape sequences. The optional <code>handle_input</code> receives raw terminal input while the component has focus, and <code>handle_mouse</code> receives mouse events in fullscreen mode and returns whether it took them.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -423,10 +423,10 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 </table>
 </div>
 <p>yapi renders a component after each key or mouse event it handles, and paints the lines it rendered last in the meantime, so the interface never waits for the extension. A component that changes on its own, from a timer or a background task, calls <code>request_render</code> afterwards. yapi cuts lines wider than the width.</p>
-<p><code>theme()</code> returns the session’s theme. <code>Theme::fg</code> and <code>Theme::bg</code> color text with a token such as <code>accent</code>, <code>muted</code> or <code>success</code>, and <code>bold</code>, <code>italic</code>, <code>underline</code>, <code>strikethrough</code> and <code>inverse</code> style it. Text stays plain without a theme, as in print mode, and for a token the theme does not have.</p>
+<p><code>theme()</code> returns the session’s theme. <code>Theme::fg</code> and <code>Theme::bg</code> color text with a token such as <code>accent</code>, <code>muted</code> or <code>success</code>, and <code>bold</code>, <code>italic</code>, <code>underline</code>, <code>strikethrough</code> and <code>inverse</code> style it. Text stays plain without a theme, such as in print mode, and for tokens the theme lacks.</p>
 <p><code>terminal_size()</code> returns the terminal’s columns and rows, as Pi’s <code>tui.terminal.columns</code> and <code>tui.terminal.rows</code> give them, and follows resizes. It returns <code>None</code> without a terminal, as in print, JSON and RPC modes.</p>
 <p><code>editor_focused()</code> tells whether the prompt editor, or an editor component in its place, has the keyboard, as Pi’s <code>tui.focusedComponent</code> does. It is <code>false</code> while a selector, a dialog or a component shown with <code>custom</code> has it. A terminal input listener that takes keys from an empty prompt checks it first, so dialogs still get those keys. It returns <code>true</code> without a terminal.</p>
-<p><code>parse_key</code> names the keys components most often handle, such as <code>up</code>, <code>enter</code>, <code>escape</code> and <code>ctrl+c</code>. yapi turns on the Kitty keyboard protocol where the terminal supports it, which encodes Escape and keys with Ctrl differently, and <code>parse_key</code> reads both encodings. Compare keys through it rather than with raw bytes such as <code>"\x1b"</code>.</p>
+<p><code>parse_key</code> names common keys, such as <code>up</code>, <code>enter</code>, <code>escape</code> and <code>ctrl+c</code>. It reads both legacy and Kitty keyboard protocol encodings, which differ for Escape and Ctrl keys, so compare keys through it rather than with raw bytes such as <code>"\x1b"</code>.</p>
 <p>Only the interactive mode shows components. In RPC, print and JSON modes, <code>custom</code> resolves to <code>None</code> at once, and component widgets, footers and headers are left out. When the extension loads again for another session, yapi drops every component it showed.</p>
 <p><code>CustomOptions::on_handle</code> receives the shown component’s <code>OverlayHandle</code>, Pi’s <code>onHandle</code>. <code>hide</code> closes the component without finishing it, so prefer <code>Done::finish</code>. <code>set_hidden</code>, <code>focus</code> and <code>unfocus</code> only change what <code>is_hidden</code> and <code>is_focused</code> report, as for Pi extensions in yapi, and the overlay stays on screen. An overlay without <code>overlay_options</code> takes the width its component’s <code>Component::width</code> returns, as Pi does with a component’s <code>width</code>.</p>
 <h3 id="replacing-the-editor"><a class="header" href="#replacing-the-editor">Replacing the editor</a></h3>
@@ -436,12 +436,12 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <p><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result in the transcript, as Pi’s <code>renderCall</code> and <code>renderResult</code> do, and <code>Tool::render_shell("self")</code> says they draw the tool’s whole box. <code>Api::register_message_renderer</code> draws custom messages of one type, as Pi’s <code>registerMessageRenderer</code> does. A renderer returns a component, or <code>None</code> to keep yapi’s own rendering.</p>
 <p>A tool renderer gets a <code>RenderContext</code>, with Pi’s context fields such as <code>toolCallId</code>, <code>expanded</code> and <code>isPartial</code> in <code>data</code>, and a <code>state</code> value that the call’s and the result’s renderers share for one tool call. Pi’s <code>lastComponent</code> has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one’s place, and yapi shows the old one’s lines until the new one has rendered.</p>
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
-<p>The <code>widgets</code> feature adds yapi’s own ports of pi-tui’s widgets, the ones yapi’s interface uses. They match pi-tui’s output, as tests against pi-tui check. Turn it on where the extension depends on the SDK, at a release that has the feature:</p>
+<p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "&lt;release&gt;", features = ["widgets"] }
+yapi-extension-api = { version = "0.1.0", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds them, such as <code>select_list::SelectList</code>, <code>editor::Editor</code>, <code>text_input::TextInput</code>, <code>settings_list::SettingsList</code>, and the <code>Text</code>, <code>Box</code> and border layouts in <code>lines</code>. They render styled lines, and <code>widgets::to_ansi</code> turns those into a component’s lines, with pi-tui’s cursor marker where a cursor belongs. <code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style for the widgets’ themes, and <code>widgets::keybindings</code> the key bindings their <code>handle_input</code> takes. The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</p>
-<p>The widgets add 100 to 300 KB to an extension that uses them. A built extension without the feature stays near 170 KB.</p>
+<p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does. It sees each key before the editor and everything else, in the order listeners were added, and returns <code>TerminalInput::Pass</code> to let the key through, <code>Consume</code> to stop it, or <code>Replace(data)</code> to hand on <code>data</code> in its place, as Pi’s <code>undefined</code>, <code>{consume: true}</code> and <code>{data}</code>. The listener stops when the returned <code>Subscription</code> is dropped or <code>unsubscribe</code> is called, so keep it for as long as the listener should run. <code>editor_text()</code> returns the editor’s text, as Pi’s <code>ctx.ui.getEditorText</code> does, so a listener can take keys only while the editor is empty:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -486,38 +486,10 @@ impl AutocompleteProvider for Tickets {
 ctx.add_autocomplete_provider(Tickets);
 <span class="boring">}</span></code></pre>
 <p>As for Pi extensions in yapi, listeners run while yapi keeps drawing, so keys that arrive together pass through them together, and yapi asks providers for suggestions in the background and applies each suggestion as it asks. Each native extension runs in an instance of its own, and the listeners of every instance see input. Completion goes through the providers of one instance, the one that added a provider last. Only the interactive mode runs listeners and providers.</p>
-<h3 id="host-requests-for-components"><a class="header" href="#host-requests-for-components">Host requests for components</a></h3>
-<p>The methods send these host requests. The handles in them name components the SDK keeps, so use the methods rather than sending the requests yourself:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Kind</th><th>Payload</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>ui.setWidget</code></td><td><code>{"key", "lines", "options": {"placement"}}</code>, or <code>handle</code> in place of <code>lines</code></td><td>Shows the lines or the component as widget <code>key</code>, or removes it when both are left out</td></tr>
-<tr><td><code>ui.setFooter</code>, <code>ui.setHeader</code></td><td><code>{"handle"}</code></td><td>Shows the component, or the built-in one when <code>handle</code> is <code>null</code></td></tr>
-<tr><td><code>ui.custom</code></td><td><code>{"handle", "overlay", "overlayOptions"}</code></td><td>Shows the component with keyboard focus</td></tr>
-<tr><td><code>ui.close</code></td><td><code>{"handle"}</code></td><td>Closes the component <code>ui.custom</code> showed</td></tr>
-<tr><td><code>ui.requestRender</code></td><td><code>{}</code></td><td>Renders the components again</td></tr>
-<tr><td><code>ui.theme</code></td><td><code>{}</code></td><td>The theme, as <code>{"name", "mode", "fg", "bg", "dim", "colors"}</code>, where <code>fg</code> and <code>bg</code> hold each token’s escape sequence</td></tr>
-<tr><td><code>ui.terminalSize</code></td><td><code>{}</code></td><td>The terminal’s size and whether the prompt editor has the keyboard, as <code>{"columns", "rows", "editorFocused"}</code>, or <code>null</code> without a terminal</td></tr>
-<tr><td><code>ui.setEditor</code></td><td><code>{"handle"}</code></td><td>Shows the editor component, or the built-in editor when <code>handle</code> is <code>null</code></td></tr>
-<tr><td><code>ui.getEditorText</code></td><td><code>{}</code></td><td>The built-in editor’s text</td></tr>
-<tr><td><code>ui.editorChange</code>, <code>ui.editorSubmit</code></td><td><code>{"text"}</code></td><td>The editor component’s text changed or was submitted</td></tr>
-<tr><td><code>ui.editorAction</code>, <code>ui.editorShortcut</code></td><td><code>{"action"}</code>, <code>{"data"}</code></td><td>Runs an app action, or the extension shortcut bound to a key</td></tr>
-<tr><td><code>ui.keybindings</code></td><td><code>{}</code></td><td><code>{"kitty", "bindings": {id: [key]}, "actions": [id]}</code></td></tr>
-<tr><td><code>ui.applyCompletion</code></td><td><code>{"lines", "cursorLine", "cursorCol", "item", "prefix"}</code></td><td>The editor’s lines and cursor with the completion applied</td></tr>
-<tr><td><code>ui.setTerminalInput</code></td><td><code>{"listening"}</code></td><td>Starts or stops passing raw input through the extension’s listeners</td></tr>
-<tr><td><code>ui.setAutocomplete</code></td><td><code>{"triggerCharacters"}</code></td><td>Completes through the extension’s providers, opened by those characters too</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>CustomEditor</code> asks for completions with the <code>ui.suggestions</code> operation, which takes <code>{"lines", "cursorLine", "cursorCol", "force"}</code> and answers <code>{"items", "prefix"}</code> or <code>null</code>. Columns count UTF-16 units, as in Pi.</p>
-<p>yapi renders a component through the WIT world’s <code>render</code> export and delivers keys through <code>input</code>. Mouse events arrive as the <code>mouse</code> call, editor operations as <code>editor</code>, and requests for transcript renders as <code>component</code>. Raw input arrives as the <code>terminalInput</code> call, <code>{"keys"}</code>, answered with each key as the listeners leave it or <code>null</code> when one consumed it. Requests for suggestions arrive as <code>autocomplete</code>, with the arguments of <code>ui.suggestions</code>, answered with <code>{"prefix", "items", "applied"}</code>, where <code>applied</code> holds the editor’s lines and cursor after each item, or <code>null</code>. Shortcuts arrive as <code>shortcut</code>, <code>{"shortcut", "ctx"}</code>.</p>
 <h2 id="background-work-and-cancellation"><a class="header" href="#background-work-and-cancellation">Background work and cancellation</a></h2>
-<p>Handlers are <code>async</code>. While one waits for a host operation, other handlers, tool calls and background tasks run. <code>spawn</code> runs a future in the background, after the handler that started it has returned, as a Pi extension does with a promise it does not await. A background task can report its result with the <code>session.sendMessage</code> request, with <code>"triggerTurn": true</code> to start a turn when the agent is idle.</p>
+<p>Handlers are <code>async</code>. While one waits for a host operation, other handlers, tool calls and background tasks run. <code>spawn</code> runs a future in the background after the handler that started it returns, like a promise a Pi extension does not await. A background task can report its result with the <code>session.sendMessage</code> request, with <code>"triggerTurn": true</code> to start a turn when the agent is idle.</p>
 <p>When the user aborts a run, yapi drops the futures of the extension tools still running in it, which kills the processes they hold. Background tasks keep running until they finish or the extension stops.</p>
-<p>A tool that calls <code>Context::aborted</code> gets the abort instead, as a Pi tool’s <code>signal</code> does. The future resolves when the user aborts the run. The tool keeps running to stop its work, and the result it returns becomes the tool’s result, such as the output so far. A tool that has not returned 10 seconds after the abort is dropped. That is twice the 5 seconds that yapi and Pi’s <code>subagent</code> example give a process between SIGTERM and SIGKILL, so a tool can stop one and report. Race the future against the work with <code>futures::select!</code> or a small helper, such as <code>race</code> in the <a href="native-examples.html#countdown">countdown example</a>:</p>
+<p>A tool that calls <code>Context::aborted</code> gets the abort instead, as a Pi tool’s <code>signal</code> does. The future resolves when the user aborts the run. The tool keeps running to stop its work, and the result it returns becomes the tool’s result, such as the output so far. A tool that has not returned 10 seconds after the abort is dropped. That leaves time to stop a child process with SIGTERM, wait for it and report. Race the future against the work with <code>futures::select!</code> or a small helper, such as <code>race</code> in the <a href="native-examples.html#countdown">countdown example</a>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut process = Process::spawn(&amp;json!({"command": "make", "args": ["test"]}))?;
@@ -538,7 +510,7 @@ loop {
 Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <span class="boring">}</span></code></pre>
 <h2 id="limits"><a class="header" href="#limits">Limits</a></h2>
-<p>Each call into an extension may compute for 60 seconds without waiting on yapi, and each extension may use 1 GiB of memory.</p>
+<p>Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.</p>
 
                     </main>
 

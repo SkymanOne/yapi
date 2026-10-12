@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Models and sign-in - yapi</title>
+        <title>Choose a model - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,10 +179,13 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="models-and-sign-in"><a class="header" href="#models-and-sign-in">Models and sign-in</a></h1>
-<p>yapi supports the same providers and models as Pi, from the same built-in catalog.</p>
-<h2 id="api-keys"><a class="header" href="#api-keys">API keys</a></h2>
-<p>yapi reads the same environment variables as Pi. Common ones:</p>
+                        <h1 id="choose-a-model"><a class="header" href="#choose-a-model">Choose a model</a></h1>
+<p>yapi supports Pi’s providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it.</p>
+<h2 id="sign-in-with-a-subscription"><a class="header" href="#sign-in-with-a-subscription">Sign in with a subscription</a></h2>
+<p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
+<p>“Sign in with Radius” signs in to Pi’s Radius gateway, whose models come from the gateway’s own catalog. Providers registered by extensions can add their own sign-ins. <code>/logout</code> removes a stored credential.</p>
+<h2 id="use-an-api-key"><a class="header" href="#use-an-api-key">Use an API key</a></h2>
+<p>yapi reads the same environment variables as Pi:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -201,42 +204,36 @@
 </tbody>
 </table>
 </div>
-<p><code>yapi --help</code> lists every provider, including Azure OpenAI, Amazon Bedrock, Cloudflare and Vercel AI Gateway.</p>
-<p>To store a key instead, run <code>/login</code> inside yapi and choose “Sign in with an API key”. yapi saves it to <code>~/.yapi/agent/auth.json</code> in Pi’s format.</p>
-<h2 id="subscriptions-and-accounts"><a class="header" href="#subscriptions-and-accounts">Subscriptions and accounts</a></h2>
-<p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
-<p>“Sign in with Radius” at the top of <code>/login</code> signs in to Pi’s Radius gateway. Its models come from the gateway’s own catalog, which yapi fetches after the sign-in.</p>
-<p>Providers that extensions register can add their own sign-ins to <code>/login</code>. See <a href="extensions.html#providers-from-extensions">Providers from extensions</a>.</p>
-<p><code>/logout</code> removes a stored credential.</p>
-<h2 id="cloud-providers"><a class="header" href="#cloud-providers">Cloud providers</a></h2>
-<p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials, as in Pi:</p>
+<p><code>yapi --help</code> lists every provider, including Azure OpenAI and Vercel AI Gateway. To save a key instead, run <code>/login</code> and choose “Sign in with an API key”. yapi stores it in <code>~/.yapi/agent/auth.json</code>.</p>
+<h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
+<p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
 <li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region.</li>
-<li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials (<code>GOOGLE_APPLICATION_CREDENTIALS</code> or <code>gcloud auth application-default login</code>) with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
-<li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> with <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
+<li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
+<li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
-<p><code>/login</code> stores these settings in <code>auth.json</code> instead, with Pi’s prompts. With <code>ANTHROPIC_FEDERATION_RULE_ID</code> and the related variables set, Anthropic requests use workload identity federation instead of a key.</p>
-<h2 id="local-models-with-llamacpp"><a class="header" href="#local-models-with-llamacpp">Local models with llama.cpp</a></h2>
-<p>yapi supports the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> router server, as Pi does. Start <code>llama-server</code> without <code>--model</code>, for example:</p>
+<p><code>/login</code> can store these settings in <code>auth.json</code> instead. With <code>ANTHROPIC_FEDERATION_RULE_ID</code> and the related variables set, Anthropic requests use workload identity federation instead of a key.</p>
+<h2 id="run-local-models"><a class="header" href="#run-local-models">Run local models</a></h2>
+<p>yapi supports the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> router server. Start <code>llama-server</code> without <code>--model</code>:</p>
 <pre><code class="language-sh">llama-server --models-dir ~/models --no-models-autoload --jinja --host 127.0.0.1 --port 8080
 </code></pre>
-<p>Then run <code>/login llama.cpp</code> and enter the server URL (default <code>http://127.0.0.1:8080</code>) and an optional API key, or set <code>LLAMA_BASE_URL</code> and <code>LLAMA_API_KEY</code>. <code>/llama</code> loads and unloads the router’s models and downloads new ones from Hugging Face. Loaded models appear in <code>/model</code>, and every chat model is also listed as a classifier. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md">llama.cpp guide</a> covers the server options and model layout.</p>
-<p>To remove the provider and <code>/llama</code>, disable <code>llama.cpp</code> in <code>yapi config</code>, or add <code>"-builtin:llama.cpp"</code> to the <code>extensions</code> setting.</p>
-<h2 id="model-catalogs"><a class="header" href="#model-catalogs">Model catalogs</a></h2>
-<p>The catalog is built into yapi. Between releases, Pi publishes catalog updates for its providers. yapi fetches them for the providers you have configured: in the background at startup, when the model selector opens, after <code>/login</code>, and with <code>yapi update --models</code>. Fetched catalogs are kept in <code>~/.yapi/agent/models-store.json</code>, so later sessions have them offline. <code>--offline</code> or <code>PI_OFFLINE=1</code> turns fetching off. Providers that extensions register with <code>refreshModels</code> refresh at the same times.</p>
-<h2 id="classifier-and-image-models"><a class="header" href="#classifier-and-image-models">Classifier and image models</a></h2>
-<p>Besides chat models, the catalog lists classifiers, which answer typed questions about JSON data (TypeSafe’s Jev, also through OpenCode, OpenRouter, Vercel AI Gateway and Cloudflare Workers AI, and models loaded in llama.cpp), and image models on OpenRouter. They run from codemode scripts through the <code>models</code> global, and from extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>, with the session’s credentials. See <a href="mcp.html#codemode">MCP servers and codemode</a>.</p>
-<h2 id="choosing-a-model"><a class="header" href="#choosing-a-model">Choosing a model</a></h2>
+<p>Run <code>/login llama.cpp</code> and enter the server URL and an optional API key, or set <code>LLAMA_BASE_URL</code> and <code>LLAMA_API_KEY</code>. <code>/llama</code> loads and unloads the server’s models and downloads new ones from Hugging Face. Loaded models appear in <code>/model</code>. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md">llama.cpp guide</a> covers the server options.</p>
+<p>To remove the provider and <code>/llama</code>, disable <code>llama.cpp</code> in <code>yapi config</code>.</p>
+<h2 id="select-a-model"><a class="header" href="#select-a-model">Select a model</a></h2>
 <pre><code class="language-sh">yapi --list-models sonnet            # search the catalog
 yapi --model anthropic/claude-sonnet-4-5
 yapi --model sonnet:high             # a pattern with a thinking level
 yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 </code></pre>
 <p>Inside yapi, <code>/model</code> or Ctrl+L opens the model selector, Ctrl+P cycles through models, and Shift+Tab cycles the thinking level.</p>
-<h2 id="custom-providers-and-models"><a class="header" href="#custom-providers-and-models">Custom providers and models</a></h2>
-<p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. The format is Pi’s, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation. Extensions can register providers too, including ones that implement their own wire API. See <a href="extensions.html#providers-from-extensions">Providers from extensions</a>.</p>
+<h2 id="add-providers-and-models"><a class="header" href="#add-providers-and-models">Add providers and models</a></h2>
+<p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. The format is described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation. Extensions can also <a href="extensions.html#providers-from-extensions">register providers</a>, including ones with their own wire API.</p>
+<h2 id="catalog-updates"><a class="header" href="#catalog-updates">Catalog updates</a></h2>
+<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches. <code>yapi update --models</code> fetches regardless.</p>
+<h2 id="classifier-and-image-models"><a class="header" href="#classifier-and-image-models">Classifier and image models</a></h2>
+<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>. See <a href="mcp.html#codemode">Codemode</a>.</p>
 <h2 id="credentials-for-other-tools"><a class="header" href="#credentials-for-other-tools">Credentials for other tools</a></h2>
-<p><code>yapi auth</code> gives scripts a ready credential without starting a session:</p>
+<p><code>yapi auth</code> gives scripts a credential without starting a session:</p>
 <pre><code class="language-sh">yapi auth check --provider anthropic --json
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
@@ -246,11 +243,11 @@ yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="quickstart.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="interactive.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="interactive.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="sessions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -260,11 +257,11 @@ yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="quickstart.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="interactive.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="interactive.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="sessions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

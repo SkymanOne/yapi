@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -178,74 +178,113 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="yapi"><a class="header" href="#yapi">yapi</a></h1>
-<p><strong>Yet Another Pi (in Rust) - Fast, Portable, Compatible</strong></p>
-<p>yapi is a minimal, extensible AI agent for the terminal, written in Rust. Give it a goal and a working folder, and it can inspect files, run commands, edit content and work through multi-step tasks.</p>
-<p>yapi is a reimplementation of <a href="https://pi.dev">Pi</a> <code>v1.0.0</code>. It uses Pi’s commands, settings, session files, packages and extension API, so a Pi setup works in yapi as it is. Adapt it to your workflow with extensions, skills, prompt templates and themes, or install a Pi package. It ships as one native binary and needs no Node.js.</p>
-<h2 id="start-using-yapi"><a class="header" href="#start-using-yapi">Start using yapi</a></h2>
-<p>New to yapi? <a href="#install">Install it</a> and follow the <a href="#quickstart">Quickstart</a> to connect a model and complete your first task. Using Pi already? <a href="#coming-from-pi">Coming from Pi</a> shows how to bring your setup over.</p>
+<p>yapi is a coding agent for the terminal. Given a task and a working folder, it inspects files, runs commands, edits code and works through multi-step tasks.</p>
+<p>yapi is a Rust reimplementation of <a href="https://pi.dev">Pi</a> <code>v1.0.0</code>. It uses Pi’s commands, settings, session files, packages and extension API, so an existing Pi setup works in yapi without changes. It ships as a single native binary and does not require Node.js.</p>
+<h2 id="get-started"><a class="header" href="#get-started">Get started</a></h2>
+<p>The <a href="#quickstart">Quickstart</a> covers installation, connecting a model and a first task. Pi users can bring their existing setup, as <a href="#coming-from-pi">Coming from Pi</a> describes.</p>
 <ul>
-<li><a href="#interactive-mode">Use yapi interactively</a> to add files, run commands and direct ongoing work.</li>
-<li><a href="#models-and-sign-in">Choose a model</a> or connect a subscription, API key, cloud provider or local model.</li>
-<li><a href="#sessions">Continue or branch a session</a> to resume work or explore another approach without losing history.</li>
-<li><a href="#configuration">Configure yapi</a> for your preferences, instructions and reusable resources.</li>
+<li><a href="#use-yapi-in-the-terminal">Use yapi in the terminal</a> to attach files, run commands and direct ongoing work.</li>
+<li><a href="#choose-a-model">Choose a model</a> and connect a subscription, API key, cloud provider or local model.</li>
+<li><a href="#manage-sessions">Manage sessions</a> to resume work or try another approach without losing history.</li>
+<li><a href="#configure-yapi">Configure yapi</a> with settings, project instructions, skills and prompt templates.</li>
 </ul>
 <h2 id="customize-yapi"><a class="header" href="#customize-yapi">Customize yapi</a></h2>
 <ul>
-<li><a href="#extensions">Extensions</a> add tools, commands, event handlers and interface components. Pi extensions run unchanged.</li>
-<li><a href="#native-extensions-in-rust">Native extensions</a> do the same in Rust, compiled to WebAssembly.</li>
-<li><a href="#packages">Packages</a> bundle extensions, skills, prompt templates and themes, and install from npm, git or a local path.</li>
-<li><a href="#mcp-servers-and-codemode">MCP servers and codemode</a> connect external tools.</li>
+<li><a href="#use-packages">Packages</a> bundle extensions, skills, prompt templates and themes, and install from npm, git or a local path.</li>
+<li><a href="#connect-mcp-servers">MCP servers</a> connect external tools.</li>
+<li><a href="#extensions">Extensions</a> add tools, commands, event handlers and interface components. Pi extensions run unchanged, and <a href="#native-extensions-in-rust">native extensions</a> are written in Rust. <a href="#choose-an-extension-type">Choose an extension type</a> compares the two.</li>
 </ul>
 <h2 id="automate-yapi"><a class="header" href="#automate-yapi">Automate yapi</a></h2>
-<p>Use <a href="#print-json-and-rpc-modes">print, JSON and RPC modes</a> for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
-<h2 id="how-yapi-differs-from-pi"><a class="header" href="#how-yapi-differs-from-pi">How yapi differs from Pi</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th></th><th>Pi</th><th>yapi</th></tr>
-</thead>
-<tbody>
-<tr><td>Runtime</td><td>Node.js 22.19 or newer</td><td>One native binary</td></tr>
-<tr><td>Extensions</td><td>Run in Pi’s process with the user’s permissions</td><td>Run in WebAssembly instances with memory and compute limits. In v0.1 they keep Pi’s default file, process, network and environment access, as the <a href="#security-model">security model</a> explains. Pi extensions run unchanged, and native extensions are written in Rust.</td></tr>
-<tr><td>Startup and memory</td><td>324 ms to first paint, 117 MB idle and 203 MB after 20 turns, 247 MB installed with Node.js</td><td>10 ms to first paint, 19 MB idle and 37 MB after 20 turns, a 35 MB executable, on the same machine. See <a href="#performance">Performance</a>.</td></tr>
-</tbody>
-</table>
-</div>
-<p><a href="#differences-from-pi">Differences from Pi</a> lists every known difference, including the Pi features not ported yet.</p>
-<h2 id="compatibility"><a class="header" href="#compatibility">Compatibility</a></h2>
-<p>yapi is tested against Pi itself. Every check below runs both programs on the same input.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Check</th><th>Result</th></tr>
-</thead>
-<tbody>
-<tr><td>End-to-end scenarios</td><td>293 scenarios compare yapi with Pi’s recorded output: terminal screens, JSON event streams, CLI and print mode runs, RPC sessions and Pi’s own RPC client. Run live against Pi, 291 match and two differ only in the footer’s context percentage.</td></tr>
-<tr><td>Settings, credentials and session files</td><td>Read and written back byte for byte</td></tr>
-<tr><td>Pi’s example extensions</td><td>79 of 79 register the same tools, commands, flags, shortcuts and event handlers as in Pi</td></tr>
-<tr><td>The 500 most-downloaded Pi packages on npm</td><td>418 of 500 work without errors. <a href="#compatibility-with-pi-extensions">Extensions</a> has the breakdown.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Report problems in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. <a href="#reporting-a-problem">Reporting a problem</a> lists what to include.</p>
+<p><a href="#automate-yapi-1">Print, JSON and RPC modes</a> serve scripts, editors and other programs. The formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
+<h2 id="security"><a class="header" href="#security">Security</a></h2>
+<p>yapi reads files, edits them and runs commands with the user’s permissions, and it does not ask before each tool call. Extensions run in a WebAssembly sandbox with memory and compute limits. Read <a href="#security-model-and-sandboxing">Security model and sandboxing</a> before using yapi with untrusted repositories, packages or unattended automation.</p>
+<h2 id="project-status"><a class="header" href="#project-status">Project status</a></h2>
+<p><a href="#differences-from-pi">Differences from Pi</a> lists every known difference, including Pi features not yet ported. The <a href="#roadmap">Roadmap</a> lists planned work, and <a href="#performance">Performance</a> compares startup time, memory and install size with Pi. Report problems in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>yapi is one executable. Releases have it for Linux and macOS on x86_64 and arm64, and every platform with a recent Rust toolchain can build it from source.</p>
+<h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
+<p>yapi runs in your terminal and works with the files on your machine. It needs a model, through a subscription, an API key or a local server.</p>
+<h2 id="1-install-yapi"><a class="header" href="#1-install-yapi">1. Install yapi</a></h2>
+<p>On Linux or macOS, run the install script:</p>
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+</code></pre>
+<p>It installs <code>yapi</code> in <code>~/.local/bin</code>. <a href="#install-yapi">Install yapi</a> covers the other methods. Check the installation:</p>
+<pre><code class="language-sh">yapi --version
+</code></pre>
+<h2 id="2-start-yapi"><a class="header" href="#2-start-yapi">2. Start yapi</a></h2>
+<p>Start yapi in the folder it should work in:</p>
+<pre><code class="language-sh">cd ~/code/my-project
+yapi
+</code></pre>
+<p>yapi uses the working folder to find files, project instructions and configuration, and to group saved sessions.</p>
+<h2 id="3-choose-a-model"><a class="header" href="#3-choose-a-model">3. Choose a model</a></h2>
+<p>Run <code>/login</code>, choose a provider and follow the prompts to sign in with a subscription or save an API key. Run <code>/model</code> to choose another model.</p>
+<p>yapi also reads API keys from the environment, such as <code>ANTHROPIC_API_KEY</code>. <a href="#choose-a-model">Choose a model</a> lists every provider.</p>
+<h2 id="4-give-yapi-a-task"><a class="header" href="#4-give-yapi-a-task">4. Give yapi a task</a></h2>
+<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It does not ask before each tool call.</p>
+<pre><code class="language-text">Explain how requests flow through src/server.rs
+Find why `cargo test` fails and fix it
+@Cargo.toml Which dependencies are outdated?
+!git status
+</code></pre>
+<p><code>@path</code> attaches a file. <code>!command</code> runs a shell command and sends its output to the model, and <code>!!command</code> runs it without sending the output. Press Escape to stop the agent and Ctrl+C twice to quit.</p>
+<p>Review the changes when yapi finishes. Keep important work under version control, and use a container for untrusted or unattended work. See <a href="#security-model-and-sandboxing">Security model and sandboxing</a>.</p>
+<h2 id="continue-later"><a class="header" href="#continue-later">Continue later</a></h2>
+<p>yapi saves sessions automatically. To resume the most recent session in a folder, run:</p>
+<pre><code class="language-sh">yapi -c
+</code></pre>
+<p>Use <code>/resume</code> to choose another session. See <a href="#manage-sessions">Manage sessions</a>.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<ul>
+<li><a href="#use-yapi-in-the-terminal">Use yapi in the terminal</a> covers keys, commands and queued messages.</li>
+<li><a href="#configure-yapi">Configure yapi</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
+<li><a href="#coming-from-pi">Coming from Pi</a> shows how to copy a Pi setup with <code>yapi import pi</code>.</li>
+</ul>
+<h3 id="choose-how-to-customize-yapi"><a class="header" href="#choose-how-to-customize-yapi">Choose how to customize yapi</a></h3>
+<p>Start with the simplest mechanism that meets the need:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Need</th><th>Start with</th></tr>
+</thead>
+<tbody>
+<tr><td>Instructions yapi follows in a project</td><td><a href="#project-instructions"><code>AGENTS.md</code></a></td></tr>
+<tr><td>A reusable prompt in the <code>/</code> menu</td><td><a href="#skills-and-prompt-templates">Prompt template</a></td></tr>
+<tr><td>Task-specific instructions and files</td><td><a href="#skills-and-prompt-templates">Skill</a></td></tr>
+<tr><td>Tools from an external server</td><td><a href="#connect-mcp-servers">MCP server</a></td></tr>
+<tr><td>New tools, commands or event handlers</td><td><a href="#extensions">Extension</a></td></tr>
+<tr><td>Several resources to share</td><td><a href="#use-packages">Package</a></td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="install-yapi"><a class="header" href="#install-yapi">Install yapi</a></h1>
+<p>yapi is one executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build it from source. Linux and macOS are fully supported. Windows support is best effort.</p>
 <h2 id="install-script"><a class="header" href="#install-script">Install script</a></h2>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 </code></pre>
-<p>The script downloads the latest release binary for your system from GitHub, checks it against its published SHA-256 checksum, and installs it as <code>~/.local/bin/yapi</code>. Options go after <code>sh -s --</code>:</p>
+<p>The script downloads the latest release for your system, verifies its SHA-256 checksum and installs it as <code>~/.local/bin/yapi</code>. It also installs the <a href="#documentation-for-the-model">documentation for the model</a>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Variable</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.1.0</code></td></tr>
+<tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
+<tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
+</tbody>
+</table>
+</div>
+<p>Pass options after <code>sh -s --</code>:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.1.0 --to /usr/local/bin
 </code></pre>
-<p><code>YAPI_VERSION</code> and <code>YAPI_INSTALL_DIR</code> set the same as <code>--version</code> and <code>--to</code>.</p>
-<p>The script also installs the release’s documentation for the model, which yapi reads to explain its own features. It holds this site’s pages and Pi’s docs and examples, checked against their SHA-256 checksum like the binary, and goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code>. A new install replaces the previous copy. <code>--no-docs</code> or <code>YAPI_NO_DOCS=1</code> skips it.</p>
 <h2 id="cargo-binstall"><a class="header" href="#cargo-binstall">cargo-binstall</a></h2>
-<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary through Cargo, into <code>~/.cargo/bin</code>:</p>
+<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary into <code>~/.cargo/bin</code>:</p>
 <pre><code class="language-sh">cargo binstall --git https://github.com/SkymanOne/yapi yapi
 </code></pre>
-<p>Keep <code>--git</code>. On crates.io, <code>yapi</code> names an unrelated crate. With <code>--git</code>, cargo-binstall reads yapi’s manifest on the <code>main</code> branch and downloads the release binary for the version it names, so it works when <code>main</code> names a released version. If it reports that the release does not exist, use the install script. yapi’s manifest turns off cargo-binstall’s other ways of installing, which would fetch <code>yapi</code> from crates.io, so a system without a release binary gets an error rather than another program.</p>
-<h2 id="release-binaries"><a class="header" href="#release-binaries">Release binaries</a></h2>
-<p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has the binary for each platform as <code>yapi-&lt;target&gt;.tar.gz</code>, next to a <code>.sha256</code> checksum. The archive holds <code>yapi</code> and its license files, <code>LICENSE-MIT</code>, <code>LICENSE-APACHE</code> and <code>THIRD-PARTY-NOTICES</code>. The install script installs only <code>yapi</code>. The names carry no version, so the latest release’s binary is always at <code>https://github.com/SkymanOne/yapi/releases/latest/download/yapi-&lt;target&gt;.tar.gz</code>.</p>
+<p>Keep <code>--git</code>, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on <code>main</code> names. If it reports that the release does not exist, use the install script.</p>
+<h2 id="release-archives"><a class="header" href="#release-archives">Release archives</a></h2>
+<p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has a <code>yapi-&lt;target&gt;.tar.gz</code> archive per platform, with a <code>.sha256</code> checksum. The archive holds <code>yapi</code> and its license files.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -259,103 +298,184 @@
 </tbody>
 </table>
 </div>
-<p>Without the script, unpack the binary straight into a directory on <code>PATH</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-aarch64-apple-darwin.tar.gz | tar xzf - -C ~/.local/bin yapi
-</code></pre>
-<p>To check the download first, fetch the archive and its checksum:</p>
+<p>Download an archive, verify it and unpack <code>yapi</code> into a directory on <code>PATH</code>:</p>
 <pre><code class="language-sh">curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz
 curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 sha256sum -c yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </code></pre>
-<p>On macOS, <code>shasum -a 256 -c</code> checks the file. For a particular release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>, such as <code>download/v0.1.0</code>. Systems with an older glibc, or with musl such as Alpine, build from source. If macOS refuses to open a binary from an archive downloaded in a browser, see <a href="#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
-<h2 id="from-source"><a class="header" href="#from-source">From source</a></h2>
-<p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, or update it with <code>rustup update</code>, then build and install a release from the repository:</p>
+<p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
+<h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
+<p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then run:</p>
 <pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.1.0 yapi
 </code></pre>
-<p>Cargo places <code>yapi</code> in <code>~/.cargo/bin</code>. Without <code>--tag</code>, Cargo builds the latest commit on <code>main</code>. To build from a clone instead, as for development:</p>
-<pre><code class="language-sh">git clone https://github.com/SkymanOne/yapi yapi
-cd yapi
-cargo install --locked --path crates/yapi
-</code></pre>
-<p>Inside the clone, <code>rust-toolchain.toml</code> selects the stable toolchain with Clippy and rustfmt. rustup installs it on the first build if needed, but does not update an older one, so run <code>rustup update</code> if Cargo reports that rustc is too old.</p>
-<h2 id="documentation-for-the-model"><a class="header" href="#documentation-for-the-model">Documentation for the model</a></h2>
-<p>yapi reads its documentation to explain its own features: the pages of this site, and Pi’s docs and examples, which describe the extension API that yapi implements. Each release publishes them as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Installed with</th><th>Documentation</th></tr>
-</thead>
-<tbody>
-<tr><td>Install script</td><td>Installed with the binary</td></tr>
-<tr><td>cargo-binstall, Cargo or a release archive</td><td>Downloaded by yapi in the background when it first starts</td></tr>
-</tbody>
-</table>
-</div>
-<p>yapi downloads the documentation when the folder is missing or documents another version, checks it against its SHA-256 checksum, and replaces the old copy. It never downloads with <code>YAPI_NO_DOCS=1</code>, when offline (<code>--offline</code> or <code>PI_OFFLINE=1</code>), or in a development build. yapi reads only the copy of its own version, so until that copy is in place, as just after an upgrade, the model reads the same pages online.</p>
-<p>To install the documentation by hand, for example on a machine that runs yapi offline:</p>
-<pre><code class="language-sh">mkdir -p ~/.yapi/agent/docs &amp;&amp; curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
-</code></pre>
-<p>This installs the latest release’s documentation. When yapi is an older release, replace <code>latest/download</code> with <code>download/v&lt;version&gt;</code>, where <code>&lt;version&gt;</code> is what <code>yapi --version</code> prints.</p>
+<p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>. To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
 <pre><code class="language-sh">yapi --version
 </code></pre>
+<h2 id="documentation-for-the-model"><a class="header" href="#documentation-for-the-model">Documentation for the model</a></h2>
+<p>yapi reads its own documentation to answer questions about its features. The documentation holds these pages and Pi’s docs and examples, which describe the extension API. Each release publishes it as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code> when that is set.</p>
+<p>The install script installs the documentation with the binary. With any other method, yapi downloads it in the background on first start. Either way, the archive is verified against its checksum and replaces the previous copy. <code>YAPI_NO_DOCS=1</code>, <code>--offline</code> and <code>PI_OFFLINE=1</code> turn the download off. Until a copy for its own version is in place, yapi points the model to the online documentation. Pi’s pages use Pi’s names, such as <code>~/.pi/agent</code>, and <a href="#names-that-change">Coming from Pi</a> lists yapi’s.</p>
+<p>To install it by hand, such as on a machine that runs offline:</p>
+<pre><code class="language-sh">mkdir -p ~/.yapi/agent/docs &amp;&amp; curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
+</code></pre>
+<p>For an older yapi, replace <code>latest/download</code> with <code>download/v&lt;version&gt;</code>, where <code>&lt;version&gt;</code> is what <code>yapi --version</code> prints. yapi replaces these files on upgrade, so keep your own notes elsewhere.</p>
 <h2 id="upgrade"><a class="header" href="#upgrade">Upgrade</a></h2>
-<p>yapi does not update itself. <code>yapi update</code> updates packages and model catalogs only. Upgrade yapi the way you installed it:</p>
+<p>yapi does not update itself. <code>yapi update</code> prints how to upgrade, <code>yapi update --extensions</code> updates packages and <code>yapi update --models</code> updates model catalogs. Upgrade yapi the same way you installed it:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Installed with</th><th>Upgrade</th></tr>
 </thead>
 <tbody>
-<tr><td>Install script</td><td>Run the script again. It replaces the binary with the latest release, or the one <code>--version</code> names.</td></tr>
+<tr><td>Install script</td><td>Run the script again.</td></tr>
 <tr><td>cargo-binstall</td><td>Run the same <code>cargo binstall</code> command again.</td></tr>
 <tr><td>Release archive</td><td>Unpack the new archive over the old binary.</td></tr>
-<tr><td>Cargo, from source</td><td>Run <code>cargo install</code> again with the new release’s tag.</td></tr>
+<tr><td>Cargo</td><td>Run <code>cargo install</code> again with the new release’s tag.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Settings, credentials, sessions and packages are kept. The documentation for the model is replaced with the new release’s.</p>
+<p>Settings, credentials, sessions and packages are kept.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the binary the way you installed it:</p>
 <ul>
-<li>Install script or release archive: <code>rm ~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
-<li>cargo-binstall or Cargo: <code>cargo uninstall yapi</code>.</li>
+<li>Install script or release archive: delete <code>~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
+<li>cargo-binstall or Cargo: run <code>cargo uninstall yapi</code>.</li>
 </ul>
-<p>yapi keeps its settings, credentials, sessions, packages and caches in <code>~/.yapi</code>, or in <code>YAPI_CODING_AGENT_DIR</code> when it is set, and project resources in each project’s <code>.yapi</code> folder. Delete them to remove that state as well.</p>
-<h2 id="platforms"><a class="header" href="#platforms">Platforms</a></h2>
-<p>Linux and macOS are fully supported. Windows builds are best effort.</p>
+<p>To remove settings, credentials, sessions, packages and caches as well, delete <code>~/.yapi</code>, or <code>YAPI_CODING_AGENT_DIR</code> when set, and each project’s <code>.yapi</code> folder.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
-<h2 id="connect-a-model"><a class="header" href="#connect-a-model">Connect a model</a></h2>
-<p>Set an API key for your provider:</p>
-<pre><code class="language-sh">export ANTHROPIC_API_KEY=sk-ant-...
+<h1 id="coming-from-pi"><a class="header" href="#coming-from-pi">Coming from Pi</a></h1>
+<p>yapi reads Pi’s formats but keeps its own folders, so the two never write the same files. To copy an existing Pi setup, run:</p>
+<pre><code class="language-sh">yapi import pi
 </code></pre>
-<p>You can also start yapi and run <code>/login</code> to sign in with a Claude, ChatGPT or GitHub Copilot subscription, or to save an API key. <a href="#models-and-sign-in">Models and sign-in</a> lists every provider.</p>
-<h2 id="start-a-session"><a class="header" href="#start-a-session">Start a session</a></h2>
-<p>Start yapi in the folder you want it to work in:</p>
-<pre><code class="language-sh">cd ~/code/my-project
-yapi
-</code></pre>
-<p>Type a task and press Enter. yapi works with four tools by default: <code>read</code>, <code>bash</code>, <code>edit</code> and <code>write</code>. Each tool call appears in the transcript as it runs. Press Escape to interrupt the agent and Ctrl+C twice to quit.</p>
-<h2 id="first-tasks"><a class="header" href="#first-tasks">First tasks</a></h2>
-<pre><code class="language-text">Explain how requests flow through src/server.rs
-Find why `cargo test` fails and fix it
-@Cargo.toml Which dependencies are outdated?
-!git status
-</code></pre>
-<p><code>@path</code> attaches a file to the message. <code>!command</code> runs a shell command and shows its output to the model, and <code>!!command</code> runs one without sending the output.</p>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
+<p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
+<p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
+<h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Pi</th><th>yapi</th></tr>
+</thead>
+<tbody>
+<tr><td><code>~/.pi/agent</code></td><td><code>~/.yapi/agent</code></td></tr>
+<tr><td>Project <code>.pi</code> folder</td><td>Project <code>.yapi</code> folder</td></tr>
+<tr><td><code>PI_CODING_AGENT_DIR</code></td><td><code>YAPI_CODING_AGENT_DIR</code></td></tr>
+<tr><td><code>PI_CODING_AGENT_SESSION_DIR</code></td><td><code>YAPI_CODING_AGENT_SESSION_DIR</code></td></tr>
+<tr><td><code>pi install</code>, <code>pi config</code>, <code>pi mcp</code>, <code>pi auth</code></td><td><code>yapi install</code>, <code>yapi config</code>, <code>yapi mcp</code>, <code>yapi auth</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Only the two directory variables are renamed. Provider keys and every other <code>PI_*</code> variable, such as <code>PI_OFFLINE</code> and <code>PI_CACHE_RETENTION</code>, keep their names. Command-line flags, slash commands and the JSON and RPC protocols are the same as Pi’s.</p>
+<h2 id="what-differs"><a class="header" href="#what-differs">What differs</a></h2>
+<p>Some behaviors differ by design, such as the startup header and features tied to Pi’s online services. <a href="#differences-from-pi">Differences from Pi</a> lists each one with its reason.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="use-yapi-in-the-terminal"><a class="header" href="#use-yapi-in-the-terminal">Use yapi in the terminal</a></h1>
+<p>Run <code>yapi</code> from the folder to work in. To install yapi and choose a model first, follow the <a href="#quickstart">Quickstart</a>.</p>
+<p>The transcript shows your prompts, the model’s responses, tool calls and their results. Prompts and commands go in the editor at the bottom. The footer shows the folder, the model, context usage and cost.</p>
+<h2 id="enter-a-prompt"><a class="header" href="#enter-a-prompt">Enter a prompt</a></h2>
+<p>Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G opens the prompt in <code>$EDITOR</code>.</p>
 <ul>
-<li><a href="#interactive-mode">Interactive mode</a> covers keys and slash commands.</li>
-<li><a href="#sessions">Sessions</a> explains how to continue and branch work.</li>
-<li><a href="#configuration">Configuration</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
+<li><code>@path</code> attaches a file. Tab completes the path.</li>
+<li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.</li>
+<li>Up recalls earlier prompts.</li>
+</ul>
+<h2 id="follow-the-work"><a class="header" href="#follow-the-work">Follow the work</a></h2>
+<p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
+<h2 id="change-direction"><a class="header" href="#change-direction">Change direction</a></h2>
+<p>Input sent while yapi works changes what it does next:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>What you want</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td>Adjust the current task</td><td>Type a message and press Enter</td></tr>
+<tr><td>Add work after the current task</td><td>Type a message and press Alt+Enter</td></tr>
+<tr><td>Edit queued messages</td><td>Press Alt+Up</td></tr>
+<tr><td>Stop the current task</td><td>Press Escape</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="keys"><a class="header" href="#keys">Keys</a></h2>
+<p>These are the defaults. <code>/hotkeys</code> shows the bindings in effect, and <code>~/.yapi/agent/keybindings.json</code> changes them.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td>Enter</td><td>Send the message, or steer the current turn while yapi works</td></tr>
+<tr><td>Alt+Enter</td><td>Queue a follow-up for when yapi finishes</td></tr>
+<tr><td>Shift+Enter</td><td>Insert a new line</td></tr>
+<tr><td>Escape</td><td>Stop the agent. Twice on an empty editor opens the session tree, or what the <code>doubleEscapeAction</code> setting chooses.</td></tr>
+<tr><td>Ctrl+C</td><td>Clear the editor. Twice quits.</td></tr>
+<tr><td>Ctrl+D</td><td>Quit when the editor is empty</td></tr>
+<tr><td>Ctrl+O</td><td>Expand or collapse tool output</td></tr>
+<tr><td>Ctrl+T</td><td>Show or hide thinking</td></tr>
+<tr><td>Ctrl+G</td><td>Write the message in <code>$EDITOR</code></td></tr>
+<tr><td>Ctrl+V</td><td>Paste from the clipboard</td></tr>
+<tr><td>Ctrl+L</td><td>Open the model selector</td></tr>
+<tr><td>Ctrl+P</td><td>Cycle models</td></tr>
+<tr><td>Shift+Tab</td><td>Cycle the thinking level</td></tr>
+<tr><td>Tab</td><td>Complete paths and commands</td></tr>
+<tr><td>Up</td><td>Recall earlier messages</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
+<p>Type <code>/</code> to list commands. Prompt templates, skills (<code>/skill:name</code>) and extension commands appear in the same list.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/model</code>, <code>/thinking</code></td><td>Switch the model or thinking level</td></tr>
+<tr><td><code>/settings</code></td><td>Change settings such as the theme, auto-compaction or fullscreen mode</td></tr>
+<tr><td><code>/scoped-models</code></td><td>Choose which models Ctrl+P cycles through</td></tr>
+<tr><td><code>/new</code>, <code>/resume</code></td><td>Start a session or open an earlier one</td></tr>
+<tr><td><code>/tree</code></td><td>Browse the session’s branches and jump to an earlier point</td></tr>
+<tr><td><code>/fork</code>, <code>/clone</code></td><td>Branch from an earlier message or duplicate the session</td></tr>
+<tr><td><code>/compact</code></td><td>Summarize older context to free up the context window</td></tr>
+<tr><td><code>/name</code>, <code>/session</code></td><td>Name the session or show its file, tokens and cost</td></tr>
+<tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
+<tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
+<tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
+<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage MCP servers. Built-in extension.</td></tr>
+<tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
+<tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
+<tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
+<tr><td><code>/debug</code></td><td>Write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code></td></tr>
+<tr><td><code>/quit</code></td><td>Quit yapi</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
+<h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
+<p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
+<pre><code class="language-text">!git status
+</code></pre>
+<p>Use <code>!!</code> to run a command without sending its output to the model.</p>
+<h2 id="display-modes"><a class="header" href="#display-modes">Display modes</a></h2>
+<p>yapi draws in fullscreen mode by default. Regular mode keeps the transcript in the terminal’s scrollback instead. Switch with <code>/settings</code> or <code>--tui-mode regular</code>.</p>
+<p>In fullscreen mode, yapi handles the mouse:</p>
+<ul>
+<li>The wheel scrolls the transcript. Hold Alt to scroll five times as far. “Fullscreen wheel scrolling” in <code>/settings</code> sets a fixed number of lines per step.</li>
+<li>Drag to select text. A double click selects a word or path, and a triple click selects a line. Releasing the button copies the selection. With “Fullscreen copy on select” off, press Ctrl+X to copy it.</li>
+<li>A click on a tool call, thinking, a skill or a summary expands or collapses it. Ctrl+O and Ctrl+T still set every item at once.</li>
+<li>A click on a web or mail link opens it, and a click on a file link shows the file in its folder. Other links do not open, so a click never starts a program. See <a href="#links">Links</a>.</li>
+<li>A click in the editor, a list or a dialog moves the cursor or chooses the item.</li>
+<li>Drag the scrollbar’s thumb, or click its track to jump. With “Fullscreen scrollbar” set to <code>auto</code>, pointing at the scrollbar shows it, except inside tmux, Zellij and GNU Screen.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="models-and-sign-in"><a class="header" href="#models-and-sign-in">Models and sign-in</a></h1>
-<p>yapi supports the same providers and models as Pi, from the same built-in catalog.</p>
-<h2 id="api-keys"><a class="header" href="#api-keys">API keys</a></h2>
-<p>yapi reads the same environment variables as Pi. Common ones:</p>
+<h1 id="choose-a-model"><a class="header" href="#choose-a-model">Choose a model</a></h1>
+<p>yapi supports Pi’s providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it.</p>
+<h2 id="sign-in-with-a-subscription"><a class="header" href="#sign-in-with-a-subscription">Sign in with a subscription</a></h2>
+<p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
+<p>“Sign in with Radius” signs in to Pi’s Radius gateway, whose models come from the gateway’s own catalog. Providers registered by extensions can add their own sign-ins. <code>/logout</code> removes a stored credential.</p>
+<h2 id="use-an-api-key"><a class="header" href="#use-an-api-key">Use an API key</a></h2>
+<p>yapi reads the same environment variables as Pi:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -374,141 +494,120 @@ Find why `cargo test` fails and fix it
 </tbody>
 </table>
 </div>
-<p><code>yapi --help</code> lists every provider, including Azure OpenAI, Amazon Bedrock, Cloudflare and Vercel AI Gateway.</p>
-<p>To store a key instead, run <code>/login</code> inside yapi and choose “Sign in with an API key”. yapi saves it to <code>~/.yapi/agent/auth.json</code> in Pi’s format.</p>
-<h2 id="subscriptions-and-accounts"><a class="header" href="#subscriptions-and-accounts">Subscriptions and accounts</a></h2>
-<p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
-<p>“Sign in with Radius” at the top of <code>/login</code> signs in to Pi’s Radius gateway. Its models come from the gateway’s own catalog, which yapi fetches after the sign-in.</p>
-<p>Providers that extensions register can add their own sign-ins to <code>/login</code>. See <a href="#providers-from-extensions">Providers from extensions</a>.</p>
-<p><code>/logout</code> removes a stored credential.</p>
-<h2 id="cloud-providers"><a class="header" href="#cloud-providers">Cloud providers</a></h2>
-<p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials, as in Pi:</p>
+<p><code>yapi --help</code> lists every provider, including Azure OpenAI and Vercel AI Gateway. To save a key instead, run <code>/login</code> and choose “Sign in with an API key”. yapi stores it in <code>~/.yapi/agent/auth.json</code>.</p>
+<h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
+<p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
 <li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region.</li>
-<li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials (<code>GOOGLE_APPLICATION_CREDENTIALS</code> or <code>gcloud auth application-default login</code>) with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
-<li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> with <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
+<li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
+<li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
-<p><code>/login</code> stores these settings in <code>auth.json</code> instead, with Pi’s prompts. With <code>ANTHROPIC_FEDERATION_RULE_ID</code> and the related variables set, Anthropic requests use workload identity federation instead of a key.</p>
-<h2 id="local-models-with-llamacpp"><a class="header" href="#local-models-with-llamacpp">Local models with llama.cpp</a></h2>
-<p>yapi supports the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> router server, as Pi does. Start <code>llama-server</code> without <code>--model</code>, for example:</p>
+<p><code>/login</code> can store these settings in <code>auth.json</code> instead. With <code>ANTHROPIC_FEDERATION_RULE_ID</code> and the related variables set, Anthropic requests use workload identity federation instead of a key.</p>
+<h2 id="run-local-models"><a class="header" href="#run-local-models">Run local models</a></h2>
+<p>yapi supports the <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> router server. Start <code>llama-server</code> without <code>--model</code>:</p>
 <pre><code class="language-sh">llama-server --models-dir ~/models --no-models-autoload --jinja --host 127.0.0.1 --port 8080
 </code></pre>
-<p>Then run <code>/login llama.cpp</code> and enter the server URL (default <code>http://127.0.0.1:8080</code>) and an optional API key, or set <code>LLAMA_BASE_URL</code> and <code>LLAMA_API_KEY</code>. <code>/llama</code> loads and unloads the router’s models and downloads new ones from Hugging Face. Loaded models appear in <code>/model</code>, and every chat model is also listed as a classifier. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md">llama.cpp guide</a> covers the server options and model layout.</p>
-<p>To remove the provider and <code>/llama</code>, disable <code>llama.cpp</code> in <code>yapi config</code>, or add <code>"-builtin:llama.cpp"</code> to the <code>extensions</code> setting.</p>
-<h2 id="model-catalogs"><a class="header" href="#model-catalogs">Model catalogs</a></h2>
-<p>The catalog is built into yapi. Between releases, Pi publishes catalog updates for its providers. yapi fetches them for the providers you have configured: in the background at startup, when the model selector opens, after <code>/login</code>, and with <code>yapi update --models</code>. Fetched catalogs are kept in <code>~/.yapi/agent/models-store.json</code>, so later sessions have them offline. <code>--offline</code> or <code>PI_OFFLINE=1</code> turns fetching off. Providers that extensions register with <code>refreshModels</code> refresh at the same times.</p>
-<h2 id="classifier-and-image-models"><a class="header" href="#classifier-and-image-models">Classifier and image models</a></h2>
-<p>Besides chat models, the catalog lists classifiers, which answer typed questions about JSON data (TypeSafe’s Jev, also through OpenCode, OpenRouter, Vercel AI Gateway and Cloudflare Workers AI, and models loaded in llama.cpp), and image models on OpenRouter. They run from codemode scripts through the <code>models</code> global, and from extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>, with the session’s credentials. See <a href="#codemode">MCP servers and codemode</a>.</p>
-<h2 id="choosing-a-model"><a class="header" href="#choosing-a-model">Choosing a model</a></h2>
+<p>Run <code>/login llama.cpp</code> and enter the server URL and an optional API key, or set <code>LLAMA_BASE_URL</code> and <code>LLAMA_API_KEY</code>. <code>/llama</code> loads and unloads the server’s models and downloads new ones from Hugging Face. Loaded models appear in <code>/model</code>. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md">llama.cpp guide</a> covers the server options.</p>
+<p>To remove the provider and <code>/llama</code>, disable <code>llama.cpp</code> in <code>yapi config</code>.</p>
+<h2 id="select-a-model"><a class="header" href="#select-a-model">Select a model</a></h2>
 <pre><code class="language-sh">yapi --list-models sonnet            # search the catalog
 yapi --model anthropic/claude-sonnet-4-5
 yapi --model sonnet:high             # a pattern with a thinking level
 yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 </code></pre>
 <p>Inside yapi, <code>/model</code> or Ctrl+L opens the model selector, Ctrl+P cycles through models, and Shift+Tab cycles the thinking level.</p>
-<h2 id="custom-providers-and-models"><a class="header" href="#custom-providers-and-models">Custom providers and models</a></h2>
-<p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. The format is Pi’s, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation. Extensions can register providers too, including ones that implement their own wire API. See <a href="#providers-from-extensions">Providers from extensions</a>.</p>
+<h2 id="add-providers-and-models"><a class="header" href="#add-providers-and-models">Add providers and models</a></h2>
+<p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. The format is described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation. Extensions can also <a href="#providers-from-extensions">register providers</a>, including ones with their own wire API.</p>
+<h2 id="catalog-updates"><a class="header" href="#catalog-updates">Catalog updates</a></h2>
+<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches. <code>yapi update --models</code> fetches regardless.</p>
+<h2 id="classifier-and-image-models"><a class="header" href="#classifier-and-image-models">Classifier and image models</a></h2>
+<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>. See <a href="#codemode">Codemode</a>.</p>
 <h2 id="credentials-for-other-tools"><a class="header" href="#credentials-for-other-tools">Credentials for other tools</a></h2>
-<p><code>yapi auth</code> gives scripts a ready credential without starting a session:</p>
+<p><code>yapi auth</code> gives scripts a credential without starting a session:</p>
 <pre><code class="language-sh">yapi auth check --provider anthropic --json
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive mode</a></h1>
-<p>Running <code>yapi</code> with no message starts the interactive terminal interface. The transcript fills the screen, and the editor at the bottom takes your message.</p>
-<h2 id="keys"><a class="header" href="#keys">Keys</a></h2>
-<p>These are the defaults. <code>/hotkeys</code> shows the bindings in effect, and <code>~/.yapi/agent/keybindings.json</code> changes them in Pi’s format.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td>Enter</td><td>Send the message. While yapi works, it steers the current turn.</td></tr>
-<tr><td>Alt+Enter</td><td>Queue a follow-up for when yapi finishes</td></tr>
-<tr><td>Shift+Enter</td><td>Insert a new line</td></tr>
-<tr><td>Escape</td><td>Interrupt the agent. Twice on an empty editor opens the session tree.</td></tr>
-<tr><td>Ctrl+C</td><td>Clear the editor. Twice quits.</td></tr>
-<tr><td>Ctrl+D</td><td>Quit when the editor is empty</td></tr>
-<tr><td>Ctrl+O</td><td>Expand or collapse tool output</td></tr>
-<tr><td>Ctrl+T</td><td>Show or hide thinking</td></tr>
-<tr><td>Ctrl+G</td><td>Write the message in <code>$EDITOR</code></td></tr>
-<tr><td>Ctrl+V</td><td>Paste copied files’ paths (macOS), an image or text from the clipboard. An image is saved to a temporary file, and its path goes in the editor.</td></tr>
-<tr><td>Ctrl+L</td><td>Open the model selector</td></tr>
-<tr><td>Ctrl+P</td><td>Cycle models</td></tr>
-<tr><td>Shift+Tab</td><td>Cycle the thinking level</td></tr>
-<tr><td>Tab</td><td>Complete paths and commands</td></tr>
-<tr><td>Up</td><td>Recall earlier messages</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
-<p>Type <code>/</code> to list commands. The most used ones:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Command</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>/model</code>, <code>/thinking</code></td><td>Switch the model or thinking level</td></tr>
-<tr><td><code>/settings</code></td><td>Change settings such as the theme, auto-compaction or fullscreen mode</td></tr>
-<tr><td><code>/scoped-models</code></td><td>Choose which models Ctrl+P cycles through</td></tr>
-<tr><td><code>/new</code>, <code>/resume</code></td><td>Start a session or open an earlier one</td></tr>
-<tr><td><code>/tree</code></td><td>Browse the session’s branches and jump to an earlier point</td></tr>
-<tr><td><code>/fork</code>, <code>/clone</code></td><td>Branch from an earlier message or duplicate the session</td></tr>
-<tr><td><code>/compact</code></td><td>Summarize older context to free up the context window</td></tr>
-<tr><td><code>/name</code>, <code>/session</code></td><td>Name the session or show its file, tokens and cost</td></tr>
-<tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
-<tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
-<tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
-<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage MCP servers: sign in, reconnect, enable or disable them, and change their exposure</td></tr>
-<tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
-<tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions, which load again from disk</td></tr>
-<tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
-<tr><td><code>/debug</code></td><td>Write the rendered screen, the session’s messages and the last 200 lines of extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Read the file before you attach it to a bug report, because messages and extension output can hold private data.</td></tr>
-<tr><td><code>/quit</code></td><td>Quit yapi</td></tr>
-</tbody>
-</table>
-</div>
-<p>Prompt templates, skills (<code>/skill:name</code>) and extension commands appear in the same list.</p>
-<h2 id="message-shortcuts"><a class="header" href="#message-shortcuts">Message shortcuts</a></h2>
-<ul>
-<li><code>@path</code> attaches a file. Tab completes the path.</li>
-<li><code>!command</code> runs a shell command and adds its output to the conversation.</li>
-<li><code>!!command</code> runs a shell command without adding its output.</li>
-</ul>
-<h2 id="display-modes"><a class="header" href="#display-modes">Display modes</a></h2>
-<p>yapi draws in fullscreen mode by default. Regular mode keeps the transcript in the terminal’s scrollback instead. Switch with <code>/settings</code> or <code>--tui-mode regular</code>.</p>
-<p>In fullscreen mode yapi handles the mouse itself. The wheel scrolls the transcript, five times as far with Alt held. A fast spin scrolls up to six lines per step, except in a local macOS terminal, which speeds up the wheel itself. Set “Fullscreen wheel scrolling” in <code>/settings</code> to a fixed number of lines per step instead. Drag to select text. A double click selects a word, keeping a path or a hyphenated name whole, and a triple click selects a line. Dragging past the top or bottom of the transcript scrolls it. Releasing the button copies the selection and shows “Copied!” at the top right. With “Fullscreen copy on select” off in <code>/settings</code>, the selection stays highlighted until Ctrl+X copies it.</p>
-<p>When the terminal shows <a href="#links">hyperlinks</a>, a click on a web or mail link opens it in the browser or mail app, and a click on a file link shows the file in its folder without opening it. Other links do not open, so a click never starts a program. A click in the editor moves its cursor there. In the completion list, a click chooses an item and the wheel moves the highlight. The lists of <code>/settings</code>, <code>/thinking</code> and their submenus work the same way. A click in a selector’s search field or a dialog’s input moves its cursor. A click on a tool call, a run of thinking, a skill or a compaction or branch summary expands or collapses that one item. Ctrl+O then sets every item to its new state, and Ctrl+T shows or hides all thinking again. Click “Jump to latest message” to scroll to the end. Drag the scrollbar’s thumb, or click its track to jump there. Pointing at the scrollbar shows it when “Fullscreen scrollbar” is <code>auto</code>. Inside tmux, Zellij or GNU Screen the terminal reports the pointer only while a button is held, so pointing does not show it there.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="sessions"><a class="header" href="#sessions">Sessions</a></h1>
-<p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s session format, so Pi and yapi open each other’s sessions.</p>
-<h2 id="continuing-work"><a class="header" href="#continuing-work">Continuing work</a></h2>
-<pre><code class="language-sh">yapi -c                      # continue the last session in this project
+<h1 id="manage-sessions"><a class="header" href="#manage-sessions">Manage sessions</a></h1>
+<p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s, so Pi and yapi open each other’s sessions.</p>
+<h2 id="continue-work"><a class="header" href="#continue-work">Continue work</a></h2>
+<pre><code class="language-sh">yapi -c                      # continue the last session in this folder
 yapi -r                      # pick a session to resume
 yapi --session 3f2a          # open a session by file or id prefix
-yapi --fork 3f2a             # copy an existing session into a new one
+yapi --fork 3f2a             # copy a session into a new one
 yapi --no-session            # do not save this run
 </code></pre>
-<p>Inside yapi, <code>/resume</code> opens the session picker and <code>/new</code> starts a fresh session.</p>
-<h2 id="branches"><a class="header" href="#branches">Branches</a></h2>
-<p>A session is a tree. Going back to an earlier message keeps the abandoned branch, so no work is lost.</p>
+<p>Inside yapi, <code>/resume</code> opens the session picker, <code>/new</code> starts a fresh session and <code>/name</code> names the current one.</p>
+<h2 id="branch-a-session"><a class="header" href="#branch-a-session">Branch a session</a></h2>
+<p>A session is a tree. When you go back to an earlier message, the abandoned branch is kept, so no work is lost.</p>
 <ul>
-<li><code>/tree</code> shows every branch and jumps to any earlier point. Escape twice on an empty editor opens it too.</li>
+<li><code>/tree</code> shows every branch and jumps to any earlier point. By default, pressing Escape twice on an empty editor opens it too. The <code>doubleEscapeAction</code> setting changes this to <code>fork</code> or <code>none</code>.</li>
 <li><code>/fork</code> starts a new session from an earlier message.</li>
 <li><code>/clone</code> duplicates the current session.</li>
 </ul>
-<h2 id="compaction"><a class="header" href="#compaction">Compaction</a></h2>
-<p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens, as Pi does. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
-<h2 id="export"><a class="header" href="#export">Export</a></h2>
-<p><code>/export</code> writes the session to a standalone HTML file, and <code>yapi --export &lt;session&gt;</code> does the same from the command line. <code>/export &lt;path&gt;.jsonl</code> writes a copy of the session file instead.</p>
+<h2 id="compact-context"><a class="header" href="#compact-context">Compact context</a></h2>
+<p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
+<h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
+<p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
 <p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="print-json-and-rpc-modes"><a class="header" href="#print-json-and-rpc-modes">Print, JSON and RPC modes</a></h1>
-<p>yapi runs without its interface for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi unchanged.</p>
+<h1 id="security-model-and-sandboxing"><a class="header" href="#security-model-and-sandboxing">Security model and sandboxing</a></h1>
+<p>yapi reads files, edits them and runs commands on your machine. This page describes what yapi protects, what it leaves to the operating system, and how extensions are isolated.</p>
+<h2 id="security-model"><a class="header" href="#security-model">Security model</a></h2>
+<p>yapi runs with the permissions of the user who starts it. The built-in tools <code>read</code>, <code>bash</code>, <code>edit</code> and <code>write</code> are not sandboxed, and yapi does not ask for approval before each tool call. A command the model runs can read or change any file, and reach any service, that the user can.</p>
+<p>Treat the commands and code the model generates as untrusted. Files, comments and command output that the model reads can steer it through prompt injection. Reviewing the transcript and granting project trust do not create a security boundary.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Component</th><th>Runs as</th><th>Access</th></tr>
+</thead>
+<tbody>
+<tr><td>Built-in tools and <code>!</code> commands</td><td>yapi’s process and its child processes</td><td>Everything the user can access</td></tr>
+<tr><td>Extensions</td><td>WebAssembly instances</td><td>What their grants allow. In v0.1, Pi’s defaults: files, processes, network and environment.</td></tr>
+<tr><td>Processes that extensions start, including subagents</td><td>Child processes, outside the sandbox</td><td>Everything the user can access</td></tr>
+<tr><td>MCP servers over stdio</td><td>Child processes</td><td>Everything the user can access</td></tr>
+<tr><td>MCP servers over HTTP</td><td>Remote services</td><td>What the server allows</td></tr>
+<tr><td>Codemode scripts</td><td>Fresh WebAssembly instances with no grants</td><td>Only the tools they call</td></tr>
+</tbody>
+</table>
+</div>
+<p>For untrusted repositories, unfamiliar packages or unattended runs, isolate yapi at the operating-system level:</p>
+<ul>
+<li>Run yapi in a container or virtual machine that holds only the files the task needs.</li>
+<li>Provide only the credentials the task needs, preferably short-lived and narrowly scoped.</li>
+<li>Restrict network access when the task does not need it.</li>
+<li>Keep important work under version control.</li>
+</ul>
+<h2 id="sandboxing"><a class="header" href="#sandboxing">Sandboxing</a></h2>
+<p>Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from yapi’s own memory. The sandbox limits what extension code can do directly. It does not restrict the built-in tools, child processes or MCP servers.</p>
+<h3 id="instances-and-limits"><a class="header" href="#instances-and-limits">Instances and limits</a></h3>
+<p>An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
+<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.</p>
+<h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
+<p>The host checks every file, process, network and environment access against the extension’s grants. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
+<p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
+<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant.</p>
+<h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
+<p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
+<p>Extensions share Pi’s <code>pi.events</code> bus, so every extension receives the events of every other extension.</p>
+<h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
+<p>Files in a project’s <code>.yapi</code> folder can change how yapi behaves and can run code: <code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, as well as an <code>.agents/skills</code> folder in the project or a parent folder. Until the project is trusted, yapi loads none of them, and no project extension runs.</p>
+<p>The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.</p>
+<ul>
+<li>yapi saves the decision in <code>~/.yapi/agent/trust.json</code>. <code>/trust</code> changes it later.</li>
+<li><code>--approve</code> and <code>--no-approve</code> decide for one run.</li>
+<li><code>"defaultProjectTrust"</code> in global settings set to <code>"always"</code> or <code>"never"</code> decides without asking.</li>
+</ul>
+<p><code>AGENTS.md</code> and <code>CLAUDE.md</code> load whether or not the project is trusted. Treat their contents as untrusted input as well.</p>
+<h3 id="use-the-project-of-another-folder"><a class="header" href="#use-the-project-of-another-folder">Use the project of another folder</a></h3>
+<p><code>--project-dir &lt;dir&gt;</code> takes the project from another folder, as if yapi had started there. yapi loads that folder’s <code>.yapi</code> files and the <code>AGENTS.md</code> or <code>CLAUDE.md</code> of that folder and its parents, and applies trust to that folder, including <code>--approve</code> and <code>--no-approve</code>. The working folder’s own <code>.yapi</code> folder does not load. A relative path is resolved against the working folder.</p>
+<p>Tools, the session and extensions’ <code>ctx.cwd</code> stay in the working folder. A native extension finds the project folder with <a href="#where-the-project-is"><code>project_dir()</code></a>. Subagents use the flag to work in one folder with their parent’s project.</p>
+<h2 id="report-a-vulnerability"><a class="header" href="#report-a-vulnerability">Report a vulnerability</a></h2>
+<p>Report vulnerabilities privately, as <a href="https://github.com/SkymanOne/yapi/blob/main/SECURITY.md">SECURITY.md</a> describes.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="automate-yapi-1"><a class="header" href="#automate-yapi-1">Automate yapi</a></h1>
+<p>yapi runs without its interface for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
 <h2 id="print-mode"><a class="header" href="#print-mode">Print mode</a></h2>
 <p><code>-p</code> sends one message, prints the answer and exits:</p>
 <pre><code class="language-sh">yapi -p "Summarize the open TODOs in src/"
@@ -517,14 +616,13 @@ yapi -p @report.md @chart.png "What does the chart show?"
 </code></pre>
 <p>Piped input becomes part of the first message, and <code>@path</code> attaches files and images.</p>
 <h2 id="json-mode"><a class="header" href="#json-mode">JSON mode</a></h2>
-<p><code>--mode json</code> prints one JSON event per line for the whole run: message updates, tool calls, tool results and the final state. The events are described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/json.md">JSON documentation</a>.</p>
+<p><code>--mode json</code> prints one JSON event per line for the whole run: message updates, tool calls, tool results and the final state. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/json.md">JSON documentation</a> describes the events.</p>
 <pre><code class="language-sh">yapi --mode json -p "List the crates in this workspace"
 </code></pre>
 <h2 id="rpc-mode"><a class="header" href="#rpc-mode">RPC mode</a></h2>
-<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs. The commands are listed in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a>.</p>
+<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a> lists the commands, and Pi’s <code>RpcClient</code> works with yapi.</p>
 <pre><code class="language-sh">yapi --mode rpc --no-session
 </code></pre>
-<p>Pi’s <code>RpcClient</code> example drives yapi in the test suite.</p>
 <h2 id="useful-flags"><a class="header" href="#useful-flags">Useful flags</a></h2>
 <div class="table-wrapper">
 <table>
@@ -536,16 +634,16 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td><code>--model &lt;pattern&gt;</code></td><td>Choose the model</td></tr>
 <tr><td><code>--tools read,grep,find,ls</code></td><td>Allow only these tools, here read-only ones</td></tr>
 <tr><td><code>--no-tools</code></td><td>Disable all tools</td></tr>
-<tr><td><code>-ne</code></td><td>Start without extensions</td></tr>
+<tr><td><code>-ne</code></td><td>Start without extensions, including the built-in MCP and llama.cpp extensions</td></tr>
 <tr><td><code>--offline</code></td><td>Skip startup network work</td></tr>
-<tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="#project-trust">Project trust</a></td></tr>
+<tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="#project-trust">Project trust</a>.</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>yapi --help</code> lists every flag.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>yapi keeps global state in <code>~/.yapi/agent</code> and project state in a <code>.yapi</code> folder. Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
+<h1 id="configure-yapi"><a class="header" href="#configure-yapi">Configure yapi</a></h1>
+<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -553,7 +651,7 @@ yapi -p @report.md @chart.png "What does the chart show?"
 </thead>
 <tbody>
 <tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code></td></tr>
-<tr><td>Project instructions</td><td><code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
+<tr><td>Project instructions</td><td><code>AGENTS.override.md</code>, <code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
 <tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code></td></tr>
 <tr><td>Skills</td><td><code>~/.yapi/agent/skills</code>, <code>~/.agents/skills</code>, <code>.yapi/skills</code> and <code>.agents/skills</code></td></tr>
 <tr><td>Prompt templates</td><td><code>~/.yapi/agent/prompts</code> and <code>.yapi/prompts</code></td></tr>
@@ -562,13 +660,13 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td>Models and providers</td><td><code>~/.yapi/agent/models.json</code></td></tr>
 <tr><td>Credentials</td><td><code>~/.yapi/agent/auth.json</code></td></tr>
 <tr><td>MCP servers</td><td><code>~/.yapi/agent/mcp.json</code> and <code>.yapi/mcp.json</code></td></tr>
-<tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>, installed with yapi</td></tr>
+<tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>. See <a href="#documentation-for-the-model">Install yapi</a>.</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>/settings</code> edits the common settings in place and saves them as Pi does.</p>
+<p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="#project-trust">trust the project</a>.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
-<p>yapi reads <code>AGENTS.md</code> (or <code>CLAUDE.md</code>) from the working folder and each parent folder, and adds them to the system prompt. Use them for build commands, conventions and anything else the agent should know about the project.</p>
+<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. Use them for build commands, conventions and anything else the agent should know about the project.</p>
 <h2 id="skills-and-prompt-templates"><a class="header" href="#skills-and-prompt-templates">Skills and prompt templates</a></h2>
 <p>Skills follow the <a href="https://agentskills.io/specification">Agent Skills specification</a>. Each skill is a folder with a <code>SKILL.md</code> file. yapi lists every skill’s name and description in the system prompt, and the model reads the full instructions when a task calls for them. <code>/skill:name</code> loads one directly.</p>
 <p>Prompt templates are Markdown files that become slash commands. Save this as <code>~/.yapi/agent/prompts/review.md</code>:</p>
@@ -579,105 +677,158 @@ argument-hint: "[focus]"
 Review the staged changes. Focus on ${1:-correctness and error handling}.
 </code></pre>
 <p><code>/review</code> then sends the prompt, and <code>/review concurrency</code> fills in the focus. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/prompt-templates.md">prompt template documentation</a> lists every argument form.</p>
-<h2 id="documentation-for-the-model-1"><a class="header" href="#documentation-for-the-model-1">Documentation for the model</a></h2>
-<p>yapi can explain its own features and look up its docs. When you ask about yapi, the system prompt sends the model to its documentation in <code>~/.yapi/agent/docs</code>: these pages, with Pi’s documentation and examples in <code>pi/</code>. Pi’s pages describe the extension API, themes, skills and the other features yapi shares with Pi, under Pi’s names. <a href="#coming-from-pi">Coming from Pi</a> lists the names that change. Without a local copy, the prompt points to this site and to Pi’s documentation on GitHub. <a href="#documentation-for-the-model">Install</a> shows how each way of installing yapi gets the local copy. The install script’s <code>--no-docs</code> skips the copy, and <code>YAPI_NO_DOCS=1</code> keeps the install script and yapi from downloading it.</p>
-<p>yapi replaces these files when it is upgraded, so keep your own notes elsewhere.</p>
 <h2 id="themes"><a class="header" href="#themes">Themes</a></h2>
-<p>Pick a theme in <code>/settings</code> or with <code>"theme"</code> in settings. <code>--use-theme &lt;name&gt;</code> applies one for a single run. Theme files use Pi’s JSON format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/themes.md">theme documentation</a>.</p>
+<p>Choose a theme in <code>/settings</code> or with <code>"theme"</code> in settings. <code>--use-theme &lt;name&gt;</code> applies one for a single run. Theme files use Pi’s JSON format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/themes.md">theme documentation</a>.</p>
 <h2 id="key-bindings"><a class="header" href="#key-bindings">Key bindings</a></h2>
-<p><code>~/.yapi/agent/keybindings.json</code> changes the keys. The format and every action are in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/keybindings.md">key binding documentation</a>, and <code>/hotkeys</code> shows the bindings in effect.</p>
+<p><code>~/.yapi/agent/keybindings.json</code> changes the keys. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/keybindings.md">key binding documentation</a> lists the format and every action. <code>/hotkeys</code> shows the bindings in effect.</p>
 <h2 id="images"><a class="header" href="#images">Images</a></h2>
-<p>yapi prepares the images in prompts, <code>@path</code> arguments and tool results as Pi does before they reach the model.</p>
+<p>yapi prepares images in prompts, <code>@path</code> arguments and tool results before they reach the model:</p>
 <ul>
 <li>BMP images are converted to PNG.</li>
-<li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MB, or the limits the model sets. A scaled image may be sent as JPEG, and a note gives the model its original size.</li>
-<li>An image in a prompt or a <code>read</code> result that cannot be converted or made to fit is left out, and a note says so.</li>
+<li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.</li>
+<li>An image that cannot be converted or made to fit is left out, with a note that says so.</li>
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>
 <p>Both settings are also in <code>/settings</code>.</p>
 <h2 id="links"><a class="header" href="#links">Links</a></h2>
-<p>In a terminal that shows hyperlinks, yapi writes links as hyperlinks, as Pi does. Markdown links then show only their text, and the paths in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> calls link to their files. In other terminals a Markdown link shows its URL after its text.</p>
-<p>yapi knows the hyperlink support of common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code. Inside tmux it asks tmux whether it passes hyperlinks on. Set <code>"terminal": {"hyperlinks": true}</code> or <code>false</code> in settings to decide yourself. The <code>PI_HYPERLINKS</code> environment variable, <code>1</code> or <code>0</code>, also decides, but the setting wins.</p>
-<h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
-<p>Files in a project’s <code>.yapi</code> folder can change how yapi behaves and can run code. The first time yapi starts in a project that has them, it asks whether to trust the folder.</p>
+<p>In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> calls link to their files. In other terminals, a Markdown link shows its URL after its text.</p>
+<p>yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set <code>"terminal": {"hyperlinks": true}</code> or <code>false</code> to override the detection. The <code>PI_HYPERLINKS</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="use-packages"><a class="header" href="#use-packages">Use packages</a></h1>
+<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder, with no Node.js required.</p>
+<h2 id="install-and-manage-packages"><a class="header" href="#install-and-manage-packages">Install and manage packages</a></h2>
+<pre><code class="language-sh">yapi install npm:@scope/some-pi-package     # from npm
+yapi install git:github.com/user/repo       # from git
+yapi install ./my-package -l                 # a local folder, for this project only
+yapi install ./shout.wasm                    # a single native extension
+yapi list
+yapi update --extensions
+yapi remove npm:@scope/some-pi-package
+</code></pre>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied.</p>
+<p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
+<p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
+<pre><code>User packages:
+  npm:pi-mcp-adapter [npm]
+    /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter
+  /home/you/extensions/shout.wasm [wasm]
+    /home/you/extensions/shout.wasm
+</code></pre>
+<h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
+<p><code>-e</code> loads a package for one run without adding it to settings:</p>
+<pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
+yapi -e git:github.com/user/repo
+</code></pre>
+<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
+<h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project.</p>
+<h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
+<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="#native-extensions-in-rust">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
+<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
+<h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
+<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names.</p>
+<pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
+//npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
+</code></pre>
+<p>Pi’s <code>npmCommand</code> setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.</p>
+<h2 id="planned-features"><a class="header" href="#planned-features">Planned features</a></h2>
+<p>Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the <a href="#roadmap">Roadmap</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="connect-mcp-servers"><a class="header" href="#connect-mcp-servers">Connect MCP servers</a></h1>
+<p>yapi connects to <a href="https://modelcontextprotocol.io">Model Context Protocol</a> servers over stdio and streamable HTTP. Describe them in <code>~/.yapi/agent/mcp.json</code>, or in <code>.yapi/mcp.json</code> for one project:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+    "docs": { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" } }
+  }
+}
+</code></pre>
+<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP documentation</a> describes every option.</p>
+<h2 id="manage-servers"><a class="header" href="#manage-servers">Manage servers</a></h2>
+<p><code>yapi mcp</code> edits the file and checks servers without starting a session:</p>
+<pre><code class="language-sh">yapi mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
+yapi mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
+yapi mcp list                 # state, tools and errors, exits 1 if a server fails
+yapi mcp remove docs
+</code></pre>
+<p>Inside yapi, <code>/mcp</code> opens a manager that lists each server with its state, tool count, exposure and configuration file. Select a server to see its tools, reconnect, sign in or out, change its exposure, or enable or disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server. Outside interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
+<h2 id="sign-in"><a class="header" href="#sign-in">Sign in</a></h2>
+<p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that needs a sign-in shows it in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code>, or run <code>/mcp login &lt;server&gt;</code> inside yapi or <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>logout</code> deletes the stored credentials.</p>
+<p>yapi opens the authorization page in your browser and waits for the redirect. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
+<p>yapi stores credentials in <code>~/.yapi/agent/mcp-auth.json</code>, in Pi’s format, and refreshes access tokens before they expire. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
+<p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>.</p>
+<h2 id="servers-from-extensions"><a class="header" href="#servers-from-extensions">Servers from extensions</a></h2>
+<p>An extension adds a server for the session with <code>pi.registerMcpServer(name, config)</code>, where <code>config</code> takes the same fields as an <code>mcp.json</code> entry, and removes it with <code>pi.unregisterMcpServer(name)</code>. A server of the same name in <code>mcp.json</code> takes precedence. Changes to a registered server in <code>/mcp</code> last for the session only.</p>
+<p>A stdio server needs the extension’s process grant, and an HTTP server its network grant. Every package has both by default. As in Pi, <code>registerMcpServer</code> throws for a name that another extension registered, or one whose tool prefix would clash with it, such as <code>my_docs</code> after <code>my-docs</code>. During loading, the error fails the extension’s load, and the extension that loaded first keeps the name.</p>
+<h2 id="codemode"><a class="header" href="#codemode">Codemode</a></h2>
+<p>By default, yapi offers MCP tools through codemode. Instead of one tool call per step, the model writes a short JavaScript program that calls several tools and combines their results. Programs run in a fresh WebAssembly sandbox with no file, process or network access of their own.</p>
 <ul>
-<li>The answer is saved in <code>~/.yapi/agent/trust.json</code>, and <code>/trust</code> changes it later.</li>
-<li><code>--approve</code> and <code>--no-approve</code> decide for one run.</li>
-<li><code>"defaultProjectTrust": "always"</code> in global settings skips the question.</li>
+<li><code>"exposure": "direct"</code> on a server offers its tools to the model directly.</li>
+<li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
+<li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
 </ul>
-<p><code>AGENTS.md</code> and <code>CLAUDE.md</code> load whether or not the project is trusted.</p>
-<p><code>--project-dir &lt;dir&gt;</code> takes the project from another folder, as if yapi started there. yapi loads that folder’s <code>.yapi</code> files and the <code>AGENTS.md</code> or <code>CLAUDE.md</code> of that folder and its parents, and asks about, stores and applies trust for that folder, <code>--approve</code> and <code>--no-approve</code> included. The working folder’s own <code>.yapi</code> folder does not load. Tools, the session and extensions’ <code>ctx.cwd</code> stay in the working folder, so an extension that reads project files itself reads them there. A native extension finds the project folder with <a href="#where-the-project-is"><code>project_dir()</code></a>. A relative path is relative to the working folder. A subagent can use the flag to work in one folder with its parent’s project.</p>
-<h2 id="security-model"><a class="header" href="#security-model">Security model</a></h2>
-<p>yapi reads and edits files and runs commands as your user, so give it the same trust as any program you run in your shell.</p>
-<ul>
-<li>Extensions run in WebAssembly instances with memory and compute limits. In v0.1 every package gets Pi’s default grants, which allow file, process, network and environment access, so an extension can do what it could do in Pi. Packages that declare the grants they need, and run with only those, are <a href="#planned-manifests-and-registry">planned</a>.</li>
-<li>The process grant implies the other three. A process an extension starts runs as your user, outside the sandbox: it reads any file you can, reaches the network and inherits yapi’s environment, API keys included. A subagent is such a process, a full yapi with your installed packages. Codemode and any instance without the process grant cannot start one.</li>
-<li>yapi never runs agent sessions inside an extension’s instance. A session there would run its tools and use its credentials in yapi’s own process, outside the extension’s grants.</li>
-<li>MCP servers started over stdio run as normal processes with your permissions. An extension registers a stdio server only with the process grant, and an HTTP server only with the network grant.</li>
-<li>Codemode scripts run in a fresh instance with no file, process or network access. They act only through the tools they call.</li>
-<li>Extensions talk to each other over Pi’s <code>pi.events</code> bus, which yapi carries between instances, so every extension hears every other’s events, as in Pi. With declared grants, the bus will stay within packages of the same grants unless your settings allow more, as <a href="#planned-manifests-and-registry">planned</a>.</li>
-<li>Project trust gates project-local resources. yapi loads nothing from a project’s <code>.yapi</code> folder or <code>.agents/skills</code> until you trust the project.</li>
-<li>Files and tool output that the model reads can steer it. Work in repositories you trust, or run yapi in a container or virtual machine.</li>
-</ul>
-<p>Report vulnerabilities privately, as <a href="https://github.com/SkymanOne/yapi/blob/main/SECURITY.md">SECURITY.md</a> describes.</p>
+<p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
+<p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="extensions"><a class="header" href="#extensions">Extensions</a></h1>
-<p>yapi runs two kinds of extensions on one WebAssembly host:</p>
+<p>Extensions add tools, commands, flags, event handlers and interface components. yapi runs two types on one WebAssembly host:</p>
 <ul>
-<li>Pi extensions, written in TypeScript or JavaScript, run unmodified.</li>
-<li>Native extensions, written in Rust and compiled to WebAssembly components. See <a href="#native-extensions-in-rust">Native extensions in Rust</a>.</li>
+<li>Pi extensions, written in TypeScript or JavaScript and usually distributed through npm, run unchanged.</li>
+<li><a href="#native-extensions-in-rust">Native extensions</a> are written in Rust and compiled to WebAssembly components.</li>
 </ul>
-<p>Both kinds load from the same places, ship in the same <a href="#packages">packages</a> and register tools, commands, flags and event handlers through the same model.</p>
-<p>Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests they use may change in any release before then, and extensions may need to be rebuilt. Pi extensions from npm use Pi’s extension API and are not affected.</p>
-<h2 id="compatibility-with-pi-extensions"><a class="header" href="#compatibility-with-pi-extensions">Compatibility with Pi extensions</a></h2>
-<p>yapi runs extensions written for <code>@earendil-works/pi-coding-agent</code> 1.0, including ones that import the older <code>@mariozechner/*</code> package names. Compatibility is measured against Pi itself, with both programs loading the same code:</p>
+<p>Both types load from the same places, ship in the same <a href="#use-packages">packages</a> and use the same events and interface model.</p>
+<h2 id="choose-an-extension-type"><a class="header" href="#choose-an-extension-type">Choose an extension type</a></h2>
+<p>The two types differ in runtime, isolation and portability:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Test</th><th>Result</th></tr>
+<tr><th></th><th>Pi extension</th><th>Native extension</th></tr>
 </thead>
 <tbody>
-<tr><td>Pi’s example extensions</td><td>79 of 79 register the same tools (with schemas), commands, flags, shortcuts and event handlers as in Pi, and fail with Pi’s messages where Pi fails</td></tr>
-<tr><td>The 500 most-downloaded Pi packages on npm</td><td>418 of 500 work without errors</td></tr>
-<tr><td>Extension UI</td><td>Dialogs, widgets, footers, overlays, custom components and tool renderers match Pi’s screens row for row at 80×24 and 120×40 in the recorded scenarios, except for the <a href="#extensions-1">listed differences</a></td></tr>
+<tr><td>Language</td><td>TypeScript or JavaScript</td><td>Rust</td></tr>
+<tr><td>Runs in</td><td>Pi and yapi</td><td>yapi only</td></tr>
+<tr><td>Runtime</td><td>QuickJS-NG, a JavaScript interpreter without a JIT compiler, compiled to WebAssembly</td><td>Machine code that Wasmtime compiles from the extension’s WebAssembly</td></tr>
+<tr><td>Instance</td><td>One instance shared by all Pi extensions</td><td>An instance of its own</td></tr>
+<tr><td>Memory</td><td>1 GiB for all Pi extensions together</td><td>1 GiB for this extension alone</td></tr>
+<tr><td>Compute</td><td>60 seconds per call. While one Pi extension computes, the others wait.</td><td>60 seconds per call, without blocking other extensions</td></tr>
+<tr><td>After a crash</td><td>The shared instance restarts and every Pi extension reloads</td><td>Only this extension restarts</td></tr>
+<tr><td>API</td><td>Pi’s <code>ExtensionAPI</code> from Pi 1.0, with the exceptions in <a href="#extensions-1">Differences from Pi</a></td><td>yapi’s Rust SDK, unstable until yapi 1.0</td></tr>
+<tr><td>Dependencies</td><td>npm packages in plain JavaScript</td><td>Rust crates that build for <code>wasm32-wasip2</code></td></tr>
+<tr><td>Build</td><td>None. yapi strips TypeScript types on load and caches the result.</td><td><code>cargo build</code> for <code>wasm32-wasip2</code>. Packages ship the built <code>.wasm</code> file.</td></tr>
+<tr><td>Size</td><td>Source files and their npm dependencies</td><td>One <code>.wasm</code> file, about 210 KB without the widgets feature</td></tr>
 </tbody>
 </table>
 </div>
-<p>A package works without errors when its extensions load in yapi without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 have no extensions and provide only skills, prompts or themes.</p>
-<p>47 of the other 82 fail in Pi too, with the same error. Most of the remaining 35 need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless">dev/status.md</a> describes how the packages were chosen and lists each difference.</p>
-<p>The checks live in <code>crates/yapi-ext/tests/examples.rs</code> and <code>cargo xtask package-registrations</code>.</p>
-<h2 id="how-pi-extensions-run"><a class="header" href="#how-pi-extensions-run">How Pi extensions run</a></h2>
-<p>yapi does not need Node.js. TypeScript and JavaScript extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to a WebAssembly component.</p>
+<p>Pi extensions are the better choice when:</p>
 <ul>
-<li>yapi resolves modules as Node does and strips TypeScript types on the host, with a cache keyed by file content.</li>
-<li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi.</li>
-<li>Shims provide Node’s <code>fs</code> with file descriptors and file streams, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>.</li>
-<li><code>fetch</code> resolves when the response headers arrive, and the body streams as it arrives, as in Node. yapi holds only a few chunks of a body the extension has not read yet. Aborting, cancelling or dropping a response closes it.</li>
-<li>Custom TUI components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
-<li>An editor installed with <code>ctx.ui.setEditorComponent</code> replaces yapi’s editor in the same way. It receives every key, and an editor that extends <code>CustomEditor</code> triggers yapi’s key bindings, submits prompts and runs extension shortcuts as Pi’s does.</li>
-<li>In fullscreen mode, custom components, overlays, widgets, footers and editors from extensions get presses, clicks and the wheel through <code>handleMouse</code>, at their own coordinates as in Pi. A click carries Pi’s <code>clickCount</code>. yapi keeps drawing while they answer, and handles an event none of them takes as Pi does. So, as in Pi, a component that does not take presses misses the second click of a double click on a word, which selects the word instead.</li>
-<li>Listeners added with <code>ctx.ui.onTerminalInput</code> see raw input before yapi handles it and may consume or replace it. They run in the runtime too, so keys wait behind them while yapi keeps drawing. pi-tui’s <code>tui.focusedComponent</code> tells them whether the prompt editor has the keyboard, as in Pi. It is an <code>Editor</code> while the prompt editor or an extension’s editor has it, and another object while a selector, a dialog or a custom component has it.</li>
-<li>Providers added with <code>ctx.ui.addAutocompleteProvider</code> wrap yapi’s built-in completions, as in Pi. yapi asks them in the background, as it does for <code>@</code> file search.</li>
-<li>Components match keys against the user’s <code>keybindings.json</code>.</li>
-<li><code>pi.events</code> reaches every extension, native ones and those in other runtime instances included. Listeners in the emitting extension’s instance run during <code>emit</code>, as in Pi, and the others right after it returns, with a JSON copy of the data.</li>
-<li>Commands change the session with <code>ctx.newSession</code>, <code>ctx.fork</code>, <code>ctx.navigateTree</code>, <code>ctx.switchSession</code> and <code>ctx.reload</code> in every mode, as in Pi. <code>setup</code> and <code>withSession</code> run on the replacement, and a <code>pi</code> or <code>ctx</code> captured before the change throws once the session is replaced. <code>setup</code> runs after the new session’s <code>session_start</code>, as <a href="#open-gaps">Differences from Pi</a> notes.</li>
-<li><code>ctx.ui.setTheme</code> switches to a theme by name and saves it, as <code>/settings</code> does. Given a <code>Theme</code> object, from <code>ctx.ui.getTheme</code> or Pi’s <code>Theme</code> constructor, it switches for this run without saving. yapi checks the object’s colors first and returns an error when a color is missing or invalid.</li>
+<li>the extension should also run in Pi, or already exists as a Pi package</li>
+<li>it needs parts of Pi’s API that the native SDK does not cover yet: providers, MCP servers, model classification and image generation, and session actions such as <code>ctx.newSession</code> and <code>ctx.fork</code></li>
+<li>it builds on npm libraries, or benefits from editing without a build step</li>
 </ul>
-<p>Some Node features have no counterpart in the runtime. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working. <a href="#differences-from-pi">Differences from Pi</a> lists the details.</p>
-<h2 id="sandboxing"><a class="header" href="#sandboxing">Sandboxing</a></h2>
-<p>Each extension instance runs with a memory limit and a compute limit. yapi checks every file, process, network and environment access against the extension’s grants. Every package receives Pi’s defaults for now, which allow all four, so extensions behave as they do in Pi. Per-package restrictions in settings are planned. The <a href="#security-model">security model</a> covers the rest of yapi.</p>
-<p>Packages with full grants share one runtime instance. Each native extension gets an instance of its own. A crashed instance restarts and its extensions reload. yapi reports the crash as an extension error and removes what the instance showed. Its dialogs close, its widgets go away, and the built-in editor, footer and header return. Tool calls and messages it drew in the transcript keep their rows and ask the restarted instance to draw them again.</p>
-<h2 id="loading-extensions"><a class="header" href="#loading-extensions">Loading extensions</a></h2>
+<p>Native extensions are the better choice when:</p>
+<ul>
+<li>the extension does heavy computation, which compiled code runs much faster than an interpreter</li>
+<li>it should be isolated from other extensions. A native extension’s crash does not reload the others, and its instance is the unit that <a href="#capability-based-sandboxing">per-package grants</a> will apply to.</li>
+<li>memory matters. Native extensions do not load the JavaScript runtime. In the <a href="#results">benchmark</a>, ten small Pi extensions raise idle memory on Linux from 18.8 MB to 40.0 MB.</li>
+<li>the code base is in Rust, or should use Rust crates</li>
+</ul>
+<p>Weigh these limits as well:</p>
+<ul>
+<li>A Pi extension that needs Node features the runtime lacks, such as native addons, <code>net</code> and <code>tls</code> servers or <code>worker_threads</code>, cannot run in yapi. <a href="#extensions-1">Differences from Pi</a> lists them.</li>
+<li>A native extension needs the Rust toolchain to build, and may need to be rebuilt for a new yapi release until 1.0.</li>
+<li>One package can ship both types. A <code>yapi</code> key in <code>package.json</code> names the native build for yapi, and the <code>pi</code> key names the JavaScript build for Pi. See <a href="#package-manifests">Package manifests</a>.</li>
+</ul>
+<h2 id="load-extensions"><a class="header" href="#load-extensions">Load extensions</a></h2>
 <p>yapi loads extensions from:</p>
 <ul>
 <li><code>~/.yapi/agent/extensions</code>, and <code>.yapi/extensions</code> in a trusted project</li>
 <li>packages and files added with <code>yapi install</code>, which accepts npm and git sources, local folders and single <code>.ts</code>, <code>.js</code> or <code>.wasm</code> files</li>
-<li><code>-e &lt;source&gt;</code> for one run, which accepts a file, a package folder, or an npm or git source that yapi installs without adding it to settings</li>
+<li><code>-e &lt;source&gt;</code> for one run, which accepts a file, a package folder, or an npm or git source</li>
 </ul>
-<p><code>yapi -ne</code> starts without extensions.</p>
-<p><code>/reload</code> loads the extensions again from disk, as Pi does. Edited files, new and removed files and rebuilt native extensions take effect, and packages added to settings are installed.</p>
-<p>A new, resumed, forked or cloned session finds new and removed extension files and installs packages added to settings as well. It keeps the extensions it already imported, so edits to them wait for <code>/reload</code>, as in Pi. A session in another working directory imports every extension again.</p>
-<h2 id="writing-a-pi-extension"><a class="header" href="#writing-a-pi-extension">Writing a Pi extension</a></h2>
+<p><code>yapi -ne</code> starts without extensions, and <code>yapi config</code> turns single extensions off.</p>
+<p><code>/reload</code> loads every extension again from disk, so edits and rebuilt native extensions take effect. A new, resumed, forked or cloned session picks up added and removed extension files and installs packages added to settings, but keeps the extensions it already loaded until <code>/reload</code>. A session in another working folder loads every extension again.</p>
+<h2 id="write-a-pi-extension"><a class="header" href="#write-a-pi-extension">Write a Pi extension</a></h2>
 <p>Extensions use Pi’s API. Save this as <code>~/.yapi/agent/extensions/hello.ts</code>:</p>
 <pre><code class="language-typescript">import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -691,19 +842,47 @@ export default function (pi: ExtensionAPI) {
 }
 </code></pre>
 <p>Start yapi and run <code>/hello Ada</code>. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/extensions.md">extension documentation</a> covers tools, events, UI components and the rest of the API.</p>
+<h2 id="compatibility-with-pi"><a class="header" href="#compatibility-with-pi">Compatibility with Pi</a></h2>
+<p>yapi runs extensions written for <code>@earendil-works/pi-coding-agent</code> 1.0, including ones that import the older <code>@mariozechner/*</code> package names. It is tested against Pi, with both programs loading the same code:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Test</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td>Pi’s example extensions</td><td>79 of 79 register the same tools, commands, flags, shortcuts and event handlers as in Pi, and fail with Pi’s messages where Pi fails</td></tr>
+<tr><td>The 500 most-downloaded Pi packages on npm</td><td>418 of 500 work without errors</td></tr>
+<tr><td>Extension UI</td><td>Dialogs, widgets, footers, overlays, custom components and tool renderers match Pi’s screens row for row at 80×24 and 120×40 in the recorded scenarios, except for the <a href="#extensions-1">listed differences</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless">dev/status.md</a> lists each one.</p>
+<h2 id="how-pi-extensions-run"><a class="header" href="#how-pi-extensions-run">How Pi extensions run</a></h2>
+<p>Pi extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.</p>
+<ul>
+<li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi.</li>
+<li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
+<li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
+<li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
+</ul>
+<p><a href="#extensions-1">Differences from Pi</a> lists where the behavior differs.</p>
+<h2 id="crashes"><a class="header" href="#crashes">Crashes</a></h2>
+<p><a href="#sandboxing">Security model and sandboxing</a> describes the limits of each instance and what extensions may access. A crashed instance restarts and its extensions reload. yapi reports the crash as an extension error, closes the instance’s dialogs and widgets, and restores the built-in editor, footer and header. Tool calls and messages it drew stay in the transcript and are drawn again by the restarted instance.</p>
 <h2 id="providers-from-extensions"><a class="header" href="#providers-from-extensions">Providers from extensions</a></h2>
-<p><code>pi.registerProvider()</code> adds a provider and its models, as in Pi. Its models appear in <code>/model</code>, and <code>--model</code> and RPC’s <code>set_model</code> select them like any other.</p>
-<p>A provider configured like a <code>models.json</code> entry streams through yapi’s implementation of its <code>api</code>. A provider with its own <code>streamSimple</code> implements an API yapi does not have: yapi sends it each request with the session’s credentials and shows its events as they arrive. A stream registered with pi-ai’s <code>registerApiProvider</code> for an API yapi does not have serves every model of that API, including ones from <code>models.json</code>. A <code>streamSimple</code> can hand a request to pi-ai’s implementation of a built-in API, such as <code>anthropicMessagesApi()</code>, which runs on yapi’s provider for that API. The <code>onPayload</code>, <code>onResponse</code> and <code>onProviderStreamEvent</code> options a stream receives run the session’s <code>before_provider_request</code>, <code>after_provider_response</code> and <code>provider_stream_event</code> handlers, also when the stream passes them on to a built-in API.</p>
-<p>A provider with <code>oauth</code> adds its sign-in to <code>/login</code>. yapi stores the credentials it returns in <code>auth.json</code> as Pi does, refreshes them with its <code>refreshToken</code> before they expire, and asks its <code>getApiKey</code> for the key of each request. A provider with a sign-in and no <code>apiKey</code> offers no API key login, as in Pi.</p>
-<p>A provider with <code>refreshModels</code> gets its model list from the extension whenever yapi refreshes model catalogs, first offline and then with its credential when the network is allowed. The list it returns replaces the registered models. A catalog it saves with <code>context.publish({ persist })</code> is kept in <code>models-store.json</code>, and later sessions receive it as <code>context.stored</code>.</p>
+<p><code>pi.registerProvider()</code> adds a provider and its models. They appear in <code>/model</code> and work with <code>--model</code> and RPC’s <code>set_model</code>.</p>
+<ul>
+<li>A provider configured like a <code>models.json</code> entry streams through yapi’s implementation of its <code>api</code>.</li>
+<li>A provider with its own <code>streamSimple</code> can implement an API yapi does not have, or hand requests to pi-ai’s built-in APIs, such as <code>anthropicMessagesApi()</code>. A stream registered with pi-ai’s <code>registerApiProvider</code> serves every model of its API, including ones from <code>models.json</code>. Provider hooks such as <code>before_provider_request</code> run either way.</li>
+<li>A provider with <code>oauth</code> adds its sign-in to <code>/login</code>. yapi stores its credentials in <code>auth.json</code> and refreshes them before they expire.</li>
+<li>A provider with <code>refreshModels</code> updates its model list whenever yapi refreshes model catalogs.</li>
+</ul>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider documentation</a> describes the configuration.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="native-extensions-in-rust"><a class="header" href="#native-extensions-in-rust">Native extensions in Rust</a></h1>
-<p>Native extensions are WebAssembly components written in Rust with the <code>yapi-extension-api</code> crate. They register tools, commands, flags and event handlers like Pi extensions, and use Pi’s JSON shapes for events and results.</p>
-<p>Native extensions can also draw their own interface with components, as Pi extensions do with pi-tui. A native extension needs no JavaScript runtime and runs in a WebAssembly instance of its own. A built extension is one <code>.wasm</code> file of a few hundred kilobytes.</p>
-<p>Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests they use may change in any release before then, and extensions may need to be rebuilt. Pi extensions from npm use Pi’s extension API and are not affected.</p>
+<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of a few hundred kilobytes.</p>
+<p>The native extension API is unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests may change in any release before then, and extensions may need to be rebuilt. Pi extensions are not affected.</p>
 <h2 id="create-an-extension"><a class="header" href="#create-an-extension">Create an extension</a></h2>
-<p>Add the <code>wasm32-wasip2</code> target to your toolchain once:</p>
+<p>The SDK needs Rust 1.88 or newer, or 1.91 with the <code>widgets</code> feature. Add the <code>wasm32-wasip2</code> target to your Rust toolchain:</p>
 <pre><code class="language-sh">rustup target add wasm32-wasip2
 </code></pre>
 <p>Create a project:</p>
@@ -712,20 +891,21 @@ export default function (pi: ExtensionAPI) {
 <p><code>yapi new</code> writes a Cargo project that is also a yapi package:</p>
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api at tag v0.1.0
+├── .gitignore
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.1.0
 ├── README.md
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
-<p>The package takes the directory’s name, and <code>--name</code> sets another. The name has lowercase ASCII letters, digits, <code>-</code> and <code>_</code> and starts with a letter, so both Cargo and npm accept it. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>, which also asks for the name:</p>
+<p>The package takes the directory’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
 <pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.1.0 crates/yapi/templates/extension
 </code></pre>
-<p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK at the yapi release you target:</p>
+<p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "v0.1.0" }
+yapi-extension-api = "0.1.0"
 </code></pre>
-<p>An extension registers what it offers in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
+<p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>// src/lib.rs
@@ -754,17 +934,17 @@ fn init(api: &amp;mut Api) {
 
 yapi_extension_api::extension!(init);
 <span class="boring">}</span></code></pre>
-<p>Build it, and copy the build into the package:</p>
+<p>Build it and copy the result into the package:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 </code></pre>
 <p>A crate without the template’s <code>.cargo/config.toml</code> builds with <code>cargo build --release --target wasm32-wasip2</code>.</p>
 <h2 id="try-it"><a class="header" href="#try-it">Try it</a></h2>
-<p>Load the package for a single run without installing it:</p>
+<p>Load the package for one run without installing it:</p>
 <pre><code class="language-sh">yapi -e .
 </code></pre>
 <p><code>-e</code> also takes the <code>.wasm</code> file itself.</p>
-<p>To check that the package loads without a model or the network, run <a href="https://github.com/SkymanOne/yapi/blob/main/skills/yapi-extension/scripts/check-extension.py"><code>check-extension.py</code></a> from the <a href="#agent-skills">agent skills</a>. It prints the commands the extensions registered and every load error, and exits with 1 on an error:</p>
+<p>To check that the package loads without a model or network access, run <a href="https://github.com/SkymanOne/yapi/blob/main/skills/yapi-extension/scripts/check-extension.py"><code>check-extension.py</code></a> from the <a href="#agent-skills">agent skills</a>. It prints the registered commands and any load errors, and exits with status 1 on an error:</p>
 <pre><code class="language-sh">python3 check-extension.py .
 </code></pre>
 <h2 id="install-it"><a class="header" href="#install-it">Install it</a></h2>
@@ -772,13 +952,13 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 <pre><code class="language-sh">yapi install .       # for every project
 yapi install . -l    # for this project only
 </code></pre>
-<p>yapi records the path in <code>settings.json</code> and loads the file from where it is, so a rebuild takes effect the next time yapi starts. <code>yapi list</code> shows the installed extension and <code>yapi remove &lt;path&gt;</code> uninstalls it. <code>yapi config</code> turns it off without removing it.</p>
+<p>yapi records the path in <code>settings.json</code> and loads the file in place, so a rebuild takes effect after <code>/reload</code> or a restart. <code>yapi list</code> shows the extension, <code>yapi remove &lt;path&gt;</code> uninstalls it and <code>yapi config</code> turns it off.</p>
 <h2 id="share-it"><a class="header" href="#share-it">Share it</a></h2>
-<p>A native extension is shared as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> already is one: commit <code>extensions/shout.wasm</code> with the sources, push the repository, and others install it by its URL:</p>
+<p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/you/shout
 </code></pre>
-<p>To publish on npm, run <code>npm publish</code>, then install with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
-<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in a package’s <code>extensions</code> folder. A manifest names the files, and yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
+<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
+<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
 <pre><code class="language-json">{
   "name": "shout",
   "version": "0.1.0",
@@ -786,7 +966,7 @@ yapi install . -l    # for this project only
   "yapi": { "extensions": ["./dist/shout.wasm"] }
 }
 </code></pre>
-<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi installs prebuilt files and never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox. For the same reason yapi skips npm lifecycle scripts.</p>
+<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox.</p>
 <h2 id="api"><a class="header" href="#api">API</a></h2>
 <div class="table-wrapper">
 <table>
@@ -820,7 +1000,7 @@ yapi install . -l    # for this project only
 </tbody>
 </table>
 </div>
-<p><a href="#native-extension-examples">Native extension examples</a> walks through seventeen complete extensions, from a minimal starting point to a modal editor, a question tool with its own rendering and a select list.</p>
+<p><a href="#native-extension-examples">Native extension examples</a> walks through seventeen complete extensions.</p>
 <h3 id="host-requests"><a class="header" href="#host-requests">Host requests</a></h3>
 <p><code>request(kind, payload)</code> sends a request to yapi and returns its JSON answer. yapi supports these kinds for native extensions:</p>
 <div class="table-wrapper">
@@ -893,9 +1073,9 @@ fn init(api: &amp;mut Api) {
     });
 }
 <span class="boring">}</span></code></pre>
-<p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. yapi then delivers the event to the handlers of every other extension, after <code>emit</code> has returned. The data reaches them as a JSON copy. Events from one extension arrive in the order it emitted them.</p>
-<p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again, as Pi drops the handlers of a session’s extensions when the session is replaced.</p>
-<p>A runtime that is busy, such as one computing in a handler, holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
+<p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. Other extensions receive a JSON copy of the data after <code>emit</code> returns, in the order the extension emitted it.</p>
+<p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again.</p>
+<p>A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
 <h2 id="interface-components"><a class="header" href="#interface-components">Interface components</a></h2>
 <p>A component implements the <code>Component</code> trait. <code>render</code> returns the lines to show at a width, as text with ANSI escape sequences. The optional <code>handle_input</code> receives raw terminal input while the component has focus, and <code>handle_mouse</code> receives mouse events in fullscreen mode and returns whether it took them.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -942,10 +1122,10 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 </table>
 </div>
 <p>yapi renders a component after each key or mouse event it handles, and paints the lines it rendered last in the meantime, so the interface never waits for the extension. A component that changes on its own, from a timer or a background task, calls <code>request_render</code> afterwards. yapi cuts lines wider than the width.</p>
-<p><code>theme()</code> returns the session’s theme. <code>Theme::fg</code> and <code>Theme::bg</code> color text with a token such as <code>accent</code>, <code>muted</code> or <code>success</code>, and <code>bold</code>, <code>italic</code>, <code>underline</code>, <code>strikethrough</code> and <code>inverse</code> style it. Text stays plain without a theme, as in print mode, and for a token the theme does not have.</p>
+<p><code>theme()</code> returns the session’s theme. <code>Theme::fg</code> and <code>Theme::bg</code> color text with a token such as <code>accent</code>, <code>muted</code> or <code>success</code>, and <code>bold</code>, <code>italic</code>, <code>underline</code>, <code>strikethrough</code> and <code>inverse</code> style it. Text stays plain without a theme, such as in print mode, and for tokens the theme lacks.</p>
 <p><code>terminal_size()</code> returns the terminal’s columns and rows, as Pi’s <code>tui.terminal.columns</code> and <code>tui.terminal.rows</code> give them, and follows resizes. It returns <code>None</code> without a terminal, as in print, JSON and RPC modes.</p>
 <p><code>editor_focused()</code> tells whether the prompt editor, or an editor component in its place, has the keyboard, as Pi’s <code>tui.focusedComponent</code> does. It is <code>false</code> while a selector, a dialog or a component shown with <code>custom</code> has it. A terminal input listener that takes keys from an empty prompt checks it first, so dialogs still get those keys. It returns <code>true</code> without a terminal.</p>
-<p><code>parse_key</code> names the keys components most often handle, such as <code>up</code>, <code>enter</code>, <code>escape</code> and <code>ctrl+c</code>. yapi turns on the Kitty keyboard protocol where the terminal supports it, which encodes Escape and keys with Ctrl differently, and <code>parse_key</code> reads both encodings. Compare keys through it rather than with raw bytes such as <code>"\x1b"</code>.</p>
+<p><code>parse_key</code> names common keys, such as <code>up</code>, <code>enter</code>, <code>escape</code> and <code>ctrl+c</code>. It reads both legacy and Kitty keyboard protocol encodings, which differ for Escape and Ctrl keys, so compare keys through it rather than with raw bytes such as <code>"\x1b"</code>.</p>
 <p>Only the interactive mode shows components. In RPC, print and JSON modes, <code>custom</code> resolves to <code>None</code> at once, and component widgets, footers and headers are left out. When the extension loads again for another session, yapi drops every component it showed.</p>
 <p><code>CustomOptions::on_handle</code> receives the shown component’s <code>OverlayHandle</code>, Pi’s <code>onHandle</code>. <code>hide</code> closes the component without finishing it, so prefer <code>Done::finish</code>. <code>set_hidden</code>, <code>focus</code> and <code>unfocus</code> only change what <code>is_hidden</code> and <code>is_focused</code> report, as for Pi extensions in yapi, and the overlay stays on screen. An overlay without <code>overlay_options</code> takes the width its component’s <code>Component::width</code> returns, as Pi does with a component’s <code>width</code>.</p>
 <h3 id="replacing-the-editor"><a class="header" href="#replacing-the-editor">Replacing the editor</a></h3>
@@ -955,12 +1135,12 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <p><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result in the transcript, as Pi’s <code>renderCall</code> and <code>renderResult</code> do, and <code>Tool::render_shell("self")</code> says they draw the tool’s whole box. <code>Api::register_message_renderer</code> draws custom messages of one type, as Pi’s <code>registerMessageRenderer</code> does. A renderer returns a component, or <code>None</code> to keep yapi’s own rendering.</p>
 <p>A tool renderer gets a <code>RenderContext</code>, with Pi’s context fields such as <code>toolCallId</code>, <code>expanded</code> and <code>isPartial</code> in <code>data</code>, and a <code>state</code> value that the call’s and the result’s renderers share for one tool call. Pi’s <code>lastComponent</code> has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one’s place, and yapi shows the old one’s lines until the new one has rendered.</p>
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
-<p>The <code>widgets</code> feature adds yapi’s own ports of pi-tui’s widgets, the ones yapi’s interface uses. They match pi-tui’s output, as tests against pi-tui check. Turn it on where the extension depends on the SDK, at a release that has the feature:</p>
+<p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "&lt;release&gt;", features = ["widgets"] }
+yapi-extension-api = { version = "0.1.0", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds them, such as <code>select_list::SelectList</code>, <code>editor::Editor</code>, <code>text_input::TextInput</code>, <code>settings_list::SettingsList</code>, and the <code>Text</code>, <code>Box</code> and border layouts in <code>lines</code>. They render styled lines, and <code>widgets::to_ansi</code> turns those into a component’s lines, with pi-tui’s cursor marker where a cursor belongs. <code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style for the widgets’ themes, and <code>widgets::keybindings</code> the key bindings their <code>handle_input</code> takes. The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</p>
-<p>The widgets add 100 to 300 KB to an extension that uses them. A built extension without the feature stays near 170 KB.</p>
+<p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does. It sees each key before the editor and everything else, in the order listeners were added, and returns <code>TerminalInput::Pass</code> to let the key through, <code>Consume</code> to stop it, or <code>Replace(data)</code> to hand on <code>data</code> in its place, as Pi’s <code>undefined</code>, <code>{consume: true}</code> and <code>{data}</code>. The listener stops when the returned <code>Subscription</code> is dropped or <code>unsubscribe</code> is called, so keep it for as long as the listener should run. <code>editor_text()</code> returns the editor’s text, as Pi’s <code>ctx.ui.getEditorText</code> does, so a listener can take keys only while the editor is empty:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1005,38 +1185,10 @@ impl AutocompleteProvider for Tickets {
 ctx.add_autocomplete_provider(Tickets);
 <span class="boring">}</span></code></pre>
 <p>As for Pi extensions in yapi, listeners run while yapi keeps drawing, so keys that arrive together pass through them together, and yapi asks providers for suggestions in the background and applies each suggestion as it asks. Each native extension runs in an instance of its own, and the listeners of every instance see input. Completion goes through the providers of one instance, the one that added a provider last. Only the interactive mode runs listeners and providers.</p>
-<h3 id="host-requests-for-components"><a class="header" href="#host-requests-for-components">Host requests for components</a></h3>
-<p>The methods send these host requests. The handles in them name components the SDK keeps, so use the methods rather than sending the requests yourself:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Kind</th><th>Payload</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>ui.setWidget</code></td><td><code>{"key", "lines", "options": {"placement"}}</code>, or <code>handle</code> in place of <code>lines</code></td><td>Shows the lines or the component as widget <code>key</code>, or removes it when both are left out</td></tr>
-<tr><td><code>ui.setFooter</code>, <code>ui.setHeader</code></td><td><code>{"handle"}</code></td><td>Shows the component, or the built-in one when <code>handle</code> is <code>null</code></td></tr>
-<tr><td><code>ui.custom</code></td><td><code>{"handle", "overlay", "overlayOptions"}</code></td><td>Shows the component with keyboard focus</td></tr>
-<tr><td><code>ui.close</code></td><td><code>{"handle"}</code></td><td>Closes the component <code>ui.custom</code> showed</td></tr>
-<tr><td><code>ui.requestRender</code></td><td><code>{}</code></td><td>Renders the components again</td></tr>
-<tr><td><code>ui.theme</code></td><td><code>{}</code></td><td>The theme, as <code>{"name", "mode", "fg", "bg", "dim", "colors"}</code>, where <code>fg</code> and <code>bg</code> hold each token’s escape sequence</td></tr>
-<tr><td><code>ui.terminalSize</code></td><td><code>{}</code></td><td>The terminal’s size and whether the prompt editor has the keyboard, as <code>{"columns", "rows", "editorFocused"}</code>, or <code>null</code> without a terminal</td></tr>
-<tr><td><code>ui.setEditor</code></td><td><code>{"handle"}</code></td><td>Shows the editor component, or the built-in editor when <code>handle</code> is <code>null</code></td></tr>
-<tr><td><code>ui.getEditorText</code></td><td><code>{}</code></td><td>The built-in editor’s text</td></tr>
-<tr><td><code>ui.editorChange</code>, <code>ui.editorSubmit</code></td><td><code>{"text"}</code></td><td>The editor component’s text changed or was submitted</td></tr>
-<tr><td><code>ui.editorAction</code>, <code>ui.editorShortcut</code></td><td><code>{"action"}</code>, <code>{"data"}</code></td><td>Runs an app action, or the extension shortcut bound to a key</td></tr>
-<tr><td><code>ui.keybindings</code></td><td><code>{}</code></td><td><code>{"kitty", "bindings": {id: [key]}, "actions": [id]}</code></td></tr>
-<tr><td><code>ui.applyCompletion</code></td><td><code>{"lines", "cursorLine", "cursorCol", "item", "prefix"}</code></td><td>The editor’s lines and cursor with the completion applied</td></tr>
-<tr><td><code>ui.setTerminalInput</code></td><td><code>{"listening"}</code></td><td>Starts or stops passing raw input through the extension’s listeners</td></tr>
-<tr><td><code>ui.setAutocomplete</code></td><td><code>{"triggerCharacters"}</code></td><td>Completes through the extension’s providers, opened by those characters too</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>CustomEditor</code> asks for completions with the <code>ui.suggestions</code> operation, which takes <code>{"lines", "cursorLine", "cursorCol", "force"}</code> and answers <code>{"items", "prefix"}</code> or <code>null</code>. Columns count UTF-16 units, as in Pi.</p>
-<p>yapi renders a component through the WIT world’s <code>render</code> export and delivers keys through <code>input</code>. Mouse events arrive as the <code>mouse</code> call, editor operations as <code>editor</code>, and requests for transcript renders as <code>component</code>. Raw input arrives as the <code>terminalInput</code> call, <code>{"keys"}</code>, answered with each key as the listeners leave it or <code>null</code> when one consumed it. Requests for suggestions arrive as <code>autocomplete</code>, with the arguments of <code>ui.suggestions</code>, answered with <code>{"prefix", "items", "applied"}</code>, where <code>applied</code> holds the editor’s lines and cursor after each item, or <code>null</code>. Shortcuts arrive as <code>shortcut</code>, <code>{"shortcut", "ctx"}</code>.</p>
 <h2 id="background-work-and-cancellation"><a class="header" href="#background-work-and-cancellation">Background work and cancellation</a></h2>
-<p>Handlers are <code>async</code>. While one waits for a host operation, other handlers, tool calls and background tasks run. <code>spawn</code> runs a future in the background, after the handler that started it has returned, as a Pi extension does with a promise it does not await. A background task can report its result with the <code>session.sendMessage</code> request, with <code>"triggerTurn": true</code> to start a turn when the agent is idle.</p>
+<p>Handlers are <code>async</code>. While one waits for a host operation, other handlers, tool calls and background tasks run. <code>spawn</code> runs a future in the background after the handler that started it returns, like a promise a Pi extension does not await. A background task can report its result with the <code>session.sendMessage</code> request, with <code>"triggerTurn": true</code> to start a turn when the agent is idle.</p>
 <p>When the user aborts a run, yapi drops the futures of the extension tools still running in it, which kills the processes they hold. Background tasks keep running until they finish or the extension stops.</p>
-<p>A tool that calls <code>Context::aborted</code> gets the abort instead, as a Pi tool’s <code>signal</code> does. The future resolves when the user aborts the run. The tool keeps running to stop its work, and the result it returns becomes the tool’s result, such as the output so far. A tool that has not returned 10 seconds after the abort is dropped. That is twice the 5 seconds that yapi and Pi’s <code>subagent</code> example give a process between SIGTERM and SIGKILL, so a tool can stop one and report. Race the future against the work with <code>futures::select!</code> or a small helper, such as <code>race</code> in the <a href="#countdown">countdown example</a>:</p>
+<p>A tool that calls <code>Context::aborted</code> gets the abort instead, as a Pi tool’s <code>signal</code> does. The future resolves when the user aborts the run. The tool keeps running to stop its work, and the result it returns becomes the tool’s result, such as the output so far. A tool that has not returned 10 seconds after the abort is dropped. That leaves time to stop a child process with SIGTERM, wait for it and report. Race the future against the work with <code>futures::select!</code> or a small helper, such as <code>race</code> in the <a href="#countdown">countdown example</a>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let mut process = Process::spawn(&amp;json!({"command": "make", "args": ["test"]}))?;
@@ -1057,10 +1209,10 @@ loop {
 Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <span class="boring">}</span></code></pre>
 <h2 id="limits"><a class="header" href="#limits">Limits</a></h2>
-<p>Each call into an extension may compute for 60 seconds without waiting on yapi, and each extension may use 1 GiB of memory.</p>
+<p>Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="native-extension-examples"><a class="header" href="#native-extension-examples">Native extension examples</a></h1>
-<p>The repository has seventeen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Eleven are ports of Pi’s own examples, so the Rust and TypeScript versions can be read side by side. <code>subagent</code> is tested against a real yapi in <code>crates/yapi/tests/subagent.rs</code>, <code>event-bus</code> with Pi extensions in <code>crates/yapi-ext/tests/bus.rs</code>, and the others in <code>crates/yapi-ext/tests/native.rs</code>. Terminal scenarios also compare the screens of nine examples against Pi running the TypeScript versions.</p>
+<p>The repository has seventeen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Eleven are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1192,7 +1344,7 @@ let todos = STATE.with(|cell| cell.borrow().todos.clone());
 ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 <span class="boring">}</span></code></pre>
 <h2 id="custom-footer"><a class="header" href="#custom-footer">custom-footer</a></h2>
-<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it.</p>
+<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it. <code>ui.footerData</code> is an internal request, so the example may need changes in a later release.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
@@ -1368,85 +1520,8 @@ api.on("session_start", |_event, ctx| async move {
 <span class="boring">}</span></code></pre>
 <p><code>race</code> polls two futures until one finishes, so the tool needs no other crate. <code>futures::select!</code> does the same.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="packages"><a class="header" href="#packages">Packages</a></h1>
-<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder without Node.js.</p>
-<pre><code class="language-sh">yapi install npm:@scope/some-pi-package     # from npm
-yapi install git:github.com/user/repo       # from git
-yapi install ./my-package -l                 # a local folder, for this project only
-yapi install ./shout.wasm                    # a single native extension
-yapi list
-yapi update --extensions
-yapi remove npm:@scope/some-pi-package
-</code></pre>
-<p>Installed packages are recorded in <code>settings.json</code> as Pi records them. <code>-l</code> installs into the project’s <code>.yapi</code> folder instead of the global one. Local folders and files are used where they are, not copied.</p>
-<p>To try a package for one run without adding it to settings, pass it to <code>-e</code>:</p>
-<pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
-yapi -e git:github.com/user/repo
-</code></pre>
-<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
-<p><code>yapi list</code> shows each package with its install location. A tag after the source says what kind of extensions it contains: <code>[npm]</code> for Pi extensions in JavaScript or TypeScript, <code>[wasm]</code> for native extensions, and <code>[npm, wasm]</code> for both. Packages that hold only skills, prompt templates or themes, and packages that are not installed yet, have no tag.</p>
-<pre><code>User packages:
-  npm:pi-mcp-adapter [npm]
-    /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter
-  /home/you/extensions/shout.wasm [wasm]
-    /home/you/extensions/shout.wasm
-</code></pre>
-<h2 id="native-extensions"><a class="header" href="#native-extensions">Native extensions</a></h2>
-<p>Packages can contain <a href="#native-extensions-in-rust">native extensions</a> as <code>.wasm</code> files next to, or instead of, JavaScript ones. yapi loads <code>.wasm</code> files from a package’s <code>extensions</code> folder and from the files its manifest names. <code>yapi install</code> also accepts a single <code>.wasm</code> file.</p>
-<h2 id="the-npm-client"><a class="header" href="#the-npm-client">The npm client</a></h2>
-<p>yapi has a built-in npm registry client. It resolves versions with npm’s range syntax, checks integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts. Those mostly build native addons, which the WebAssembly runtime cannot load, so such addons are installed unbuilt and fail only if the extension loads one.</p>
-<p>The client reads registries and credentials as npm does, from <code>npm_config_*</code> environment variables and then from <code>~/.npmrc</code> or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. As with npm, credentials go only to the registry their key names.</p>
-<pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
-//npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
-</code></pre>
-<p>Pi’s <code>npmCommand</code> setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.</p>
-<h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
-<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence in yapi, which lets one package ship a <a href="#native-extensions-in-rust">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>.</p>
-<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
-<h2 id="planned-manifests-and-registry"><a class="header" href="#planned-manifests-and-registry">Planned: manifests and registry</a></h2>
-<p>These features are planned and not available yet.</p>
-<ul>
-<li><strong>Package manifests with capabilities.</strong> A WebAssembly package declares in its own manifest the grants it needs, such as file, process, network or environment access. You approve them, and yapi runs the package with only those grants. Events on Pi’s <code>pi.events</code> bus then reach only packages with the same grants, unless your settings let a package reach the others. A package’s own manifest cannot allow it.</li>
-<li><strong>Project manifests.</strong> A <code>yapi.toml</code> file at a project’s root lists the packages, extensions and skills the project uses. Anyone who checks out the project installs them in one step and gets the same versions, as <code>Cargo.toml</code> does for a Rust project.</li>
-<li><strong>A package registry.</strong> A central registry of yapi packages, so manifests can name packages and versions instead of npm or git sources.</li>
-</ul>
-<h2 id="turning-resources-on-and-off"><a class="header" href="#turning-resources-on-and-off">Turning resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme that your packages, settings and folders provide. Space toggles one, and yapi saves the choice as a pattern in <code>settings.json</code>. Tab switches between global settings and overrides for the current project. <code>yapi config -l</code> starts with the project.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="mcp-servers-and-codemode"><a class="header" href="#mcp-servers-and-codemode">MCP servers and codemode</a></h1>
-<p>yapi connects to <a href="https://modelcontextprotocol.io">Model Context Protocol</a> servers over stdio and streamable HTTP. Describe them in <code>~/.yapi/agent/mcp.json</code>, or in <code>.yapi/mcp.json</code> for one project:</p>
-<pre><code class="language-json">{
-  "mcpServers": {
-    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
-    "docs": { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" } }
-  }
-}
-</code></pre>
-<h2 id="managing-servers"><a class="header" href="#managing-servers">Managing servers</a></h2>
-<p><code>yapi mcp</code> edits the file and checks servers without starting a session:</p>
-<pre><code class="language-sh">yapi mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
-yapi mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
-yapi mcp list                 # state, tools and errors, exits 1 if a server fails
-yapi mcp remove docs
-</code></pre>
-<p>Inside yapi, <code>/mcp</code> opens a manager that lists the servers with their state, tool count, exposure and configuration file. Servers that need attention come first. Select a server to see its tools and connection details, reconnect, sign in or out, change its exposure, or enable and disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server, and the rest of the file is kept. Outside the interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
-<h2 id="servers-from-extensions"><a class="header" href="#servers-from-extensions">Servers from extensions</a></h2>
-<p>An extension adds a server for the session with <code>pi.registerMcpServer(name, config)</code>, where <code>config</code> takes the same settings as an entry in <code>mcp.json</code>. The server connects when the session starts, or right away when registered later, and <code>pi.unregisterMcpServer(name)</code> disconnects it. A server of the same name in <code>mcp.json</code> takes precedence, and <code>/mcp</code> notes the registration it overrides. Exposure and enabled changes to a registered server in <code>/mcp</code> apply to the session only and are never saved.</p>
-<p>A stdio server needs the extension’s process grant and an HTTP server its network grant. Without it, <code>registerMcpServer</code> throws an error that names the missing grant. Every package has both grants by default, as in Pi. As in Pi, it also throws for a name that another extension registered, or for one whose tools would share that server’s prefix, such as <code>my_docs</code> after <code>my-docs</code>. The refused server is not registered. This holds while extensions load too: the error fails the extension’s load, and the extension that loaded first keeps the name.</p>
-<h2 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h2>
-<p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that asks for a sign-in shows as needing one in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code> or run <code>/mcp login &lt;server&gt;</code> inside yapi, or run <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>/mcp logout &lt;server&gt;</code> and <code>yapi mcp logout &lt;server&gt;</code> delete the stored credentials.</p>
-<p>yapi opens the authorization page in your browser and waits for it to redirect back. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with the server when the server allows it. For servers that do not, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
-<p>Credentials live in <code>~/.yapi/agent/mcp-auth.json</code>, in the same format as Pi’s <code>mcp-auth.json</code>, and <code>yapi import pi</code> copies Pi’s sign-ins. yapi refreshes an access token shortly before it expires and when the server rejects it, so a sign-in lasts as long as the server keeps the grant. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
-<p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>. The token is read for every request, so it follows the provider’s refreshes.</p>
-<h2 id="codemode"><a class="header" href="#codemode">Codemode</a></h2>
-<p>By default, yapi offers MCP tools through codemode. Instead of one tool call per step, the model writes a short JavaScript program that calls several tools and combines their results. Programs run in a fresh WebAssembly sandbox with no file, process or network access of their own.</p>
-<p>Set <code>"exposure": "direct"</code> on a server to offer its tools to the model directly. <code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well. With <code>"codemode": { "mode": "only" }</code> in <code>settings.json</code>, the tools that scripts can call are offered only through codemode while it is active. Requests leave out their declarations and the system prompt does not list them.</p>
-<p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
-<p>Scripts also reach the <code>models</code> global: they list the catalog and run classifier and image models with the session’s credentials. The model reads how to use it in Pi’s codemode documentation, in <code>~/.yapi/agent/docs/pi/docs/codemode.md</code> when the documentation for the model is installed, else on GitHub.</p>
-<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode</a> documentation describes every option.</p>
-<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="agent-skills"><a class="header" href="#agent-skills">Agent skills</a></h1>
-<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. They follow the format Pi and yapi load, and other agents that read Agent Skills, such as Claude Code, can use them too.</p>
+<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. yapi and Pi load them, and so do other agents that read Agent Skills, such as Claude Code.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1454,51 +1529,27 @@ yapi mcp remove docs
 </thead>
 <tbody>
 <tr><td><code>yapi</code></td><td>Install and run yapi, hand it tasks from scripts or other agents in print, JSON or RPC mode, choose models and credentials, and manage sessions, packages and settings. <code>scripts/ask.py</code> sends one prompt over RPC and prints the answer.</td></tr>
-<tr><td><code>yapi-extension</code></td><td>Write, test and package Pi extensions in TypeScript and native extensions in Rust. It has a template for Pi extensions, uses <code>yapi new</code> for native ones, notes on where yapi’s runtime differs from Pi, and <code>scripts/check-extension.py</code>, which loads extensions without a model and reports their commands and load errors.</td></tr>
+<tr><td><code>yapi-extension</code></td><td>Write, test and package Pi extensions in TypeScript and native extensions in Rust. It includes a template for Pi extensions and notes on where yapi’s runtime differs from Pi. <code>scripts/check-extension.py</code> loads extensions without a model and reports their commands and load errors.</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="install-them"><a class="header" href="#install-them">Install them</a></h2>
-<p>In yapi or Pi, install the repository at a release tag as a package. Its <code>skills</code> folder becomes available in every project:</p>
+<h2 id="install-the-skills"><a class="header" href="#install-the-skills">Install the skills</a></h2>
+<p>In yapi or Pi, install the repository at a release tag as a package:</p>
 <pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.1.0
 </code></pre>
-<p>yapi clones the whole repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag, and <code>yapi update</code> keeps it there. To update the skills, install the tag of a newer release. Installed without a tag, the package follows the repository’s main branch, and <code>yapi update</code> brings it up to date, including skills for features not yet released.</p>
-<p>To use one skill without the rest of the repository, copy its folder into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
+<p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
+<p>To use the skills without the rest of the repository, copy their folders into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
 <pre><code class="language-sh">cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 </code></pre>
-<h2 id="use-them"><a class="header" href="#use-them">Use them</a></h2>
-<p>The agent loads a skill when a task matches its description. To load one explicitly in yapi or Pi, run <code>/skill:yapi</code> or <code>/skill:yapi-extension</code>, followed by the request:</p>
+<h2 id="use-the-skills"><a class="header" href="#use-the-skills">Use the skills</a></h2>
+<p>The agent loads a skill when a task matches its description. To load one explicitly in yapi or Pi, run <code>/skill:yapi</code> or <code>/skill:yapi-extension</code> followed by the request:</p>
 <pre><code class="language-text">/skill:yapi-extension add a /standup command that summarizes today's git commits
 </code></pre>
-<p>The skills’ helper scripts need Python 3 and a <code>yapi</code> executable on <code>PATH</code>, or its path in <code>--yapi</code>.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="coming-from-pi"><a class="header" href="#coming-from-pi">Coming from Pi</a></h1>
-<p>yapi reads Pi’s formats but keeps its own folders, so the two tools never write the same files. Copy your Pi setup once:</p>
-<pre><code class="language-sh">yapi import pi
-</code></pre>
-<p>The command copies settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages from Pi’s agent folder into yapi’s. That folder is <code>~/.pi/agent</code>, or <code>PI_CODING_AGENT_DIR</code> when it is set. The command also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>. Files that yapi already has are kept. The exception is a <code>settings.json</code> that holds only the version yapi recorded when it first started, which Pi’s settings replace. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version and not yapi’s.</p>
-<p>After that, yapi and Pi work side by side. Session files written by either one open in the other.</p>
-<h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Pi</th><th>yapi</th></tr>
-</thead>
-<tbody>
-<tr><td><code>~/.pi/agent</code></td><td><code>~/.yapi/agent</code></td></tr>
-<tr><td>Project <code>.pi</code> folder</td><td>Project <code>.yapi</code> folder</td></tr>
-<tr><td><code>PI_CODING_AGENT_DIR</code></td><td><code>YAPI_CODING_AGENT_DIR</code></td></tr>
-<tr><td><code>PI_CODING_AGENT_SESSION_DIR</code></td><td><code>YAPI_CODING_AGENT_SESSION_DIR</code></td></tr>
-<tr><td><code>pi install</code>, <code>pi config</code>, <code>pi mcp</code>, <code>pi auth</code></td><td><code>yapi install</code>, <code>yapi config</code>, <code>yapi mcp</code>, <code>yapi auth</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Only the two directory variables are renamed. Provider keys and every other <code>PI_*</code> variable that yapi reads, such as <code>PI_OFFLINE</code> and <code>PI_CACHE_RETENTION</code>, keep their names. Command-line flags, slash commands and the JSON and RPC protocols are the same as Pi’s.</p>
-<h2 id="what-differs"><a class="header" href="#what-differs">What differs</a></h2>
-<p>A few behaviors differ on purpose, such as the startup header and features tied to Pi’s online services. <a href="#differences-from-pi">Differences from Pi</a> lists each one with its reason.</p>
+<p>The helper scripts need Python 3 and <code>yapi</code> on <code>PATH</code>, or its path in <code>--yapi</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="differences-from-pi"><a class="header" href="#differences-from-pi">Differences from Pi</a></h1>
-<p>yapi follows Pi <code>v1.0.0</code> and reads Pi’s settings, sessions, credentials and packages. It behaves like Pi except as listed here. Any other difference is a bug: please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>.</p>
+<p>yapi follows Pi <code>v1.0.0</code> and behaves like Pi except as listed here. Any other difference is a bug. Please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>.</p>
+<p>yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. <a href="#compatibility-with-pi">Extensions</a> has the extension and package results.</p>
 <h2 id="extensions-1"><a class="header" href="#extensions-1">Extensions</a></h2>
 <p>Pi extensions run unchanged, in WebAssembly rather than Node.js.</p>
 <div class="table-wrapper">
@@ -1507,7 +1558,7 @@ yapi mcp remove docs
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See the <a href="#security-model">security model</a>.</td></tr>
+<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See <a href="#sandboxing">Sandboxing</a>.</td></tr>
 <tr><td>Node APIs</td><td>All of Node</td><td><a href="#how-pi-extensions-run">Shims</a>. Sockets, servers, <code>http</code> requests, <code>worker_threads</code>, <code>node:sqlite</code>, <code>zlib</code>, <code>vm</code> and <code>child_process.fork</code> throw when used. <code>require()</code> of an ES module fails.</td></tr>
 <tr><td>Native addons</td><td>Loaded</td><td>Installed, never built. Loading one fails.</td></tr>
 <tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. Other exports throw when called, and built-in tool factories reject custom <code>operations</code>.</td></tr>
@@ -1538,7 +1589,7 @@ yapi mcp remove docs
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code></td><td><code>yapi update</code> updates packages and models only. See <a href="#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>
@@ -1561,8 +1612,8 @@ yapi mcp remove docs
 </tbody>
 </table>
 </div>
-<h2 id="open-gaps"><a class="header" href="#open-gaps">Open Gaps</a></h2>
-<p>Pi features yapi does not have yet, or has only in part. Each row links its issue, and the row goes when the gap closes.</p>
+<h2 id="open-gaps"><a class="header" href="#open-gaps">Open gaps</a></h2>
+<p>Pi features yapi does not have yet, or has only in part. Each row links its issue.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1583,8 +1634,30 @@ yapi mcp remove docs
 </table>
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
+<p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
+<h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
+<p>Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, prompt cache warming, update notices and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
+<h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
+<p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
+<ul>
+<li>A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.</li>
+<li>File grants can be limited to paths and to read-only access, and network grants to hosts.</li>
+<li>The <code>pi.events</code> bus stays within packages of the same grants unless your settings allow more. A package’s own manifest cannot widen it.</li>
+<li>Host features that do not check grants today, such as running other tools, reading API keys, the event bus and session actions, will check them.</li>
+</ul>
+<p><a href="#security-model-and-sandboxing">Security model and sandboxing</a> describes the current model.</p>
+<h2 id="project-manifests"><a class="header" href="#project-manifests">Project manifests</a></h2>
+<p>A <code>yapi.toml</code> file at a project’s root will list the packages, extensions and skills the project uses. Anyone who checks out the project then installs the same set at the same versions, as <code>Cargo.toml</code> does for a Rust project.</p>
+<h2 id="package-registry"><a class="header" href="#package-registry">Package registry</a></h2>
+<p>A central registry of yapi packages will let manifests name packages and versions instead of npm or git sources.</p>
+<h2 id="stable-native-extension-api"><a class="header" href="#stable-native-extension-api">Stable native extension API</a></h2>
+<p>The native extension API is unstable until yapi 1.0. The Rust SDK and host requests may change in any release before then, and extensions may need to be rebuilt. yapi 1.0 will stabilize them. Asynchronous host calls will move to WASI Preview 3 as a new version of the WIT world.</p>
+<h2 id="platforms"><a class="header" href="#platforms">Platforms</a></h2>
+<p>Linux and macOS are fully supported, and Windows is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
-<p>yapi is built to start fast, use little memory and install small. <code>cargo xtask bench</code> measures it against Pi on the same machine.</p>
+<p><code>cargo xtask bench</code> measures yapi against Pi on the same machine: startup time, keystroke latency, memory and install size.</p>
 <h2 id="results"><a class="header" href="#results">Results</a></h2>
 <p>The <a href="https://github.com/SkymanOne/yapi/actions/runs/37601516053">Bench workflow</a> measured these on GitHub’s hosted runners, which are shared virtual machines, at commit <code>ecd633a</code>, against Pi <code>1.0.0</code>. Each value is the median of the samples, with their range in parentheses.</p>
 <p>Linux, on <code>ubuntu-latest</code> (AMD EPYC 9V74, 4 hardware threads), with Pi on Node.js 22.23.3:</p>
@@ -1594,16 +1667,16 @@ yapi mcp remove docs
 <tr><th>Measure</th><th>yapi</th><th>Pi</th><th>Pi / yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Startup, interactive</td><td>10.1 ms (9.8 to 10.8)</td><td>323.9 ms (310.5 to 367.9)</td><td>31.9×</td></tr>
-<tr><td>Startup, print mode (to first request byte)</td><td>14.1 ms (13.9 to 15.3)</td><td>352.3 ms (342.4 to 373.0)</td><td>24.9×</td></tr>
-<tr><td>Keystroke to paint, p50, 10,000-line session</td><td>0.7 ms</td><td>1.9 ms</td><td>2.8×</td></tr>
-<tr><td>Keystroke to paint, p99, 10,000-line session</td><td>0.9 ms</td><td>3.8 ms</td><td>4.4×</td></tr>
-<tr><td>Memory, idle</td><td>18.8 MB (18.7 to 19.1)</td><td>117.4 MB (116.8 to 119.2)</td><td>6.2×</td></tr>
-<tr><td>Memory, 10,000-line session open</td><td>32.8 MB (32.7 to 33.0)</td><td>151.7 MB (149.7 to 154.5)</td><td>4.6×</td></tr>
-<tr><td>Memory after 20 turns with tool calls</td><td>37.0 MB (36.8 to 37.6)</td><td>202.6 MB (199.9 to 203.7)</td><td>5.5×</td></tr>
-<tr><td>Memory with 10 small JS extensions</td><td>40.0 MB (39.6 to 40.1)</td><td>121.1 MB (120.5 to 121.7)</td><td>3.0×</td></tr>
-<tr><td>Memory with 57 of Pi’s example extensions</td><td>43.1 MB (42.8 to 43.3)</td><td>122.3 MB (122.0 to 123.1)</td><td>2.8×</td></tr>
-<tr><td>Install size</td><td>35.0 MB</td><td>246.6 MB</td><td>7.0×</td></tr>
+<tr><td>Startup, interactive</td><td><strong>10.1 ms</strong> (9.8 to 10.8)</td><td>323.9 ms (310.5 to 367.9)</td><td><strong>31.9×</strong></td></tr>
+<tr><td>Startup, print mode (to first request byte)</td><td><strong>14.1 ms</strong> (13.9 to 15.3)</td><td>352.3 ms (342.4 to 373.0)</td><td><strong>24.9×</strong></td></tr>
+<tr><td>Keystroke to paint, p50, 10,000-line session</td><td><strong>0.7 ms</strong></td><td>1.9 ms</td><td><strong>2.8×</strong></td></tr>
+<tr><td>Keystroke to paint, p99, 10,000-line session</td><td><strong>0.9 ms</strong></td><td>3.8 ms</td><td><strong>4.4×</strong></td></tr>
+<tr><td>Memory, idle</td><td><strong>18.8 MB</strong> (18.7 to 19.1)</td><td>117.4 MB (116.8 to 119.2)</td><td><strong>6.2×</strong></td></tr>
+<tr><td>Memory, 10,000-line session open</td><td><strong>32.8 MB</strong> (32.7 to 33.0)</td><td>151.7 MB (149.7 to 154.5)</td><td><strong>4.6×</strong></td></tr>
+<tr><td>Memory after 20 turns with tool calls</td><td><strong>37.0 MB</strong> (36.8 to 37.6)</td><td>202.6 MB (199.9 to 203.7)</td><td><strong>5.5×</strong></td></tr>
+<tr><td>Memory with 10 small JS extensions</td><td><strong>40.0 MB</strong> (39.6 to 40.1)</td><td>121.1 MB (120.5 to 121.7)</td><td><strong>3.0×</strong></td></tr>
+<tr><td>Memory with 57 of Pi’s example extensions</td><td><strong>43.1 MB</strong> (42.8 to 43.3)</td><td>122.3 MB (122.0 to 123.1)</td><td><strong>2.8×</strong></td></tr>
+<tr><td>Install size</td><td><strong>35.0 MB</strong></td><td>246.6 MB</td><td><strong>7.0×</strong></td></tr>
 </tbody>
 </table>
 </div>
@@ -1614,20 +1687,19 @@ yapi mcp remove docs
 <tr><th>Measure</th><th>yapi</th><th>Pi</th><th>Pi / yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Startup, interactive</td><td>24.6 ms (15.2 to 127.6)</td><td>343.3 ms (271.8 to 443.9)</td><td>14.0×</td></tr>
-<tr><td>Startup, print mode (to first request byte)</td><td>14.0 ms (10.8 to 30.6)</td><td>287.9 ms (252.1 to 321.9)</td><td>20.6×</td></tr>
-<tr><td>Keystroke to paint, p50, 10,000-line session</td><td>1.7 ms</td><td>3.7 ms</td><td>2.1×</td></tr>
-<tr><td>Keystroke to paint, p99, 10,000-line session</td><td>3.8 ms</td><td>8.3 ms</td><td>2.2×</td></tr>
-<tr><td>Memory, idle</td><td>17.1 MB (16.9 to 17.1)</td><td>126.0 MB (125.4 to 127.7)</td><td>7.4×</td></tr>
-<tr><td>Memory, 10,000-line session open</td><td>32.5 MB (32.3 to 32.6)</td><td>152.1 MB (151.6 to 152.6)</td><td>4.7×</td></tr>
-<tr><td>Memory after 20 turns with tool calls</td><td>38.7 MB (38.4 to 39.3)</td><td>209.1 MB (204.4 to 209.9)</td><td>5.4×</td></tr>
-<tr><td>Memory with 10 small JS extensions</td><td>31.2 MB (31.1 to 31.3)</td><td>129.5 MB (128.7 to 129.9)</td><td>4.2×</td></tr>
-<tr><td>Memory with 57 of Pi’s example extensions</td><td>35.0 MB (35.0 to 35.1)</td><td>131.1 MB (130.2 to 131.6)</td><td>3.7×</td></tr>
-<tr><td>Install size</td><td>28.7 MB</td><td>233.9 MB</td><td>8.1×</td></tr>
+<tr><td>Startup, interactive</td><td><strong>24.6 ms</strong> (15.2 to 127.6)</td><td>343.3 ms (271.8 to 443.9)</td><td><strong>14.0×</strong></td></tr>
+<tr><td>Startup, print mode (to first request byte)</td><td><strong>14.0 ms</strong> (10.8 to 30.6)</td><td>287.9 ms (252.1 to 321.9)</td><td><strong>20.6×</strong></td></tr>
+<tr><td>Keystroke to paint, p50, 10,000-line session</td><td><strong>1.7 ms</strong></td><td>3.7 ms</td><td><strong>2.1×</strong></td></tr>
+<tr><td>Keystroke to paint, p99, 10,000-line session</td><td><strong>3.8 ms</strong></td><td>8.3 ms</td><td><strong>2.2×</strong></td></tr>
+<tr><td>Memory, idle</td><td><strong>17.1 MB</strong> (16.9 to 17.1)</td><td>126.0 MB (125.4 to 127.7)</td><td><strong>7.4×</strong></td></tr>
+<tr><td>Memory, 10,000-line session open</td><td><strong>32.5 MB</strong> (32.3 to 32.6)</td><td>152.1 MB (151.6 to 152.6)</td><td><strong>4.7×</strong></td></tr>
+<tr><td>Memory after 20 turns with tool calls</td><td><strong>38.7 MB</strong> (38.4 to 39.3)</td><td>209.1 MB (204.4 to 209.9)</td><td><strong>5.4×</strong></td></tr>
+<tr><td>Memory with 10 small JS extensions</td><td><strong>31.2 MB</strong> (31.1 to 31.3)</td><td>129.5 MB (128.7 to 129.9)</td><td><strong>4.2×</strong></td></tr>
+<tr><td>Memory with 57 of Pi’s example extensions</td><td><strong>35.0 MB</strong> (35.0 to 35.1)</td><td>131.1 MB (130.2 to 131.6)</td><td><strong>3.7×</strong></td></tr>
+<tr><td>Install size</td><td><strong>28.7 MB</strong></td><td>233.9 MB</td><td><strong>8.1×</strong></td></tr>
 </tbody>
 </table>
 </div>
-<p>Single samples on the macOS runner reach 128 ms for yapi’s interactive startup and 444 ms for Pi’s, which is why the tables report medians.</p>
 <h2 id="what-each-measure-means"><a class="header" href="#what-each-measure-means">What each measure means</a></h2>
 <ul>
 <li><strong>Startup, interactive</strong>: time from starting the interactive mode in a 100×40 pseudo-terminal until the footer shows the model.</li>
@@ -1646,7 +1718,7 @@ yapi mcp remove docs
 <ul>
 <li>Every program runs with a cleared environment, a fresh home and agent directory, <code>PI_OFFLINE=1</code>, and a placeholder Anthropic key pointed at a local listener or mock provider, so no measure touches the network.</li>
 <li>Startup measures run 20 times per program and memory measures 5 times, alternating between yapi and Pi, so drift on the machine affects both alike. Keystrokes run 200 times per program.</li>
-<li>Medians are reported because single slow runs come from the machine rather than the program. The ranges show how much the samples vary.</li>
+<li>Medians are reported because single slow runs come from the machine rather than the program. On the macOS runner, single samples reach 128 ms for yapi’s interactive startup and 444 ms for Pi’s.</li>
 <li>Pi runs from the same npm install whose size is measured, as its README recommends installing it. The example extensions come from that install too.</li>
 <li>MB means 10^6 bytes.</li>
 </ul>
@@ -1668,14 +1740,14 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <pre><code class="language-sh">xattr -d com.apple.quarantine ~/.local/bin/yapi
 </code></pre>
 <h2 id="no-models-available"><a class="header" href="#no-models-available">No models available</a></h2>
-<p>yapi found no credentials. Set a provider’s API key or run <code>/login</code>, as described in <a href="#models-and-sign-in">Models and sign-in</a>.</p>
+<p>yapi found no credentials. Set a provider’s API key or run <code>/login</code>. See <a href="#choose-a-model">Choose a model</a>.</p>
 <h2 id="an-extension-breaks-startup"><a class="header" href="#an-extension-breaks-startup">An extension breaks startup</a></h2>
-<p><code>yapi -ne</code> starts without extensions. <code>yapi config</code> can then turn the failing one off.</p>
+<p><code>yapi -ne</code> starts without extensions, including the built-in MCP and llama.cpp extensions. <code>yapi config</code> then turns the failing extension off.</p>
 <h2 id="reporting-a-problem"><a class="header" href="#reporting-a-problem">Reporting a problem</a></h2>
-<p><code>/debug</code> writes what yapi rendered and sent to <code>~/.yapi/agent/yapi-debug.log</code>. Include it in a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>, with the output of <code>yapi --version</code> and your operating system.</p>
+<p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
-<p>yapi is a Cargo workspace whose crates mirror Pi’s packages, so each behavior traces back to its Pi source. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md">dev/status.md</a> tracks progress and deferred work.</p>
+<p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md">dev/status.md</a> tracks progress and deferred work.</p>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
 <li>Rust stable. <code>rust-toolchain.toml</code> selects it with Clippy and rustfmt, and rustup installs it on the first build.</li>
@@ -1698,7 +1770,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check
 </code></pre>
-<p><code>cargo test</code> includes the end-to-end scenarios, which replay recorded provider streams against goldens recorded from Pi. They need <code>rg</code>, <code>fd</code> and <code>python3</code> on <code>PATH</code>.</p>
+<p><code>cargo test</code> includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.</p>
 <h2 id="common-changes"><a class="header" href="#common-changes">Common changes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1722,6 +1794,15 @@ cargo xtask e2e --record-pi            # rewrite the goldens from Pi
 cargo xtask bench --pi &lt;path-to-pi&gt;    # time and memory against Pi
 </code></pre>
 <p>Pi installs from <code>tests/fixtures/pi/generator</code> with <code>npm ci</code>, which needs Node.js 22.19 or newer.</p>
+<h2 id="releasing"><a class="header" href="#releasing">Releasing</a></h2>
+<ol>
+<li>Set the new version in <code>[workspace.package]</code> of both <code>Cargo.toml</code> and <code>guest/Cargo.toml</code>. The extension SDK takes the guest workspace’s version, and the Release workflow fails when the two differ from each other or from the tag.</li>
+<li>For a new minor or major version, raise the <code>version</code> requirements on <code>yapi-types</code> and <code>yapi-tui</code> in <code>Cargo.toml</code> and <code>guest/yapi-extension-api/Cargo.toml</code>.</li>
+<li>Update the versions that the <code>yapi new</code> template, the README and these docs pin. <code>git grep</code> for the old version lists them, such as <code>git grep -n '0\.1\.0'</code>.</li>
+<li>Run <code>cargo metadata --format-version 1 &gt;/dev/null</code> in <code>guest</code> to update <code>guest/Cargo.lock</code>, then <code>cargo xtask js-runtime</code> with a WASI SDK. The lock file is an input of <code>yapi-js.wasm</code>.</li>
+<li>Add the release’s section to <code>CHANGELOG.md</code>.</li>
+<li>Merge, then push the tag <code>v&lt;version&gt;</code>. The Release workflow builds and publishes the binaries and the documentation archive, then publishes <code>yapi-types</code>, <code>yapi-tui</code> and <code>yapi-extension-api</code> to crates.io with the <code>CARGO_REGISTRY_TOKEN</code> secret.</li>
+</ol>
 <h2 id="documentation"><a class="header" href="#documentation">Documentation</a></h2>
 <p>This site lives in <code>docs/</code>, is configured in <code>book.toml</code> and builds with <a href="https://rust-lang.github.io/mdBook/">mdBook</a>:</p>
 <pre><code class="language-sh">mdbook serve

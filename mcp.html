@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>MCP servers and codemode - yapi</title>
+        <title>Connect MCP servers - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,7 +179,7 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="mcp-servers-and-codemode"><a class="header" href="#mcp-servers-and-codemode">MCP servers and codemode</a></h1>
+                        <h1 id="connect-mcp-servers"><a class="header" href="#connect-mcp-servers">Connect MCP servers</a></h1>
 <p>yapi connects to <a href="https://modelcontextprotocol.io">Model Context Protocol</a> servers over stdio and streamable HTTP. Describe them in <code>~/.yapi/agent/mcp.json</code>, or in <code>.yapi/mcp.json</code> for one project:</p>
 <pre><code class="language-json">{
   "mcpServers": {
@@ -188,28 +188,32 @@
   }
 }
 </code></pre>
-<h2 id="managing-servers"><a class="header" href="#managing-servers">Managing servers</a></h2>
+<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP documentation</a> describes every option.</p>
+<h2 id="manage-servers"><a class="header" href="#manage-servers">Manage servers</a></h2>
 <p><code>yapi mcp</code> edits the file and checks servers without starting a session:</p>
 <pre><code class="language-sh">yapi mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
 yapi mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
 yapi mcp list                 # state, tools and errors, exits 1 if a server fails
 yapi mcp remove docs
 </code></pre>
-<p>Inside yapi, <code>/mcp</code> opens a manager that lists the servers with their state, tool count, exposure and configuration file. Servers that need attention come first. Select a server to see its tools and connection details, reconnect, sign in or out, change its exposure, or enable and disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server, and the rest of the file is kept. Outside the interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
+<p>Inside yapi, <code>/mcp</code> opens a manager that lists each server with its state, tool count, exposure and configuration file. Select a server to see its tools, reconnect, sign in or out, change its exposure, or enable or disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server. Outside interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
+<h2 id="sign-in"><a class="header" href="#sign-in">Sign in</a></h2>
+<p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that needs a sign-in shows it in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code>, or run <code>/mcp login &lt;server&gt;</code> inside yapi or <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>logout</code> deletes the stored credentials.</p>
+<p>yapi opens the authorization page in your browser and waits for the redirect. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
+<p>yapi stores credentials in <code>~/.yapi/agent/mcp-auth.json</code>, in Pi’s format, and refreshes access tokens before they expire. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
+<p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>.</p>
 <h2 id="servers-from-extensions"><a class="header" href="#servers-from-extensions">Servers from extensions</a></h2>
-<p>An extension adds a server for the session with <code>pi.registerMcpServer(name, config)</code>, where <code>config</code> takes the same settings as an entry in <code>mcp.json</code>. The server connects when the session starts, or right away when registered later, and <code>pi.unregisterMcpServer(name)</code> disconnects it. A server of the same name in <code>mcp.json</code> takes precedence, and <code>/mcp</code> notes the registration it overrides. Exposure and enabled changes to a registered server in <code>/mcp</code> apply to the session only and are never saved.</p>
-<p>A stdio server needs the extension’s process grant and an HTTP server its network grant. Without it, <code>registerMcpServer</code> throws an error that names the missing grant. Every package has both grants by default, as in Pi. As in Pi, it also throws for a name that another extension registered, or for one whose tools would share that server’s prefix, such as <code>my_docs</code> after <code>my-docs</code>. The refused server is not registered. This holds while extensions load too: the error fails the extension’s load, and the extension that loaded first keeps the name.</p>
-<h2 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h2>
-<p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that asks for a sign-in shows as needing one in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code> or run <code>/mcp login &lt;server&gt;</code> inside yapi, or run <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>/mcp logout &lt;server&gt;</code> and <code>yapi mcp logout &lt;server&gt;</code> delete the stored credentials.</p>
-<p>yapi opens the authorization page in your browser and waits for it to redirect back. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with the server when the server allows it. For servers that do not, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
-<p>Credentials live in <code>~/.yapi/agent/mcp-auth.json</code>, in the same format as Pi’s <code>mcp-auth.json</code>, and <code>yapi import pi</code> copies Pi’s sign-ins. yapi refreshes an access token shortly before it expires and when the server rejects it, so a sign-in lasts as long as the server keeps the grant. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
-<p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>. The token is read for every request, so it follows the provider’s refreshes.</p>
+<p>An extension adds a server for the session with <code>pi.registerMcpServer(name, config)</code>, where <code>config</code> takes the same fields as an <code>mcp.json</code> entry, and removes it with <code>pi.unregisterMcpServer(name)</code>. A server of the same name in <code>mcp.json</code> takes precedence. Changes to a registered server in <code>/mcp</code> last for the session only.</p>
+<p>A stdio server needs the extension’s process grant, and an HTTP server its network grant. Every package has both by default. As in Pi, <code>registerMcpServer</code> throws for a name that another extension registered, or one whose tool prefix would clash with it, such as <code>my_docs</code> after <code>my-docs</code>. During loading, the error fails the extension’s load, and the extension that loaded first keeps the name.</p>
 <h2 id="codemode"><a class="header" href="#codemode">Codemode</a></h2>
 <p>By default, yapi offers MCP tools through codemode. Instead of one tool call per step, the model writes a short JavaScript program that calls several tools and combines their results. Programs run in a fresh WebAssembly sandbox with no file, process or network access of their own.</p>
-<p>Set <code>"exposure": "direct"</code> on a server to offer its tools to the model directly. <code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well. With <code>"codemode": { "mode": "only" }</code> in <code>settings.json</code>, the tools that scripts can call are offered only through codemode while it is active. Requests leave out their declarations and the system prompt does not list them.</p>
+<ul>
+<li><code>"exposure": "direct"</code> on a server offers its tools to the model directly.</li>
+<li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
+<li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
+</ul>
 <p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
-<p>Scripts also reach the <code>models</code> global: they list the catalog and run classifier and image models with the session’s credentials. The model reads how to use it in Pi’s codemode documentation, in <code>~/.yapi/agent/docs/pi/docs/codemode.md</code> when the documentation for the model is installed, else on GitHub.</p>
-<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode</a> documentation describes every option.</p>
+<p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 
                     </main>
 
@@ -219,7 +223,7 @@ yapi mcp remove docs
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="agent-skills.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="extensions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -233,7 +237,7 @@ yapi mcp remove docs
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="agent-skills.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="extensions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

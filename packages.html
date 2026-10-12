@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Packages - yapi</title>
+        <title>Use packages - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,8 +179,9 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="packages"><a class="header" href="#packages">Packages</a></h1>
-<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder without Node.js.</p>
+                        <h1 id="use-packages"><a class="header" href="#use-packages">Use packages</a></h1>
+<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder, with no Node.js required.</p>
+<h2 id="install-and-manage-packages"><a class="header" href="#install-and-manage-packages">Install and manage packages</a></h2>
 <pre><code class="language-sh">yapi install npm:@scope/some-pi-package     # from npm
 yapi install git:github.com/user/repo       # from git
 yapi install ./my-package -l                 # a local folder, for this project only
@@ -189,46 +190,41 @@ yapi list
 yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 </code></pre>
-<p>Installed packages are recorded in <code>settings.json</code> as Pi records them. <code>-l</code> installs into the project’s <code>.yapi</code> folder instead of the global one. Local folders and files are used where they are, not copied.</p>
-<p>To try a package for one run without adding it to settings, pass it to <code>-e</code>:</p>
-<pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
-yapi -e git:github.com/user/repo
-</code></pre>
-<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
-<p><code>yapi list</code> shows each package with its install location. A tag after the source says what kind of extensions it contains: <code>[npm]</code> for Pi extensions in JavaScript or TypeScript, <code>[wasm]</code> for native extensions, and <code>[npm, wasm]</code> for both. Packages that hold only skills, prompt templates or themes, and packages that are not installed yet, have no tag.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place and are not copied.</p>
+<p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
+<p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code>User packages:
   npm:pi-mcp-adapter [npm]
     /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<h2 id="native-extensions"><a class="header" href="#native-extensions">Native extensions</a></h2>
-<p>Packages can contain <a href="native-extensions.html">native extensions</a> as <code>.wasm</code> files next to, or instead of, JavaScript ones. yapi loads <code>.wasm</code> files from a package’s <code>extensions</code> folder and from the files its manifest names. <code>yapi install</code> also accepts a single <code>.wasm</code> file.</p>
-<h2 id="the-npm-client"><a class="header" href="#the-npm-client">The npm client</a></h2>
-<p>yapi has a built-in npm registry client. It resolves versions with npm’s range syntax, checks integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts. Those mostly build native addons, which the WebAssembly runtime cannot load, so such addons are installed unbuilt and fail only if the extension loads one.</p>
-<p>The client reads registries and credentials as npm does, from <code>npm_config_*</code> environment variables and then from <code>~/.npmrc</code> or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. As with npm, credentials go only to the registry their key names.</p>
+<h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
+<p><code>-e</code> loads a package for one run without adding it to settings:</p>
+<pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
+yapi -e git:github.com/user/repo
+</code></pre>
+<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
+<h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project.</p>
+<h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
+<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="native-extensions.html">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
+<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
+<h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
+<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names.</p>
 <pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
 //npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
 </code></pre>
 <p>Pi’s <code>npmCommand</code> setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.</p>
-<h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
-<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence in yapi, which lets one package ship a <a href="native-extensions.html">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>.</p>
-<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
-<h2 id="planned-manifests-and-registry"><a class="header" href="#planned-manifests-and-registry">Planned: manifests and registry</a></h2>
-<p>These features are planned and not available yet.</p>
-<ul>
-<li><strong>Package manifests with capabilities.</strong> A WebAssembly package declares in its own manifest the grants it needs, such as file, process, network or environment access. You approve them, and yapi runs the package with only those grants. Events on Pi’s <code>pi.events</code> bus then reach only packages with the same grants, unless your settings let a package reach the others. A package’s own manifest cannot allow it.</li>
-<li><strong>Project manifests.</strong> A <code>yapi.toml</code> file at a project’s root lists the packages, extensions and skills the project uses. Anyone who checks out the project installs them in one step and gets the same versions, as <code>Cargo.toml</code> does for a Rust project.</li>
-<li><strong>A package registry.</strong> A central registry of yapi packages, so manifests can name packages and versions instead of npm or git sources.</li>
-</ul>
-<h2 id="turning-resources-on-and-off"><a class="header" href="#turning-resources-on-and-off">Turning resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme that your packages, settings and folders provide. Space toggles one, and yapi saves the choice as a pattern in <code>settings.json</code>. Tab switches between global settings and overrides for the current project. <code>yapi config -l</code> starts with the project.</p>
+<h2 id="planned-features"><a class="header" href="#planned-features">Planned features</a></h2>
+<p>Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the <a href="roadmap.html">Roadmap</a>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="native-examples.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="configuration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -242,7 +238,7 @@ yapi -e git:github.com/user/repo
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="native-examples.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="configuration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

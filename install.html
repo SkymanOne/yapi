@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Install - yapi</title>
+        <title>Install yapi - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36a2f575.js";
+            window.path_to_searchindex_js = "searchindex-30e96508.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-72bfffb4.js"></script>
+        <script src="toc-2d1f0715.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,23 +179,34 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>yapi is one executable. Releases have it for Linux and macOS on x86_64 and arm64, and every platform with a recent Rust toolchain can build it from source.</p>
+                        <h1 id="install-yapi"><a class="header" href="#install-yapi">Install yapi</a></h1>
+<p>yapi is one executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build it from source. Linux and macOS are fully supported. Windows support is best effort.</p>
 <h2 id="install-script"><a class="header" href="#install-script">Install script</a></h2>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 </code></pre>
-<p>The script downloads the latest release binary for your system from GitHub, checks it against its published SHA-256 checksum, and installs it as <code>~/.local/bin/yapi</code>. Options go after <code>sh -s --</code>:</p>
+<p>The script downloads the latest release for your system, verifies its SHA-256 checksum and installs it as <code>~/.local/bin/yapi</code>. It also installs the <a href="#documentation-for-the-model">documentation for the model</a>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Variable</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.1.0</code></td></tr>
+<tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
+<tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
+</tbody>
+</table>
+</div>
+<p>Pass options after <code>sh -s --</code>:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.1.0 --to /usr/local/bin
 </code></pre>
-<p><code>YAPI_VERSION</code> and <code>YAPI_INSTALL_DIR</code> set the same as <code>--version</code> and <code>--to</code>.</p>
-<p>The script also installs the release’s documentation for the model, which yapi reads to explain its own features. It holds this site’s pages and Pi’s docs and examples, checked against their SHA-256 checksum like the binary, and goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code>. A new install replaces the previous copy. <code>--no-docs</code> or <code>YAPI_NO_DOCS=1</code> skips it.</p>
 <h2 id="cargo-binstall"><a class="header" href="#cargo-binstall">cargo-binstall</a></h2>
-<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary through Cargo, into <code>~/.cargo/bin</code>:</p>
+<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary into <code>~/.cargo/bin</code>:</p>
 <pre><code class="language-sh">cargo binstall --git https://github.com/SkymanOne/yapi yapi
 </code></pre>
-<p>Keep <code>--git</code>. On crates.io, <code>yapi</code> names an unrelated crate. With <code>--git</code>, cargo-binstall reads yapi’s manifest on the <code>main</code> branch and downloads the release binary for the version it names, so it works when <code>main</code> names a released version. If it reports that the release does not exist, use the install script. yapi’s manifest turns off cargo-binstall’s other ways of installing, which would fetch <code>yapi</code> from crates.io, so a system without a release binary gets an error rather than another program.</p>
-<h2 id="release-binaries"><a class="header" href="#release-binaries">Release binaries</a></h2>
-<p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has the binary for each platform as <code>yapi-&lt;target&gt;.tar.gz</code>, next to a <code>.sha256</code> checksum. The archive holds <code>yapi</code> and its license files, <code>LICENSE-MIT</code>, <code>LICENSE-APACHE</code> and <code>THIRD-PARTY-NOTICES</code>. The install script installs only <code>yapi</code>. The names carry no version, so the latest release’s binary is always at <code>https://github.com/SkymanOne/yapi/releases/latest/download/yapi-&lt;target&gt;.tar.gz</code>.</p>
+<p>Keep <code>--git</code>, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on <code>main</code> names. If it reports that the release does not exist, use the install script.</p>
+<h2 id="release-archives"><a class="header" href="#release-archives">Release archives</a></h2>
+<p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has a <code>yapi-&lt;target&gt;.tar.gz</code> archive per platform, with a <code>.sha256</code> checksum. The archive holds <code>yapi</code> and its license files.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -209,82 +220,60 @@
 </tbody>
 </table>
 </div>
-<p>Without the script, unpack the binary straight into a directory on <code>PATH</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-aarch64-apple-darwin.tar.gz | tar xzf - -C ~/.local/bin yapi
-</code></pre>
-<p>To check the download first, fetch the archive and its checksum:</p>
+<p>Download an archive, verify it and unpack <code>yapi</code> into a directory on <code>PATH</code>:</p>
 <pre><code class="language-sh">curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz
 curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 sha256sum -c yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </code></pre>
-<p>On macOS, <code>shasum -a 256 -c</code> checks the file. For a particular release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>, such as <code>download/v0.1.0</code>. Systems with an older glibc, or with musl such as Alpine, build from source. If macOS refuses to open a binary from an archive downloaded in a browser, see <a href="troubleshooting.html#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
-<h2 id="from-source"><a class="header" href="#from-source">From source</a></h2>
-<p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, or update it with <code>rustup update</code>, then build and install a release from the repository:</p>
+<p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="troubleshooting.html#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
+<h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
+<p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then run:</p>
 <pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.1.0 yapi
 </code></pre>
-<p>Cargo places <code>yapi</code> in <code>~/.cargo/bin</code>. Without <code>--tag</code>, Cargo builds the latest commit on <code>main</code>. To build from a clone instead, as for development:</p>
-<pre><code class="language-sh">git clone https://github.com/SkymanOne/yapi yapi
-cd yapi
-cargo install --locked --path crates/yapi
-</code></pre>
-<p>Inside the clone, <code>rust-toolchain.toml</code> selects the stable toolchain with Clippy and rustfmt. rustup installs it on the first build if needed, but does not update an older one, so run <code>rustup update</code> if Cargo reports that rustc is too old.</p>
-<h2 id="documentation-for-the-model"><a class="header" href="#documentation-for-the-model">Documentation for the model</a></h2>
-<p>yapi reads its documentation to explain its own features: the pages of this site, and Pi’s docs and examples, which describe the extension API that yapi implements. Each release publishes them as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Installed with</th><th>Documentation</th></tr>
-</thead>
-<tbody>
-<tr><td>Install script</td><td>Installed with the binary</td></tr>
-<tr><td>cargo-binstall, Cargo or a release archive</td><td>Downloaded by yapi in the background when it first starts</td></tr>
-</tbody>
-</table>
-</div>
-<p>yapi downloads the documentation when the folder is missing or documents another version, checks it against its SHA-256 checksum, and replaces the old copy. It never downloads with <code>YAPI_NO_DOCS=1</code>, when offline (<code>--offline</code> or <code>PI_OFFLINE=1</code>), or in a development build. yapi reads only the copy of its own version, so until that copy is in place, as just after an upgrade, the model reads the same pages online.</p>
-<p>To install the documentation by hand, for example on a machine that runs yapi offline:</p>
-<pre><code class="language-sh">mkdir -p ~/.yapi/agent/docs &amp;&amp; curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
-</code></pre>
-<p>This installs the latest release’s documentation. When yapi is an older release, replace <code>latest/download</code> with <code>download/v&lt;version&gt;</code>, where <code>&lt;version&gt;</code> is what <code>yapi --version</code> prints.</p>
+<p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>. To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
 <pre><code class="language-sh">yapi --version
 </code></pre>
+<h2 id="documentation-for-the-model"><a class="header" href="#documentation-for-the-model">Documentation for the model</a></h2>
+<p>yapi reads its own documentation to answer questions about its features. The documentation holds these pages and Pi’s docs and examples, which describe the extension API. Each release publishes it as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code> when that is set.</p>
+<p>The install script installs the documentation with the binary. With any other method, yapi downloads it in the background on first start. Either way, the archive is verified against its checksum and replaces the previous copy. <code>YAPI_NO_DOCS=1</code>, <code>--offline</code> and <code>PI_OFFLINE=1</code> turn the download off. Until a copy for its own version is in place, yapi points the model to the online documentation. Pi’s pages use Pi’s names, such as <code>~/.pi/agent</code>, and <a href="migrating.html#names-that-change">Coming from Pi</a> lists yapi’s.</p>
+<p>To install it by hand, such as on a machine that runs offline:</p>
+<pre><code class="language-sh">mkdir -p ~/.yapi/agent/docs &amp;&amp; curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
+</code></pre>
+<p>For an older yapi, replace <code>latest/download</code> with <code>download/v&lt;version&gt;</code>, where <code>&lt;version&gt;</code> is what <code>yapi --version</code> prints. yapi replaces these files on upgrade, so keep your own notes elsewhere.</p>
 <h2 id="upgrade"><a class="header" href="#upgrade">Upgrade</a></h2>
-<p>yapi does not update itself. <code>yapi update</code> updates packages and model catalogs only. Upgrade yapi the way you installed it:</p>
+<p>yapi does not update itself. <code>yapi update</code> prints how to upgrade, <code>yapi update --extensions</code> updates packages and <code>yapi update --models</code> updates model catalogs. Upgrade yapi the same way you installed it:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Installed with</th><th>Upgrade</th></tr>
 </thead>
 <tbody>
-<tr><td>Install script</td><td>Run the script again. It replaces the binary with the latest release, or the one <code>--version</code> names.</td></tr>
+<tr><td>Install script</td><td>Run the script again.</td></tr>
 <tr><td>cargo-binstall</td><td>Run the same <code>cargo binstall</code> command again.</td></tr>
 <tr><td>Release archive</td><td>Unpack the new archive over the old binary.</td></tr>
-<tr><td>Cargo, from source</td><td>Run <code>cargo install</code> again with the new release’s tag.</td></tr>
+<tr><td>Cargo</td><td>Run <code>cargo install</code> again with the new release’s tag.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Settings, credentials, sessions and packages are kept. The documentation for the model is replaced with the new release’s.</p>
+<p>Settings, credentials, sessions and packages are kept.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the binary the way you installed it:</p>
 <ul>
-<li>Install script or release archive: <code>rm ~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
-<li>cargo-binstall or Cargo: <code>cargo uninstall yapi</code>.</li>
+<li>Install script or release archive: delete <code>~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
+<li>cargo-binstall or Cargo: run <code>cargo uninstall yapi</code>.</li>
 </ul>
-<p>yapi keeps its settings, credentials, sessions, packages and caches in <code>~/.yapi</code>, or in <code>YAPI_CODING_AGENT_DIR</code> when it is set, and project resources in each project’s <code>.yapi</code> folder. Delete them to remove that state as well.</p>
-<h2 id="platforms"><a class="header" href="#platforms">Platforms</a></h2>
-<p>Linux and macOS are fully supported. Windows builds are best effort.</p>
+<p>To remove settings, credentials, sessions, packages and caches as well, delete <code>~/.yapi</code>, or <code>YAPI_CODING_AGENT_DIR</code> when set, and each project’s <code>.yapi</code> folder.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="quickstart.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="quickstart.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="migrating.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -294,11 +283,11 @@ cargo install --locked --path crates/yapi
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="quickstart.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="quickstart.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="migrating.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
