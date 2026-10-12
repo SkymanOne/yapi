@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="native-extensions-in-rust"><a class="header" href="#native-extensions-in-rust">Native extensions in Rust</a></h1>
-<p>Native extensions are WebAssembly components written in Rust with the <code>yapi-extension-api</code> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of a few hundred kilobytes.</p>
+<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of a few hundred kilobytes.</p>
 <p>The native extension API is unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests may change in any release before then, and extensions may need to be rebuilt. Pi extensions are not affected.</p>
 <h2 id="create-an-extension"><a class="header" href="#create-an-extension">Create an extension</a></h2>
 <p>Add the <code>wasm32-wasip2</code> target to your Rust toolchain:</p>
