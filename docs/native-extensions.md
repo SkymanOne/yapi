@@ -6,7 +6,7 @@ The native extension API is unstable until yapi 1.0. The WIT world, the Rust SDK
 
 ## Create an extension
 
-Add the `wasm32-wasip2` target to your Rust toolchain:
+The SDK needs Rust 1.88 or newer, or 1.91 with the `widgets` feature. Add the `wasm32-wasip2` target to your Rust toolchain:
 
 ```sh
 rustup target add wasm32-wasip2

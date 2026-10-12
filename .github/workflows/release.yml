@@ -227,6 +227,18 @@ jobs:
       # Runner images can carry an older stable, which rustup does not update.
       - name: Update stable Rust and install rust-toolchain.toml
         run: rustup update --no-self-update stable && rustup toolchain install
+      # The rust-version each crate declares, older than yapi's own, and 1.91
+      # for the SDK's widgets feature, which takes yapi-tui's.
+      - name: Check the crates' minimum Rust versions
+        run: |
+          msrv() { sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$1/Cargo.toml"; }
+          types=$(msrv crates/yapi-types) tui=$(msrv crates/yapi-tui) sdk=$(msrv guest/yapi-extension-api)
+          rustup toolchain install "$types" "$tui" "$sdk" --profile minimal --target wasm32-wasip2
+          cargo "+$types" check -p yapi-types
+          cargo "+$tui" check -p yapi-tui
+          cd guest
+          cargo "+$sdk" check -p yapi-extension-api --target wasm32-wasip2
+          cargo "+$tui" check -p yapi-extension-api --features widgets --target wasm32-wasip2
       - name: Check that the crates package
         if: github.ref_type != 'tag'
         run: |

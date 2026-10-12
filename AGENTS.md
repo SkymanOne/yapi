@@ -223,7 +223,7 @@ Feasibility study, prior art and rejected alternatives: [dev/research/extension-
 
 ### Code
 
-- Rust stable, the `stable` channel in `rust-toolchain.toml`, edition 2024. `rust-version` in the root `Cargo.toml` is the oldest Rust that builds yapi.
+- Rust stable, the `stable` channel in `rust-toolchain.toml`, edition 2024. `rust-version` in the root `Cargo.toml` is the oldest Rust that builds yapi. The crates published to crates.io declare their own, which the Release workflow checks: 1.91 for `yapi-types` and `yapi-tui`, 1.88 for `yapi-extension-api`.
 - KISS: choose the simplest design that matches pi's behavior. No speculative generality.
 - DRY: one definition per concept. pi JSON shapes live only in `yapi-types`.
 - Serialize pi JSON only through `yapi_types::json`, which matches `JSON.stringify`. Clippy rejects direct `serde_json::to_*` calls.

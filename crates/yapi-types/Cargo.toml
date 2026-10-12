@@ -3,11 +3,15 @@ name = "yapi-types"
 description = "Serde types for pi's JSON formats: messages, events, session entries, settings, models and extension payloads."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# The oldest Rust that builds it, older than yapi's own. The Release workflow
+# checks it before publishing.
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
 # Published to crates.io for yapi-extension-api's widgets feature.
 publish = true
+keywords = ["pi", "agent", "llm", "serde", "json"]
+categories = ["data-structures"]
 
 [dependencies]
 getrandom.workspace = true
