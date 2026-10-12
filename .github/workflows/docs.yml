@@ -44,7 +44,12 @@ jobs:
           tar -xzf "$RUNNER_TEMP/mdbook.tar.gz" -C "$RUNNER_TEMP"
       - name: Build the site
         if: github.event.action != 'closed'
-        run: '"$RUNNER_TEMP/mdbook" build'
+        run: |
+          "$RUNNER_TEMP/mdbook" build
+          # The site root's .nojekyll covers previews too. The deploy action
+          # never deletes a .nojekyll, so a preview's own copy would outlive
+          # the preview.
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then rm target/book/.nojekyll; fi
       - name: Publish the site
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445 # v4.9.0
