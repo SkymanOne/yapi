@@ -123,6 +123,8 @@ impl Bridge for NoBridge {}
 pub struct Options {
     /// The working directory extensions see.
     pub cwd: PathBuf,
+    /// The project directory of the sessions the extensions load for.
+    pub project_dir: PathBuf,
     /// The agent directory extensions see.
     pub agent_dir: PathBuf,
     /// The directory `os.homedir()` names.
@@ -146,10 +148,11 @@ pub struct Options {
 }
 
 impl Options {
-    /// Full grants and a 1 GiB memory limit in `cwd`, with the configured
-    /// agent directory.
+    /// Full grants and a 1 GiB memory limit in `cwd`, which is the project
+    /// directory too, with the configured agent directory.
     pub fn new(cwd: PathBuf) -> Options {
         Options {
+            project_dir: cwd.clone(),
             cwd,
             agent_dir: yapi_core::config::agent_dir(),
             home_dir: yapi_core::tools::path::home_dir(),

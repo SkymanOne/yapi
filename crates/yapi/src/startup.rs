@@ -1084,6 +1084,7 @@ async fn start_extensions(
                 .clone(),
         };
         let mut options = yapi_ext::Options::new(cwd.clone());
+        options.project_dir = run.settings.project_dir().to_path_buf();
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;

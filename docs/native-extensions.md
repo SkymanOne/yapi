@@ -152,6 +152,7 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi instal
 | `spawn` | Run a future in the background, after the handler that started it has returned |
 | `request` | Call any host action by name with a JSON payload and get its answer at once |
 | `extension_path` | The extension's `.wasm` file, and the root of the package it was installed from |
+| `project_dir` | The folder the session's project files come from, also while the extension loads. See [Where the project is](#where-the-project-is). |
 | `op` | Start a host operation by name, such as a dialog or an HTTP request, and await its answer |
 | `Context` | The mode, the working folder and the rest of Pi's `ctx`. In a tool, `Context::update` shows progress, `Context::tool_call_id` is the call's id, and `Context::aborted` resolves when the user aborts the run. See [Background work and cancellation](#background-work-and-cancellation). |
 | `Component` | A piece of interface that renders lines for a width and handles keys and mouse events. See [Interface components](#interface-components). |
@@ -217,6 +218,10 @@ let output = request("exec.sync", &json!({
 ### Where the extension is
 
 `extension_path()` returns the extension's `.wasm` file as `file`, and the root of the package it was installed from as `package_root`. `package_root` is `None` for a file given with `-e` or found in an `extensions` folder. An extension that starts another yapi with itself loaded passes `file` to `-e`, and one that ships scripts or data finds them next to `file` or under `package_root`.
+
+### Where the project is
+
+`project_dir()` returns the folder the session's project files come from, the same folder as `projectDir` in `Context::data`. It is the working folder unless yapi runs with `--project-dir`. The init function can call it before any `Context` exists, such as to list project files in a tool's description. yapi runs the init function again for every new, resumed, forked or reloaded session, and each run sees the project of the session it loads for. Older versions of yapi answer `None`, and an extension then falls back to the working folder from the `cwd` request.
 
 ## Events between extensions
 

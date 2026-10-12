@@ -591,6 +591,17 @@ pub fn extension_path() -> ExtensionPath {
     })
 }
 
+/// The directory the session's project files come from, as `projectDir` in
+/// [`Context::data`]: the working directory unless yapi runs with
+/// `--project-dir`. In the init function, the project of the session the
+/// extension loads for. `None` from a yapi that does not report it.
+pub fn project_dir() -> Option<String> {
+    request("projectDir", &Value::Null)
+        .ok()?
+        .as_str()
+        .map(str::to_owned)
+}
+
 /// The value of flag `name`: from the command line, else its default.
 pub fn get_flag(name: &str) -> Option<Value> {
     STATE.with(|state| {
