@@ -1,32 +1,36 @@
 # Summary
 
-[Introduction](index.md)
+[Overview](index.md)
 
-# Getting started
+# Get started
 
-- [Install](install.md)
 - [Quickstart](quickstart.md)
-- [Models and sign-in](models.md)
+- [Install yapi](install.md)
+- [Coming from Pi](migrating.md)
 
-# Using yapi
+# Run yapi
 
-- [Interactive mode](interactive.md)
-- [Sessions](sessions.md)
-- [Print, JSON and RPC modes](automation.md)
-- [Configuration](configuration.md)
+- [Use yapi in the terminal](interactive.md)
+- [Choose a model](models.md)
+- [Manage sessions](sessions.md)
+- [Run yapi safely](security.md)
+- [Automate yapi](automation.md)
 
-# Extending yapi
+# Customize yapi
+
+- [Configure yapi](configuration.md)
+- [Use packages](packages.md)
+- [Connect MCP servers](mcp.md)
+
+# Build on yapi
 
 - [Extensions](extensions.md)
 - [Native extensions in Rust](native-extensions.md)
 - [Native extension examples](native-examples.md)
-- [Packages](packages.md)
-- [MCP servers and codemode](mcp.md)
 - [Agent skills](agent-skills.md)
 
 # Reference
 
-- [Coming from Pi](migrating.md)
 - [Differences from Pi](compat.md)
 - [Performance](performance.md)
 - [Troubleshooting](troubleshooting.md)

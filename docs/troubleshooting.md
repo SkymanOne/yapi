@@ -16,12 +16,12 @@ xattr -d com.apple.quarantine ~/.local/bin/yapi
 
 ## No models available
 
-yapi found no credentials. Set a provider's API key or run `/login`, as described in [Models and sign-in](models.md).
+yapi found no credentials. Set a provider's API key or run `/login`. See [Choose a model](models.md).
 
 ## An extension breaks startup
 
-`yapi -ne` starts without extensions. `yapi config` can then turn the failing one off.
+`yapi -ne` starts without extensions. Then turn the failing one off with `yapi config`.
 
 ## Reporting a problem
 
-`/debug` writes what yapi rendered and sent to `~/.yapi/agent/yapi-debug.log`. Include it in a report on the [issue tracker](https://github.com/SkymanOne/yapi/issues), with the output of `yapi --version` and your operating system.
+Run `/debug` to write the screen, the session's messages and recent extension output to `~/.yapi/agent/yapi-debug.log`. Check it for private data, then attach it to a report on the [issue tracker](https://github.com/SkymanOne/yapi/issues) with the output of `yapi --version` and your operating system.

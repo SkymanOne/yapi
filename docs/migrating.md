@@ -1,14 +1,16 @@
 # Coming from Pi
 
-yapi reads Pi's formats but keeps its own folders, so the two tools never write the same files. Copy your Pi setup once:
+yapi reads Pi's formats but keeps its own folders, so the two never write the same files. Copy your Pi setup once:
 
 ```sh
 yapi import pi
 ```
 
-The command copies settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global `AGENTS.md` or `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`, sessions, prompt templates, skills, themes, extensions and packages from Pi's agent folder into yapi's. That folder is `~/.pi/agent`, or `PI_CODING_AGENT_DIR` when it is set. The command also copies the current project's `.pi` folder into `.yapi`. Files that yapi already has are kept. The exception is a `settings.json` that holds only the version yapi recorded when it first started, which Pi's settings replace. Pi's `lastChangelogVersion` is left out, because it holds Pi's version and not yapi's.
+The command copies Pi's agent folder, `~/.pi/agent` or `PI_CODING_AGENT_DIR`, into yapi's: settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global `AGENTS.md` or `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project's `.pi` folder into `.yapi`.
 
-After that, yapi and Pi work side by side. Session files written by either one open in the other.
+Files yapi already has are kept, except a `settings.json` that holds only the version yapi recorded on first start. Pi's `lastChangelogVersion` is left out, because it holds Pi's version.
+
+Afterwards, yapi and Pi work side by side, and each opens the other's session files.
 
 ## Names that change
 
@@ -20,7 +22,7 @@ After that, yapi and Pi work side by side. Session files written by either one o
 | `PI_CODING_AGENT_SESSION_DIR` | `YAPI_CODING_AGENT_SESSION_DIR` |
 | `pi install`, `pi config`, `pi mcp`, `pi auth` | `yapi install`, `yapi config`, `yapi mcp`, `yapi auth` |
 
-Only the two directory variables are renamed. Provider keys and every other `PI_*` variable that yapi reads, such as `PI_OFFLINE` and `PI_CACHE_RETENTION`, keep their names. Command-line flags, slash commands and the JSON and RPC protocols are the same as Pi's.
+Only the two directory variables are renamed. Provider keys and every other `PI_*` variable, such as `PI_OFFLINE` and `PI_CACHE_RETENTION`, keep their names. Command-line flags, slash commands and the JSON and RPC protocols are the same as Pi's.
 
 ## What differs
 

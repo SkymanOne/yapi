@@ -1,6 +1,6 @@
 # Performance
 
-yapi is built to start fast, use little memory and install small. `cargo xtask bench` measures it against Pi on the same machine.
+`cargo xtask bench` measures yapi against Pi on the same machine: startup time, keystroke latency, memory and install size.
 
 ## Results
 
@@ -36,8 +36,6 @@ macOS, on `macos-latest` (Apple M1 virtual machine, 3 hardware threads), with Pi
 | Memory with 57 of Pi's example extensions | 35.0 MB (35.0 to 35.1) | 131.1 MB (130.2 to 131.6) | 3.7× |
 | Install size | 28.7 MB | 233.9 MB | 8.1× |
 
-Single samples on the macOS runner reach 128 ms for yapi's interactive startup and 444 ms for Pi's, which is why the tables report medians.
-
 ## What each measure means
 
 - **Startup, interactive**: time from starting the interactive mode in a 100×40 pseudo-terminal until the footer shows the model.
@@ -56,7 +54,7 @@ Single samples on the macOS runner reach 128 ms for yapi's interactive startup a
 
 - Every program runs with a cleared environment, a fresh home and agent directory, `PI_OFFLINE=1`, and a placeholder Anthropic key pointed at a local listener or mock provider, so no measure touches the network.
 - Startup measures run 20 times per program and memory measures 5 times, alternating between yapi and Pi, so drift on the machine affects both alike. Keystrokes run 200 times per program.
-- Medians are reported because single slow runs come from the machine rather than the program. The ranges show how much the samples vary.
+- Medians are reported because single slow runs come from the machine rather than the program. On the macOS runner, single samples reach 128 ms for yapi's interactive startup and 444 ms for Pi's.
 - Pi runs from the same npm install whose size is measured, as its README recommends installing it. The example extensions come from that install too.
 - MB means 10^6 bytes.
 
