@@ -9,6 +9,7 @@ mod common;
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use common::{
     Notes, cli_source, custom_entries, engine, options, scratch, session, session_with_tools,
@@ -23,7 +24,8 @@ use yapi_core::extensions::{
     RemoteComponent,
 };
 use yapi_ext::ExtensionHost;
-use yapi_types::message::Message;
+use yapi_types::event::AgentEvent;
+use yapi_types::message::{Message, ToolResultMessage};
 use yapi_types::session::FileEntry;
 
 fn example() -> std::path::PathBuf {
@@ -500,6 +502,92 @@ async fn native_tools_aborted_before_they_start_stop() {
         )
         .await;
     assert_eq!(result.unwrap_err(), "This operation was aborted");
+}
+
+/// Runs tool `call` of the `countdown` example with `args` as `call-1`,
+/// aborts the run once the tool reports progress, and returns the tool's
+/// result, its text and how long the run took to end after the abort.
+async fn abort_countdown(
+    name: &str,
+    call: &str,
+    args: serde_json::Value,
+) -> (ToolResultMessage, String, Duration) {
+    let dir = scratch(name);
+    let host = load(&dir, "countdown").await;
+    let faux = Faux::new([
+        Response::tool_call("call-1", call, args),
+        Response::text("done"),
+    ]);
+    let session = session(&faux, &dir, host.for_session());
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    let started = Arc::new(tokio::sync::Notify::new());
+    let notify = started.clone();
+    session.subscribe(Box::new(move |event| {
+        if matches!(event, AgentEvent::ToolExecutionUpdate { .. }) {
+            notify.notify_one();
+        }
+    }));
+    let running = session.clone();
+    let prompt = tokio::spawn(async move { running.prompt("count", Vec::new()).await });
+    started.notified().await;
+    let aborted = Instant::now();
+    session.abort();
+    tokio::time::timeout(Duration::from_secs(30), prompt)
+        .await
+        .expect("the run ends")
+        .unwrap()
+        .unwrap();
+    let elapsed = aborted.elapsed();
+    let result = session
+        .messages()
+        .into_iter()
+        .find_map(|message| match message {
+            Message::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .unwrap();
+    let text = yapi_types::message::blocks_text(&result.content, "|");
+    (result, text, elapsed)
+}
+
+/// A native tool that waits for `Context::aborted` keeps running after an
+/// abort, and its own result, which names its call's id, becomes the tool
+/// result, as a Pi tool's does.
+#[tokio::test(flavor = "multi_thread")]
+async fn native_tools_that_wait_for_aborts_return_their_own_result() {
+    let (result, text, _) =
+        abort_countdown("countdown-stops", "countdown", json!({"seconds": 30})).await;
+    assert_eq!(text, "Stopped with 30 seconds left");
+    assert!(!result.is_error);
+    assert_eq!(result.details, Some(json!({"toolCallId": "call-1"})));
+}
+
+/// A native tool that never asks for the abort stops at once.
+#[tokio::test(flavor = "multi_thread")]
+async fn native_tools_that_ignore_aborts_stop_at_once() {
+    let (result, text, elapsed) =
+        abort_countdown("countdown-ignores", "wait", json!({"seconds": 30})).await;
+    assert_eq!(text, "This operation was aborted");
+    assert!(result.is_error);
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+}
+
+/// A native tool that waits for the abort but has not returned 10 seconds
+/// later is dropped, so it cannot hold the run forever.
+#[tokio::test(flavor = "multi_thread")]
+async fn native_tools_that_outlast_the_abort_deadline_are_dropped() {
+    let (result, text, elapsed) = abort_countdown(
+        "countdown-deadline",
+        "countdown",
+        json!({"seconds": 30, "cleanup": 60}),
+    )
+    .await;
+    assert_eq!(text, "This operation was aborted");
+    assert!(result.is_error);
+    assert!(elapsed >= Duration::from_secs(10), "{elapsed:?}");
+    assert!(elapsed < Duration::from_secs(20), "{elapsed:?}");
 }
 
 /// The rows of `component` at `width`, without CSI and APC sequences.

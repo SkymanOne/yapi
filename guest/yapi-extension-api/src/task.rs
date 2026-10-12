@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::{Poll, Wake, Waker};
 
@@ -34,6 +35,63 @@ thread_local! {
 
 fn next_id() -> u64 {
     NEXT_ID.with(|next| next.replace(next.get() + 1))
+}
+
+/// A tool call's abort, pi's `AbortSignal`.
+#[derive(Debug, Default)]
+pub(crate) struct Signal {
+    pub(crate) aborted: Cell<bool>,
+    /// Whether the handler has asked for the abort.
+    pub(crate) watched: Cell<bool>,
+    /// The wakers of the futures waiting for it, by future.
+    wakers: RefCell<Vec<(u64, Waker)>>,
+}
+
+impl Signal {
+    /// Aborts, waking the futures waiting for it.
+    pub(crate) fn abort(&self) {
+        self.aborted.set(true);
+        for (_, waker) in self.wakers.take() {
+            waker.wake();
+        }
+    }
+
+    /// Resolves once `signal` aborts.
+    pub(crate) fn wait(signal: Rc<Signal>) -> impl Future<Output = ()> + 'static {
+        Aborted {
+            signal,
+            key: next_id(),
+        }
+    }
+}
+
+struct Aborted {
+    signal: Rc<Signal>,
+    key: u64,
+}
+
+impl Future for Aborted {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<()> {
+        if self.signal.aborted.get() {
+            return Poll::Ready(());
+        }
+        let mut wakers = self.signal.wakers.borrow_mut();
+        wakers.retain(|(key, _)| *key != self.key);
+        wakers.push((self.key, cx.waker().clone()));
+        Poll::Pending
+    }
+}
+
+impl Drop for Aborted {
+    fn drop(&mut self) {
+        let key = self.key;
+        self.signal
+            .wakers
+            .borrow_mut()
+            .retain(|(other, _)| *other != key);
+    }
 }
 
 /// Wakes task `.0` by queueing it.
