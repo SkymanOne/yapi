@@ -47,9 +47,9 @@ yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC p
 | | Pi | yapi |
 |---|---|---|
 | Runtime | Node.js 22.19 or newer | One native binary |
-| Startup to first paint | 324 ms | 10 ms |
-| Memory, idle | 117 MB | 19 MB |
-| Install size | 247 MB with Node.js | 35 MB |
+| Startup to first paint | 324 ms | **10 ms** |
+| Memory, idle | 117 MB | **19 MB** |
+| Install size | 247 MB with Node.js | **35 MB** |
 | Extensions | Run in Pi's process | Run in WebAssembly. Pi extensions run unchanged, and native extensions are written in Rust. |
 
 Figures are medians on GitHub's hosted Linux runner. [Performance](https://skymanone.github.io/yapi/performance.html) describes the method and has the macOS results.
