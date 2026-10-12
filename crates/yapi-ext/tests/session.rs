@@ -163,6 +163,7 @@ async fn commands_input_and_new_sessions() {
 
     // A new session runs the factories again: its counter starts over.
     first.shutdown().await;
+    js.reload().await;
     let second = session(&Faux::new([]), &dir, js.for_session());
     second
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
@@ -678,6 +679,7 @@ async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
         .await;
     assert_eq!(owners(&first), [("moved".to_owned(), path("b.ts"))]);
     first.shutdown().await;
+    js.reload().await;
     let second = session(&Faux::new([]), &dir, js.for_session());
     second
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
@@ -685,46 +687,131 @@ async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
     assert_eq!(owners(&second), [("moved".to_owned(), path("a.ts"))]);
 }
 
-/// A factory that throws as a later session binds fails its extension's
-/// load with pi's message, which the session keeps for pi's
-/// `[Extension issues]`, instead of the failure going unreported. Each
-/// later session loads the extension again, as pi does, and reports it
-/// again while it fails.
+/// Runtimes run their factories again for a new session one after another,
+/// before it is built, and each checks its MCP servers against the runtimes
+/// that ran before it for that session: a name a later runtime held in the
+/// previous session goes to the earlier one, and a later runtime cannot take
+/// a name the earlier one registered again.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_factory_that_fails_in_a_later_session_reports_its_load_error() {
+async fn runtimes_check_mcp_servers_against_this_run_for_a_new_session() {
+    let dir = scratch("mcp-runs");
+    let source = |calls: &str| {
+        format!(
+            "let runs = 0;\nexport default function (pi) {{\n\truns++;\n\tconst register = (name) => pi.registerMcpServer(name, {{ command: \"python3\", enabled: false }});\n{calls}}}\n"
+        )
+    };
+    let engine = engine();
+    let mut hosts = Vec::new();
+    for (file, calls) in [
+        (
+            "first.ts",
+            "\tregister(\"kept\");\n\tif (runs > 1) register(\"moved\");\n",
+        ),
+        (
+            "second.ts",
+            "\tif (runs === 1) register(\"moved\");\n\telse register(\"kept\");\n",
+        ),
+    ] {
+        let path = dir.join(file);
+        std::fs::write(&path, source(calls)).unwrap();
+        let host = ExtensionHost::load(&engine, options(&dir), &[cli_source(&path)])
+            .await
+            .unwrap();
+        assert!(host.errors().is_empty(), "{:?}", host.errors());
+        hosts.push(host);
+    }
+    let path = |file: &str| dir.join(file).to_string_lossy().into_owned();
+    let owners = |session: &yapi_core::agent_session::AgentSession| -> Vec<(String, String)> {
+        session
+            .mcp_servers()
+            .into_iter()
+            .map(|server| (server.name, server.extension_path))
+            .collect()
+    };
+    let first = session(
+        &Faux::new([]),
+        &dir,
+        hosts.iter().flat_map(ExtensionHost::for_session).collect(),
+    );
+    first
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(
+        owners(&first),
+        [
+            ("kept".to_owned(), path("first.ts")),
+            ("moved".to_owned(), path("second.ts")),
+        ]
+    );
+    first.shutdown().await;
+    for host in &hosts {
+        host.reload().await;
+    }
+    assert!(hosts[0].errors().is_empty(), "{:?}", hosts[0].errors());
+    assert_eq!(
+        hosts[1].errors(),
+        [yapi_ext::LoadError {
+            path: dir.join("second.ts"),
+            error: format!(
+                "Failed to load extension: MCP server \"kept\" is already registered by extension \"{}\"",
+                path("first.ts")
+            ),
+        }]
+    );
+    let second = session(
+        &Faux::new([]),
+        &dir,
+        hosts.iter().flat_map(ExtensionHost::for_session).collect(),
+    );
+    second
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(
+        owners(&second),
+        [
+            ("kept".to_owned(), path("first.ts")),
+            ("moved".to_owned(), path("first.ts")),
+        ]
+    );
+}
+
+/// As pi loads the extensions for each runtime, a later session's factories
+/// run before the session is built. An extension whose factory throws then
+/// fails to load with pi's message and gives the session nothing, and it
+/// runs again for the session after, even as its runtime's only extension.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_factory_that_fails_in_a_later_session_fails_that_load() {
     let dir = scratch("reload-error");
     let path = dir.join("flaky.ts");
     std::fs::write(
         &path,
-        "let runs = 0;\nexport default function () {\n\tif (++runs > 1) throw new Error(\"loads only once\");\n}\n",
+        "let runs = 0;\nexport default function (pi) {\n\tif (++runs > 1) throw new Error(\"loads only once\");\n\tpi.registerCommand(\"flaky\", { description: \"\", handler: async () => {} });\n}\n",
     )
     .unwrap();
-    let steady = dir.join("steady.ts");
-    std::fs::write(&steady, "export default function () {}\n").unwrap();
-    let js = ExtensionHost::load(
-        &engine(),
-        options(&dir),
-        &[cli_source(&path), cli_source(&steady)],
-    )
-    .await
-    .unwrap();
+    let js = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
     assert!(js.errors().is_empty(), "{:?}", js.errors());
     let first = session(&Faux::new([]), &dir, js.for_session());
     first
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
         .await;
-    assert_eq!(first.extension_load_errors(), []);
+    assert_eq!(first.extension_commands().len(), 1);
     first.shutdown().await;
-    let failed = [(
-        path.to_string_lossy().into_owned(),
-        "Failed to load extension: loads only once".to_owned(),
-    )];
+    let failed = [yapi_ext::LoadError {
+        path: path.clone(),
+        error: "Failed to load extension: loads only once".into(),
+    }];
     for _ in 0..2 {
-        let later = session(&Faux::new([]), &dir, js.for_session());
+        js.reload().await;
+        assert_eq!(js.errors(), failed);
+        let extensions = js.for_session();
+        assert!(extensions.is_empty());
+        let later = session(&Faux::new([]), &dir, extensions);
         later
             .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
             .await;
-        assert_eq!(later.extension_load_errors(), failed);
+        assert!(later.extension_commands().is_empty());
         later.shutdown().await;
     }
 }

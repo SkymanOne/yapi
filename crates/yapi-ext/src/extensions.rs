@@ -1,8 +1,8 @@
 //! pi extensions loaded into one `yapi-js` instance, as yapi-core extensions.
 //!
 //! The instance loads every extension once. Each session gets one
-//! [`Extension`] per loaded file; when a later session starts, the guest runs
-//! the extensions' factories again, as pi does for every session.
+//! [`Extension`] per file that loaded; before a later session is built, the
+//! guest runs the extensions' factories again, as pi does for every session.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::Write as _;
@@ -78,9 +78,15 @@ pub struct ExtensionHost {
     /// Wire APIs registered with pi-ai's `registerApiProvider` while the
     /// extensions loaded.
     apis: Vec<String>,
-    errors: Vec<LoadError>,
+    /// The files that failed to load in the latest run of the factories.
+    errors: Mutex<Vec<LoadError>>,
     /// Sessions handed extensions so far.
     sessions: AtomicU64,
+    /// Runs of the factories since the extensions loaded.
+    runs: AtomicU64,
+    /// The session generation the latest run of the factories is for: the
+    /// extensions of earlier sessions are stale.
+    serves: AtomicU64,
     /// One more than the session generation the guest is bound to; 0 before
     /// the first binding.
     bound: tokio::sync::Mutex<u64>,
@@ -163,8 +169,10 @@ impl ExtensionHost {
             sources: sources.to_vec(),
             loaded: Mutex::new(loaded),
             apis: list(&result["apis"]).iter().map(text).collect(),
-            errors,
+            errors: Mutex::new(errors),
             sessions: AtomicU64::new(0),
+            runs: AtomicU64::new(0),
+            serves: AtomicU64::new(0),
             bound: tokio::sync::Mutex::new(0),
             terminal: Mutex::new(None),
             events,
@@ -176,9 +184,39 @@ impl ExtensionHost {
         Ok(extensions)
     }
 
-    /// The files that failed to load.
-    pub fn errors(&self) -> &[LoadError] {
-        &self.errors
+    /// The files that failed to load in the latest run of the factories:
+    /// as the extensions loaded, or the latest [`ExtensionHost::reload`].
+    pub fn errors(&self) -> Vec<LoadError> {
+        lock(&self.errors).clone()
+    }
+
+    /// Runs the factories again for the session after one that
+    /// [`ExtensionHost::for_session`] gave extensions to, as pi loads the
+    /// extensions for each runtime. Call it once the previous session has
+    /// shut down and before the next one is built, so that session gets
+    /// this run's registrations. An extension that failed in an earlier run
+    /// runs again. The first session has the run from loading.
+    pub async fn reload(&self) {
+        let generation = self.sessions.load(Ordering::SeqCst);
+        if generation == 0 {
+            return;
+        }
+        self.serves.store(generation, Ordering::SeqCst);
+        // The next session does not exist yet: until it binds, MCP servers
+        // are checked against the runtimes that ran before this one.
+        *lock(&self.bridge.session) = WeakSession::default();
+        self.runs.fetch_add(1, Ordering::SeqCst);
+        match self.instance.call("reload", &Value::Null).await {
+            Ok(result) => {
+                let (loaded, errors) = split(&result);
+                *lock(&self.loaded) = loaded;
+                *lock(&self.errors) = errors;
+            }
+            Err(err) => self.bridge.log(
+                "error",
+                &format!("Extension runtime failed to reload: {err}"),
+            ),
+        }
     }
 
     /// What each loaded extension registered, as the runtime describes it:
@@ -352,7 +390,8 @@ impl ExtensionHost {
             .map(|_| ())
     }
 
-    /// The extensions for a new session, one per loaded file.
+    /// The extensions for a new session, one per file that loaded in the
+    /// latest run of the factories.
     pub fn for_session(self: &Arc<Self>) -> Vec<Arc<dyn Extension>> {
         let generation = self.sessions.fetch_add(1, Ordering::SeqCst);
         lock(&self.loaded)
@@ -370,38 +409,18 @@ impl ExtensionHost {
             .collect()
     }
 
-    /// Binds the guest to session `generation`, running the factories again
-    /// for every session after the first. `false` when a later session is
-    /// already bound, so `generation`'s extensions are stale.
+    /// Binds the guest to session `generation`. `false` when the factories
+    /// ran for a later session, or a later session is bound, so
+    /// `generation`'s extensions are stale.
     async fn bind(&self, generation: u64, ctx: &Context) -> bool {
         let mut bound = self.bound.lock().await;
-        if *bound > generation + 1 {
+        if *bound > generation + 1 || generation < self.serves.load(Ordering::SeqCst) {
             return false;
         }
         if *bound == generation + 1 {
             return true;
         }
         *lock(&self.bridge.session) = ctx.session.clone();
-        if generation > 0 {
-            match self.instance.call("reload", &Value::Null).await {
-                Ok(result) => {
-                    let (loaded, errors) = split(&result);
-                    *lock(&self.loaded) = loaded;
-                    if let Some(session) = ctx.session.upgrade() {
-                        for LoadError { path, error } in errors {
-                            session.add_extension_load_error(
-                                path.to_string_lossy().into_owned(),
-                                error,
-                            );
-                        }
-                    }
-                }
-                Err(err) => {
-                    ctx.ui
-                        .extension_error("yapi-js", "session_start", &err.to_string(), None)
-                }
-            }
-        }
         // The guest reads the state as it binds; later states follow it.
         let terminal = ctx.ui.terminal().map(|state| self.forward_terminal(state));
         if let Some(previous) = std::mem::replace(&mut *lock(&self.terminal), terminal) {
@@ -1696,18 +1715,25 @@ impl Bridge for SessionBridge {
         }
     }
 
-    /// Against the servers of the session the runtime binds to, which holds
-    /// those of the runtimes that bound before it, or, before any session,
-    /// the servers that other runtimes registered as they loaded. Runtimes
-    /// load and bind one after another, so the first to register a name
-    /// keeps it.
+    /// Against the servers of the session the runtime is bound to. Before
+    /// it binds, as its factories run, against the servers that the other
+    /// runtimes registered in their latest run, when they ran for the same
+    /// session: runtimes run their factories one after another, so the first
+    /// to register a name keeps it.
     fn check_mcp_server(&self, name: &str) -> Result<(), String> {
         if let Some(session) = self.session() {
             return session.check_mcp_server(self.runtime_id, name);
         }
+        let runs = |host: &ExtensionHost| host.runs.load(Ordering::SeqCst);
+        let mine = self
+            .owner
+            .get()
+            .and_then(Weak::upgrade)
+            .map_or(0, |me| runs(&me));
         let others: Vec<RegisteredMcpServer> = self
             .others()
             .iter()
+            .filter(|host| runs(host) >= mine)
             .flat_map(|host| host.loaded_mcp_servers())
             .collect();
         yapi_core::mcp::config::check_registration(&others, name)

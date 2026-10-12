@@ -900,15 +900,16 @@ impl AgentSession {
             .collect()
     }
 
-    /// Records extensions, by path, whose factories failed with `error` as
-    /// the session bound them. The factories of every session after the
-    /// first run again then, as pi loads extensions for each runtime.
+    /// Records the extension at `path`, whose factory failed with `error` as
+    /// the extensions loaded for this session. The factories of every
+    /// session after the first run again then, as pi loads the extensions
+    /// for each runtime.
     pub fn add_extension_load_error(&self, path: String, error: String) {
         lock(&self.inner.extension_load_errors).push((path, error));
     }
 
-    /// The extensions that failed to load as the session bound them, by
-    /// path, with pi's message, which pi's interactive mode lists under
+    /// The extensions that failed to load for this session, by path, with
+    /// pi's message, which pi's interactive mode lists under
     /// `[Extension issues]`.
     pub fn extension_load_errors(&self) -> Vec<(String, String)> {
         lock(&self.inner.extension_load_errors).clone()

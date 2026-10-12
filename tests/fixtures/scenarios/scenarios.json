@@ -325,10 +325,26 @@
   {
     "name": "tui-new-session-extension-load-error",
     "cassette": "none.json",
-    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts"],
-    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (_pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n}\n"},
-    "agentFiles": {"settings.json": "{\"quietStartup\": true}\n"},
-    "tty": {"cols": 100, "rows": 30, "keys": ["/new\r"]}
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/new\r", "/fl"]}
+  },
+  {
+    "name": "tui-reload-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/reload\r", "/fl"]}
+  },
+  {
+    "name": "rpc-new-session-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--mode", "rpc", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n\tpi.registerCommand(\"flaky\", { description: \"Loaded once\", handler: async () => {} });\n}\n", "steady.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(\"steady\", { description: \"Always loads\", handler: async () => {} });\n}\n"},
+    "rpc": [
+      {"send": {"id": "new", "type": "new_session"}},
+      {"send": {"id": "commands", "type": "get_commands"}}
+    ]
   },
   {
     "name": "tui-name",

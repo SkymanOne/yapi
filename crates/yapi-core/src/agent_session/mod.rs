@@ -301,8 +301,8 @@ struct Inner {
     mcp_servers: Mutex<McpServers>,
     /// Registered MCP servers reported as connected by no extension.
     unhandled_mcp_servers: Mutex<std::collections::HashSet<String>>,
-    /// Extensions that failed to load as the session bound them, by path,
-    /// with pi's message.
+    /// Extensions that failed to load for the session, by path, with pi's
+    /// message.
     extension_load_errors: Mutex<Vec<(String, String)>>,
 }
 

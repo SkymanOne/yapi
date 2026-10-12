@@ -151,16 +151,19 @@ fn answer(reply: Reply, outcome: Result<bool, String>) {
     }
 }
 
-/// A session the current one replaced for `reason`, which shuts down
-/// before the current session's extensions start.
+/// Why the current session replaced another, which has shut down, for
+/// the current session's extensions as they start.
 struct Replaced {
-    old: AgentSession,
     reason: Replacement,
-    /// The current session's file.
-    target: Option<String>,
+    /// The replaced session's file.
+    previous: Option<String>,
     /// The extension command that asked for the change.
     reply: Reply,
 }
+
+/// What a session change does once the replacement is current, or with why
+/// it could not be built.
+type Replacing = Box<dyn FnOnce(&mut App, Result<(), String>) + Send>;
 
 /// Events the loop handles. Session events carry the epoch of the session
 /// that sent them, so a replaced session's late events are dropped.
@@ -568,10 +571,11 @@ struct App {
     model_network: bool,
     /// The last selector catalog refresh id.
     next_refresh: u64,
-    /// The current session's extensions wait to start, after the session
-    /// they replace (if any) shuts down for a reason, with the replacement's
-    /// session file.
+    /// The current session's extensions wait to start, with why it replaced
+    /// another session, if it did.
     binding: Option<Option<Replaced>>,
+    /// Whether the session is shutting down for a replacement being built.
+    replacing: bool,
     /// What to show once the replacement session's extensions have started.
     on_bound: Vec<Then>,
     /// Messages to send once extensions have started.
@@ -3341,39 +3345,73 @@ impl App {
 
     // Sessions
 
-    /// Builds a session around `manager` and shows it in place of the current
-    /// one, which it replaces for `reason`. An extension command waiting on
-    /// `reply` hears of a failure at once, otherwise once the replacement's
-    /// extensions have started.
+    /// pi's runtime replacement: the current session settles and shuts down,
+    /// a session built around `manager` takes its place for `reason`, and
+    /// `done` runs once it shows, or with the error that kept it from being
+    /// built. An extension command waiting on `reply` hears of a failure at
+    /// once, otherwise once the replacement's extensions have started.
     fn replace_session(
         &mut self,
         manager: SessionManager,
         reason: Replacement,
         reply: Reply,
-    ) -> Result<(), String> {
+        done: impl FnOnce(&mut App, Result<(), String>) + Send + 'static,
+    ) {
+        // The current session is already on its way out.
+        if self.replacing {
+            answer(reply, Err("Another session change is in progress".into()));
+            return;
+        }
+        self.replacing = true;
         let target = crate::runtime::file_of(&manager);
-        let session = match (self.factory)(manager) {
+        let old = self.session.clone();
+        let previous = old.with_session(|manager| crate::runtime::file_of(manager));
+        old.abort();
+        old.abort_bash();
+        let factory = Arc::clone(&self.factory);
+        let tx = self.tx.clone();
+        let epoch = self.epoch;
+        let done: Replacing = Box::new(done);
+        tokio::spawn(async move {
+            old.wait_for_idle().await;
+            // The extensions' factories run again as the replacement is
+            // built, after the current session's extensions stop.
+            old.shutdown_for(reason, target).await;
+            let built = factory(manager).await.map_err(|error| error.to_string());
+            let replaced = Replaced {
+                reason,
+                previous,
+                reply,
+            };
+            let then: Then = Box::new(move |app| app.replaced(built, replaced, done));
+            let _ = tx.send(Event::Then(epoch, then));
+        });
+    }
+
+    /// Shows `built`, the session that replaced the current one, which has
+    /// shut down, and starts its extensions.
+    fn replaced(
+        &mut self,
+        built: Result<AgentSession, String>,
+        replaced: Replaced,
+        done: Replacing,
+    ) {
+        self.replacing = false;
+        let session = match built {
             Ok(session) => session,
             Err(error) => {
-                answer(reply, Err(error.to_string()));
-                return Err(error.to_string());
+                answer(replaced.reply, Err(error.clone()));
+                return done(self, Err(error));
             }
         };
         // Reports a replacement left waiting, when an extension's
         // `withSession` failed, are not this one's.
         self.on_bound.clear();
-        self.session.abort();
-        self.session.abort_bash();
         self.epoch += 1;
-        let old = std::mem::replace(&mut self.session, session);
+        self.session = session;
         subscribe(&self.session, &self.tx, self.epoch);
         self.reset_extension_ui();
-        self.binding = Some(Some(Replaced {
-            old,
-            reason,
-            target,
-            reply,
-        }));
+        self.binding = Some(Some(replaced));
         self.cwd = self.session.cwd().to_path_buf();
         self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
         self.branch = footer::git_branch(&self.cwd);
@@ -3387,7 +3425,7 @@ impl App {
         self.clear_chat();
         self.install_autocomplete();
         self.render_history();
-        Ok(())
+        done(self, Ok(()));
     }
 
     /// Runs `then` unless an extension cancels `change`: at once when no
@@ -3427,14 +3465,19 @@ impl App {
                     return app.fatal("Failed to create session", &error.to_string(), reply);
                 }
             };
-            match app.replace_session(manager, Replacement::New, reply) {
-                Ok(()) if command => app.once_bound(|app| {
-                    let notice = lines::styled("✓ New session started", app.theme.fg("accent"));
-                    app.text_item(vec![notice], true, (1, 1));
-                }),
-                Ok(()) => {}
-                Err(error) => app.fatal("Failed to create session", &error, None),
-            }
+            app.replace_session(
+                manager,
+                Replacement::New,
+                reply,
+                move |app, result| match result {
+                    Ok(()) if command => app.once_bound(|app| {
+                        let notice = lines::styled("✓ New session started", app.theme.fg("accent"));
+                        app.text_item(vec![notice], true, (1, 1));
+                    }),
+                    Ok(()) => {}
+                    Err(error) => app.fatal("Failed to create session", &error, None),
+                },
+            );
         });
     }
 
@@ -3457,18 +3500,20 @@ impl App {
                     Err(error) if command => return app.error(error),
                     Err(error) => return app.fatal("Failed to fork session", &error, reply),
                 };
-                match app.replace_session(manager, Replacement::Fork, reply) {
-                    Ok(()) if at && command => app.once_bound(|app| {
-                        app.set_editor_text("");
-                        app.status("Cloned to new session");
-                    }),
-                    Ok(()) => app.once_bound(move |app| {
-                        app.set_editor_text(text.as_deref().unwrap_or_default());
-                        app.status("Forked to new session");
-                    }),
-                    Err(error) if command => app.error(error),
-                    Err(error) => app.fatal("Failed to fork session", &error, None),
-                }
+                app.replace_session(manager, Replacement::Fork, reply, move |app, result| {
+                    match result {
+                        Ok(()) if at && command => app.once_bound(|app| {
+                            app.set_editor_text("");
+                            app.status("Cloned to new session");
+                        }),
+                        Ok(()) => app.once_bound(move |app| {
+                            app.set_editor_text(text.as_deref().unwrap_or_default());
+                            app.status("Forked to new session");
+                        }),
+                        Err(error) if command => app.error(error),
+                        Err(error) => app.fatal("Failed to fork session", &error, None),
+                    }
+                });
             },
         );
     }
@@ -3507,13 +3552,19 @@ impl App {
                 return;
             }
         };
-        match self.replace_session(manager, Replacement::Resume, reply) {
-            Ok(()) if cwd_override.is_some() => {
-                self.once_bound(|app| app.status("Resumed session in current cwd"));
-            }
-            Ok(()) => self.once_bound(|app| app.status("Resumed session")),
-            Err(error) => self.fatal("Failed to resume session", &error, None),
-        }
+        let in_cwd = cwd_override.is_some();
+        self.replace_session(
+            manager,
+            Replacement::Resume,
+            reply,
+            move |app, result| match result {
+                Ok(()) if in_cwd => {
+                    app.once_bound(|app| app.status("Resumed session in current cwd"));
+                }
+                Ok(()) => app.once_bound(|app| app.status("Resumed session")),
+                Err(error) => app.fatal("Failed to resume session", &error, None),
+            },
+        );
     }
 
     /// Runs `then` once the replacement session's extensions have started,
@@ -4240,6 +4291,7 @@ impl App {
             model_network: options.model_network,
             next_refresh: 0,
             binding: None,
+            replacing: false,
             on_bound: Vec::new(),
             overlay: None,
             overlays_below: Vec::new(),
@@ -4289,15 +4341,10 @@ impl App {
         let session = self.session.clone();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let (mut replaced, mut reply) = (None, None);
-            if let Some(old) = old {
-                let previous = old
-                    .old
-                    .with_session(|manager| crate::runtime::file_of(manager));
-                old.old.shutdown_for(old.reason, old.target).await;
-                replaced = Some((old.reason, previous));
-                reply = old.reply;
-            }
+            let (replaced, reply) = match old {
+                Some(old) => (Some((old.reason, old.previous)), old.reply),
+                None => (None, None),
+            };
             session
                 .bind_extensions(Arc::new(ui), Mode::Tui, Some(actions), replaced)
                 .await;
@@ -4568,7 +4615,7 @@ mod tests {
             verbose: false,
             initial: Vec::new(),
             initial_images: Vec::new(),
-            factory: Box::new(|manager| Ok(session_around(manager))),
+            factory: Arc::new(|manager| Box::pin(async move { Ok(session_around(manager)) })),
             use_theme: None,
             model_fallback: None,
             model_network: false,
@@ -4877,19 +4924,46 @@ mod tests {
         assert!(app.toggles[0].thinking.is_empty());
     }
 
+    /// Handles `events` until the session that replaces the current one
+    /// shows.
+    async fn replaced(app: &mut App, events: &mut UnboundedReceiver<Event>) {
+        let epoch = app.epoch;
+        while app.epoch == epoch {
+            let event = events.recv().await.unwrap();
+            app.on_event(event);
+        }
+    }
+
+    /// A session change asked for while the current session shuts down for
+    /// another is refused, so the factories run once per replacement.
+    #[tokio::test]
+    async fn a_session_change_waits_for_the_one_in_progress() {
+        let (mut app, mut events) = app();
+        app.new_session(None, None);
+        let (reply, mut outcome) = tokio::sync::oneshot::channel();
+        app.on_action((SessionAction::New { parent: None }, reply));
+        assert_eq!(
+            outcome.try_recv().unwrap(),
+            Err("Another session change is in progress".to_owned())
+        );
+        replaced(&mut app, &mut events).await;
+        assert!(!app.replacing);
+    }
+
     #[tokio::test]
     async fn a_replacement_drops_the_reports_left_by_another() {
-        let (mut app, _events) = app();
+        let (mut app, mut events) = app();
         // A fork an extension asked for, whose `withSession` failed.
         app.once_bound(|app| app.set_editor_text("forked"));
         app.new_session(None, None);
+        replaced(&mut app, &mut events).await;
         app.on_event(Event::Bound(None));
         assert_eq!(app.editor.text(), "");
     }
 
     #[tokio::test]
     async fn a_user_change_beside_an_extension_action_reports_itself() {
-        let (mut app, _events) = app();
+        let (mut app, mut events) = app();
         let (reply, mut outcome) = tokio::sync::oneshot::channel();
         let tree = SessionAction::Tree {
             target_id: "missing".into(),
@@ -4897,14 +4971,18 @@ mod tests {
         };
         app.on_action((tree, reply));
         app.new_session(None, None);
+        replaced(&mut app, &mut events).await;
         app.on_event(Event::Bound(None));
         let rows: Vec<String> = app.transcript(80).iter().map(text).collect();
         assert!(
             rows.iter().any(|row| row.contains("New session started")),
             "{rows:?}"
         );
-        // The tree action is still waiting for its own outcome.
-        assert!(outcome.try_recv().is_err());
+        // The tree action has its own outcome, the failed navigation, or is
+        // still waiting for it.
+        if let Ok(result) = outcome.try_recv() {
+            assert!(result.is_err(), "{result:?}");
+        }
     }
 
     #[tokio::test]

@@ -815,14 +815,16 @@ impl super::App {
                 return;
             }
             match SessionManager::open(&destination, Some(&dir), None) {
-                Ok(manager) => match app.replace_session(manager, Replacement::Resume, None) {
-                    Ok(()) => {
-                        app.once_bound(move |app| {
-                            app.status(format!("Session imported from: {path}"))
-                        });
-                    }
-                    Err(error) => app.fatal("Failed to import session", &error, None),
-                },
+                Ok(manager) => {
+                    app.replace_session(manager, Replacement::Resume, None, move |app, result| {
+                        match result {
+                            Ok(()) => app.once_bound(move |app| {
+                                app.status(format!("Session imported from: {path}"))
+                            }),
+                            Err(error) => app.fatal("Failed to import session", &error, None),
+                        }
+                    });
+                }
                 Err(error) => app.fatal("Failed to import session", &error.to_string(), None),
             }
         });
@@ -869,12 +871,22 @@ impl super::App {
         // pi reloads the session in place, keeping its model and level.
         let previous = self.session.clone();
         let manager = self.session.take_session();
-        let replaced = self.replace_session(manager, Replacement::Reload, reply);
-        if let Err(error) = replaced {
-            self.error(format!("Reload failed: {error}"));
-            return;
-        }
-        self.session.keep_selection(&previous);
+        self.replace_session(
+            manager,
+            Replacement::Reload,
+            reply,
+            move |app, result| match result {
+                Ok(()) => app.reloaded(&previous),
+                Err(error) => app.error(format!("Reload failed: {error}")),
+            },
+        );
+    }
+
+    /// Takes up the settings, key bindings and theme that `/reload` read,
+    /// with the model and thinking level of `previous`, the session it
+    /// reloaded.
+    fn reloaded(&mut self, previous: &AgentSession) {
+        self.session.keep_selection(previous);
         self.keys = super::keybindings::load(&self.agent_dir, Keys::detect(self.kitty));
         self.keys.set_kitty(self.kitty);
         self.expand_key = super::keybindings::keys_text(&self.keys, "app.tools.expand");
