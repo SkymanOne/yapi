@@ -1,0 +1,20 @@
+{
+  "exitCode": -1,
+  "stdout": "",
+  "stderr": "",
+  "requests": [],
+  "screen": [
+    "[Extensions]",
+    "  added.ts, edit.ts",
+    "",
+    " ✓ New session started",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "/x-",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "→ x-added     [u] Registered by added.ts",
+    "  x-edit-v1   [u] Registered by the first edit.ts",
+    "~/project",
+    "0.0%/1.0M (auto)                                              (anthropic) claude-sonnet-4-5 • medium"
+  ]
+}

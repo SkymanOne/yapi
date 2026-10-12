@@ -72,12 +72,12 @@ pub struct ExtensionHost {
     instance: Instance,
     bridge: Arc<SessionBridge>,
     /// Where each extension, by id, comes from.
-    sources: Vec<SourceInfo>,
+    sources: Mutex<Vec<SourceInfo>>,
     /// Descriptions of the loaded extensions, as the guest last reported them.
     loaded: Mutex<Vec<Value>>,
     /// Wire APIs registered with pi-ai's `registerApiProvider` while the
     /// extensions loaded.
-    apis: Vec<String>,
+    apis: Mutex<Vec<String>>,
     /// The files that failed to load in the latest run of the factories.
     errors: Mutex<Vec<LoadError>>,
     /// Sessions handed extensions so far.
@@ -156,24 +156,20 @@ impl ExtensionHost {
         options: Options,
         sources: &[SourceInfo],
     ) -> Result<Arc<ExtensionHost>, Error> {
-        let entries: Vec<Value> = sources
-            .iter()
-            .enumerate()
-            .map(|(id, source)| json!({"id": id, "path": source.path, "baseDir": source.base_dir}))
-            .collect();
         let size = options
             .terminal_size
             .map(|(columns, rows)| json!({"columns": columns, "rows": rows}));
-        let payload = json!({"cwd": options.cwd, "extensions": entries, "terminalSize": size});
+        let payload =
+            json!({"cwd": options.cwd, "extensions": entries(sources), "terminalSize": size});
         let result = instance.call("load", &payload).await?;
         let (loaded, errors) = split(&result);
         let (events, queued) = tokio::sync::mpsc::channel(QUEUED_EVENTS);
         let extensions = Arc::new(ExtensionHost {
             instance,
             bridge,
-            sources: sources.to_vec(),
+            sources: Mutex::new(sources.to_vec()),
             loaded: Mutex::new(loaded),
-            apis: list(&result["apis"]).iter().map(text).collect(),
+            apis: Mutex::new(list(&result["apis"]).iter().map(text).collect()),
             errors: Mutex::new(errors),
             sessions: AtomicU64::new(0),
             runs: AtomicU64::new(0),
@@ -195,13 +191,21 @@ impl ExtensionHost {
         lock(&self.errors).clone()
     }
 
-    /// Runs the factories again for the session after one that
+    /// Where the extensions come from, as they were loaded last.
+    pub fn sources(&self) -> Vec<SourceInfo> {
+        lock(&self.sources).clone()
+    }
+
+    /// Runs the factories of `sources` again for the session after one that
     /// [`ExtensionHost::for_session`] gave extensions to, as pi loads the
     /// extensions for each runtime. Call it once the previous session has
     /// shut down and before the next one is built, so that session gets
-    /// this run's registrations. An extension that failed in an earlier run
-    /// runs again. The first session has the run from loading.
-    pub async fn reload(&self) {
+    /// this run's registrations. As pi caches the modules it imported, a
+    /// file whose module loaded before runs that module's factory again, and
+    /// other files are imported, those that failed to import included. An
+    /// extension that failed in an earlier run runs again. The first session
+    /// has the run from loading.
+    pub async fn reload(&self, sources: &[SourceInfo]) {
         let generation = self.sessions.load(Ordering::SeqCst);
         if generation == 0 {
             return;
@@ -212,11 +216,14 @@ impl ExtensionHost {
         *lock(&self.bridge.session) = WeakSession::default();
         *lock(&self.bridge.held_mcp_servers) = None;
         self.runs.fetch_add(1, Ordering::SeqCst);
-        match self.instance.call("reload", &Value::Null).await {
+        *lock(&self.sources) = sources.to_vec();
+        let payload = json!({"extensions": entries(sources)});
+        match self.instance.call("reload", &payload).await {
             Ok(result) => {
                 let (loaded, errors) = split(&result);
                 *lock(&self.loaded) = loaded;
                 *lock(&self.errors) = errors;
+                *lock(&self.apis) = list(&result["apis"]).iter().map(text).collect();
             }
             Err(err) => self.bridge.log(
                 "error",
@@ -276,7 +283,7 @@ impl ExtensionHost {
     /// that yapi has no provider for, to stream the session's models of
     /// those APIs.
     pub fn apis(self: &Arc<Self>) -> Vec<Arc<dyn Provider>> {
-        self.apis
+        lock(&self.apis)
             .iter()
             .filter(|api| yapi_ai::api::builtin(api).is_none())
             .map(|api| self.js_stream(api))
@@ -677,6 +684,15 @@ impl Provider for JsStream {
     }
 }
 
+/// The guest's entries for `sources`: each with its id, the index.
+fn entries(sources: &[SourceInfo]) -> Vec<Value> {
+    sources
+        .iter()
+        .enumerate()
+        .map(|(id, source)| json!({"id": id, "path": source.path, "baseDir": source.base_dir}))
+        .collect()
+}
+
 fn split(result: &Value) -> (Vec<Value>, Vec<LoadError>) {
     let mut loaded = Vec::new();
     let mut errors = Vec::new();
@@ -820,8 +836,7 @@ impl Extension for JsExtension {
     fn source(&self) -> SourceInfo {
         usize::try_from(self.id)
             .ok()
-            .and_then(|id| self.shared.sources.get(id))
-            .cloned()
+            .and_then(|id| lock(&self.shared.sources).get(id).cloned())
             .unwrap_or_else(|| SourceInfo {
                 path: self.path_text(),
                 source: "local".into(),

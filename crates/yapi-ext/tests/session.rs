@@ -164,7 +164,7 @@ async fn commands_input_and_new_sessions() {
 
     // A new session runs the factories again: its counter starts over.
     first.shutdown().await;
-    js.reload().await;
+    js.reload(&js.sources()).await;
     let second = session(&Faux::new([]), &dir, js.for_session());
     second
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
@@ -680,7 +680,7 @@ async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
         .await;
     assert_eq!(owners(&first), [("moved".to_owned(), path("b.ts"))]);
     first.shutdown().await;
-    js.reload().await;
+    js.reload(&js.sources()).await;
     let second = session(&Faux::new([]), &dir, js.for_session());
     second
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
@@ -746,7 +746,7 @@ async fn runtimes_check_mcp_servers_against_this_run_for_a_new_session() {
     );
     first.shutdown().await;
     for host in &hosts {
-        host.reload().await;
+        host.reload(&host.sources()).await;
     }
     assert!(hosts[0].errors().is_empty(), "{:?}", hosts[0].errors());
     assert_eq!(
@@ -804,7 +804,7 @@ async fn mcp_servers_a_native_extension_reports_as_it_loads_reach_its_session() 
     assert!(host.errors().is_empty(), "{:?}", host.errors());
     for replaced in [None, Some(Replacement::New), Some(Replacement::Reload)] {
         if replaced.is_some() {
-            host.reload().await;
+            host.reload(&host.sources()).await;
         }
         let session = session(&Faux::new([]), &dir, host.for_session());
         session
@@ -897,7 +897,7 @@ async fn a_factory_that_fails_in_a_later_session_fails_that_load() {
         error: "Failed to load extension: loads only once".into(),
     }];
     for _ in 0..2 {
-        js.reload().await;
+        js.reload(&js.sources()).await;
         assert_eq!(js.errors(), failed);
         let extensions = js.for_session();
         assert!(extensions.is_empty());

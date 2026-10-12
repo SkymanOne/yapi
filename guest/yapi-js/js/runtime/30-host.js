@@ -10,8 +10,10 @@
 	const EventEmitter = yapi.EventEmitter;
 
 	const extensions = new Map();
-	/** The factory of every extension whose module loaded, in load order. */
-	const factories = [];
+	/** pi's extension cache: the factory of each file whose module loaded. */
+	const factories = new Map();
+	/** How many times each file was imported. */
+	const imports = new Map();
 	const flagValues = new Map();
 	let bound = false;
 
@@ -382,16 +384,24 @@
 	}
 
 	// ----- loading --------------------------------------------------------------------------------
+	/** Runs the factory of file `path`, imported once its module loads, as pi caches it. */
 	async function loadOne({ id, path }) {
-		let module;
-		try {
-			module = await import(path);
-		} catch (error) {
-			return { id, path, error: `Failed to load extension: ${errorMessage(error)}` };
+		let factory = factories.get(path);
+		if (!factory) {
+			// QuickJS keeps a module that failed. pi imports the file again,
+			// so a later import goes by a new name.
+			const count = imports.get(path) ?? 0;
+			imports.set(path, count + 1);
+			let module;
+			try {
+				module = await import(count === 0 ? path : `${path}?retry=${count}`);
+			} catch (error) {
+				return { id, path, error: `Failed to load extension: ${errorMessage(error)}` };
+			}
+			factory = module?.default;
+			if (typeof factory !== "function") return { id, path, error: `Extension does not export a valid factory function: ${path}` };
+			factories.set(path, factory);
 		}
-		const factory = module?.default;
-		if (typeof factory !== "function") return { id, path, error: `Extension does not export a valid factory function: ${path}` };
-		factories.push({ id, path, factory });
 		return instantiate(id, path, factory);
 	}
 
@@ -1318,7 +1328,8 @@
 			}
 			return null;
 		},
-		async reload() {
+		/** Runs the extensions of `{ extensions }`, entries as `load` takes them, for the next session. */
+		async reload(payload) {
 			bound = false;
 			generation.stale = true;
 			generation = { stale: false };
@@ -1334,11 +1345,12 @@
 			completions = hostCompletions;
 			// As in pi's fresh runtime, the stale extensions' registrations,
 			// such as MCP server names, do not count while the factories run,
-			// and an extension that failed in an earlier session loads again.
+			// and an extension that failed in an earlier session loads again:
+			// new files and files that failed to import are imported.
 			extensions.clear();
 			const results = [];
-			for (const { id, path, factory } of factories) results.push(await instantiate(id, path, factory));
-			return { extensions: results };
+			for (const entry of payload.extensions) results.push(await loadOne(entry));
+			return { extensions: results, apis: [...(yapi.apiProviders?.keys() ?? [])] };
 		},
 		flags(payload) {
 			for (const [name, value] of Object.entries(payload.values ?? {})) flagValues.set(name, value);
