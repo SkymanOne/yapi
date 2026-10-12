@@ -685,6 +685,50 @@ async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
     assert_eq!(owners(&second), [("moved".to_owned(), path("a.ts"))]);
 }
 
+/// A factory that throws as a later session binds fails its extension's
+/// load with pi's message, which the session keeps for pi's
+/// `[Extension issues]`, instead of the failure going unreported. Each
+/// later session loads the extension again, as pi does, and reports it
+/// again while it fails.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_factory_that_fails_in_a_later_session_reports_its_load_error() {
+    let dir = scratch("reload-error");
+    let path = dir.join("flaky.ts");
+    std::fs::write(
+        &path,
+        "let runs = 0;\nexport default function () {\n\tif (++runs > 1) throw new Error(\"loads only once\");\n}\n",
+    )
+    .unwrap();
+    let steady = dir.join("steady.ts");
+    std::fs::write(&steady, "export default function () {}\n").unwrap();
+    let js = ExtensionHost::load(
+        &engine(),
+        options(&dir),
+        &[cli_source(&path), cli_source(&steady)],
+    )
+    .await
+    .unwrap();
+    assert!(js.errors().is_empty(), "{:?}", js.errors());
+    let first = session(&Faux::new([]), &dir, js.for_session());
+    first
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(first.extension_load_errors(), []);
+    first.shutdown().await;
+    let failed = [(
+        path.to_string_lossy().into_owned(),
+        "Failed to load extension: loads only once".to_owned(),
+    )];
+    for _ in 0..2 {
+        let later = session(&Faux::new([]), &dir, js.for_session());
+        later
+            .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+            .await;
+        assert_eq!(later.extension_load_errors(), failed);
+        later.shutdown().await;
+    }
+}
+
 /// A tool's updates and the calls it makes through `ctx.executeTool()` report
 /// in pi's order, from the task that runs the tool: an update goes out after
 /// the start of a call the tool begins in the same step, and before its end

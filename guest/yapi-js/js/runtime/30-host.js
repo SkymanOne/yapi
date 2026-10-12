@@ -10,6 +10,8 @@
 	const EventEmitter = yapi.EventEmitter;
 
 	const extensions = new Map();
+	/** The factory of every extension whose module loaded, in load order. */
+	const factories = [];
 	const flagValues = new Map();
 	let bound = false;
 
@@ -389,6 +391,7 @@
 		}
 		const factory = module?.default;
 		if (typeof factory !== "function") return { id, path, error: `Extension does not export a valid factory function: ${path}` };
+		factories.push({ id, path, factory });
 		return instantiate(id, path, factory);
 	}
 
@@ -1330,11 +1333,11 @@
 			completionWrappers.length = 0;
 			completions = hostCompletions;
 			// As in pi's fresh runtime, the stale extensions' registrations,
-			// such as MCP server names, do not count while the factories run.
-			const stale = [...extensions.values()];
+			// such as MCP server names, do not count while the factories run,
+			// and an extension that failed in an earlier session loads again.
 			extensions.clear();
 			const results = [];
-			for (const { id, path, factory } of stale) results.push(await instantiate(id, path, factory));
+			for (const { id, path, factory } of factories) results.push(await instantiate(id, path, factory));
 			return { extensions: results };
 		},
 		flags(payload) {

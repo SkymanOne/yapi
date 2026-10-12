@@ -323,6 +323,14 @@
     "tty": {"cols": 100, "rows": 40, "keys": ["Read hello.txt", "\r", "/new\r"]}
   },
   {
+    "name": "tui-new-session-extension-load-error",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts"],
+    "files": {"flaky.ts": "import { existsSync, writeFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (_pi: ExtensionAPI) {\n\tif (existsSync(\"loaded.txt\")) throw new Error(\"flaky.ts loads only once\");\n\twriteFileSync(\"loaded.txt\", \"\");\n}\n"},
+    "agentFiles": {"settings.json": "{\"quietStartup\": true}\n"},
+    "tty": {"cols": 100, "rows": 30, "keys": ["/new\r"]}
+  },
+  {
     "name": "tui-name",
     "cassette": "anthropic-messages/tool-call.json",
     "args": ["--model", "anthropic/claude-sonnet-4-5"],

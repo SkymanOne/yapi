@@ -384,7 +384,18 @@ impl ExtensionHost {
         *lock(&self.bridge.session) = ctx.session.clone();
         if generation > 0 {
             match self.instance.call("reload", &Value::Null).await {
-                Ok(result) => *lock(&self.loaded) = split(&result).0,
+                Ok(result) => {
+                    let (loaded, errors) = split(&result);
+                    *lock(&self.loaded) = loaded;
+                    if let Some(session) = ctx.session.upgrade() {
+                        for LoadError { path, error } in errors {
+                            session.add_extension_load_error(
+                                path.to_string_lossy().into_owned(),
+                                error,
+                            );
+                        }
+                    }
+                }
                 Err(err) => {
                     ctx.ui
                         .extension_error("yapi-js", "session_start", &err.to_string(), None)

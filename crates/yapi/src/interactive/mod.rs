@@ -1262,6 +1262,7 @@ impl App {
         ));
         header.extend(header::extension_issues(
             &self.theme,
+            &self.session.extension_load_errors(),
             &self.extension_warnings,
             &self.extension_issues,
             self.home.as_deref(),

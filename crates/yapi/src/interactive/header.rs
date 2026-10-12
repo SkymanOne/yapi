@@ -539,21 +539,35 @@ fn path_with_source(source: &SourceInfo, home: Option<&Path>) -> String {
     format!("{label} {}", short_path(source, home))
 }
 
-/// pi's `[Extension issues]` section: the warnings about extensions that
-/// were not loaded under their paths, then each issue under the extension it
-/// concerns. Empty without either.
+/// pi's `[Extension issues]` section: the errors of extensions that failed
+/// to load and the warnings about extensions that were not loaded, under
+/// their paths, then each issue under the extension it concerns. Empty
+/// without any.
 pub fn extension_issues(
     theme: &Theme,
+    errors: &[(String, String)],
     warnings: &[(String, String)],
     issues: &[(SourceInfo, String)],
     home: Option<&Path>,
     width: usize,
 ) -> Vec<StyledLine> {
-    if warnings.is_empty() && issues.is_empty() {
+    if errors.is_empty() && warnings.is_empty() && issues.is_empty() {
         return Vec::new();
     }
     let warning = theme.fg("warning");
+    let error = theme.fg("error");
     let mut content = vec![lines::styled("[Extension issues]", warning)];
+    for (path, message) in errors {
+        content.push(lines::styled(
+            format!("  {}", display_path(path, home)),
+            error,
+        ));
+        // Only the first line of a message is indented, as in pi's text.
+        for (index, line) in message.split('\n').enumerate() {
+            let indent = if index == 0 { "    " } else { "" };
+            content.push(lines::styled(format!("{indent}{line}"), error));
+        }
+    }
     for (path, message) in warnings {
         content.push(lines::styled(
             format!("  {}", display_path(path, home)),
