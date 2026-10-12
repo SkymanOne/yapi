@@ -833,3 +833,166 @@ fn rpc_exits_on_sigterm_at_the_end_of_input() {
     let _ = std::fs::remove_dir_all(&home);
     assert_eq!(status.code(), Some(143));
 }
+
+/// `--project-dir` takes the project's files, its trust and the context
+/// files from another directory, as if yapi started there. Tools, the
+/// prompt's working directory and extensions' `ctx.cwd` stay in the working
+/// directory, whose own `.yapi` never loads, trusted or not.
+#[tokio::test(flavor = "multi_thread")]
+async fn project_dir_supplies_the_project() {
+    use serde_json::json;
+    let call = |id: &str, name: &str, input: serde_json::Value| json!({"type": "tool_use", "id": id, "name": name, "input": input});
+    let text = |text: &str| common::reply(&[json!({"type": "text", "text": text})], "end_turn", 0);
+    let server = yapi_mock::MockServer::local(yapi_mock::Cassette {
+        interactions: vec![
+            text("untrusted"),
+            common::reply(
+                &[
+                    call("toolu_1", "bash", json!({"command": "pwd"})),
+                    call("toolu_2", "project_tool", json!({})),
+                ],
+                "tool_use",
+                0,
+            ),
+            text("approved"),
+            text("cwd trusted"),
+            text("project trusted"),
+        ],
+    })
+    .await
+    .unwrap();
+    let home = common::scratch("project-dir");
+    let write = |path: std::path::PathBuf, text: &str| {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        home.join("agent/models.json"),
+        &json!({"providers": {"anthropic": {"baseUrl": server.url()}}}).to_string(),
+    );
+    let (work, project) = (home.join("work"), home.join("project"));
+    for (dir, name) in [(&work, "cwd"), (&project, "project")] {
+        write(dir.join("AGENTS.md"), &format!("{name}-agents-marker"));
+        write(
+            dir.join(".yapi/APPEND_SYSTEM.md"),
+            &format!("{name}-append-marker"),
+        );
+        write(
+            dir.join(format!(".yapi/skills/{name}-skill/SKILL.md")),
+            &format!("---\nname: {name}-skill\ndescription: The {name} skill.\n---\nBody\n"),
+        );
+        write(
+            dir.join(".yapi/extensions/marker.ts"),
+            &format!(
+                "export default function (pi) {{\n\tpi.registerTool({{\n\t\tname: \"{name}_tool\", label: \"{name}\", description: \"The {name} tool.\", parameters: {{ type: \"object\", properties: {{}} }},\n\t\tasync execute(_id, _params, _signal, _update, ctx) {{\n\t\t\treturn {{ content: [{{ type: \"text\", text: `ctx.cwd=${{ctx.cwd}}` }}] }};\n\t\t}},\n\t}});\n}}\n"
+            ),
+        );
+    }
+    // Only the project's settings name this skill directory.
+    write(
+        project.join(".yapi/settings.json"),
+        r#"{"skills": ["../shared"]}"#,
+    );
+    write(
+        project.join("shared/settings-skill/SKILL.md"),
+        "---\nname: settings-skill\ndescription: The settings skill.\n---\nBody\n",
+    );
+    let (work, project) = (
+        work.canonicalize().unwrap(),
+        project.canonicalize().unwrap(),
+    );
+    let run = |extra: &[&str]| {
+        let output = common::yapi(&work)
+            .args([
+                "-p",
+                "--no-session",
+                "--model",
+                "anthropic/claude-sonnet-4-5:off",
+                "--project-dir",
+                "../project",
+            ])
+            .args(extra)
+            .arg("hi")
+            .env("HOME", &home)
+            .env("YAPI_CODING_AGENT_DIR", home.join("agent"))
+            .env("ANTHROPIC_API_KEY", "mock")
+            .env("PI_OFFLINE", "1")
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        server.requests().last().unwrap().body.clone()
+    };
+    let loaded = |request: &str, name: &str| {
+        let markers = [
+            format!("{name}-append-marker"),
+            format!("{name}-skill"),
+            format!("{name}_tool"),
+        ];
+        let found = markers.iter().filter(|marker| request.contains(*marker));
+        match found.count() {
+            0 => false,
+            3 => true,
+            _ => panic!("{name}'s project files loaded in part: {request}"),
+        }
+    };
+
+    // Untrusted, the project gives its context files only.
+    let request = run(&[]);
+    assert!(request.contains("project-agents-marker"), "{request}");
+    assert!(!request.contains("cwd-agents-marker"), "{request}");
+    assert!(!loaded(&request, "project") && !loaded(&request, "cwd"));
+    assert!(!request.contains("settings-skill"), "{request}");
+
+    // `--approve` trusts the project; tools run in the working directory.
+    run(&["--approve"]);
+    let requests = server.requests();
+    let first = &requests[1].body;
+    assert!(loaded(first, "project") && !loaded(first, "cwd"), "{first}");
+    assert!(first.contains("settings-skill"), "{first}");
+    assert!(!first.contains("cwd-agents-marker"), "{first}");
+    let shown = work.display().to_string();
+    assert!(
+        first.contains(&format!("<cwd>\\n{shown}\\n</cwd>")),
+        "{first}"
+    );
+    let results: serde_json::Value = serde_json::from_str(&requests[2].body).unwrap();
+    let result = |id: &str| {
+        let messages = results["messages"].as_array().unwrap().iter();
+        let mut blocks = messages.flat_map(|message| message["content"].as_array().unwrap());
+        blocks.find(|block| block["tool_use_id"] == id).unwrap()["content"].to_string()
+    };
+    assert!(result("toolu_1").contains(&shown), "{results}");
+    assert!(
+        result("toolu_2").contains(&format!("ctx.cwd={shown}")),
+        "{results}"
+    );
+
+    // Trusting the working directory trusts nothing else.
+    let trust = |dir: &std::path::Path| {
+        write(
+            home.join("agent/trust.json"),
+            &json!({dir.display().to_string(): true}).to_string(),
+        );
+    };
+    trust(&work);
+    let request = run(&[]);
+    assert!(!loaded(&request, "project") && !loaded(&request, "cwd"));
+    trust(&project);
+    let request = run(&[]);
+    assert!(loaded(&request, "project") && !loaded(&request, "cwd"));
+
+    let output = common::yapi(&home)
+        .args(["-p", "--project-dir", "missing", "hi"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        format!(
+            "Error: Project directory not found: {}\n",
+            home.canonicalize().unwrap().join("missing").display()
+        )
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -269,47 +269,55 @@ fn custom_session_dir(args: &Args, settings: &SettingsManager, cwd: &Path) -> Op
         .map(|dir| resolve_to_cwd(dir, cwd))
 }
 
-/// Settings for `cwd` and whether the project is trusted: pi's
+/// The directory whose project files a session in `cwd` uses:
+/// `--project-dir`, else `cwd`.
+pub fn project_dir(args: &Args, cwd: &Path) -> PathBuf {
+    args.project_dir
+        .clone()
+        .unwrap_or_else(|| cwd.to_path_buf())
+}
+
+/// Settings for the project in `project` and whether it is trusted: pi's
 /// `createCommandSettingsManager`. Project settings load when `override_`, a
 /// stored decision or `defaultProjectTrust` trusts the project, or, with
 /// `ask` and a terminal, when the user trusts it at pi's prompt.
 pub fn load_settings(
-    cwd: &Path,
+    project: &Path,
     agent_dir: &Path,
     override_: Option<bool>,
     ask: bool,
 ) -> anyhow::Result<(SettingsManager, bool)> {
     use std::io::IsTerminal;
-    let global = SettingsManager::load(agent_dir, cwd, false);
+    let global = SettingsManager::load(agent_dir, project, false);
     let view = global.settings();
     let store = TrustStore::new(agent_dir);
     let default = view.default_project_trust;
     let trusted = if ask
         && std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal()
-        && yapi_core::trust::needs_prompt(cwd, &store, override_, default)
+        && yapi_core::trust::needs_prompt(project, &store, override_, default)
     {
-        crate::interactive::picker::ask_project_trust(agent_dir, cwd, view.theme.as_deref())?
+        crate::interactive::picker::ask_project_trust(agent_dir, project, view.theme.as_deref())?
             .unwrap_or(false)
     } else {
-        resolve_trusted(cwd, &store, override_, default)
+        resolve_trusted(project, &store, override_, default)
     };
     let settings = if trusted {
-        SettingsManager::load(agent_dir, cwd, true)
+        SettingsManager::load(agent_dir, project, true)
     } else {
         global
     };
     Ok((settings, trusted))
 }
 
-/// The working directory's settings as the run starts, loaded once for the
-/// steps that build the first session.
+/// The settings as the run starts, loaded once for the steps that build the
+/// first session.
 pub struct RunSettings {
     /// The process's working directory.
     pub cwd: PathBuf,
-    /// Its settings.
+    /// The settings of its project.
     pub settings: SettingsManager,
-    /// Whether its project is trusted.
+    /// Whether the project is trusted.
     pub trusted: bool,
 }
 
@@ -317,8 +325,12 @@ pub struct RunSettings {
 fn run_settings(args: &Args) -> anyhow::Result<RunSettings> {
     let cwd = std::env::current_dir()
         .map_err(|err| anyhow::anyhow!("reading the working directory: {err}"))?;
-    let (settings, trusted) =
-        load_settings(&cwd, &agent_dir(), args.project_trust_override, false)?;
+    let (settings, trusted) = load_settings(
+        &project_dir(args, &cwd),
+        &agent_dir(),
+        args.project_trust_override,
+        false,
+    )?;
     Ok(RunSettings {
         cwd,
         settings,
@@ -454,9 +466,10 @@ pub fn factory(args: &Args, extensions: Extensions) -> crate::runtime::SessionFa
     })
 }
 
-/// Builds a session around `session` in its working directory: settings,
-/// model, thinking level, tools and prompt resources follow the arguments.
-/// `preloaded` are the settings of that directory and whether it is trusted,
+/// Builds a session around `session` in its working directory, with the
+/// files of that directory's project ([`project_dir`]): settings, model,
+/// thinking level, tools and prompt resources follow the arguments.
+/// `preloaded` are the settings of that project and whether it is trusted,
 /// when already loaded. `warn` reports model problems on stderr, which only
 /// the first session may do. Returns pi's `modelFallbackMessage` too: why
 /// the session's model could not be restored, or that no model is available.
@@ -473,8 +486,14 @@ fn build(
     let docs = yapi_core::docs::Locations::find(&agent_dir);
     let (settings, trusted) = match preloaded {
         Some(preloaded) => preloaded,
-        None => load_settings(&cwd, &agent_dir, args.project_trust_override, false)?,
+        None => load_settings(
+            &project_dir(args, &cwd),
+            &agent_dir,
+            args.project_trust_override,
+            false,
+        )?,
     };
+    let project = settings.project_dir().to_path_buf();
     yapi_ai::http::set_idle_timeout_ms(settings.http_idle_timeout_ms());
     // A `models.json` error is shown by the interactive mode, as in pi.
     let (mut registry, apis) = models(args, &settings, extensions, warn);
@@ -633,7 +652,8 @@ fn build(
     // pi's order for each kind: `-e` packages' resources, then what settings,
     // packages and discovery enable (unless `--no-skills` and the like), then
     // command-line paths; a path counts once.
-    let resolved = yapi_core::packages::resolve_resources(&cwd, &agent_dir, &settings, &BUILTINS);
+    let resolved =
+        yapi_core::packages::resolve_resources(&project, &agent_dir, &settings, &BUILTINS);
     let merge = |cli: &[SourceInfo], kind: ResourceType, skip: bool, extra: Vec<SourceInfo>| {
         yapi_core::resources::merge_sources(
             cli.iter()
@@ -671,7 +691,7 @@ fn build(
         theme_paths,
     );
     let mut appends: Vec<String> =
-        system_prompt_file(&cwd, &agent_dir, trusted, "APPEND_SYSTEM.md")
+        system_prompt_file(&project, &agent_dir, trusted, "APPEND_SYSTEM.md")
             .into_iter()
             .collect();
     appends.extend(
@@ -700,7 +720,7 @@ fn build(
         context_files: if args.no_context_files {
             Vec::new()
         } else {
-            context_files(&cwd, &agent_dir)
+            context_files(&project, &agent_dir)
         },
         skills,
         skill_diagnostics,
@@ -712,7 +732,7 @@ fn build(
             .system_prompt
             .as_deref()
             .map(prompt_input)
-            .or_else(|| system_prompt_file(&cwd, &agent_dir, trusted, "SYSTEM.md")),
+            .or_else(|| system_prompt_file(&project, &agent_dir, trusted, "SYSTEM.md")),
         append_prompt: (!appends.is_empty()).then(|| appends.join("\n\n")),
         themes,
     };
@@ -880,7 +900,7 @@ pub async fn load_extensions(
     let agent_dir = agent_dir();
     let settings = run.settings.clone();
     let mut packages = yapi_core::packages::PackageManager::new(
-        cwd.clone(),
+        settings.project_dir().to_path_buf(),
         agent_dir.clone(),
         settings,
         yapi_core::packages::npm::config(),
@@ -943,7 +963,7 @@ pub async fn load_extensions(
     // them out; packages still provide their skills, prompts and themes.
     if !args.no_extensions {
         let resolved = yapi_core::packages::resolve_resources(
-            &cwd,
+            packages.settings().project_dir(),
             &agent_dir,
             packages.settings(),
             &BUILTINS,

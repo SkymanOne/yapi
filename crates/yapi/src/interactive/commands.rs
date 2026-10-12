@@ -637,9 +637,10 @@ impl super::App {
             "/fork" => self.open_fork(),
             "/trust" => {
                 let store = yapi_core::trust::TrustStore::new(&self.agent_dir);
+                let project = self.session.project_dir();
                 let selector = super::selectors::TrustSelector::new(
-                    &self.cwd,
-                    store.entry(&self.cwd),
+                    &project,
+                    store.entry(&project),
                     self.session.project_trusted(),
                 );
                 self.selector = Some(super::Selector::Trust(Box::new(selector)));

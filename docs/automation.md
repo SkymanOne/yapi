@@ -42,5 +42,6 @@ Pi's `RpcClient` example drives yapi in the test suite.
 | `--no-tools` | Disable all tools |
 | `-ne` | Start without extensions |
 | `--offline` | Skip startup network work |
+| `--project-dir <dir>` | Take the project from another folder. See [Project trust](configuration.md#project-trust) |
 
 `yapi --help` lists every flag.

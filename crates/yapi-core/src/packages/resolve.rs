@@ -146,7 +146,8 @@ pub struct PackageInput {
 /// What [`resolve`] reads.
 #[derive(Clone, Debug, Default)]
 pub struct ResolveInput<'a> {
-    /// The working directory.
+    /// The project's directory, whose ancestors' `.agents/skills` are
+    /// project skills: the working directory unless the run names another.
     pub cwd: PathBuf,
     /// The agent directory.
     pub agent_dir: PathBuf,

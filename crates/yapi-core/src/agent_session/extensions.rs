@@ -531,10 +531,18 @@ impl AgentSession {
     /// The context extensions get, with `cancel` for the operation at hand.
     pub(super) fn extension_context(&self, cancel: CancellationToken) -> Context {
         let (ui, mode, _) = lock(&self.inner.binding).clone();
+        let (project_dir, project_trusted) = {
+            let settings = lock(&self.inner.settings);
+            (
+                settings.project_dir().to_path_buf(),
+                settings.project_trusted(),
+            )
+        };
         Context {
             cwd: self.inner.cwd.clone(),
             agent_dir: self.inner.agent_dir.clone(),
-            project_trusted: lock(&self.inner.settings).project_trusted(),
+            project_dir,
+            project_trusted,
             mode,
             ui,
             tools: self.inner.tools.clone(),

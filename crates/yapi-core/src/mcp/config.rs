@@ -590,15 +590,15 @@ fn read_file(path: &Path, scope: Scope, loaded: &mut LoadedConfig) {
     }
 }
 
-/// Loads the global and, when trusted, the project `mcp.json`. Disabled
-/// servers are included.
-pub fn load(agent_dir: &Path, cwd: &Path, project_trusted: bool) -> LoadedConfig {
+/// Loads the global and, when trusted, the `mcp.json` of the project in
+/// `project_dir`. Disabled servers are included.
+pub fn load(agent_dir: &Path, project_dir: &Path, project_trusted: bool) -> LoadedConfig {
     let mut loaded = LoadedConfig::default();
     let name = ConfigFile::Mcp.file_name();
     read_file(&agent_dir.join(name), Scope::Global, &mut loaded);
     if project_trusted {
         read_file(
-            &cwd.join(PROJECT_DIR).join(name),
+            &project_dir.join(PROJECT_DIR).join(name),
             Scope::Project,
             &mut loaded,
         );

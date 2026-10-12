@@ -63,17 +63,18 @@ pub fn install_location(source: &Source, base: &Path) -> PathBuf {
     }
 }
 
-/// pi's `DefaultPackageManager.resolve` for the settings of `cwd` and
-/// `agent_dir`: every resource of installed packages, settings entries and
-/// the discovered directories, each enabled or not, with `builtins` as the
-/// built-in extensions. Packages that are not installed are left out.
+/// pi's `DefaultPackageManager.resolve` for the settings of the project in
+/// `project_root` and of `agent_dir`: every resource of installed packages,
+/// settings entries and the discovered directories, each enabled or not,
+/// with `builtins` as the built-in extensions. Packages that are not
+/// installed are left out.
 pub fn resolve_resources(
-    cwd: &Path,
+    project_root: &Path,
     agent_dir: &Path,
     settings: &SettingsManager,
     builtins: &[&str],
 ) -> resolve::ResolvedPaths {
-    let project_dir = cwd.join(PROJECT_DIR);
+    let project_dir = project_root.join(PROJECT_DIR);
     let base = |scope: &str| {
         if scope == "project" {
             project_dir.clone()
@@ -90,7 +91,7 @@ pub fn resolve_resources(
     let user = resolve::settings_lists(settings.document(Scope::Global));
     let project = resolve::settings_lists(settings.document(Scope::Project));
     resolve::resolve(&resolve::ResolveInput {
-        cwd: cwd.to_path_buf(),
+        cwd: project_root.to_path_buf(),
         agent_dir: agent_dir.to_path_buf(),
         project_dir: project_dir.clone(),
         home: crate::tools::path::home_dir(),

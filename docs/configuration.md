@@ -79,6 +79,8 @@ Files in a project's `.yapi` folder can change how yapi behaves and can run code
 
 `AGENTS.md` and `CLAUDE.md` load whether or not the project is trusted.
 
+`--project-dir <dir>` takes the project from another folder, as if yapi started there. yapi loads that folder's `.yapi` files and the `AGENTS.md` or `CLAUDE.md` of that folder and its parents, and asks about, stores and applies trust for that folder, `--approve` and `--no-approve` included. The working folder's own `.yapi` folder does not load. Tools, the session and extensions' `ctx.cwd` stay in the working folder, so an extension that reads project files itself reads them there. A relative path is relative to the working folder. A subagent can use the flag to work in one folder with its parent's project.
+
 ## Security model
 
 yapi reads and edits files and runs commands as your user, so give it the same trust as any program you run in your shell.

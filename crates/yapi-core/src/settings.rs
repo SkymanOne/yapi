@@ -17,7 +17,7 @@ use crate::config::PROJECT_DIR;
 pub enum Scope {
     /// `<agent>/settings.json`.
     Global,
-    /// `<cwd>/.yapi/settings.json`.
+    /// `<project>/.yapi/settings.json`.
     Project,
 }
 
@@ -45,6 +45,7 @@ pub enum SettingsError {
 /// Both scopes and their merged view.
 #[derive(Clone, Debug, Default)]
 pub struct SettingsManager {
+    project_dir: PathBuf,
     global_path: PathBuf,
     project_path: PathBuf,
     global: Map<String, Value>,
@@ -118,10 +119,13 @@ fn merge_default_tools(base: Option<&Value>, overrides: Option<&Value>) -> Optio
 }
 
 impl SettingsManager {
-    /// Loads both scopes; the project scope only when `project_trusted`.
-    pub fn load(agent_dir: &Path, cwd: &Path, project_trusted: bool) -> SettingsManager {
+    /// Loads both scopes, the project's from `project_dir`, and that only
+    /// when `project_trusted`.
+    pub fn load(agent_dir: &Path, project_dir: &Path, project_trusted: bool) -> SettingsManager {
         let global_path = agent_dir.join(ConfigFile::Settings.file_name());
-        let project_path = cwd.join(PROJECT_DIR).join(ConfigFile::Settings.file_name());
+        let project_path = project_dir
+            .join(PROJECT_DIR)
+            .join(ConfigFile::Settings.file_name());
         let mut errors = Vec::new();
         let mut broken = [false; 2];
         // pi reports a file that fails to load and carries on without it.
@@ -147,6 +151,7 @@ impl SettingsManager {
             Map::new()
         };
         let mut manager = SettingsManager {
+            project_dir: project_dir.to_path_buf(),
             global_path,
             project_path,
             global,
@@ -228,6 +233,12 @@ impl SettingsManager {
         number
             .filter(|ms| ms.is_finite() && *ms >= 0.0)
             .map_or(300_000, |ms| ms.floor() as u64)
+    }
+
+    /// The directory whose `.yapi` folder holds the project's files: the
+    /// project's settings, resources and system prompt files.
+    pub fn project_dir(&self) -> &Path {
+        &self.project_dir
     }
 
     /// Whether the project scope is loaded.

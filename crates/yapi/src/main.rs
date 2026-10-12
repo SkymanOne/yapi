@@ -137,6 +137,17 @@ fn main() -> ExitCode {
         eprintln!("Error: {message}");
         return ExitCode::FAILURE;
     }
+    // The project directory as yapi would see it started there.
+    if let Some(dir) = &parsed.project_dir {
+        match std::fs::canonicalize(dir).ok().filter(|dir| dir.is_dir()) {
+            Some(dir) => parsed.project_dir = Some(dir),
+            None => {
+                let shown = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
+                eprintln!("Error: Project directory not found: {}", shown.display());
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     block_on(run(&mut parsed))
 }
 
@@ -434,17 +445,17 @@ fn start(
     })
 }
 
-/// Asks whether to trust the working directory when its project resources
-/// need trust and nothing decides it, and applies the answer to this run. A
-/// cancelled prompt leaves the project untrusted.
+/// Asks whether to trust the project when its resources need trust and
+/// nothing decides it, and applies the answer to this run. A cancelled
+/// prompt leaves the project untrusted.
 fn ask_project_trust(parsed: &mut args::Args) -> anyhow::Result<()> {
     let agent_dir = yapi_core::config::agent_dir();
-    let cwd = std::env::current_dir()?;
-    let settings = yapi_core::settings::SettingsManager::load(&agent_dir, &cwd, false);
+    let project = startup::project_dir(parsed, &std::env::current_dir()?);
+    let settings = yapi_core::settings::SettingsManager::load(&agent_dir, &project, false);
     let view = settings.settings();
     let store = yapi_core::trust::TrustStore::new(&agent_dir);
     if !yapi_core::trust::needs_prompt(
-        &cwd,
+        &project,
         &store,
         parsed.project_trust_override,
         view.default_project_trust,
@@ -452,7 +463,7 @@ fn ask_project_trust(parsed: &mut args::Args) -> anyhow::Result<()> {
         return Ok(());
     }
     let theme = parsed.use_theme.clone().or(view.theme.clone());
-    let trusted = interactive::picker::ask_project_trust(&agent_dir, &cwd, theme.as_deref())?;
+    let trusted = interactive::picker::ask_project_trust(&agent_dir, &project, theme.as_deref())?;
     parsed.project_trust_override = Some(trusted.unwrap_or(false));
     Ok(())
 }
