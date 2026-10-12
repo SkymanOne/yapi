@@ -275,7 +275,7 @@ Feasibility study, prior art and rejected alternatives: [dev/research/extension-
 ### Docs and git
 
 - Concise, professional prose. Describe contracts and decisions; do not paraphrase code or diffs.
-- Public documentation lives in `docs/` and builds with mdBook from `book.toml`. The Docs workflow publishes it to GitHub Pages from `main`. User-facing prose avoids em dashes and semicolons.
+- Public documentation lives in `docs/` and builds with mdBook from `book.toml`. The Docs workflow publishes it to GitHub Pages from `main`, and a preview of each pull request that changes it, linked in a comment on the pull request. User-facing prose avoids em dashes and semicolons.
 - Internal notes live in `dev/`: progress in `dev/status.md`, research in `dev/research/`.
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.
