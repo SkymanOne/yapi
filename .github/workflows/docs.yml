@@ -17,8 +17,11 @@ on:
 permissions:
   contents: read
 
+# A pull request's runs share a group by number. Once a merged pull request
+# closes, github.ref is the base branch, which would put its preview removal
+# in main's group and let the deploy cancel it.
 concurrency:
-  group: docs-${{ github.ref }}
+  group: docs-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
