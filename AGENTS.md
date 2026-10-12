@@ -69,7 +69,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
 | `crates/yapi-mock` | Mock provider server: replays HTTP cassettes and records requests. Test support only. | None |
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored pi JS. | None |
-| `guest/yapi-extension-api` | Rust SDK for native extensions. | None |
+| `guest/yapi-extension-api` | Rust SDK for native extensions, published to crates.io on each release with `yapi-types` and `yapi-tui`, which its `widgets` feature uses. | None |
 | `wit/` | Versioned WIT packages shared by host and guests. | None |
 | `install.sh`, `scripts/` | The release installer, and the packaging and install check that the Release workflow runs. | None |
 | `skills/` | Agent Skills for using yapi and writing its extensions, with a template and helper scripts. The repository installs as a package that provides them. | None |
@@ -79,7 +79,7 @@ Dependency direction:
 - `yapi-types` ← `yapi-ai` ← `yapi-agent` ← `yapi-core` ← `yapi-ext` ← `yapi`.
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
-- `guest/` is a separate workspace, so `cargo build` never compiles wasm. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` from this workspace by path.
+- `guest/` is a separate workspace, so `cargo build` never compiles wasm. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` from this workspace by path, with their version for crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 - `yapi-mock` is only ever a dev-dependency.
 
 ### Boundary traits
@@ -223,7 +223,7 @@ Feasibility study, prior art and rejected alternatives: [dev/research/extension-
 
 ### Code
 
-- Rust stable, the `stable` channel in `rust-toolchain.toml`, edition 2024. `rust-version` in the root `Cargo.toml` is the oldest Rust that builds yapi.
+- Rust stable, the `stable` channel in `rust-toolchain.toml`, edition 2024. `rust-version` in the root `Cargo.toml` is the oldest Rust that builds yapi. The crates published to crates.io declare their own, which the Release workflow checks: 1.91 for `yapi-types` and `yapi-tui`, 1.88 for `yapi-extension-api`.
 - KISS: choose the simplest design that matches pi's behavior. No speculative generality.
 - DRY: one definition per concept. pi JSON shapes live only in `yapi-types`.
 - Serialize pi JSON only through `yapi_types::json`, which matches `JSON.stringify`. Clippy rejects direct `serde_json::to_*` calls.

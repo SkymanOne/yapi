@@ -17,6 +17,10 @@ on:
       - scripts/check-release.sh
       - scripts/release-notes.sh
       - scripts/third-party-notices.sh
+      - guest/Cargo.toml
+      - crates/yapi-types/Cargo.toml
+      - crates/yapi-tui/Cargo.toml
+      - guest/yapi-extension-api/Cargo.toml
   workflow_dispatch:
 
 permissions:
@@ -41,11 +45,18 @@ jobs:
         with:
           persist-credentials: false
       - id: tag
-        name: Match the tag to the version in Cargo.toml and CHANGELOG.md
+        name: Match the tag to the versions in Cargo.toml, guest/Cargo.toml and CHANGELOG.md
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+          # yapi-extension-api takes the guest workspace's version and is
+          # published with yapi-types and yapi-tui at the same version.
+          guest=$(sed -n 's/^version = "\(.*\)"$/\1/p' guest/Cargo.toml | head -n 1)
+          if [ "$guest" != "$version" ]; then
+            echo "::error::guest/Cargo.toml has version $guest, not Cargo.toml's $version"
             exit 1
           fi
           scripts/release-notes.sh "$version" >/dev/null
@@ -208,3 +219,56 @@ jobs:
         run: |
           scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" dist/yapi-*.tar.gz*
+
+  # yapi-types, yapi-tui and yapi-extension-api on crates.io, after the GitHub
+  # release, so native extensions can depend on the SDK by version. A crate
+  # already published at this version is skipped, so a rerun finishes a run
+  # that failed partway. Other runs only check that the crates package.
+  crates:
+    needs: publish
+    if: ${{ !cancelled() && (github.ref_type != 'tag' || needs.publish.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Runner images can carry an older stable, which rustup does not update.
+      - name: Update stable Rust and install rust-toolchain.toml
+        run: rustup update --no-self-update stable && rustup toolchain install
+      # The rust-version each crate declares, older than yapi's own, and 1.91
+      # for the SDK's widgets feature, which takes yapi-tui's.
+      - name: Check the crates' minimum Rust versions
+        run: |
+          msrv() { sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$1/Cargo.toml"; }
+          types=$(msrv crates/yapi-types) tui=$(msrv crates/yapi-tui) sdk=$(msrv guest/yapi-extension-api)
+          rustup toolchain install "$types" "$tui" "$sdk" --profile minimal --target wasm32-wasip2
+          cargo "+$types" check -p yapi-types
+          cargo "+$tui" check -p yapi-tui
+          cd guest
+          cargo "+$sdk" check -p yapi-extension-api --target wasm32-wasip2
+          cargo "+$tui" check -p yapi-extension-api --features widgets --target wasm32-wasip2
+      - name: Check that the crates package
+        if: github.ref_type != 'tag'
+        run: |
+          cargo publish --dry-run -p yapi-types -p yapi-tui
+          # The SDK packages against this checkout's yapi-tui and yapi-types,
+          # the versions published with it.
+          cd guest
+          cargo package -p yapi-extension-api \
+            --config 'patch.crates-io.yapi-tui.path="../crates/yapi-tui"' \
+            --config 'patch.crates-io.yapi-types.path="../crates/yapi-types"'
+      - name: Publish the crates
+        if: github.ref_type == 'tag'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          published() {
+            curl -fsS -o /dev/null -A "yapi release (https://github.com/$GITHUB_REPOSITORY)" \
+              "https://crates.io/api/v1/crates/$1/$version"
+          }
+          for crate in yapi-types yapi-tui; do
+            published "$crate" || cargo publish -p "$crate"
+          done
+          cd guest
+          published yapi-extension-api || cargo publish -p yapi-extension-api

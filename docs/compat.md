@@ -1,6 +1,8 @@
 # Differences from Pi
 
-yapi follows Pi `v1.0.0` and reads Pi's settings, sessions, credentials and packages. It behaves like Pi except as listed here. Any other difference is a bug: please [report it](https://github.com/SkymanOne/yapi/issues).
+yapi follows Pi `v1.0.0` and behaves like Pi except as listed here. Any other difference is a bug. Please [report it](https://github.com/SkymanOne/yapi/issues).
+
+yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
 
 ## Extensions
 
@@ -8,7 +10,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 
 | Area | Pi | yapi |
 |---|---|---|
-| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See the [security model](configuration.md#security-model). |
+| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See [Sandboxing](security.md#sandboxing). |
 | Node APIs | All of Node | [Shims](extensions.md#how-pi-extensions-run). Sockets, servers, `http` requests, `worker_threads`, `node:sqlite`, `zlib`, `vm` and `child_process.fork` throw when used. `require()` of an ES module fails. |
 | Native addons | Loaded | Installed, never built. Loading one fails. |
 | Pi internals | Every export of Pi's packages | The extension API and its helpers. Other exports throw when called, and built-in tool factories reject custom `operations`. |
@@ -32,9 +34,9 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Package installs | `npm install`, with lifecycle scripts | A built-in npm client that skips lifecycle scripts. `npmCommand` applies to npm sources only. |
 | Packages that fail to install | Pi exits at startup, and `/reload` or the session change fails | yapi warns at startup and lists the package under `[Extension issues]` after `/reload` or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others. |
 | npm configuration | npm reads all its configuration files and settings | Registries and credentials from `~/.npmrc`, or the file `npm_config_userconfig` names, and from `npm_config_*` variables. Other settings, such as `cafile`, are ignored. |
-| Project folder | The working folder | `--project-dir <dir>`, a yapi-only flag, takes the project's files, trust and `AGENTS.md` from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent's project. See [Project trust](configuration.md#project-trust). |
+| Project folder | The working folder | `--project-dir <dir>`, a yapi-only flag, takes the project's files, trust and `AGENTS.md` from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent's project. See [Project trust](security.md#project-trust). |
 | Package manifests | The `pi` key | A `yapi` key of the same shape takes precedence, so one package can ship a native build for yapi. |
-| Self-update | `pi update` | `yapi update` updates packages and models only. See [Install](install.md#upgrade). |
+| Self-update | `pi update` updates Pi | `yapi update` prints how to upgrade instead. `--extensions` and `--models` update packages and model catalogs. See [Install](install.md#upgrade). |
 | `new` | `pi new ...` is a prompt | `yapi new` creates a native extension. Quote a prompt that starts with `new`. |
 
 ## Interface and providers
@@ -50,9 +52,9 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Links | A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written. | A click opens only `http`, `https` and `mailto` links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command. |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |
 
-## Open Gaps
+## Open gaps
 
-Pi features yapi does not have yet, or has only in part. Each row links its issue, and the row goes when the gap closes.
+Pi features yapi does not have yet, or has only in part. Each row links its issue.
 
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|

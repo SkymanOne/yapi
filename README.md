@@ -15,28 +15,19 @@
 
 # yapi
 
-yapi is an AI coding assistant for your terminal. Open it in a project, describe a task, and it reads files, runs commands and edits code until the task is done. It is a Rust reimplementation of [Pi](https://pi.dev), so it uses Pi's settings, sessions, credentials and packages as they are, and it ships as one native binary that needs no Node.js.
-
-yapi follows Pi `v1.0.0`. [Differences from Pi](https://skymanone.github.io/yapi/compat.html) lists every known difference.
+yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](https://pi.dev) `v1.0.0`, reads Pi's settings, sessions, credentials and packages without conversion, and ships as a single native binary with no Node.js dependency.
 
 ![yapi in a terminal, answering a question about this repository](assets/screenshot.png)
 
 ## Getting started
 
-Install the release binary for Linux or macOS:
+Install the latest release on Linux or macOS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 ```
 
-Or install it with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), or build it from source with Rust 1.99 or newer:
-
-```bash
-cargo binstall --git https://github.com/SkymanOne/yapi yapi
-cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.1.0 yapi
-```
-
-[Install](https://skymanone.github.io/yapi/install.html) covers each method, the supported platforms, upgrading and uninstalling.
+[Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling.
 
 Start yapi in the directory where you want it to work:
 
@@ -45,59 +36,57 @@ cd /path/to/project
 yapi
 ```
 
-Run `/login` inside yapi to connect a subscription or API key, then give yapi a task. yapi supports Pi's providers, from Claude, ChatGPT and GitHub Copilot subscriptions to Amazon Bedrock, Google Vertex AI and a local llama.cpp server.
+Run `/login` to connect a subscription or API key, then give yapi a task. Existing Pi users can copy their settings, credentials, sessions and packages with `yapi import pi`.
 
-If you use Pi already, `yapi import pi` copies your settings, credentials, sessions and packages.
+The [documentation](https://skymanone.github.io/yapi/) covers setup and usage.
 
-## Compatible
+## yapi and Pi
 
-yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC protocols and extension API. Pi packages run unchanged, with their extensions, skills, prompt templates and themes. Compatibility is measured against Pi itself, with both programs loading the same code:
+yapi keeps Pi's command-line flags, slash commands, file formats, JSON and RPC protocols and extension API. The main differences are in how it runs:
 
-- Pi's example extensions: 79 of 79 register the same tools, commands, flags, shortcuts and event handlers as in Pi.
-- The 500 most-downloaded Pi packages on npm: 418 of 500 work without errors.
-- Extension UI: dialogs, widgets, overlays and custom components match Pi's screens row for row at 80×24 and 120×40 in the recorded scenarios, except for the listed differences.
-
-## Fast
-
-yapi does not pay for starting Node.js and loading Pi's JavaScript. Measured on GitHub's hosted Linux runner, as medians:
-
-| Measure | yapi | Pi |
+| | Pi | yapi |
 |---|---|---|
-| Startup, interactive | 10.1 ms | 323.9 ms |
-| Startup, print mode (to first request byte) | 14.1 ms | 352.3 ms |
-| Keystroke to paint, p99, 10,000-line session | 0.9 ms | 3.8 ms |
-| Memory, idle | 18.8 MB | 117.4 MB |
-| Memory after 20 turns with tool calls | 37.0 MB | 202.6 MB |
-| Install size | 35.0 MB | 246.6 MB with Node.js |
+| Runtime | Node.js 22.19 or newer | One native binary |
+| Startup to first paint | 324 ms | **10 ms** |
+| Memory, idle | 117 MB | **19 MB** |
+| Install size | 247 MB with Node.js | **35 MB** |
+| Extensions | Run in Pi's process | Run in WebAssembly. Pi extensions run unchanged, and native extensions are written in Rust. |
 
-[Performance](https://skymanone.github.io/yapi/performance.html) explains each measure and the method, and has the macOS results.
+Figures are medians on GitHub's hosted Linux runner. [Performance](https://skymanone.github.io/yapi/performance.html) describes the method and has the macOS results.
 
-## Portable
+Compatibility is tested against Pi itself. All 79 of Pi's example extensions, and 418 of the 500 most-downloaded Pi packages on npm, load and register the same tools, commands and event handlers as in Pi. [Differences from Pi](https://skymanone.github.io/yapi/compat.html) lists every known difference.
 
-yapi is one executable for Linux and macOS on x86_64 and arm64. Extensions run in WebAssembly with memory and compute limits, and in v0.1 they keep Pi's default file, process and network access:
+## Extensions
 
-- Pi extensions in TypeScript or JavaScript run in a bundled QuickJS-NG runtime, with no Node.js install.
-- Native extensions are written in Rust and compiled to WebAssembly components. `yapi new` creates one, and [Native extensions in Rust](https://skymanone.github.io/yapi/native-extensions.html) is the guide.
+Pi extensions in TypeScript or JavaScript run unchanged in a bundled QuickJS-NG runtime, so existing Pi packages work without Node.js. Native extensions are written in Rust and compiled to WebAssembly components. They run in an instance of their own as compiled code, at the cost of a build step and an API that is unstable until yapi 1.0. `yapi new` creates one. [Choose an extension type](https://skymanone.github.io/yapi/extensions.html#choose-an-extension-type) compares the two.
 
-Native addons, sockets, threads and SQLite are not available to extensions. [Extensions](https://skymanone.github.io/yapi/extensions.html) has the details.
+## Security model and sandboxing
+
+yapi's built-in tools run with the permissions of the user who starts it, and yapi does not ask before each tool call. For untrusted repositories or unattended work, run yapi in a container or virtual machine.
+
+Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network and environment access against grants. In v0.1 every package receives Pi's default grants, so an extension can do what it could do in Pi. Codemode scripts run with no file, process or network access. [Security model and sandboxing](https://skymanone.github.io/yapi/security.html) has the details.
+
+## Roadmap
+
+- Per-package grants that you approve, so each package runs with only the access it declares
+- Project manifests (`yapi.toml`) that pin the packages and skills a project uses
+- A registry for yapi packages
+- A stable native extension API in yapi 1.0
+- The Pi features not yet ported, listed in [Differences from Pi](https://skymanone.github.io/yapi/compat.html#open-gaps)
+
+The [Roadmap](https://skymanone.github.io/yapi/roadmap.html) has the details.
 
 ## Agent skills
 
-The repository ships two [Agent Skills](https://agentskills.io) for coding agents: `yapi`, for running and scripting yapi, and `yapi-extension`, for writing Pi and native extensions. Install both with:
+The repository ships two [Agent Skills](https://agentskills.io): `yapi`, for running and scripting yapi, and `yapi-extension`, for writing extensions. Install them with:
 
 ```sh
 yapi install git:github.com/SkymanOne/yapi@v0.1.0
 ```
 
-[Agent skills](https://skymanone.github.io/yapi/agent-skills.html) has the details.
-
-## Documentation
-
-The [documentation](https://skymanone.github.io/yapi/) covers models and sign-in, interactive use, sessions, automation, configuration, extensions, packages, MCP servers and troubleshooting. Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues).
-
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md) explains how to build yapi, run its checks and find your way around the code.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build yapi and run its checks. Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues).
 
 ## License
 

@@ -1,6 +1,6 @@
-# Install
+# Install yapi
 
-yapi is one executable. Releases have it for Linux and macOS on x86_64 and arm64, and every platform with a recent Rust toolchain can build it from source.
+yapi is one executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build it from source. Linux and macOS are fully supported. Windows support is best effort.
 
 ## Install script
 
@@ -8,29 +8,33 @@ yapi is one executable. Releases have it for Linux and macOS on x86_64 and arm64
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 ```
 
-The script downloads the latest release binary for your system from GitHub, checks it against its published SHA-256 checksum, and installs it as `~/.local/bin/yapi`. Options go after `sh -s --`:
+The script downloads the latest release for your system, verifies its SHA-256 checksum and installs it as `~/.local/bin/yapi`. It also installs the [documentation for the model](#documentation-for-the-model).
+
+| Option | Variable | Effect |
+|---|---|---|
+| `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.1.0` |
+| `--to <dir>` | `YAPI_INSTALL_DIR` | Install into `<dir>` |
+| `--no-docs` | `YAPI_NO_DOCS=1` | Skip the documentation for the model |
+
+Pass options after `sh -s --`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.1.0 --to /usr/local/bin
 ```
 
-`YAPI_VERSION` and `YAPI_INSTALL_DIR` set the same as `--version` and `--to`.
-
-The script also installs the release's documentation for the model, which yapi reads to explain its own features. It holds this site's pages and Pi's docs and examples, checked against their SHA-256 checksum like the binary, and goes to `~/.yapi/agent/docs`, or `docs` in `YAPI_CODING_AGENT_DIR`. A new install replaces the previous copy. `--no-docs` or `YAPI_NO_DOCS=1` skips it.
-
 ## cargo-binstall
 
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release binary through Cargo, into `~/.cargo/bin`:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release binary into `~/.cargo/bin`:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
 ```
 
-Keep `--git`. On crates.io, `yapi` names an unrelated crate. With `--git`, cargo-binstall reads yapi's manifest on the `main` branch and downloads the release binary for the version it names, so it works when `main` names a released version. If it reports that the release does not exist, use the install script. yapi's manifest turns off cargo-binstall's other ways of installing, which would fetch `yapi` from crates.io, so a system without a release binary gets an error rather than another program.
+Keep `--git`, because the `yapi` crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on `main` names. If it reports that the release does not exist, use the install script.
 
-## Release binaries
+## Release archives
 
-Each [release](https://github.com/SkymanOne/yapi/releases) has the binary for each platform as `yapi-<target>.tar.gz`, next to a `.sha256` checksum. The archive holds `yapi` and its license files, `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES`. The install script installs only `yapi`. The names carry no version, so the latest release's binary is always at `https://github.com/SkymanOne/yapi/releases/latest/download/yapi-<target>.tar.gz`.
+Each [release](https://github.com/SkymanOne/yapi/releases) has a `yapi-<target>.tar.gz` archive per platform, with a `.sha256` checksum. The archive holds `yapi` and its license files.
 
 | Target | Systems |
 |---|---|
@@ -39,13 +43,7 @@ Each [release](https://github.com/SkymanOne/yapi/releases) has the binary for ea
 | `x86_64-apple-darwin` | macOS on Intel |
 | `aarch64-apple-darwin` | macOS on Apple silicon |
 
-Without the script, unpack the binary straight into a directory on `PATH`:
-
-```sh
-curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-aarch64-apple-darwin.tar.gz | tar xzf - -C ~/.local/bin yapi
-```
-
-To check the download first, fetch the archive and its checksum:
+Download an archive, verify it and unpack `yapi` into a directory on `PATH`:
 
 ```sh
 curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz
@@ -54,44 +52,17 @@ sha256sum -c yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 ```
 
-On macOS, `shasum -a 256 -c` checks the file. For a particular release, replace `latest/download` with `download/<tag>`, such as `download/v0.1.0`. Systems with an older glibc, or with musl such as Alpine, build from source. If macOS refuses to open a binary from an archive downloaded in a browser, see [Troubleshooting](troubleshooting.md#macos-blocks-a-downloaded-binary).
+On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `latest/download` with `download/<tag>`. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see [Troubleshooting](troubleshooting.md#macos-blocks-a-downloaded-binary).
 
-## From source
+## Build from source
 
-yapi builds with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs), or update it with `rustup update`, then build and install a release from the repository:
+yapi builds with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs), then run:
 
 ```sh
 cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.1.0 yapi
 ```
 
-Cargo places `yapi` in `~/.cargo/bin`. Without `--tag`, Cargo builds the latest commit on `main`. To build from a clone instead, as for development:
-
-```sh
-git clone https://github.com/SkymanOne/yapi yapi
-cd yapi
-cargo install --locked --path crates/yapi
-```
-
-Inside the clone, `rust-toolchain.toml` selects the stable toolchain with Clippy and rustfmt. rustup installs it on the first build if needed, but does not update an older one, so run `rustup update` if Cargo reports that rustc is too old.
-
-## Documentation for the model
-
-yapi reads its documentation to explain its own features: the pages of this site, and Pi's docs and examples, which describe the extension API that yapi implements. Each release publishes them as `yapi-docs.tar.gz`, which goes to `~/.yapi/agent/docs`, or `docs` in `YAPI_CODING_AGENT_DIR`.
-
-| Installed with | Documentation |
-|---|---|
-| Install script | Installed with the binary |
-| cargo-binstall, Cargo or a release archive | Downloaded by yapi in the background when it first starts |
-
-yapi downloads the documentation when the folder is missing or documents another version, checks it against its SHA-256 checksum, and replaces the old copy. It never downloads with `YAPI_NO_DOCS=1`, when offline (`--offline` or `PI_OFFLINE=1`), or in a development build. yapi reads only the copy of its own version, so until that copy is in place, as just after an upgrade, the model reads the same pages online.
-
-To install the documentation by hand, for example on a machine that runs yapi offline:
-
-```sh
-mkdir -p ~/.yapi/agent/docs && curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
-```
-
-This installs the latest release's documentation. When yapi is an older release, replace `latest/download` with `download/v<version>`, where `<version>` is what `yapi --version` prints.
+Cargo installs `yapi` in `~/.cargo/bin`. Leave out `--tag` to build the latest commit on `main`. To build from a clone, run `cargo install --locked --path crates/yapi` in it. If Cargo reports that rustc is too old, run `rustup update`.
 
 ## Check the installation
 
@@ -99,28 +70,36 @@ This installs the latest release's documentation. When yapi is an older release,
 yapi --version
 ```
 
+## Documentation for the model
+
+yapi reads its own documentation to answer questions about its features. The documentation holds these pages and Pi's docs and examples, which describe the extension API. Each release publishes it as `yapi-docs.tar.gz`, which goes to `~/.yapi/agent/docs`, or `docs` in `YAPI_CODING_AGENT_DIR` when that is set.
+
+The install script installs the documentation with the binary. With any other method, yapi downloads it in the background on first start. Either way, the archive is verified against its checksum and replaces the previous copy. `YAPI_NO_DOCS=1`, `--offline` and `PI_OFFLINE=1` turn the download off. Until a copy for its own version is in place, yapi points the model to the online documentation. Pi's pages use Pi's names, such as `~/.pi/agent`, and [Coming from Pi](migrating.md#names-that-change) lists yapi's.
+
+To install it by hand, such as on a machine that runs offline:
+
+```sh
+mkdir -p ~/.yapi/agent/docs && curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
+```
+
+For an older yapi, replace `latest/download` with `download/v<version>`, where `<version>` is what `yapi --version` prints. yapi replaces these files on upgrade, so keep your own notes elsewhere.
+
 ## Upgrade
 
-yapi does not update itself. `yapi update` updates packages and model catalogs only. Upgrade yapi the way you installed it:
+yapi does not update itself. `yapi update` prints how to upgrade, `yapi update --extensions` updates packages and `yapi update --models` updates model catalogs. Upgrade yapi the same way you installed it:
 
 | Installed with | Upgrade |
 |---|---|
-| Install script | Run the script again. It replaces the binary with the latest release, or the one `--version` names. |
+| Install script | Run the script again. |
 | cargo-binstall | Run the same `cargo binstall` command again. |
 | Release archive | Unpack the new archive over the old binary. |
-| Cargo, from source | Run `cargo install` again with the new release's tag. |
+| Cargo | Run `cargo install` again with the new release's tag. |
 
-Settings, credentials, sessions and packages are kept. The documentation for the model is replaced with the new release's.
+Settings, credentials, sessions and packages are kept.
 
 ## Uninstall
 
-Remove the binary the way you installed it:
+- Install script or release archive: delete `~/.local/bin/yapi`, or the file in the directory you chose.
+- cargo-binstall or Cargo: run `cargo uninstall yapi`.
 
-- Install script or release archive: `rm ~/.local/bin/yapi`, or the file in the directory you chose.
-- cargo-binstall or Cargo: `cargo uninstall yapi`.
-
-yapi keeps its settings, credentials, sessions, packages and caches in `~/.yapi`, or in `YAPI_CODING_AGENT_DIR` when it is set, and project resources in each project's `.yapi` folder. Delete them to remove that state as well.
-
-## Platforms
-
-Linux and macOS are fully supported. Windows builds are best effort.
+To remove settings, credentials, sessions, packages and caches as well, delete `~/.yapi`, or `YAPI_CODING_AGENT_DIR` when set, and each project's `.yapi` folder.

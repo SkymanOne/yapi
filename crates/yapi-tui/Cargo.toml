@@ -3,10 +3,15 @@ name = "yapi-tui"
 description = "Terminal UI on ratatui: widgets, editor, raw input decoding and the ANSI bridge for extension components."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# The oldest Rust that builds it, older than yapi's own. The Release workflow
+# checks it before publishing.
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+# Published to crates.io for yapi-extension-api's widgets feature.
+publish = true
+keywords = ["tui", "terminal", "ratatui", "editor", "pi"]
+categories = ["command-line-interface"]
 
 [dependencies]
 indexmap.workspace = true

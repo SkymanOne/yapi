@@ -1,6 +1,6 @@
 # Contributing
 
-yapi is a Cargo workspace whose crates mirror Pi's packages, so each behavior traces back to its Pi source. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes. [dev/status.md](https://github.com/SkymanOne/yapi/blob/main/dev/status.md) tracks progress and deferred work.
+yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes. [dev/status.md](https://github.com/SkymanOne/yapi/blob/main/dev/status.md) tracks progress and deferred work.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ cargo test --workspace
 cargo deny check
 ```
 
-`cargo test` includes the end-to-end scenarios, which replay recorded provider streams against goldens recorded from Pi. They need `rg`, `fd` and `python3` on `PATH`.
+`cargo test` includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.
 
 ## Common changes
 
@@ -56,6 +56,15 @@ cargo xtask bench --pi <path-to-pi>    # time and memory against Pi
 ```
 
 Pi installs from `tests/fixtures/pi/generator` with `npm ci`, which needs Node.js 22.19 or newer.
+
+## Releasing
+
+1. Set the new version in `[workspace.package]` of both `Cargo.toml` and `guest/Cargo.toml`. The extension SDK takes the guest workspace's version, and the Release workflow fails when the two differ from each other or from the tag.
+2. For a new minor or major version, raise the `version` requirements on `yapi-types` and `yapi-tui` in `Cargo.toml` and `guest/yapi-extension-api/Cargo.toml`.
+3. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`.
+4. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
+5. Add the release's section to `CHANGELOG.md`.
+6. Merge, then push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with the `CARGO_REGISTRY_TOKEN` secret.
 
 ## Documentation
 

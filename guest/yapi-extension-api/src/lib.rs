@@ -82,7 +82,7 @@ pub use wit_bindgen as __wit_bindgen;
 #[doc(hidden)]
 pub mod bindings {
     wit_bindgen::generate!({
-        path: "../../wit/since_v0.1.0",
+        path: "wit/since_v0.1.0",
         world: "extension",
         pub_export_macro: true,
         export_macro_name: "__export_world",

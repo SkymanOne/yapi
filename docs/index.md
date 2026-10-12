@@ -1,50 +1,32 @@
 # yapi
 
-**Yet Another Pi (in Rust) - Fast, Portable, Compatible**
+yapi is a coding agent for the terminal. Given a task and a working folder, it inspects files, runs commands, edits code and works through multi-step tasks.
 
-yapi is a minimal, extensible AI agent for the terminal, written in Rust. Give it a goal and a working folder, and it can inspect files, run commands, edit content and work through multi-step tasks.
+yapi is a Rust reimplementation of [Pi](https://pi.dev) `v1.0.0`. It uses Pi's commands, settings, session files, packages and extension API, so an existing Pi setup works in yapi without changes. It ships as a single native binary and does not require Node.js.
 
-yapi is a reimplementation of [Pi](https://pi.dev) `v1.0.0`. It uses Pi's commands, settings, session files, packages and extension API, so a Pi setup works in yapi as it is. Adapt it to your workflow with extensions, skills, prompt templates and themes, or install a Pi package. It ships as one native binary and needs no Node.js.
+## Get started
 
-## Start using yapi
+The [Quickstart](quickstart.md) covers installation, connecting a model and a first task. Pi users can bring their existing setup, as [Coming from Pi](migrating.md) describes.
 
-New to yapi? [Install it](install.md) and follow the [Quickstart](quickstart.md) to connect a model and complete your first task. Using Pi already? [Coming from Pi](migrating.md) shows how to bring your setup over.
-
-- [Use yapi interactively](interactive.md) to add files, run commands and direct ongoing work.
-- [Choose a model](models.md) or connect a subscription, API key, cloud provider or local model.
-- [Continue or branch a session](sessions.md) to resume work or explore another approach without losing history.
-- [Configure yapi](configuration.md) for your preferences, instructions and reusable resources.
+- [Use yapi in the terminal](interactive.md) to attach files, run commands and direct ongoing work.
+- [Choose a model](models.md) and connect a subscription, API key, cloud provider or local model.
+- [Manage sessions](sessions.md) to resume work or try another approach without losing history.
+- [Configure yapi](configuration.md) with settings, project instructions, skills and prompt templates.
 
 ## Customize yapi
 
-- [Extensions](extensions.md) add tools, commands, event handlers and interface components. Pi extensions run unchanged.
-- [Native extensions](native-extensions.md) do the same in Rust, compiled to WebAssembly.
 - [Packages](packages.md) bundle extensions, skills, prompt templates and themes, and install from npm, git or a local path.
-- [MCP servers and codemode](mcp.md) connect external tools.
+- [MCP servers](mcp.md) connect external tools.
+- [Extensions](extensions.md) add tools, commands, event handlers and interface components. Pi extensions run unchanged, and [native extensions](native-extensions.md) are written in Rust. [Choose an extension type](extensions.md#choose-an-extension-type) compares the two.
 
 ## Automate yapi
 
-Use [print, JSON and RPC modes](automation.md) for scripts, editors and other programs. The output formats and protocols are Pi's, so Pi's clients work with yapi.
+[Print, JSON and RPC modes](automation.md) serve scripts, editors and other programs. The formats and protocols are Pi's, so Pi's clients work with yapi.
 
-## How yapi differs from Pi
+## Security
 
-| | Pi | yapi |
-|---|---|---|
-| Runtime | Node.js 22.19 or newer | One native binary |
-| Extensions | Run in Pi's process with the user's permissions | Run in WebAssembly instances with memory and compute limits. In v0.1 they keep Pi's default file, process, network and environment access, as the [security model](configuration.md#security-model) explains. Pi extensions run unchanged, and native extensions are written in Rust. |
-| Startup and memory | 324 ms to first paint, 117 MB idle and 203 MB after 20 turns, 247 MB installed with Node.js | 10 ms to first paint, 19 MB idle and 37 MB after 20 turns, a 35 MB executable, on the same machine. See [Performance](performance.md). |
+yapi reads files, edits them and runs commands with the user's permissions, and it does not ask before each tool call. Extensions run in a WebAssembly sandbox with memory and compute limits. Read [Security model and sandboxing](security.md) before using yapi with untrusted repositories, packages or unattended automation.
 
-[Differences from Pi](compat.md) lists every known difference, including the Pi features not ported yet.
+## Project status
 
-## Compatibility
-
-yapi is tested against Pi itself. Every check below runs both programs on the same input.
-
-| Check | Result |
-|---|---|
-| End-to-end scenarios | 293 scenarios compare yapi with Pi's recorded output: terminal screens, JSON event streams, CLI and print mode runs, RPC sessions and Pi's own RPC client. Run live against Pi, 291 match and two differ only in the footer's context percentage. |
-| Settings, credentials and session files | Read and written back byte for byte |
-| Pi's example extensions | 79 of 79 register the same tools, commands, flags, shortcuts and event handlers as in Pi |
-| The 500 most-downloaded Pi packages on npm | 418 of 500 work without errors. [Extensions](extensions.md#compatibility-with-pi-extensions) has the breakdown. |
-
-Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues). [Reporting a problem](troubleshooting.md#reporting-a-problem) lists what to include.
+[Differences from Pi](compat.md) lists every known difference, including Pi features not yet ported. The [Roadmap](roadmap.md) lists planned work, and [Performance](performance.md) compares startup time, memory and install size with Pi. Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues).

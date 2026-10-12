@@ -71,9 +71,14 @@ fn creates_a_package_from_the_template() {
     }
     let cargo = read(project.join("Cargo.toml"));
     assert!(cargo.contains("name = \"my-ext\""));
-    // The SDK at this release's tag, so a version bump needs a template bump.
+    // The SDK of this release from crates.io, so a version bump needs a
+    // template bump.
     assert!(
-        cargo.contains(concat!("tag = \"v", env!("CARGO_PKG_VERSION"), "\"")),
+        cargo.contains(concat!(
+            "yapi-extension-api = \"",
+            env!("CARGO_PKG_VERSION"),
+            "\""
+        )),
         "{cargo}"
     );
     let manifest: serde_json::Value =

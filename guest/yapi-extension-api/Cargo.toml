@@ -3,18 +3,28 @@ name = "yapi-extension-api"
 description = "Write native yapi extensions in Rust: tools, commands, flags and event handlers, built as WebAssembly components."
 version.workspace = true
 edition.workspace = true
+# The oldest Rust that builds it, 1.91 with the widgets feature. The Release
+# workflow checks both before publishing.
+rust-version = "1.88"
 license.workspace = true
-publish.workspace = true
+repository = "https://github.com/SkymanOne/yapi"
+# Published to crates.io with yapi-types and yapi-tui on each release.
+publish = true
+keywords = ["yapi", "pi", "extension", "wasm", "agent"]
+categories = ["wasm", "development-tools"]
 
 [dependencies]
 base64 = "0.22"
 serde_json = "1"
 wit-bindgen = "0.62"
-yapi-tui = { path = "../../crates/yapi-tui", optional = true }
+yapi-tui = { path = "../../crates/yapi-tui", version = "0.1.0", optional = true }
 
 [features]
 # pi-tui's widgets from yapi-tui, such as `SelectList` and `Editor`.
 widgets = ["dep:yapi-tui"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [lints]
 workspace = true

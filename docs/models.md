@@ -1,10 +1,16 @@
-# Models and sign-in
+# Choose a model
 
-yapi supports the same providers and models as Pi, from the same built-in catalog.
+yapi supports Pi's providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it.
 
-## API keys
+## Sign in with a subscription
 
-yapi reads the same environment variables as Pi. Common ones:
+Run `/login` and choose "Sign in with an account" to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.
+
+"Sign in with Radius" signs in to Pi's Radius gateway, whose models come from the gateway's own catalog. Providers registered by extensions can add their own sign-ins. `/logout` removes a stored credential.
+
+## Use an API key
+
+yapi reads the same environment variables as Pi:
 
 | Provider | Variable |
 |---|---|
@@ -18,51 +24,31 @@ yapi reads the same environment variables as Pi. Common ones:
 | Mistral | `MISTRAL_API_KEY` |
 | OpenCode Zen and Go | `OPENCODE_API_KEY` |
 
-`yapi --help` lists every provider, including Azure OpenAI, Amazon Bedrock, Cloudflare and Vercel AI Gateway.
+`yapi --help` lists every provider, including Azure OpenAI and Vercel AI Gateway. To save a key instead, run `/login` and choose "Sign in with an API key". yapi stores it in `~/.yapi/agent/auth.json`.
 
-To store a key instead, run `/login` inside yapi and choose "Sign in with an API key". yapi saves it to `~/.yapi/agent/auth.json` in Pi's format.
+## Use a cloud provider
 
-## Subscriptions and accounts
-
-Run `/login` and choose "Sign in with an account" to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.
-
-"Sign in with Radius" at the top of `/login` signs in to Pi's Radius gateway. Its models come from the gateway's own catalog, which yapi fetches after the sign-in.
-
-Providers that extensions register can add their own sign-ins to `/login`. See [Providers from extensions](extensions.md#providers-from-extensions).
-
-`/logout` removes a stored credential.
-
-## Cloud providers
-
-Amazon Bedrock, Google Vertex AI and Cloudflare use their platform's credentials, as in Pi:
+Amazon Bedrock, Google Vertex AI and Cloudflare use their platform's credentials:
 
 - Amazon Bedrock reads `AWS_BEARER_TOKEN_BEDROCK`, or AWS credentials from the environment, `~/.aws` profiles (including SSO and assumed roles), container credentials or instance metadata, with `AWS_REGION` or the profile's region.
-- Google Vertex AI reads `GOOGLE_CLOUD_API_KEY`, or Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth application-default login`) with `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`.
-- Cloudflare Workers AI and AI Gateway read `CLOUDFLARE_API_KEY` with `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_GATEWAY_ID` for the gateway.
+- Google Vertex AI reads `GOOGLE_CLOUD_API_KEY`, or Application Default Credentials with `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`.
+- Cloudflare Workers AI and AI Gateway read `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_GATEWAY_ID` for the gateway.
 
-`/login` stores these settings in `auth.json` instead, with Pi's prompts. With `ANTHROPIC_FEDERATION_RULE_ID` and the related variables set, Anthropic requests use workload identity federation instead of a key.
+`/login` can store these settings in `auth.json` instead. With `ANTHROPIC_FEDERATION_RULE_ID` and the related variables set, Anthropic requests use workload identity federation instead of a key.
 
-## Local models with llama.cpp
+## Run local models
 
-yapi supports the [llama.cpp](https://github.com/ggml-org/llama.cpp) router server, as Pi does. Start `llama-server` without `--model`, for example:
+yapi supports the [llama.cpp](https://github.com/ggml-org/llama.cpp) router server. Start `llama-server` without `--model`:
 
 ```sh
 llama-server --models-dir ~/models --no-models-autoload --jinja --host 127.0.0.1 --port 8080
 ```
 
-Then run `/login llama.cpp` and enter the server URL (default `http://127.0.0.1:8080`) and an optional API key, or set `LLAMA_BASE_URL` and `LLAMA_API_KEY`. `/llama` loads and unloads the router's models and downloads new ones from Hugging Face. Loaded models appear in `/model`, and every chat model is also listed as a classifier. Pi's [llama.cpp guide](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md) covers the server options and model layout.
+Run `/login llama.cpp` and enter the server URL and an optional API key, or set `LLAMA_BASE_URL` and `LLAMA_API_KEY`. `/llama` loads and unloads the server's models and downloads new ones from Hugging Face. Loaded models appear in `/model`. Pi's [llama.cpp guide](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/llama-cpp.md) covers the server options.
 
-To remove the provider and `/llama`, disable `llama.cpp` in `yapi config`, or add `"-builtin:llama.cpp"` to the `extensions` setting.
+To remove the provider and `/llama`, disable `llama.cpp` in `yapi config`.
 
-## Model catalogs
-
-The catalog is built into yapi. Between releases, Pi publishes catalog updates for its providers. yapi fetches them for the providers you have configured: in the background at startup, when the model selector opens, after `/login`, and with `yapi update --models`. Fetched catalogs are kept in `~/.yapi/agent/models-store.json`, so later sessions have them offline. `--offline` or `PI_OFFLINE=1` turns fetching off. Providers that extensions register with `refreshModels` refresh at the same times.
-
-## Classifier and image models
-
-Besides chat models, the catalog lists classifiers, which answer typed questions about JSON data (TypeSafe's Jev, also through OpenCode, OpenRouter, Vercel AI Gateway and Cloudflare Workers AI, and models loaded in llama.cpp), and image models on OpenRouter. They run from codemode scripts through the `models` global, and from extensions through `ctx.modelRegistry.classify()` and `generateImages()`, with the session's credentials. See [MCP servers and codemode](mcp.md#codemode).
-
-## Choosing a model
+## Select a model
 
 ```sh
 yapi --list-models sonnet            # search the catalog
@@ -73,13 +59,21 @@ yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 
 Inside yapi, `/model` or Ctrl+L opens the model selector, Ctrl+P cycles through models, and Shift+Tab cycles the thinking level.
 
-## Custom providers and models
+## Add providers and models
 
-Add providers, models and overrides to `~/.yapi/agent/models.json`. The format is Pi's, described in Pi's [models](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md) and [custom provider](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md) documentation. Extensions can register providers too, including ones that implement their own wire API. See [Providers from extensions](extensions.md#providers-from-extensions).
+Add providers, models and overrides to `~/.yapi/agent/models.json`. The format is described in Pi's [models](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md) and [custom provider](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md) documentation. Extensions can also [register providers](extensions.md#providers-from-extensions), including ones with their own wire API.
+
+## Catalog updates
+
+Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after `/login` and with `yapi update --models`. It keeps them in `~/.yapi/agent/models-store.json` for offline use. `--offline`, or setting `PI_OFFLINE`, turns off the automatic fetches. `yapi update --models` fetches regardless.
+
+## Classifier and image models
+
+The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the `models` global, and extensions through `ctx.modelRegistry.classify()` and `generateImages()`. See [Codemode](mcp.md#codemode).
 
 ## Credentials for other tools
 
-`yapi auth` gives scripts a ready credential without starting a session:
+`yapi auth` gives scripts a credential without starting a session:
 
 ```sh
 yapi auth check --provider anthropic --json

@@ -1,6 +1,6 @@
 # Native extension examples
 
-The repository has seventeen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so the Rust and TypeScript versions can be read side by side. `subagent` is tested against a real yapi in `crates/yapi/tests/subagent.rs`, `event-bus` with Pi extensions in `crates/yapi-ext/tests/bus.rs`, and the others in `crates/yapi-ext/tests/native.rs`. Terminal scenarios also compare the screens of nine examples against Pi running the TypeScript versions.
+The repository has seventeen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
 
 | Example | Shows | Pi counterpart |
 |---|---|---|
@@ -144,7 +144,7 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 
 ## custom-footer
 
-`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it.
+`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it. `ui.footerData` is an internal request, so the example may need changes in a later release.
 
 ```rust
 api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {

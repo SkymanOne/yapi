@@ -16,8 +16,8 @@ yapi-ai = { path = "crates/yapi-ai" }
 yapi-core = { path = "crates/yapi-core" }
 yapi-ext = { path = "crates/yapi-ext" }
 yapi-mock = { path = "crates/yapi-mock" }
-yapi-tui = { path = "crates/yapi-tui" }
-yapi-types = { path = "crates/yapi-types" }
+yapi-tui = { path = "crates/yapi-tui", version = "0.1.0" }
+yapi-types = { path = "crates/yapi-types", version = "0.1.0" }
 
 anyhow = "1"
 aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
