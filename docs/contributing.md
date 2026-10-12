@@ -65,4 +65,4 @@ This site lives in `docs/`, is configured in `book.toml` and builds with [mdBook
 mdbook serve
 ```
 
-A workflow publishes it to GitHub Pages on every push to `main`.
+A workflow publishes it to GitHub Pages on every push to `main`. A pull request that changes it gets a preview, linked in a comment on the pull request.
