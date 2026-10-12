@@ -21,7 +21,7 @@ use yapi_core::settings::Scope;
 use yapi_core::settings::SettingsManager;
 use yapi_core::tools::path::resolve_to_cwd;
 use yapi_core::trust::{TrustStore, resolve_trusted};
-use yapi_ext::ExtensionHost;
+use yapi_ext::{Engine, ExtensionHost};
 use yapi_types::message::{ImageContent, ThinkingLevel};
 use yapi_types::rpc::SourceInfo;
 use yapi_types::sync::lock;
@@ -443,8 +443,10 @@ pub fn start(
 /// then, as the first one was from the arguments. As pi creates a runtime,
 /// the extensions' factories run first, so the session gets their
 /// registrations, and the extensions that failed to load are its
-/// `[Extension issues]`. A reload loads the extensions anew from the files
-/// on disk, as pi imports them again, with the terminal's size when
+/// `[Extension issues]`. Each session gets the extensions as the files on
+/// disk give them then, through [`session_extensions`]: a reload or another
+/// working directory imports every file again, as pi clears its module
+/// cache then. Extensions read the terminal's size as they load when
 /// `terminal`.
 pub fn factory(
     args: &Args,
@@ -456,19 +458,15 @@ pub fn factory(
     Arc::new(move |session, reason| {
         let (args, current) = (args.clone(), current.clone());
         Box::pin(async move {
-            let extensions = if reason == Replacement::Reload {
-                let size = terminal.then(yapi_tui::terminal::size);
-                let reloaded = Arc::new(reload_extensions(&args, size).await?);
-                *lock(&current) = Arc::clone(&reloaded);
-                reloaded
-            } else {
-                let extensions = Arc::clone(&lock(&current));
-                for host in &extensions.hosts {
-                    host.reload().await;
-                }
-                extensions
-            };
-            let (session, _) = build(&args, session, false, &extensions, None)?;
+            let cwd = session.cwd().to_path_buf();
+            let previous = Arc::clone(&lock(&current));
+            let keep = (reason != Replacement::Reload && previous.cwd == cwd).then_some(&*previous);
+            let size = terminal.then(yapi_tui::terminal::size);
+            let (extensions, run) = session_extensions(&args, cwd, size, keep).await?;
+            let extensions = Arc::new(extensions);
+            *lock(&current) = Arc::clone(&extensions);
+            let preloaded = Some((run.settings, run.trusted));
+            let (session, _) = build(&args, session, false, &extensions, preloaded)?;
             for (path, error) in extensions.failures() {
                 session.add_extension_load_error(path, error);
             }
@@ -481,9 +479,11 @@ pub fn factory(
 /// files of that directory's project ([`project_dir`]): settings, model,
 /// thinking level, tools and prompt resources follow the arguments.
 /// `preloaded` are the settings of that project and whether it is trusted,
-/// when already loaded. `warn` reports model problems on stderr, which only
-/// the first session may do. Returns pi's `modelFallbackMessage` too: why
-/// the session's model could not be restored, or that no model is available.
+/// when already loaded, those `extensions` were found with, so their
+/// resolved resources serve the session too. `warn` reports model problems
+/// on stderr, which only the first session may do. Returns pi's
+/// `modelFallbackMessage` too: why the session's model could not be
+/// restored, or that no model is available.
 fn build(
     args: &Args,
     session: SessionManager,
@@ -495,6 +495,7 @@ fn build(
     let agent_dir = agent_dir();
     // The prompt, the sign-in help and codemode agree on where the docs are.
     let docs = yapi_core::docs::Locations::find(&agent_dir);
+    let resolved_with_extensions = preloaded.is_some();
     let (settings, trusted) = match preloaded {
         Some(preloaded) => preloaded,
         None => load_settings(
@@ -663,8 +664,13 @@ fn build(
     // pi's order for each kind: `-e` packages' resources, then what settings,
     // packages and discovery enable (unless `--no-skills` and the like), then
     // command-line paths; a path counts once.
-    let resolved =
-        yapi_core::packages::resolve_resources(&project, &agent_dir, &settings, &BUILTINS);
+    let fresh;
+    let resolved = if resolved_with_extensions {
+        &extensions.resolved
+    } else {
+        fresh = yapi_core::packages::resolve_resources(&project, &agent_dir, &settings, &BUILTINS);
+        &fresh
+    };
     let merge = |cli: &[SourceInfo], kind: ResourceType, skip: bool, extra: Vec<SourceInfo>| {
         yapi_core::resources::merge_sources(
             cli.iter()
@@ -910,11 +916,10 @@ pub async fn load_extensions(
         loaded: None,
     };
     let run = run_settings(args).map_err(|err| fail(err.to_string()))?;
-    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, |_, message| {
-        eprintln!("Warning: {message}");
-    })
-    .await
-    .map_err(fail)?;
+    let warn = |_: &str, message: String| eprintln!("Warning: {message}");
+    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, warn, None)
+        .await
+        .map_err(fail)?;
     let mut messages: Vec<String> = extensions
         .failures()
         .into_iter()
@@ -932,36 +937,56 @@ pub async fn load_extensions(
     Ok((extensions, run))
 }
 
-/// The extensions as the settings and files on disk give them now, for
-/// pi's reload, which imports every extension file again. Packages that fail
-/// to install are listed with the extensions that failed to load, and the
-/// command line's flags apply to the extensions that still register them.
-async fn reload_extensions(
+/// The extensions for a session in `cwd` as the settings of its project
+/// ([`project_dir`]) and the files on disk give them now, with those
+/// settings, as pi's runtime loads them for each session. Missing packages
+/// are installed, and those that fail to are listed with the extensions that
+/// failed to load. `previous`, the extensions of the session before in the
+/// same directory, keeps the modules it imported, as pi's module cache does;
+/// without it every file is imported. The command line's flags apply to the
+/// extensions that still register them.
+async fn session_extensions(
     args: &Args,
+    cwd: PathBuf,
     terminal_size: Option<(usize, usize)>,
-) -> anyhow::Result<Extensions> {
-    let run = run_settings(args)?;
+    previous: Option<&Extensions>,
+) -> anyhow::Result<(Extensions, RunSettings)> {
+    let (settings, trusted) = load_settings(
+        &project_dir(args, &cwd),
+        &agent_dir(),
+        args.project_trust_override,
+        false,
+    )?;
+    let run = RunSettings {
+        cwd,
+        settings,
+        trusted,
+    };
     let mut uninstalled = Vec::new();
-    let (mut extensions, _) = start_extensions(args, &run, terminal_size, |source, message| {
-        uninstalled.push((source.to_owned(), message));
-    })
-    .await
-    .map_err(anyhow::Error::msg)?;
+    let install_failed = |source: &str, message| uninstalled.push((source.to_owned(), message));
+    let (mut extensions, _) = start_extensions(args, &run, terminal_size, install_failed, previous)
+        .await
+        .map_err(anyhow::Error::msg)?;
     extensions.issues.splice(0..0, uninstalled);
-    Ok(extensions)
+    Ok((extensions, run))
 }
 
 /// Installs missing packages, reporting failures to `install_failed` with
 /// their sources, and starts the extensions found in `run`'s directory with
-/// the command line's flag values. Returns the problems with the flags too;
-/// an error means no extension could start.
+/// the command line's flag values. The hosts of `previous` that still have
+/// extensions run their factories again instead, keeping the modules they
+/// imported. Returns the problems with the flags too; an error means no
+/// extension could start.
 async fn start_extensions(
     args: &Args,
     run: &RunSettings,
     terminal_size: Option<(usize, usize)>,
     install_failed: impl FnMut(&str, String) + Send,
+    previous: Option<&Extensions>,
 ) -> Result<(Extensions, Vec<String>), String> {
     let cwd = run.cwd.clone();
+    // pi resolves `-e` paths against the directory yapi started in.
+    let launch = std::env::current_dir().unwrap_or_else(|_| cwd.clone());
     let agent_dir = agent_dir();
     let mut packages = yapi_core::packages::PackageManager::new(
         run.settings.project_dir().to_path_buf(),
@@ -994,7 +1019,7 @@ async fn start_extensions(
             }
             continue;
         }
-        let resolved = resolve_to_cwd(path, &cwd);
+        let resolved = resolve_to_cwd(path, &launch);
         if resolved.exists() {
             requested.push((resolved, true));
         } else {
@@ -1020,13 +1045,13 @@ async fn start_extensions(
     // pi's precedence: the project's settings entries and discovered
     // extensions, then the user's, then packages. `--no-extensions` leaves
     // them out; packages still provide their skills, prompts and themes.
+    let resolved = yapi_core::packages::resolve_resources(
+        packages.settings().project_dir(),
+        &agent_dir,
+        packages.settings(),
+        &BUILTINS,
+    );
     if !args.no_extensions {
-        let resolved = yapi_core::packages::resolve_resources(
-            packages.settings().project_dir(),
-            &agent_dir,
-            packages.settings(),
-            &BUILTINS,
-        );
         sources.extend(
             resolved
                 .enabled(ResourceType::Extensions)
@@ -1037,11 +1062,27 @@ async fn start_extensions(
     let mut seen = std::collections::HashSet::new();
     sources.retain(|source| seen.insert(source.path.clone()));
     // pi extensions share one JS runtime; each native extension has its own.
+    // A host of `previous` is known by the path of its first extension.
+    let previous_host = |native: bool, path: Option<&str>| {
+        previous?.hosts.iter().find(|host| {
+            host.sources().first().is_some_and(|first| {
+                is_native(Path::new(&first.path)) == native
+                    && path.is_none_or(|path| first.path == path)
+            })
+        })
+    };
+    let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
+    // The hosts started here, which need the flags.
+    let mut started = Vec::new();
     if !sources.is_empty() {
         let cache = agent_dir.join("cache");
-        let engine =
-            yapi_ext::Engine::new(Some(&cache.join("wasm"))).map_err(|err| err.to_string())?;
+        let engine = match &mut engine {
+            Some(engine) => engine.clone(),
+            None => engine
+                .insert(Engine::new(Some(&cache.join("wasm"))).map_err(|err| err.to_string())?)
+                .clone(),
+        };
         let mut options = yapi_ext::Options::new(cwd.clone());
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
@@ -1050,14 +1091,32 @@ async fn start_extensions(
             .into_iter()
             .partition(|source| is_native(Path::new(&source.path)));
         if !js.is_empty() {
-            let host = ExtensionHost::load(&engine, options.clone(), &js)
-                .await
-                .map_err(|err| err.to_string())?;
+            let host = match previous_host(false, None) {
+                Some(host) => {
+                    host.reload(&js).await;
+                    Arc::clone(host)
+                }
+                None => {
+                    let host = ExtensionHost::load(&engine, options.clone(), &js)
+                        .await
+                        .map_err(|err| err.to_string())?;
+                    started.push(Arc::clone(&host));
+                    host
+                }
+            };
             hosts.push(host);
         }
         for source in &native {
+            if let Some(host) = previous_host(true, Some(&source.path)) {
+                host.reload(std::slice::from_ref(source)).await;
+                hosts.push(Arc::clone(host));
+                continue;
+            }
             match ExtensionHost::load_native(&engine, options.clone(), source).await {
-                Ok(host) => hosts.push(host),
+                Ok(host) => {
+                    started.push(Arc::clone(&host));
+                    hosts.push(host);
+                }
                 Err(err) => issues.push((source.path.clone(), err.to_string())),
             }
         }
@@ -1092,7 +1151,7 @@ async fn start_extensions(
         flag_errors.push(format!("Unknown option{plural}: {}", unknown.join(", ")));
     }
     if !values.is_empty() {
-        for host in &hosts {
+        for host in &started {
             host.set_flags(values.clone())
                 .await
                 .map_err(|err| err.to_string())?;
@@ -1107,6 +1166,9 @@ async fn start_extensions(
         skills,
         prompts,
         themes,
+        resolved,
+        cwd,
+        engine,
     };
     Ok((extensions, flag_errors))
 }
@@ -1192,6 +1254,13 @@ pub struct Extensions {
     pub prompts: Vec<SourceInfo>,
     /// Package themes with their packages as sources.
     pub themes: Vec<SourceInfo>,
+    /// What the settings of [`Extensions::cwd`] and the files on disk gave
+    /// as the extensions were found.
+    resolved: yapi_core::packages::resolve::ResolvedPaths,
+    /// The working directory the extensions were found for.
+    cwd: PathBuf,
+    /// The engine of the hosts, which later hosts share.
+    engine: Option<Engine>,
 }
 
 impl Extensions {

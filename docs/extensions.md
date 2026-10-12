@@ -63,6 +63,8 @@ yapi loads extensions from:
 
 `/reload` loads the extensions again from disk, as Pi does. Edited files, new and removed files and rebuilt native extensions take effect, and packages added to settings are installed.
 
+A new, resumed, forked or cloned session finds new and removed extension files and installs packages added to settings as well. It keeps the extensions it already imported, so edits to them wait for `/reload`, as in Pi. A session in another working directory imports every extension again.
+
 ## Writing a Pi extension
 
 Extensions use Pi's API. Save this as `~/.yapi/agent/extensions/hello.ts`:

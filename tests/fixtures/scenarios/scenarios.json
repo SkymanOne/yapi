@@ -358,6 +358,28 @@
     "tty": {"cols": 120, "rows": 40, "keys": ["/restore\r", "/reload\r"]}
   },
   {
+    "name": "tui-new-session-extension-files",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5"],
+    "agentFiles": {"extensions/edit.ts": "import { unlinkSync, writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { version } from \"./lib/version.ts\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(`x-edit-${version}`, { description: \"Registered by the first edit.ts\", handler: async () => {} });\n\tpi.registerCommand(\"change\", {\n\t\tdescription: \"Edits, adds and removes extension files\",\n\t\thandler: async () => {\n\t\t\tconst file = (name: string) => join(__dirname, name);\n\t\t\twriteFileSync(file(\"lib/version.ts\"), 'export const version = \"v2\";\\n');\n\t\t\twriteFileSync(file(\"edit.ts\"), 'import { version } from \"./lib/version.ts\";\\nexport default function (pi) {\\n\\tpi.registerCommand(\"x-edited-\" + version, { description: \"Registered by the edited edit.ts\", handler: async () => {} });\\n}\\n');\n\t\t\twriteFileSync(file(\"added.ts\"), 'export default function (pi) {\\n\\tpi.registerCommand(\"x-added\", { description: \"Registered by added.ts\", handler: async () => {} });\\n}\\n');\n\t\t\tunlinkSync(file(\"gone.ts\"));\n\t\t},\n\t});\n}\n", "extensions/lib/version.ts": "export const version = \"v1\";\n", "extensions/gone.ts": "export default function (pi) {\n\tpi.registerCommand(\"x-gone\", { description: \"Registered by gone.ts\", handler: async () => {} });\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/change\r", "/new\r", "/x-"]}
+  },
+  {
+    "name": "tui-new-session-extension-import-retry",
+    "cassette": "none.json",
+    "args": ["--model", "anthropic/claude-sonnet-4-5"],
+    "agentFiles": {"extensions/base.ts": "import { writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tconst late = (text: string) => async () => writeFileSync(join(__dirname, \"late.ts\"), text);\n\tpi.registerCommand(\"break\", {\n\t\tdescription: \"Adds an extension that fails to import\",\n\t\thandler: late('throw new Error(\"late.ts is not ready\");\\nexport default function () {}\\n'),\n\t});\n\tpi.registerCommand(\"mend\", {\n\t\tdescription: \"Repairs it\",\n\t\thandler: late('export default function (pi) {\\n\\tpi.registerCommand(\"x-late\", { description: \"Registered by late.ts\", handler: async () => {} });\\n}\\n'),\n\t});\n}\n"},
+    "tty": {"cols": 100, "rows": 40, "keys": ["/break\r", "/new\r", "/mend\r", "/new\r", "/x-"]}
+  },
+  {
+    "name": "rpc-switch-session-extension-cache",
+    "cassette": "none.json",
+    "args": ["--mode", "rpc", "--no-session", "--model", "anthropic/claude-sonnet-4-5"],
+    "files": {"same.jsonl": "{\"type\":\"session\",\"version\":3,\"id\":\"019a0000-0000-7000-8000-0000000000a1\",\"timestamp\":\"2026-10-01T10:00:00.000Z\",\"cwd\":\"{{cwd}}\"}\n", "other/keep.txt": "", "other.jsonl": "{\"type\":\"session\",\"version\":3,\"id\":\"019a0000-0000-7000-8000-0000000000a2\",\"timestamp\":\"2026-10-01T10:00:00.000Z\",\"cwd\":\"{{cwd}}/other\"}\n"},
+    "agentFiles": {"extensions/edit.ts": "import { writeFileSync } from \"node:fs\";\nimport { join } from \"node:path\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nimport { version } from \"./lib/version.ts\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.registerCommand(`x-edit-${version}`, { description: \"Registered by edit.ts\", handler: async () => {} });\n\tpi.registerCommand(\"change\", {\n\t\tdescription: \"Edits a module edit.ts imports\",\n\t\thandler: async () => writeFileSync(join(__dirname, \"lib/version.ts\"), 'export const version = \"v2\";\\n'),\n\t});\n}\n", "extensions/lib/version.ts": "export const version = \"v1\";\n"},
+    "rpc": [{"send": {"id": "change", "type": "prompt", "message": "/change"}}, {"send": {"id": "same", "type": "switch_session", "sessionPath": "same.jsonl"}}, {"send": {"id": "cached", "type": "get_commands"}}, {"send": {"id": "other", "type": "switch_session", "sessionPath": "other.jsonl"}}, {"send": {"id": "imported", "type": "get_commands"}}]
+  },
+  {
     "name": "rpc-new-session-extension-load-error",
     "cassette": "none.json",
     "args": ["--mode", "rpc", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "flaky.ts", "-e", "steady.ts"],

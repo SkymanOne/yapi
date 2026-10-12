@@ -637,14 +637,15 @@ impl Actor {
 }
 
 /// Keeps call `kind` for the replay after a restart when it shapes the
-/// instance's state. Only the latest `bind` counts, as each session binds
-/// again.
+/// instance's state. Only the latest `reload`, which names the extensions
+/// that run now, and the latest `bind` count, as each session runs and binds
+/// them again.
 fn record(replay: &mut Vec<(String, String)>, kind: &str, payload: &str) {
-    if !matches!(kind, "load" | "bind" | "flags") {
+    if !matches!(kind, "load" | "reload" | "bind" | "flags") {
         return;
     }
-    if kind == "bind" {
-        replay.retain(|(recorded, _)| recorded != "bind");
+    if matches!(kind, "reload" | "bind") {
+        replay.retain(|(recorded, _)| recorded != kind);
     }
     replay.push((kind.to_owned(), payload.to_owned()));
 }
@@ -701,15 +702,17 @@ fn instantiate(
 mod tests {
     use super::record;
 
-    /// A long process binds once per session; a restart replays the load,
-    /// the flags and the latest binding only.
+    /// A long process reloads and binds once per session; a restart replays
+    /// the load, the flags, and the latest reload and binding only.
     #[test]
-    fn the_replay_keeps_the_latest_bind() {
+    fn the_replay_keeps_the_latest_reload_and_bind() {
         let mut replay = Vec::new();
-        for kind in ["load", "flags", "bind", "emit", "bind", "reload", "bind"] {
+        for kind in [
+            "load", "flags", "bind", "emit", "reload", "bind", "reload", "bind",
+        ] {
             record(&mut replay, kind, kind);
         }
         let kinds: Vec<&str> = replay.iter().map(|(kind, _)| kind.as_str()).collect();
-        assert_eq!(kinds, ["load", "flags", "bind"]);
+        assert_eq!(kinds, ["load", "flags", "reload", "bind"]);
     }
 }
