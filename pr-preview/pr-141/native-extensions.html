@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -192,6 +192,7 @@
 <p><code>yapi new</code> writes a Cargo project that is also a yapi package:</p>
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
+├── .gitignore
 ├── Cargo.toml           a cdylib crate that depends on yapi-extension-api at tag v0.1.0
 ├── README.md
 ├── extensions/          where the built extension goes
@@ -440,7 +441,7 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 yapi-extension-api = { git = "https://github.com/SkymanOne/yapi", tag = "&lt;release&gt;", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds them, such as <code>select_list::SelectList</code>, <code>editor::Editor</code>, <code>text_input::TextInput</code>, <code>settings_list::SettingsList</code>, and the <code>Text</code>, <code>Box</code> and border layouts in <code>lines</code>. They render styled lines, and <code>widgets::to_ansi</code> turns those into a component’s lines, with pi-tui’s cursor marker where a cursor belongs. <code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style for the widgets’ themes, and <code>widgets::keybindings</code> the key bindings their <code>handle_input</code> takes. The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</p>
-<p>The widgets add 100 to 300 KB to an extension that uses them. A built extension without the feature stays near 170 KB.</p>
+<p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does. It sees each key before the editor and everything else, in the order listeners were added, and returns <code>TerminalInput::Pass</code> to let the key through, <code>Consume</code> to stop it, or <code>Replace(data)</code> to hand on <code>data</code> in its place, as Pi’s <code>undefined</code>, <code>{consume: true}</code> and <code>{data}</code>. The listener stops when the returned <code>Subscription</code> is dropped or <code>unsubscribe</code> is called, so keep it for as long as the listener should run. <code>editor_text()</code> returns the editor’s text, as Pi’s <code>ctx.ui.getEditorText</code> does, so a listener can take keys only while the editor is empty:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]

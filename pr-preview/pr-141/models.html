@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -229,7 +229,7 @@ yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 <h2 id="add-providers-and-models"><a class="header" href="#add-providers-and-models">Add providers and models</a></h2>
 <p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. The format is described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation. Extensions can also <a href="extensions.html#providers-from-extensions">register providers</a>, including ones with their own wire API.</p>
 <h2 id="catalog-updates"><a class="header" href="#catalog-updates">Catalog updates</a></h2>
-<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code> or <code>PI_OFFLINE=1</code> turns fetching off.</p>
+<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you have configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches. <code>yapi update --models</code> fetches regardless.</p>
 <h2 id="classifier-and-image-models"><a class="header" href="#classifier-and-image-models">Classifier and image models</a></h2>
 <p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>. See <a href="mcp.html#codemode">Codemode</a>.</p>
 <h2 id="credentials-for-other-tools"><a class="header" href="#credentials-for-other-tools">Credentials for other tools</a></h2>

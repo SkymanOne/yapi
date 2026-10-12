@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -217,7 +217,7 @@
 <tr><td>Enter</td><td>Send the message, or steer the current turn while yapi works</td></tr>
 <tr><td>Alt+Enter</td><td>Queue a follow-up for when yapi finishes</td></tr>
 <tr><td>Shift+Enter</td><td>Insert a new line</td></tr>
-<tr><td>Escape</td><td>Stop the agent. Twice on an empty editor opens the session tree.</td></tr>
+<tr><td>Escape</td><td>Stop the agent. Twice on an empty editor opens the session tree, or what the <code>doubleEscapeAction</code> setting chooses.</td></tr>
 <tr><td>Ctrl+C</td><td>Clear the editor. Twice quits.</td></tr>
 <tr><td>Ctrl+D</td><td>Quit when the editor is empty</td></tr>
 <tr><td>Ctrl+O</td><td>Expand or collapse tool output</td></tr>
@@ -251,8 +251,8 @@
 <tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
 <tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
 <tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
-<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage MCP servers</td></tr>
+<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage MCP servers. Built-in extension.</td></tr>
 <tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
@@ -261,7 +261,7 @@
 </tbody>
 </table>
 </div>
-<p>The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
+<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status

@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -188,7 +188,7 @@
 </thead>
 <tbody>
 <tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code></td></tr>
-<tr><td>Project instructions</td><td><code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
+<tr><td>Project instructions</td><td><code>AGENTS.override.md</code>, <code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
 <tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code></td></tr>
 <tr><td>Skills</td><td><code>~/.yapi/agent/skills</code>, <code>~/.agents/skills</code>, <code>.yapi/skills</code> and <code>.agents/skills</code></td></tr>
 <tr><td>Prompt templates</td><td><code>~/.yapi/agent/prompts</code> and <code>.yapi/prompts</code></td></tr>
@@ -203,7 +203,7 @@
 </div>
 <p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
-<p>yapi reads <code>AGENTS.md</code>, or <code>CLAUDE.md</code>, from the working folder and each parent folder, and adds them to the system prompt. Use them for build commands, conventions and anything else the agent should know about the project.</p>
+<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. Use them for build commands, conventions and anything else the agent should know about the project.</p>
 <h2 id="skills-and-prompt-templates"><a class="header" href="#skills-and-prompt-templates">Skills and prompt templates</a></h2>
 <p>Skills follow the <a href="https://agentskills.io/specification">Agent Skills specification</a>. Each skill is a folder with a <code>SKILL.md</code> file. yapi lists every skill’s name and description in the system prompt, and the model reads the full instructions when a task calls for them. <code>/skill:name</code> loads one directly.</p>
 <p>Prompt templates are Markdown files that become slash commands. Save this as <code>~/.yapi/agent/prompts/review.md</code>:</p>
@@ -222,7 +222,7 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 <p>yapi prepares images in prompts, <code>@path</code> arguments and tool results before they reach the model:</p>
 <ul>
 <li>BMP images are converted to PNG.</li>
-<li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MB, or the model’s own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.</li>
+<li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.</li>
 <li>An image that cannot be converted or made to fit is left out, with a note that says so.</li>
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>

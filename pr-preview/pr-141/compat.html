@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -181,7 +181,7 @@
                     <main>
                         <h1 id="differences-from-pi"><a class="header" href="#differences-from-pi">Differences from Pi</a></h1>
 <p>yapi follows Pi <code>v1.0.0</code> and behaves like Pi except as listed here. Any other difference is a bug. Please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>.</p>
-<p>yapi is tested against Pi itself. 293 end-to-end scenarios compare yapi with Pi’s recorded output: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. <a href="extensions.html#compatibility-with-pi">Extensions</a> has the extension and package results.</p>
+<p>yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. <a href="extensions.html#compatibility-with-pi">Extensions</a> has the extension and package results.</p>
 <h2 id="extensions"><a class="header" href="#extensions">Extensions</a></h2>
 <p>Pi extensions run unchanged, in WebAssembly rather than Node.js.</p>
 <div class="table-wrapper">
@@ -221,7 +221,7 @@
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code></td><td><code>yapi update</code> updates packages and models only. See <a href="install.html#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="install.html#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>

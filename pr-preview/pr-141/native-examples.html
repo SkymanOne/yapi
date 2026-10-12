@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-abb914c7.js";
+            window.path_to_searchindex_js = "searchindex-2213839b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -312,7 +312,7 @@ let todos = STATE.with(|cell| cell.borrow().todos.clone());
 ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 <span class="boring">}</span></code></pre>
 <h2 id="custom-footer"><a class="header" href="#custom-footer">custom-footer</a></h2>
-<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it.</p>
+<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it. <code>ui.footerData</code> is an internal request, so the example may need changes in a later release.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
