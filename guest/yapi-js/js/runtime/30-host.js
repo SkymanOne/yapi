@@ -222,8 +222,9 @@
 				extension.providers = extension.providers.filter((provider) => provider.name !== name);
 			},
 			registerMcpServer(name, config) {
-				// The host checks the config and the grant its transport needs,
-				// and gives the config with legacy exposure names replaced.
+				// The host checks the config, the grant its transport needs and
+				// the servers of other runtimes, while extensions load too, and
+				// gives the config with legacy exposure names replaced.
 				const validated = yapi.request("mcp.validate", { name, config: plain(config), extension: extension.path });
 				const owner = mcpServers().find((server) => server.name === name)?.extensionPath;
 				if (owner !== undefined && owner !== extension.path) {
@@ -1328,11 +1329,12 @@
 			terminalListeners.clear();
 			completionWrappers.length = 0;
 			completions = hostCompletions;
+			// As in pi's fresh runtime, the stale extensions' registrations,
+			// such as MCP server names, do not count while the factories run.
+			const stale = [...extensions.values()];
+			extensions.clear();
 			const results = [];
-			for (const [id, extension] of [...extensions]) {
-				extensions.delete(id);
-				results.push(await instantiate(id, extension.path, extension.factory));
-			}
+			for (const { id, path, factory } of stale) results.push(await instantiate(id, path, factory));
 			return { extensions: results };
 		},
 		flags(payload) {

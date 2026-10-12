@@ -564,6 +564,127 @@ async fn a_clashing_mcp_server_name_is_refused_in_the_registering_call() {
     assert_eq!(names, ["shared", "my-docs", "own"]);
 }
 
+/// As in pi, a server an extension registers as it loads is checked right
+/// away: a name, or a tool namespace, that an extension of a runtime loaded
+/// earlier registered fails the extension's load with pi's error, and the
+/// earlier registration keeps the name.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_clashing_mcp_server_name_fails_the_load_of_the_later_extension() {
+    let dir = scratch("mcp-load-clash");
+    let register = |names: &[&str]| {
+        let calls: String = names
+            .iter()
+            .map(|name| {
+                format!("\tpi.registerMcpServer(\"{name}\", {{ command: \"python3\", enabled: false }});\n")
+            })
+            .collect();
+        format!("export default function (pi) {{\n{calls}}}\n")
+    };
+    let engine = engine();
+    let mut extensions = Vec::new();
+    let mut errors = Vec::new();
+    for files in [
+        &[("owner.ts", &["shared", "my-docs"][..])][..],
+        &[
+            ("taker.ts", &["own", "shared"][..]),
+            ("prefix.ts", &["my_docs"][..]),
+            ("own.ts", &["own"][..]),
+        ][..],
+    ] {
+        let sources: Vec<_> = files
+            .iter()
+            .map(|(file, names)| {
+                let path = dir.join(file);
+                std::fs::write(&path, register(names)).unwrap();
+                cli_source(&path)
+            })
+            .collect();
+        let host = ExtensionHost::load(&engine, options(&dir), &sources)
+            .await
+            .unwrap();
+        errors.extend(host.errors().to_vec());
+        extensions.extend(host.for_session());
+    }
+    let owner_path = dir.join("owner.ts").to_string_lossy().into_owned();
+    assert_eq!(
+        errors,
+        [
+            yapi_ext::LoadError {
+                path: dir.join("taker.ts"),
+                error: format!(
+                    "Failed to load extension: MCP server \"shared\" is already registered by extension \"{owner_path}\""
+                ),
+            },
+            yapi_ext::LoadError {
+                path: dir.join("prefix.ts"),
+                error: "Failed to load extension: MCP server \"my_docs\" conflicts with registered server \"my-docs\"".into(),
+            },
+        ]
+    );
+    let session = session(&Faux::new([]), &dir, extensions);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    let servers: Vec<(String, String)> = session
+        .mcp_servers()
+        .into_iter()
+        .map(|server| (server.name, server.extension_path))
+        .collect();
+    let own_path = dir.join("own.ts").to_string_lossy().into_owned();
+    assert_eq!(
+        servers,
+        [
+            ("shared".to_owned(), owner_path.clone()),
+            ("my-docs".to_owned(), owner_path),
+            ("own".to_owned(), own_path),
+        ]
+    );
+}
+
+/// A new session loads the extensions afresh, as pi's new runtime does: a
+/// server name that a later extension registered in the previous session
+/// does not keep an earlier extension from registering it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
+    let dir = scratch("mcp-moved");
+    let register = |when: &str| {
+        format!(
+            "let runs = 0;\nexport default function (pi) {{\n\truns++;\n\tif ({when}) pi.registerMcpServer(\"moved\", {{ command: \"python3\", enabled: false }});\n}}\n"
+        )
+    };
+    let sources: Vec<_> = [("a.ts", "runs > 1"), ("b.ts", "runs === 1")]
+        .iter()
+        .map(|(file, when)| {
+            let path = dir.join(file);
+            std::fs::write(&path, register(when)).unwrap();
+            cli_source(&path)
+        })
+        .collect();
+    let js = ExtensionHost::load(&engine(), options(&dir), &sources)
+        .await
+        .unwrap();
+    assert!(js.errors().is_empty(), "{:?}", js.errors());
+    let owners = |session: &yapi_core::agent_session::AgentSession| -> Vec<(String, String)> {
+        session
+            .mcp_servers()
+            .into_iter()
+            .map(|server| (server.name, server.extension_path))
+            .collect()
+    };
+    let path = |file: &str| dir.join(file).to_string_lossy().into_owned();
+    let first = session(&Faux::new([]), &dir, js.for_session());
+    first
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(owners(&first), [("moved".to_owned(), path("b.ts"))]);
+    first.shutdown().await;
+    let second = session(&Faux::new([]), &dir, js.for_session());
+    second
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    assert_eq!(owners(&second), [("moved".to_owned(), path("a.ts"))]);
+}
+
 /// A tool's updates and the calls it makes through `ctx.executeTool()` report
 /// in pi's order, from the task that runs the tool: an update goes out after
 /// the start of a call the tool begins in the same step, and before its end

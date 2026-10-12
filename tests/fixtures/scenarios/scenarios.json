@@ -590,6 +590,12 @@
     ]
   },
   {
+    "name": "mcp-registered-clash-print",
+    "cassette": "none.json",
+    "args": ["-p", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "-e", "a.ts", "-e", "b.ts", "-e", "c.ts", "-e", "d.ts", "hi"],
+    "files": {"a.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"shared\", { command: \"python3\", enabled: false });\n\tpi.registerMcpServer(\"my-docs\", { command: \"python3\", enabled: false });\n}\n", "b.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"own\", { command: \"python3\", enabled: false });\n\tpi.registerMcpServer(\"shared\", { command: \"python3\", enabled: false });\n}\n", "c.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"my_docs\", { command: \"python3\", enabled: false });\n}\n", "d.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default function (pi: ExtensionAPI) {\n\tpi.registerMcpServer(\"own\", { command: \"python3\", enabled: false });\n}\n"}
+  },
+  {
     "name": "tui-login-menu",
     "cassette": "anthropic-messages/tool-call.json",
     "args": ["--model", "anthropic/claude-sonnet-4-5"],

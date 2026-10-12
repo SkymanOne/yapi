@@ -254,11 +254,15 @@ impl Host {
                 text(payload, "text"),
             ))),
             "codemode.definition" => Ok(crate::codemode::definition()),
-            "mcp.validate" => self.validate_mcp_server(
-                text(payload, "name"),
-                &payload["config"],
-                text(payload, "extension"),
-            ),
+            // pi checks a registration as it happens, while extensions load
+            // too, so the name must not be another runtime's.
+            "mcp.validate" => {
+                let name = text(payload, "name");
+                let config =
+                    self.validate_mcp_server(name, &payload["config"], text(payload, "extension"))?;
+                self.bridge.check_mcp_server(name)?;
+                Ok(config)
+            }
             // The guest reports the servers it registered, checked or not.
             "mcp.servers" => {
                 let mut servers = payload.clone();

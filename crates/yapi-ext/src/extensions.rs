@@ -33,6 +33,7 @@ use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{Credential, OAuthCredential};
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
 use yapi_types::event::ToolResult;
+use yapi_types::extension_event::RegisteredMcpServer;
 use yapi_types::message::{
     AssistantMessage, Content, ContentBlock, CustomMessage, ImageContent, ThinkingLevel,
     ToolDeclaration,
@@ -321,6 +322,23 @@ impl ExtensionHost {
                 takes_value: flag["type"] == "string",
                 description: flag["description"].as_str().map(str::to_owned),
                 extension_path,
+            })
+            .collect()
+    }
+
+    /// The MCP servers the loaded extensions registered as they loaded.
+    fn loaded_mcp_servers(&self) -> Vec<RegisteredMcpServer> {
+        lock(&self.loaded)
+            .iter()
+            .flat_map(|extension| {
+                let path = text(&extension["path"]);
+                list(&extension["mcpServers"])
+                    .iter()
+                    .map(move |server| RegisteredMcpServer {
+                        name: text(&server["name"]),
+                        config: server["config"].clone(),
+                        extension_path: path.clone(),
+                    })
             })
             .collect()
     }
@@ -1288,19 +1306,21 @@ impl SessionBridge {
     /// runtime, to the listeners of every other runtime. This runtime's own
     /// listeners have heard it already.
     fn publish(&self, event: &Value) {
-        let me = self.owner.get();
-        let others: Vec<Arc<ExtensionHost>> = {
-            let mut hosts = lock(&self.bus);
-            hosts.retain(|host| host.strong_count() > 0);
-            hosts
-                .iter()
-                .filter(|host| me.is_none_or(|me| !Weak::ptr_eq(me, host)))
-                .filter_map(Weak::upgrade)
-                .collect()
-        };
-        for host in others {
+        for host in self.others() {
             host.receive(event);
         }
+    }
+
+    /// The other runtimes on this one's bus, in the order they loaded.
+    fn others(&self) -> Vec<Arc<ExtensionHost>> {
+        let me = self.owner.get();
+        let mut hosts = lock(&self.bus);
+        hosts.retain(|host| host.strong_count() > 0);
+        hosts
+            .iter()
+            .filter(|host| me.is_none_or(|me| !Weak::ptr_eq(me, host)))
+            .filter_map(Weak::upgrade)
+            .collect()
     }
 
     fn spawn(&self, future: impl std::future::Future<Output = ()> + Send + 'static) {
@@ -1663,6 +1683,23 @@ impl Bridge for SessionBridge {
             }
             lines.push_back(line);
         }
+    }
+
+    /// Against the servers of the session the runtime binds to, which holds
+    /// those of the runtimes that bound before it, or, before any session,
+    /// the servers that other runtimes registered as they loaded. Runtimes
+    /// load and bind one after another, so the first to register a name
+    /// keeps it.
+    fn check_mcp_server(&self, name: &str) -> Result<(), String> {
+        if let Some(session) = self.session() {
+            return session.check_mcp_server(self.runtime_id, name);
+        }
+        let others: Vec<RegisteredMcpServer> = self
+            .others()
+            .iter()
+            .flat_map(|host| host.loaded_mcp_servers())
+            .collect();
+        yapi_core::mcp::config::check_registration(&others, name)
     }
 
     fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {

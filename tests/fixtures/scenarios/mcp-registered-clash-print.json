@@ -1,0 +1,6 @@
+{
+  "exitCode": 1,
+  "stdout": "",
+  "stderr": "Error: Failed to load extension \"<cwd>/b.ts\": Failed to load extension: MCP server \"shared\" is already registered by extension \"<cwd>/a.ts\"\nError: Failed to load extension \"<cwd>/c.ts\": Failed to load extension: MCP server \"my_docs\" conflicts with registered server \"my-docs\"\nHint: Start without extensions using \"pi -ne\".\n",
+  "requests": []
+}
