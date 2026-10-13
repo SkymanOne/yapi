@@ -1,6 +1,6 @@
 # Status
 
-Progress against the milestones in [AGENTS.md](../AGENTS.md). v0.1 is the completion of M7. Each milestone is delivered as a slice: its exit criterion is met on the subset stated here.
+Progress by milestone. yapi 0.1 completed M0 to M7. Each milestone was delivered as a slice: its exit criterion is met on the subset stated here.
 
 Intentional differences from pi, and the open gaps with their issues, are in [compat.md](../docs/compat.md). The deferred work below lists only what compat.md does not.
 
