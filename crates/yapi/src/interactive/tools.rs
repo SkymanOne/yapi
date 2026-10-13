@@ -238,6 +238,24 @@ pub(super) fn shorten_home(path: &str, home: Option<&str>) -> String {
     }
 }
 
+/// The lines an extension's code renderer draws for `code`, without
+/// trailing blank ones, once it has drawn them.
+fn rendered_code(
+    ctx: &RenderContext<'_>,
+    code: &str,
+    lang: Option<&str>,
+    width: usize,
+) -> Option<Vec<StyledLine>> {
+    let mut lines = ctx.markdown.highlight_code.as_ref()?(code, lang, width)?;
+    while lines
+        .last()
+        .is_some_and(|line| lines::plain(line).is_empty())
+    {
+        lines.pop();
+    }
+    Some(lines)
+}
+
 /// The first `limit` of `rows` in `style`, or all of them when expanded, and
 /// pi's hint for the rest: `... (N more lines,`, with the row count when
 /// `total`.
@@ -248,13 +266,23 @@ fn head_lines(
     total: bool,
     ctx: &RenderContext<'_>,
 ) -> (Vec<StyledLine>, Option<StyledLine>) {
-    let count = rows.len();
-    let max = if ctx.expanded { count } else { limit };
-    let shown = rows
+    let rows = rows
         .into_iter()
-        .take(max)
         .map(|row| lines::styled(row, style))
         .collect();
+    head_rows(rows, limit, total, ctx)
+}
+
+/// [`head_lines`] for rows already styled.
+fn head_rows(
+    rows: Vec<StyledLine>,
+    limit: usize,
+    total: bool,
+    ctx: &RenderContext<'_>,
+) -> (Vec<StyledLine>, Option<StyledLine>) {
+    let count = rows.len();
+    let max = if ctx.expanded { count } else { limit };
+    let shown = rows.into_iter().take(max).collect();
     let total = if total {
         format!(" {count} total,")
     } else {
@@ -658,9 +686,24 @@ impl ToolView {
                     }
                     Some(Some(content)) if !content.is_empty() => {
                         let content = content.replace('\r', "");
-                        let all =
-                            trim_trailing_empty(content.split('\n').map(replace_tabs).collect());
-                        let (shown, hint) = head_lines(all, 10, theme.fg("toolOutput"), true, ctx);
+                        let lang = string_arg(args, &["file_path", "path"])
+                            .flatten()
+                            .and_then(yapi_core::language::from_path);
+                        let rendered = lang.and_then(|lang| {
+                            rendered_code(ctx, &replace_tabs(&content), Some(lang), width)
+                        });
+                        let (shown, hint) = match rendered {
+                            Some(rows) => head_rows(rows, 10, true, ctx),
+                            None => head_lines(
+                                trim_trailing_empty(
+                                    content.split('\n').map(replace_tabs).collect(),
+                                ),
+                                10,
+                                theme.fg("toolOutput"),
+                                true,
+                                ctx,
+                            ),
+                        };
                         lines.push(Line::default());
                         lines.extend(shown);
                         lines.extend(hint);
@@ -756,10 +799,12 @@ impl ToolView {
         if code.is_empty() {
             return out;
         }
-        let code: Vec<StyledLine> = replace_tabs(code.replace('\r', "").trim_end())
-            .split('\n')
-            .map(|line| Line::from(line.to_owned()))
-            .collect();
+        let code = replace_tabs(code.replace('\r', "").trim_end());
+        let code = rendered_code(ctx, &code, Some("javascript"), width).unwrap_or_else(|| {
+            code.split('\n')
+                .map(|line| Line::from(line.to_owned()))
+                .collect()
+        });
         if ctx.expanded {
             out.extend(code);
         } else {
@@ -857,8 +902,22 @@ impl ToolView {
                     return Vec::new();
                 }
                 let output = text_output(result);
-                let all = trim_trailing_empty(output.split('\n').map(replace_tabs).collect());
-                let (shown, hint) = head_lines(all, 10, output_style, false, ctx);
+                let lang = (!self.is_error)
+                    .then(|| string_arg(&self.args, &["file_path", "path"]).flatten())
+                    .flatten()
+                    .and_then(yapi_core::language::from_path);
+                let rendered = lang
+                    .and_then(|lang| rendered_code(ctx, &replace_tabs(&output), Some(lang), width));
+                let (shown, hint) = match rendered {
+                    Some(rows) => head_rows(rows, 10, false, ctx),
+                    None => head_lines(
+                        trim_trailing_empty(output.split('\n').map(replace_tabs).collect()),
+                        10,
+                        output_style,
+                        false,
+                        ctx,
+                    ),
+                };
                 let mut out = vec![Line::default()];
                 out.extend(shown);
                 out.extend(hint);

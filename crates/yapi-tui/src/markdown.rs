@@ -3,8 +3,8 @@
 //! Port of `packages/tui/src/components/markdown.ts` in pi `v1.0.0`. pi parses
 //! with marked; this uses pulldown-cmark and rebuilds marked's block structure,
 //! including its blank-line tokens, from source offsets, and marked's links
-//! for bare URLs. LaTeX is shown as written and code blocks are not syntax
-//! highlighted.
+//! for bare URLs. LaTeX is shown as written. Code blocks are drawn by the
+//! theme's code renderer when it has one.
 
 use std::ops::Range;
 
@@ -15,8 +15,14 @@ use ratatui_core::text::{Line, Span};
 use crate::lines::{StyledLine, pad, raw as raw_line, width as line_width, wrap};
 use crate::text::visible_width;
 
+/// Draws a code block's lines from its code, its language and the columns
+/// the lines have: pi's `highlightCode`, with the width yapi's code
+/// renderers take. `None` shows the code in the code block style.
+pub type HighlightCode =
+    std::sync::Arc<dyn Fn(&str, Option<&str>, usize) -> Option<Vec<StyledLine>> + Send + Sync>;
+
 /// Styles for markdown elements.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct MarkdownTheme {
     /// Headings.
     pub heading: Style,
@@ -40,6 +46,8 @@ pub struct MarkdownTheme {
     pub list_bullet: Style,
     /// Prefix of each code block line.
     pub code_block_indent: String,
+    /// Draws code blocks' lines in place of `code_block`.
+    pub highlight_code: Option<HighlightCode>,
 }
 
 impl Default for MarkdownTheme {
@@ -56,6 +64,7 @@ impl Default for MarkdownTheme {
             hr: Style::new(),
             list_bullet: Style::new(),
             code_block_indent: "  ".to_owned(),
+            highlight_code: None,
         }
     }
 }
@@ -800,11 +809,25 @@ impl Renderer<'_> {
             Block::Code(lang, code) => {
                 let border = self.theme.code_block_border;
                 lines.push(Line::from(Span::styled(format!("```{lang}"), border)));
-                for code_line in code.split('\n') {
-                    lines.push(Line::from(vec![
-                        Span::raw(self.theme.code_block_indent.clone()),
-                        Span::styled(code_line.to_owned(), self.theme.code_block),
-                    ]));
+                let indent = self.theme.code_block_indent.clone();
+                let lang = Some(lang.as_str()).filter(|lang| !lang.is_empty());
+                let width = width.saturating_sub(visible_width(&indent)).max(1);
+                let code_lines = self
+                    .theme
+                    .highlight_code
+                    .as_ref()
+                    .and_then(|highlight| highlight(code, lang, width))
+                    .unwrap_or_else(|| {
+                        code.split('\n')
+                            .map(|line| {
+                                Line::from(Span::styled(line.to_owned(), self.theme.code_block))
+                            })
+                            .collect()
+                    });
+                for code_line in code_lines {
+                    let mut spans = vec![Span::raw(indent.clone())];
+                    spans.extend(code_line.spans);
+                    lines.push(Line::from(spans));
                 }
                 lines.push(Line::from(Span::styled("```", border)));
                 spaced_unless(&mut lines, false);
@@ -1186,6 +1209,33 @@ mod tests {
         );
         let tilde = md("~~~\nx\n~", 40);
         assert_eq!((tilde.len(), tilde[1].as_str()), (3, "  x"));
+    }
+
+    #[test]
+    fn code_blocks_take_their_lines_from_the_renderer() {
+        let theme = MarkdownTheme {
+            highlight_code: Some(std::sync::Arc::new(
+                |code: &str, lang: Option<&str>, width: usize| {
+                    (lang == Some("rust")).then(|| {
+                        code.split('\n')
+                            .map(|line| Line::from(format!("{width}:{line}")))
+                            .collect()
+                    })
+                },
+            )),
+            ..MarkdownTheme::default()
+        };
+        let render = |text: &str| -> Vec<String> {
+            render(text, 40, 0, 0, &theme, MarkdownOptions::default())
+                .iter()
+                .map(|line| plain(line).trim_end().to_owned())
+                .collect()
+        };
+        assert_eq!(
+            render("```rust\na\nb\n```"),
+            ["```rust", "  38:a", "  38:b", "```"]
+        );
+        assert_eq!(render("```\na\n```"), ["```", "  a", "```"]);
     }
 
     #[test]

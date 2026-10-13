@@ -1412,7 +1412,7 @@ impl super::App {
 
     /// Redraws with `theme`.
     pub(super) fn apply_theme(&mut self, theme: yapi_tui::theme::Theme) {
-        self.markdown = super::markdown_theme(&theme);
+        self.markdown = super::markdown_theme(&theme, self.code_answers());
         self.editor.set_theme(super::editor_theme(&theme));
         self.theme = theme;
         self.style_alt_screen();

@@ -13,6 +13,7 @@ mod clipboard;
 mod commands;
 mod completions;
 pub mod config_selector;
+mod deferred;
 mod extension_ui;
 mod footer;
 mod header;
@@ -200,6 +201,13 @@ enum Event {
     TerminalInput(Vec<String>),
     /// Lines of the extension component with this key, rendered at a width.
     Rendered(u64, (u64, u32), usize, Vec<String>),
+    /// What the code renderers drew for a code block, and the renderers'
+    /// errors by extension path.
+    Code(
+        u64,
+        Box<(CodeQuestion, Option<Vec<String>>)>,
+        Vec<(String, String)>,
+    ),
     /// The extensions of the session with this epoch started, after a
     /// change `Reply` waits on.
     Bound(u64, Reply),
@@ -503,6 +511,12 @@ struct App {
     epoch: u64,
     theme: Theme,
     markdown: MarkdownTheme,
+    /// What the extensions' code renderers drew, by code block.
+    code: deferred::Deferred<CodeQuestion, Option<Vec<String>>>,
+    /// Some extension of the session renders code.
+    code_renderers: bool,
+    /// The code renderers whose errors were shown, by extension path.
+    code_errors: std::collections::HashSet<String>,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     hyperlinks: bool,
     keys: Keybindings,
@@ -626,8 +640,29 @@ fn emit(data: &str) {
     let _ = out.flush();
 }
 
-fn markdown_theme(theme: &Theme) -> MarkdownTheme {
+/// A code block's code, language and width, for the extensions' code
+/// renderers.
+type CodeQuestion = (String, Option<String>, usize);
+
+/// The theme's Markdown styles, with the extensions' code renderers when
+/// `code` holds their answers.
+fn markdown_theme(
+    theme: &Theme,
+    code: Option<&deferred::Deferred<CodeQuestion, Option<Vec<String>>>>,
+) -> MarkdownTheme {
+    let highlight_code = code.cloned().map(|code| {
+        std::sync::Arc::new(move |text: &str, lang: Option<&str>, width: usize| {
+            let lines = code.get(&(text.to_owned(), lang.map(str::to_owned), width))??;
+            Some(
+                lines
+                    .iter()
+                    .map(|line| yapi_tui::ansi::parse_line(line).0)
+                    .collect(),
+            )
+        }) as yapi_tui::markdown::HighlightCode
+    });
     MarkdownTheme {
+        highlight_code,
         heading: theme.fg("mdHeading"),
         link: theme.fg("mdLink"),
         link_url: theme.fg("mdLinkUrl"),
@@ -1613,6 +1648,43 @@ impl App {
         (lines, providers.len())
     }
 
+    /// The code renderers' answers, when the session's extensions render
+    /// code.
+    fn code_answers(&self) -> Option<&deferred::Deferred<CodeQuestion, Option<Vec<String>>>> {
+        self.code_renderers.then_some(&self.code)
+    }
+
+    /// Asks the extensions' code renderers to draw the code blocks the
+    /// last frame showed without them; the first in load order that draws
+    /// one wins.
+    fn ask_code_renderers(&self) {
+        let questions = self.code.questions();
+        if questions.is_empty() {
+            return;
+        }
+        let renderers = self.session.code_renderers();
+        for question in questions {
+            let (renderers, tx, epoch) = (renderers.clone(), self.tx.clone(), self.epoch);
+            tokio::spawn(async move {
+                let (code, lang, width) = &question;
+                let request = json!({"code": code, "lang": lang, "width": width});
+                let mut errors = Vec::new();
+                let mut lines = None;
+                for renderer in renderers {
+                    match renderer.render_code(&request).await {
+                        Ok(Some(drawn)) => {
+                            lines = Some(drawn);
+                            break;
+                        }
+                        Ok(None) => {}
+                        Err(error) => errors.push((renderer.source().path, error)),
+                    }
+                }
+                let _ = tx.send(Event::Code(epoch, Box::new((question, lines)), errors));
+            });
+        }
+    }
+
     fn draw(&mut self) {
         self.expire_dialog();
         if !matches!(self.selector, Some(Selector::Remote(_))) {
@@ -1656,6 +1728,7 @@ impl App {
             )
         };
         emit(&frame);
+        self.ask_code_renderers();
     }
 
     /// pi's `setWorkingVisible`: hides the working indicator, or shows it
@@ -4326,7 +4399,10 @@ impl App {
             .map(|text| (text, images.take().unwrap_or_default()))
             .collect();
         let mut app = App {
-            markdown: markdown_theme(&theme),
+            markdown: markdown_theme(&theme, None),
+            code: deferred::Deferred::new(),
+            code_renderers: false,
+            code_errors: std::collections::HashSet::new(),
             hyperlinks: false,
             theme,
             keys,
@@ -4610,6 +4686,10 @@ impl App {
                 }
                 // Extensions may have added skills, prompt templates and themes.
                 self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
+                self.code.clear();
+                self.code_errors.clear();
+                self.code_renderers = !self.session.code_renderers().is_empty();
+                self.markdown = markdown_theme(&self.theme, self.code_answers());
                 self.share_themes();
                 self.install_autocomplete();
                 // Items shown before the extensions started get their components.
@@ -4619,6 +4699,17 @@ impl App {
             }
             Event::Rendered(epoch, key, width, lines) if epoch == self.epoch => {
                 self.on_rendered(key, width, &lines);
+            }
+            Event::Code(epoch, answer, errors) if epoch == self.epoch => {
+                let (question, lines) = *answer;
+                self.code.answer(question, lines);
+                for (path, error) in errors {
+                    // Once per renderer, as its blocks fall back to plain.
+                    if self.code_errors.insert(path.clone()) {
+                        self.extension_error(format!("Extension \"{path}\" error: {error}"), None);
+                    }
+                }
+                self.invalidate_all();
             }
             Event::Component(epoch, slot, sequence, component) if epoch == self.epoch => {
                 self.on_component(*slot, sequence, component);
@@ -5130,6 +5221,124 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect()
+    }
+
+    /// A code renderer that gives `answer` for every block.
+    struct CodeRenderer {
+        path: &'static str,
+        answer: Result<Option<Vec<String>>, String>,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl yapi_core::extensions::Extension for CodeRenderer {
+        fn source(&self) -> yapi_types::rpc::SourceInfo {
+            yapi_types::rpc::SourceInfo {
+                path: self.path.into(),
+                source: "cli".into(),
+                scope: "temporary".into(),
+                origin: "top-level".into(),
+                base_dir: None,
+            }
+        }
+
+        fn renderers(&self) -> yapi_core::extensions::Renderers {
+            yapi_core::extensions::Renderers {
+                code: true,
+                ..Default::default()
+            }
+        }
+
+        fn render_code<'a>(
+            &'a self,
+            _request: &'a Value,
+        ) -> futures_util::future::BoxFuture<'a, Result<Option<Vec<String>>, String>> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let answer = self.answer.clone();
+            Box::pin(async move { answer })
+        }
+    }
+
+    /// Code blocks show plain until the extensions answer, then as the
+    /// first renderer in load order that draws them; a renderer that fails
+    /// is reported once and passed over.
+    #[tokio::test]
+    async fn code_renderers_draw_code_blocks_after_the_frame() {
+        let renderer = |path, answer| {
+            Arc::new(CodeRenderer {
+                path,
+                answer,
+                calls: Default::default(),
+            })
+        };
+        let declines = renderer("declines", Ok(None));
+        let fails = renderer("fails", Err("boom".into()));
+        let draws = renderer("draws", Ok(Some(vec!["\x1b[35mreplaced\x1b[39m".into()])));
+        let later = renderer("later", Ok(Some(vec!["never".into()])));
+        let mut config = config(SessionManager::in_memory(Path::new("/work")));
+        config.extensions = vec![
+            declines.clone(),
+            fails.clone(),
+            draws.clone(),
+            later.clone(),
+        ];
+        let (mut app, mut events) = app_with(AgentSession::new(config));
+        app.on_event(Event::Bound(app.epoch, None));
+        app.push(Item::User("```rust\nfn main() {}\n```".into()));
+        let rows = |app: &mut App| -> Vec<String> {
+            app.transcript(40)
+                .iter()
+                .map(|row| text(row).trim().to_owned())
+                .collect()
+        };
+        assert!(rows(&mut app).contains(&"fn main() {}".to_owned()));
+
+        for block in ["```rust\nfn main() {}\n```", "```sh\nls\n```"] {
+            if block.contains("sh") {
+                app.push(Item::User(block.into()));
+                app.transcript(40);
+            }
+            app.ask_code_renderers();
+            while let Some(event) = tokio::time::timeout(Duration::from_secs(5), events.recv())
+                .await
+                .ok()
+                .flatten()
+            {
+                let done = matches!(event, Event::Code(..));
+                app.on_event(event);
+                if done {
+                    break;
+                }
+            }
+        }
+        let rows = rows(&mut app);
+        assert_eq!(
+            rows.iter().filter(|row| *row == "replaced").count(),
+            2,
+            "{rows:?}"
+        );
+        // The renderer's colors come through.
+        let magenta = app
+            .transcript(40)
+            .iter()
+            .flat_map(|row| row.spans.clone())
+            .any(|span| {
+                span.content == "replaced"
+                    && span.style.fg == Some(ratatui_core::style::Color::Magenta)
+            });
+        assert!(magenta);
+        let errors: Vec<&String> = rows.iter().filter(|row| row.contains("boom")).collect();
+        assert_eq!(errors, [&"Extension \"fails\" error: boom".to_owned()]);
+        let calls =
+            |renderer: &CodeRenderer| renderer.calls.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            (
+                calls(&declines),
+                calls(&fails),
+                calls(&draws),
+                calls(&later)
+            ),
+            (2, 2, 2, 0)
+        );
     }
 
     fn border(status: &str, hidden: usize, width: usize) -> String {
