@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cc4cdd52.js";
+            window.path_to_searchindex_js = "searchindex-d003e860.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -221,7 +221,7 @@
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="install.html#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="install.html#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>
@@ -257,8 +257,6 @@
 <tr><td>Syntax highlighting in tool rows</td><td><code>read</code> results, <code>write</code> previews and codemode scripts are highlighted</td><td>Shown in the default color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/32">#32</a></td></tr>
 <tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
-<tr><td>Codemode</td><td>Scripts use grammar-constrained sampling on the Responses APIs, and a script waits for the MCP servers it names</td><td>Scripts are ordinary tool calls, and scripts do not wait for servers.</td><td><a href="https://github.com/SkymanOne/yapi/issues/38">#38</a></td></tr>
-<tr><td>OpenAI custom tools</td><td>Sent as grammar-constrained tools</td><td>Sent as function tools.</td><td><a href="https://github.com/SkymanOne/yapi/issues/39">#39</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
 </tbody>

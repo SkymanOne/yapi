@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cc4cdd52.js";
+            window.path_to_searchindex_js = "searchindex-d003e860.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -337,6 +337,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </div>
 <p>Settings, credentials, sessions and packages are kept.</p>
 <p>In the terminal, yapi checks at startup for a newer release and for package updates, and shows a notice when it finds one. <code>PI_SKIP_VERSION_CHECK=1</code> turns off the release check. <code>--offline</code> and <code>PI_OFFLINE=1</code> turn off both.</p>
+<p><code>YAPI_RELEASES_URL</code> points the install script, the release check and the documentation download at another releases page, such as a mirror. It defaults to <code>https://github.com/SkymanOne/yapi/releases</code>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <ul>
 <li>Install script or release archive: delete <code>~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
@@ -706,7 +707,7 @@ yapi list
 yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 </code></pre>
-<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code>User packages:
@@ -723,7 +724,7 @@ yapi -e git:github.com/user/repo
 </code></pre>
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="#native-extensions-in-rust">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
@@ -770,6 +771,7 @@ yapi mcp remove docs
 <li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
 <li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
 </ul>
+<p>The first prompt does not wait for servers whose tools only codemode reaches. A script that names a server’s tools, such as <code>tools.mcp__docs__search</code>, waits until that server has connected or failed to connect. A script that searches, lists or describes tools waits for every server that is still connecting. Aborting the turn ends the wait.</p>
 <p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
 <p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -976,7 +978,7 @@ yapi install . -l    # for this project only
 <tr><th>Item</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines.</td></tr>
+<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines, and <code>Tool::constrained_sampling</code> takes Pi’s <code>constrainedSampling</code>, such as a grammar the tool’s input must follow on OpenAI models.</td></tr>
 <tr><td><code>Api::register_command</code></td><td>Handle <code>/name args</code></td></tr>
 <tr><td><code>Api::register_flag</code></td><td>Accept <code>--name</code> on the command line, read later with <code>get_flag</code></td></tr>
 <tr><td><code>Api::register_shortcut</code></td><td>Run a handler when the user presses a key such as <code>alt+k</code>, as Pi’s <code>pi.registerShortcut</code> does. An empty description lists the shortcut by the extension’s path.</td></tr>
@@ -1591,7 +1593,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>
@@ -1627,8 +1629,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Syntax highlighting in tool rows</td><td><code>read</code> results, <code>write</code> previews and codemode scripts are highlighted</td><td>Shown in the default color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/32">#32</a></td></tr>
 <tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
-<tr><td>Codemode</td><td>Scripts use grammar-constrained sampling on the Responses APIs, and a script waits for the MCP servers it names</td><td>Scripts are ordinary tool calls, and scripts do not wait for servers.</td><td><a href="https://github.com/SkymanOne/yapi/issues/38">#38</a></td></tr>
-<tr><td>OpenAI custom tools</td><td>Sent as grammar-constrained tools</td><td>Sent as function tools.</td><td><a href="https://github.com/SkymanOne/yapi/issues/39">#39</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
 </tbody>
