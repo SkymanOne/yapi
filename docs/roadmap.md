@@ -4,7 +4,7 @@ yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned
 
 ## Pi features not yet ported
 
-Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, prompt cache warming and complete provider objects from extensions. [Differences from Pi](compat.md#open-gaps) lists each gap with its issue.
+Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, cache miss notices and complete provider objects from extensions. [Differences from Pi](compat.md#open-gaps) lists each gap with its issue.
 
 ## Capability-based sandboxing
 

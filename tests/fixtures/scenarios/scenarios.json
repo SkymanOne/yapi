@@ -128,6 +128,19 @@
     "files": {"hello.txt": "hi\n"}
   },
   {
+    "name": "cache-warming-streaming-json",
+    "cassette": "anthropic-messages/cache-warm.json",
+    "args": ["--mode", "json", "--model", "anthropic/claude-sonnet-4-5", "--thinking", "off", "Wait a moment"],
+    "agentFiles": {"models.json": "{\"providers\": {\"anthropic\": {\"modelOverrides\": {\"claude-sonnet-4-5\": {\"promptCache\": {\"short\": 12}}}}}}"}
+  },
+  {
+    "name": "cache-warming-idle-rpc",
+    "cassette": "anthropic-messages/cache-warm-idle.json",
+    "args": ["--mode", "rpc", "--model", "anthropic/claude-sonnet-4-5", "--thinking", "off"],
+    "agentFiles": {"settings.json": "{\"cacheWarming\": \"idle\"}", "models.json": "{\"providers\": {\"anthropic\": {\"modelOverrides\": {\"claude-sonnet-4-5\": {\"promptCache\": {\"short\": 12}}}}}}", "extensions/decide.ts": "import type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n\tpi.on(\"cache_warming_decision\", (event) => ({\n\t\taction: event.action === \"stop\" && event.continuationProbability === 0.15 && event.missCost > event.warmCost ? \"warm\" : \"stop\",\n\t}));\n}\n"},
+    "rpc": [{"send": {"id": "p", "type": "prompt", "message": "Hello"}, "until": "agent_settled"}, {"send": null, "until": "entry_appended"}]
+  },
+  {
     "name": "anthropic-error-json",
     "cassette": "anthropic-messages/error.json",
     "args": ["--mode", "json", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "hi"]

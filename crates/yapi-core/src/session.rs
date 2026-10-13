@@ -18,7 +18,7 @@ use yapi_types::message::{
 use yapi_types::session::{
     BranchSummaryEntry, CURRENT_VERSION, CompactionEntry, ContextEditEntry, CustomEntry,
     CustomMessageEntry, EntryMeta, FileEntry, LabelEntry, MessageEntry, ModelChangeEntry,
-    Replacement, SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry,
+    Replacement, SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry, UsageEntry,
 };
 
 use crate::time::{now_iso, parse_iso, uuid_v4, uuid_v7};
@@ -562,6 +562,27 @@ impl SessionManager {
             display,
             details,
             meta,
+        }))
+    }
+
+    /// Records usage outside the model context, such as a cache warming
+    /// request's, attributed to `provider` and `model`.
+    pub fn append_usage(
+        &mut self,
+        kind: &str,
+        provider: &str,
+        model: &str,
+        usage: Usage,
+        note: Option<String>,
+    ) -> Result<String> {
+        let meta = self.new_meta();
+        self.append(FileEntry::Usage(UsageEntry {
+            meta,
+            kind: kind.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+            usage,
+            note,
         }))
     }
 

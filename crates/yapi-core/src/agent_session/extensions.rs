@@ -1206,6 +1206,7 @@ impl AgentSession {
     }
 
     async fn stop_extensions(&self, event: ExtensionEvent<'_>) {
+        self.cancel_cache_warming();
         self.emit_extension_event(&event.to_value(), CancellationToken::new())
             .await;
         let ctx = self.extension_context(CancellationToken::new());

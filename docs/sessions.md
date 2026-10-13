@@ -26,6 +26,10 @@ A session is a tree. When you go back to an earlier message, the abandoned branc
 
 Long sessions fill the model's context window. yapi summarizes older messages automatically before that happens. `/compact` runs it on demand, and `/settings` turns automatic compaction off.
 
+## Keep the prompt cache warm
+
+Providers such as Anthropic cache a request's prompt for a few minutes. While the agent works, yapi sends the latest request again with a one-token reply shortly before its cache entry expires, when that is expected to save at least $0.05. Each refresh and its cost are recorded in the session. The `cacheWarming` setting is `streaming` by default. `idle` also keeps the cache warm between runs, and `off` stops warming. Only the global settings set it, because each refresh costs money. `/session` shows the next decision and its costs.
+
 ## Export and import
 
 `/export` writes the session to a standalone HTML file. `yapi --export <file>.jsonl [output.html]` does the same for a session file from the command line. `/export <path>.jsonl` writes the current branch as a new session file, without the other branches.
