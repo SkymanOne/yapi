@@ -59,8 +59,7 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
 | Entry renderers and markdown transformers | `registerEntryRenderer` and `registerMarkdownTransformer` change how entries and markdown render | Recorded but unused. | [#30](https://github.com/SkymanOne/yapi/issues/30) |
-| Markdown | LaTeX as Unicode math, highlighted code blocks, Mermaid diagrams | LaTeX as written, code blocks and Mermaid source in the code block color. | [#31](https://github.com/SkymanOne/yapi/issues/31) |
-| Syntax highlighting in tool rows | `read` results, `write` previews and codemode scripts are highlighted | Shown in the default color. | [#32](https://github.com/SkymanOne/yapi/issues/32) |
+| Markdown | LaTeX as Unicode math, Mermaid diagrams | LaTeX as written, Mermaid source in the code block color. | [#31](https://github.com/SkymanOne/yapi/issues/31) |
 | Cache warming | Refreshes the prompt cache while the model streams (`cacheWarming`) and reports cache misses | Sends no refresh requests. The setting is saved and ignored. | [#33](https://github.com/SkymanOne/yapi/issues/33) |
 | Images in the terminal | Inline images, with the "Show images" and "Image width" settings | Not shown. | [#34](https://github.com/SkymanOne/yapi/issues/34) |
 | Update notices | Checks at startup for new versions and package updates and shows a notice | Makes no such checks and shows no update notices. `/changelog` and the list of changes after an upgrade work as in Pi. | [#37](https://github.com/SkymanOne/yapi/issues/37) |

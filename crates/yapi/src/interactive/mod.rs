@@ -627,6 +627,10 @@ fn markdown_theme(theme: &Theme) -> MarkdownTheme {
         hr: theme.fg("mdHr"),
         list_bullet: theme.fg("mdListBullet"),
         code_block_indent: "  ".to_owned(),
+        highlight_code: Some({
+            let theme = theme.clone();
+            std::sync::Arc::new(move |code, lang| tools::highlight_code(code, lang, &theme))
+        }),
     }
 }
 

@@ -217,6 +217,38 @@ fn replace_tabs(text: &str) -> String {
     text.replace('\t', "   ")
 }
 
+/// pi's `highlightCode`: the lines of `code` highlighted as `lang`, or in the
+/// code block color when there is no syntax for it.
+pub(super) fn highlight_code(code: &str, lang: &str, theme: &Theme) -> Vec<StyledLine> {
+    let Some(highlighted) = yapi_core::highlight::highlight(code, lang) else {
+        let style = theme.fg("mdCodeBlock");
+        return code
+            .split('\n')
+            .map(|line| lines::styled(line.to_owned(), style))
+            .collect();
+    };
+    highlighted
+        .into_iter()
+        .map(|tokens| {
+            Line::from(
+                tokens
+                    .into_iter()
+                    .map(|(style, text)| {
+                        let style = match style {
+                            None => Style::new(),
+                            Some("bold") => Style::new().add_modifier(Modifier::BOLD),
+                            Some("italic") => Style::new().add_modifier(Modifier::ITALIC),
+                            Some("underline") => Style::new().add_modifier(Modifier::UNDERLINED),
+                            Some(color) => theme.fg(color),
+                        };
+                        Span::styled(text, style)
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect()
+}
+
 fn string_arg<'a>(args: &'a Value, keys: &[&str]) -> Option<Option<&'a str>> {
     for key in keys {
         match args.get(*key) {
@@ -238,23 +270,26 @@ pub(super) fn shorten_home(path: &str, home: Option<&str>) -> String {
     }
 }
 
-/// The first `limit` of `rows` in `style`, or all of them when expanded, and
-/// pi's hint for the rest: `... (N more lines,`, with the row count when
-/// `total`.
+/// The first `limit` of `rows` in `style`, or highlighted as `lang` when it
+/// is set, or all of them when expanded, and pi's hint for the rest:
+/// `... (N more lines,`, with the row count when `total`.
 fn head_lines(
     rows: Vec<String>,
     limit: usize,
     style: Style,
+    lang: Option<&str>,
     total: bool,
     ctx: &RenderContext<'_>,
 ) -> (Vec<StyledLine>, Option<StyledLine>) {
     let count = rows.len();
     let max = if ctx.expanded { count } else { limit };
-    let shown = rows
-        .into_iter()
-        .take(max)
-        .map(|row| lines::styled(row, style))
-        .collect();
+    let rows = rows.into_iter().take(max);
+    // pi highlights every row and shows the first ones; a row's colors depend
+    // only on the rows before it, so highlighting those shown is the same.
+    let shown = match lang {
+        Some(lang) => highlight_code(&rows.collect::<Vec<_>>().join("\n"), lang, ctx.theme),
+        None => rows.map(|row| lines::styled(row, style)).collect(),
+    };
     let total = if total {
         format!(" {count} total,")
     } else {
@@ -660,7 +695,11 @@ impl ToolView {
                         let content = content.replace('\r', "");
                         let all =
                             trim_trailing_empty(content.split('\n').map(replace_tabs).collect());
-                        let (shown, hint) = head_lines(all, 10, theme.fg("toolOutput"), true, ctx);
+                        let lang = string_arg(args, &["file_path", "path"])
+                            .flatten()
+                            .and_then(yapi_core::highlight::language_from_path);
+                        let (shown, hint) =
+                            head_lines(all, 10, theme.fg("toolOutput"), lang, true, ctx);
                         lines.push(Line::default());
                         lines.extend(shown);
                         lines.extend(hint);
@@ -756,10 +795,11 @@ impl ToolView {
         if code.is_empty() {
             return out;
         }
-        let code: Vec<StyledLine> = replace_tabs(code.replace('\r', "").trim_end())
-            .split('\n')
-            .map(|line| Line::from(line.to_owned()))
-            .collect();
+        let code = highlight_code(
+            &replace_tabs(code.replace('\r', "").trim_end()),
+            "javascript",
+            theme,
+        );
         if ctx.expanded {
             out.extend(code);
         } else {
@@ -858,7 +898,11 @@ impl ToolView {
                 }
                 let output = text_output(result);
                 let all = trim_trailing_empty(output.split('\n').map(replace_tabs).collect());
-                let (shown, hint) = head_lines(all, 10, output_style, false, ctx);
+                let lang = (!self.is_error)
+                    .then(|| string_arg(&self.args, &["file_path", "path"]).flatten())
+                    .flatten()
+                    .and_then(yapi_core::highlight::language_from_path);
+                let (shown, hint) = head_lines(all, 10, output_style, lang, false, ctx);
                 let mut out = vec![Line::default()];
                 out.extend(shown);
                 out.extend(hint);
@@ -912,7 +956,7 @@ impl ToolView {
                 if !output.is_empty() {
                     let all = output.split('\n').map(str::to_owned).collect();
                     let limit = if self.name == "grep" { 15 } else { 20 };
-                    let (shown, hint) = head_lines(all, limit, output_style, false, ctx);
+                    let (shown, hint) = head_lines(all, limit, output_style, None, false, ctx);
                     out.push(Line::default());
                     out.extend(shown);
                     out.extend(hint);
@@ -960,7 +1004,7 @@ impl ToolView {
                     return Vec::new();
                 }
                 let all = output.split('\n').map(replace_tabs).collect();
-                let (mut out, hint) = head_lines(all, 10, output_style, false, ctx);
+                let (mut out, hint) = head_lines(all, 10, output_style, None, false, ctx);
                 if let Some(hint) = hint {
                     out.push(Line::default());
                     out.push(hint);
@@ -1610,6 +1654,62 @@ mod tests {
             .filter_map(|span| yapi_tui::ansi::link_url(span.style).map(|url| url.to_string()))
             .collect();
         assert_eq!(urls, ["file:///work/a%20b.md"]);
+    }
+
+    #[test]
+    fn highlights_reads_writes_and_scripts_as_pi() {
+        let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let markdown = yapi_tui::markdown::MarkdownTheme::default();
+        let mut ctx = RenderContext {
+            theme: &theme,
+            markdown: &markdown,
+            expanded: false,
+            hide_thinking: false,
+            thinking: &[],
+            output_pad: 1,
+            expand_key: "ctrl+o",
+            cancel_key: "esc",
+            home: None,
+            cwd: Path::new("/work"),
+            agent_dir: Path::new("/agent"),
+            thinking_label: "Thinking...",
+            hyperlinks: false,
+        };
+        let style_of = |rows: &[StyledLine], text: &str| {
+            rows.iter()
+                .flat_map(|row| row.spans.iter())
+                .find(|span| span.content == text)
+                .map(|span| span.style)
+        };
+        let keyword = Some(theme.fg("syntaxKeyword"));
+        let output = Some(theme.fg("toolOutput"));
+
+        let write = |path: &str| {
+            ToolView::new(
+                "write",
+                serde_json::json!({"path": path, "content": "fn main() {}\n"}),
+            )
+        };
+        assert_eq!(style_of(&write("a.rs").call_lines(&ctx, 80), "fn"), keyword);
+        assert_eq!(
+            style_of(&write("a.txt").call_lines(&ctx, 80), "fn main() {}"),
+            output
+        );
+
+        let script = ToolView::new("codemode", serde_json::json!({"code": "const a = 1;"}));
+        assert_eq!(style_of(&script.call_lines(&ctx, 80), "const"), keyword);
+
+        // Read output shows only expanded, and is highlighted unless it is an
+        // error.
+        let mut read = ToolView::new("read", serde_json::json!({"path": "src/a.rs"}));
+        read.result = Some(ToolResult {
+            content: vec![ContentBlock::text("fn main() {}")],
+            ..ToolResult::default()
+        });
+        ctx.expanded = true;
+        assert_eq!(style_of(&read.result_lines(&ctx, 80), "fn"), keyword);
+        read.is_error = true;
+        assert_eq!(style_of(&read.result_lines(&ctx, 80), "fn"), None);
     }
 
     #[test]
