@@ -75,7 +75,10 @@ fn read_document(path: &Path) -> Result<Map<String, Value>, SettingsError> {
         return Ok(Map::new());
     }
     match serde_json::from_str::<Value>(text) {
-        Ok(Value::Object(map)) => Ok(map),
+        Ok(Value::Object(mut map)) => {
+            migrate(&mut map);
+            Ok(map)
+        }
         Ok(_) => Err(SettingsError::Parse {
             path: path.to_path_buf(),
             message: "expected an object".into(),
@@ -84,6 +87,19 @@ fn read_document(path: &Path) -> Result<Map<String, Value>, SettingsError> {
             path: path.to_path_buf(),
             message: err.to_string(),
         }),
+    }
+}
+
+/// pi's `migrateSettings` for the legacy `websockets` boolean: it becomes
+/// `transport`, added last, unless `transport` is set. The document is
+/// written back in this form the next time the scope is saved.
+fn migrate(document: &mut Map<String, Value>) {
+    if let Some(&Value::Bool(websockets)) = document.get("websockets")
+        && !document.contains_key("transport")
+    {
+        let transport = if websockets { "websocket" } else { "sse" };
+        document.insert("transport".into(), Value::from(transport));
+        document.shift_remove("websockets");
     }
 }
 
@@ -221,10 +237,19 @@ impl SettingsManager {
     /// number, a numeric string or `"disabled"` (0); five minutes when unset
     /// or invalid.
     pub fn http_idle_timeout_ms(&self) -> u64 {
-        let value = self
-            .project
-            .get("httpIdleTimeoutMs")
-            .or_else(|| self.global.get("httpIdleTimeoutMs"));
+        self.timeout_ms("httpIdleTimeoutMs").unwrap_or(300_000)
+    }
+
+    /// pi's `getWebSocketConnectTimeoutMs`: `websocketConnectTimeoutMs`, read
+    /// as `httpIdleTimeoutMs` is; `None` when unset or invalid.
+    pub fn websocket_connect_timeout_ms(&self) -> Option<u64> {
+        self.timeout_ms("websocketConnectTimeoutMs")
+    }
+
+    /// pi's `parseHttpIdleTimeoutMs` of setting `key`: milliseconds as a
+    /// number, a numeric string or `"disabled"` (0).
+    fn timeout_ms(&self, key: &str) -> Option<u64> {
+        let value = self.project.get(key).or_else(|| self.global.get(key));
         let number = match value {
             Some(Value::String(text)) if text.trim().eq_ignore_ascii_case("disabled") => Some(0.0),
             Some(Value::String(text)) => text.trim().parse::<f64>().ok(),
@@ -233,7 +258,7 @@ impl SettingsManager {
         };
         number
             .filter(|ms| ms.is_finite() && *ms >= 0.0)
-            .map_or(300_000, |ms| ms.floor() as u64)
+            .map(|ms| ms.floor() as u64)
     }
 
     /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
@@ -352,6 +377,41 @@ mod tests {
             merge_default_tools(Some(&json!(["read"])), Some(&json!(["ls"]))),
             Some(json!(["ls"]))
         );
+    }
+
+    #[test]
+    fn migrates_the_websockets_boolean() {
+        let dir = std::env::temp_dir().join(format!("yapi-settings-ws-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            "{\n  \"websockets\": false,\n  \"theme\": \"dark\"\n}",
+        )
+        .unwrap();
+        let mut manager = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        assert_eq!(
+            manager.settings().transport,
+            Some(yapi_types::settings::Transport::Sse)
+        );
+        manager
+            .set(Scope::Global, "theme", Some(json!("light")))
+            .unwrap();
+        // As pi writes it.
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\n  \"theme\": \"light\",\n  \"transport\": \"sse\"\n}"
+        );
+        let mut kept = json!({"websockets": true, "transport": "auto"})
+            .as_object()
+            .unwrap()
+            .clone();
+        migrate(&mut kept);
+        assert_eq!(
+            Value::Object(kept),
+            json!({"websockets": true, "transport": "auto"})
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -37,6 +37,11 @@ pub(crate) fn options_json(options: &StreamOptions) -> Value {
     set("maxTokens", json!(options.max_tokens));
     set("temperature", json!(options.temperature));
     set("sessionId", json!(options.session_id));
+    set("transport", json!(options.transport));
+    set(
+        "websocketConnectTimeoutMs",
+        json!(options.websocket_connect_timeout_ms),
+    );
     set(
         "cacheRetention",
         json!(options.cache_retention.map(CacheRetention::as_str)),
@@ -67,6 +72,8 @@ pub(crate) fn options_from_json(value: &Value, cancel: CancellationToken) -> Str
         max_tokens: parse(value, "maxTokens"),
         temperature: parse(value, "temperature"),
         session_id: parse(value, "sessionId"),
+        transport: parse(value, "transport"),
+        websocket_connect_timeout_ms: parse(value, "websocketConnectTimeoutMs"),
         cache_retention: value["cacheRetention"]
             .as_str()
             .and_then(CacheRetention::parse),
@@ -127,6 +134,8 @@ mod tests {
             max_tokens: Some(100),
             session_id: Some("session".into()),
             cache_retention: Some(CacheRetention::Long),
+            transport: Some(yapi_ai::stream::Transport::WebsocketCached),
+            websocket_connect_timeout_ms: Some(0),
             ..StreamOptions::default()
         };
         options.headers.insert("x-a".into(), Some("1".into()));
@@ -135,6 +144,7 @@ mod tests {
         let value = options_json(&options);
         assert_eq!(value["headers"], json!({"x-a": "1", "x-b": null}));
         assert_eq!(value["thinkingBudgets"]["low"], 10);
+        assert_eq!(value["transport"], "websocket-cached");
         let back = options_from_json(&value, CancellationToken::new());
         assert_eq!(options_json(&back), value);
         // Off is no reasoning, as pi's agent sends it.

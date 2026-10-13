@@ -30,7 +30,7 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::{PromptDisposition, StreamingBehavior};
 use yapi_types::session::FileEntry;
-use yapi_types::settings::QueueMode;
+use yapi_types::settings::{QueueMode, Transport};
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
@@ -1549,7 +1549,13 @@ impl AgentSession {
         session_id: String,
         cancel: &CancellationToken,
     ) -> StreamOptions {
-        let settings = lock(&self.inner.settings).settings().clone();
+        let (settings, websocket_connect_timeout_ms) = {
+            let manager = lock(&self.inner.settings);
+            (
+                manager.settings().clone(),
+                manager.websocket_connect_timeout_ms(),
+            )
+        };
         let budgets = settings.thinking_budgets.as_ref();
         let provider = settings
             .retry
@@ -1557,6 +1563,8 @@ impl AgentSession {
             .and_then(|retry| retry.provider.as_ref());
         StreamOptions {
             session_id: Some(session_id),
+            transport: Some(settings.transport.unwrap_or(Transport::Auto)),
+            websocket_connect_timeout_ms,
             thinking_budgets: ThinkingBudgets {
                 minimal: budgets.and_then(|b| b.minimal),
                 low: budgets.and_then(|b| b.low),
