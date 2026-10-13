@@ -59,7 +59,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `wit/` | Versioned WIT packages shared by host and guests. | None |
 | `install.sh`, `scripts/` | The release installer, and the packaging, notices and install checks the Release workflow runs. | None |
 | `skills/` | Agent Skills for using yapi and writing its extensions. The repository installs as a package that provides them. | None |
-| `xtask/` | Developer commands: mock server, end-to-end scenarios, benchmarks, model catalog codegen, JS vendoring, `yapi-js.wasm` build. | Build scripts |
+| `xtask/` | Developer commands: mock server, end-to-end scenarios, benchmarks, model catalog and syntax definition codegen, JS vendoring, `yapi-js.wasm` build. | Build scripts |
 
 Dependency direction:
 - `yapi-types` ← `yapi-ai` ← `yapi-agent` ← `yapi-core` ← `yapi-ext` ← `yapi`.
@@ -92,7 +92,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Serialization | `serde`, `serde_json` |
 | TUI | `ratatui-core` text and buffer types, `rustix` termios for raw mode |
 | Markdown, diffs, images | `pulldown-cmark`, `similar`, `image` |
-| Syntax highlighting | `syntect` |
+| Syntax highlighting | `syntect` with Oniguruma |
 | Wasm host | `wasmtime` with the component model |
 | Guest JS engine | `rquickjs` (QuickJS-NG) |
 | TypeScript and resolution | `oxc_transformer`, `oxc_resolver` |
@@ -193,7 +193,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo deny check`
 - CI runs the same checks on Linux and macOS. It skips them when a change touches only docs, `dev/`, skills, root Markdown files other than `CHANGELOG.md`, or other workflows.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
-- Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
+- Regenerate the model catalog with `cargo xtask models` and the syntax definitions with `cargo xtask syntaxes`. Never edit generated files.
 - `cargo xtask mock-sse --cassette <file>` serves a cassette to pi or another out-of-process client and reports unmatched requests on exit. `--record <upstream-url> --out <file>` records a new cassette through a proxy to a real provider, without credentials.
 - `cargo xtask bench` measures yapi against pi on the same machine. Reports state results as measured, with no targets. [docs/performance.md](docs/performance.md) defines the measures and the method.
 
