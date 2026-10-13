@@ -85,6 +85,34 @@ impl InputSource {
     }
 }
 
+/// pi's `PromptOptions` for [`AgentSession::prompt_with`]; the default is
+/// pi's.
+#[derive(Clone, Debug)]
+pub struct PromptOptions {
+    /// Extension commands run, and `/skill:` commands and prompt templates
+    /// expand. Without it they stay literal text, but `input` handlers still
+    /// run.
+    pub expand_prompt_templates: bool,
+    /// How the message queues while a run streams; without one that is an
+    /// error.
+    pub streaming_behavior: Option<StreamingBehavior>,
+    /// Images sent with the text.
+    pub images: Vec<ImageContent>,
+    /// Where the message comes from, as `input` handlers see it.
+    pub source: InputSource,
+}
+
+impl Default for PromptOptions {
+    fn default() -> PromptOptions {
+        PromptOptions {
+            expand_prompt_templates: true,
+            streaming_behavior: None,
+            images: Vec::new(),
+            source: InputSource::Interactive,
+        }
+    }
+}
+
 /// Why a session takes over from another: pi's `session_start` and
 /// `session_shutdown` reasons other than `startup` and `quit`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1289,24 +1317,29 @@ impl AgentSession {
     /// Sends a user prompt and runs until the agent settles. Templates and
     /// `/skill:` commands expand first.
     pub async fn prompt(&self, text: &str, images: Vec<ImageContent>) -> Result<(), String> {
-        self.prompt_with(text, images, None, InputSource::Interactive, true, |_| {})
-            .await
+        let options = PromptOptions {
+            images,
+            ..PromptOptions::default()
+        };
+        self.prompt_with(text, options, |_| {}).await
     }
 
-    /// pi's `prompt`: while a run streams, `behavior` queues the message, and
-    /// without one it is an error; otherwise the message starts a run that
-    /// lasts until the agent settles. `preflight` learns which, before any
-    /// event of the run. Without `expand`, extension commands, `/skill:` and
-    /// prompt templates stay literal text, but `input` handlers still run.
+    /// pi's `prompt`: while a run streams, the options' streaming behavior
+    /// queues the message, and without one it is an error; otherwise the
+    /// message starts a run that lasts until the agent settles. `preflight`
+    /// learns which, before any event of the run.
     pub async fn prompt_with(
         &self,
         text: &str,
-        images: Vec<ImageContent>,
-        behavior: Option<StreamingBehavior>,
-        source: InputSource,
-        expand: bool,
+        options: PromptOptions,
         preflight: impl FnOnce(PromptDisposition),
     ) -> Result<(), String> {
+        let PromptOptions {
+            expand_prompt_templates: expand,
+            streaming_behavior: behavior,
+            images,
+            source,
+        } = options;
         if expand && self.run_extension_command(text).await {
             preflight(PromptDisposition::Handled);
             return Ok(());

@@ -23,7 +23,7 @@ use yapi_ai::stream::{
     EventSender, EventStream, Provider, ProviderResponse, Request, RequestHooks, StreamEvent,
     new_output, now_ms, send_error,
 };
-use yapi_core::agent_session::{AgentSession, WeakSession};
+use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
     Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
     NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, TerminalState, ToolRenderers,
@@ -1895,20 +1895,21 @@ impl Bridge for SessionBridge {
             }
             "session.sendUserMessage" => {
                 let (text, images) = user_content(&payload["content"]);
-                let behavior = match payload["options"]["deliverAs"].as_str() {
-                    Some("followUp") => Some(StreamingBehavior::FollowUp),
-                    Some(_) => Some(StreamingBehavior::Steer),
-                    None => None,
+                let options = &payload["options"];
+                let options = PromptOptions {
+                    expand_prompt_templates: options["expandPromptTemplates"]
+                        .as_bool()
+                        .unwrap_or(false),
+                    streaming_behavior: match options["deliverAs"].as_str() {
+                        Some("followUp") => Some(StreamingBehavior::FollowUp),
+                        Some(_) => Some(StreamingBehavior::Steer),
+                        None => None,
+                    },
+                    images,
+                    source: InputSource::Extension,
                 };
-                let expand = payload["options"]["expandPromptTemplates"]
-                    .as_bool()
-                    .unwrap_or(false);
                 self.spawn(async move {
-                    let source = yapi_core::agent_session::InputSource::Extension;
-                    if let Err(error) = session
-                        .prompt_with(&text, images, behavior, source, expand, |_| {})
-                        .await
-                    {
+                    if let Err(error) = session.prompt_with(&text, options, |_| {}).await {
                         let (ui, _) = session.extension_binding();
                         ui.notify(&error, NotifyKind::Error);
                     }
