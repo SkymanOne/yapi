@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7094d22d.js";
+            window.path_to_searchindex_js = "searchindex-5983b4da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -336,6 +336,8 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </table>
 </div>
 <p>Settings, credentials, sessions and packages are kept.</p>
+<p>In the terminal, yapi checks at startup for a newer release and for package updates, and shows a notice when it finds one. <code>PI_SKIP_VERSION_CHECK=1</code> turns off the release check. <code>--offline</code> and <code>PI_OFFLINE=1</code> turn off both.</p>
+<p><code>YAPI_RELEASES_URL</code> points the install script, the release check and the documentation download at another releases page, such as a mirror. It defaults to <code>https://github.com/SkymanOne/yapi/releases</code>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <ul>
 <li>Install script or release archive: delete <code>~/.local/bin/yapi</code>, or the file in the directory you chose.</li>
@@ -568,7 +570,7 @@ yapi --no-session            # do not save this run
 <tr><td>Processes that extensions start, including subagents</td><td>Child processes, outside the sandbox</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over stdio</td><td>Child processes</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over HTTP</td><td>Remote services</td><td>What the server allows</td></tr>
-<tr><td>Codemode scripts</td><td>Fresh WebAssembly instances with no grants</td><td>Only the tools they call</td></tr>
+<tr><td>Codemode scripts</td><td>Fresh WebAssembly instances with no grants</td><td>Only the tools they call, and the clock and time zone as in Pi</td></tr>
 </tbody>
 </table>
 </div>
@@ -715,6 +717,7 @@ yapi remove npm:@scope/some-pi-package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
 <pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
@@ -865,6 +868,7 @@ export default function (pi: ExtensionAPI) {
 <li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi.</li>
 <li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
+<li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
 </ul>
 <p><a href="#extensions-1">Differences from Pi</a> lists where the behavior differs.</p>
@@ -1574,6 +1578,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
 <tr><td>Codemode scripts</td><td>May compute without limit</td><td>Stop after 60 seconds of computing without awaiting a call.</td></tr>
+<tr><td>Zone names in dates</td><td><code>Date</code>’s <code>toString</code> and <code>toTimeString</code> end with the zone’s name, such as <code>(Eastern Daylight Time)</code></td><td>They end with the zone’s offset, such as <code>(GMT-04:00)</code>, as in Node for a zone without a name. UTC keeps its name.</td></tr>
 <tr><td>Native extensions</td><td>None</td><td>WebAssembly components written in Rust. See <a href="#native-extensions-in-rust">Native extensions</a>. Unstable until 1.0.</td></tr>
 </tbody>
 </table>
@@ -1591,7 +1596,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
-<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. See <a href="#upgrade">Install</a>.</td></tr>
+<tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="#upgrade">Install</a>.</td></tr>
 <tr><td><code>new</code></td><td><code>pi new ...</code> is a prompt</td><td><code>yapi new</code> creates a native extension. Quote a prompt that starts with <code>new</code>.</td></tr>
 </tbody>
 </table>
@@ -1606,7 +1611,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td><code>/share</code> and <code>/bug</code></td><td>Use Pi’s services</td><td>Not available.</td></tr>
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
-<tr><td>Tree label times</td><td>Local time</td><td>UTC, with no time zone database.</td></tr>
+<tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
 <tr><td>Codex transport</td><td>WebSocket, then compressed SSE</td><td>Uncompressed SSE, the same requests and events as Pi’s fallback.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
 <tr><td>Mouse in fullscreen mode</td><td>Extension editors and components get mouse events.</td><td>Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus.</td></tr>
@@ -1626,7 +1631,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Syntax highlighting in tool rows</td><td><code>read</code> results, <code>write</code> previews and codemode scripts are highlighted</td><td>Shown in the default color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/32">#32</a></td></tr>
 <tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
-<tr><td>Update notices</td><td>Checks at startup for new versions and package updates and shows a notice</td><td>Makes no such checks and shows no update notices. <code>/changelog</code> and the list of changes after an upgrade work as in Pi.</td><td><a href="https://github.com/SkymanOne/yapi/issues/37">#37</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
 </tbody>
@@ -1636,7 +1640,7 @@ api.on("session_start", |_event, ctx| async move {
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
 <h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
-<p>Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, prompt cache warming, update notices and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
+<p>Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, prompt cache warming and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>

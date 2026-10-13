@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7094d22d.js";
+            window.path_to_searchindex_js = "searchindex-5983b4da.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -271,6 +271,7 @@ export default function (pi: ExtensionAPI) {
 <li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi.</li>
 <li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
+<li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
 </ul>
 <p><a href="compat.html#extensions">Differences from Pi</a> lists where the behavior differs.</p>
