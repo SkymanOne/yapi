@@ -50,7 +50,7 @@ Choose a theme in `/settings` or with `"theme"` in settings. `--use-theme <name>
 
 yapi prepares images in prompts, `@path` arguments and tool results before they reach the model:
 
-- BMP images are converted to PNG.
+- Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld.
 - With `"images": {"autoResize": true}`, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.
 - An image that cannot be converted or made to fit is left out, with a note that says so.
 - `"images": {"blockImages": true}` keeps all images from the model.
