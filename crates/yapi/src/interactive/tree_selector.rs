@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::{Line, Span};
 use serde_json::Value;
+use tz::TimeZone;
 use unicode_segmentation::UnicodeSegmentation;
 use yapi_core::session::{SessionTree, TreeNode};
 use yapi_tui::lines::{self, StyledLine, styled};
@@ -214,6 +215,25 @@ fn replace_words(text: &str) -> String {
     out
 }
 
+/// The `TZ` zone, else the system zone from `/etc/localtime`, else UTC.
+/// `TimeZone::local` alone ignores `TZ`.
+fn local_zone() -> TimeZone {
+    std::env::var("TZ")
+        .ok()
+        .and_then(|tz| TimeZone::from_posix_tz(&tz).ok())
+        .or_else(|| TimeZone::local().ok())
+        .unwrap_or_else(TimeZone::utc)
+}
+
+/// ISO text of `ms` shifted by the zone's UT offset at that instant, so its date
+/// and time parts read as local time.
+fn local_iso(zone: &TimeZone, ms: u64) -> String {
+    let offset = zone
+        .find_local_time_type((ms / 1000) as i64)
+        .map_or(0, |kind| i64::from(kind.ut_offset()));
+    yapi_core::time::iso(ms.saturating_add_signed(offset * 1000))
+}
+
 /// The `/tree` selector.
 pub struct TreeSelector {
     tree: SessionTree,
@@ -228,6 +248,8 @@ pub struct TreeSelector {
     tool_calls: HashMap<String, (String, Value)>,
     multiple_roots: bool,
     show_label_times: bool,
+    /// The local zone, loaded once.
+    zone: TimeZone,
     active_path: HashSet<String>,
     visible_parent: HashMap<String, Option<String>>,
     visible_children: HashMap<Option<String>, Vec<String>>,
@@ -267,6 +289,7 @@ impl TreeSelector {
             search: String::new(),
             tool_calls: HashMap::new(),
             show_label_times: false,
+            zone: local_zone(),
             active_path: HashSet::new(),
             visible_parent: HashMap::new(),
             visible_children: HashMap::new(),
@@ -859,13 +882,14 @@ impl TreeSelector {
         labels
     }
 
-    /// pi formats label times in local time; yapi shows UTC.
-    fn label_time(timestamp: &str) -> String {
+    /// Formats `timestamp` in the zone's local time, as pi's `formatLabelTimestamp`
+    /// does: `HH:MM` today, `M/D HH:MM` this year, `YY/M/D HH:MM` otherwise.
+    /// An unparsable timestamp gives an empty string.
+    fn label_time(timestamp: &str, zone: &TimeZone, now_ms: u64) -> String {
         let Some(ms) = yapi_core::time::parse_iso(timestamp) else {
             return String::new();
         };
-        let iso = yapi_core::time::iso(ms);
-        let now = yapi_core::time::now_iso();
+        let (iso, now) = (local_iso(zone, ms), local_iso(zone, now_ms));
         let (date, time) = (&iso[..10], &iso[11..16]);
         if date == &now[..10] {
             return time.to_owned();
@@ -947,7 +971,10 @@ impl TreeSelector {
                     && let Some(timestamp) = &node.label_timestamp
                 {
                     body.push(Span::styled(
-                        format!("{} ", Self::label_time(timestamp)),
+                        format!(
+                            "{} ",
+                            Self::label_time(timestamp, &self.zone, yapi_core::time::now_ms())
+                        ),
                         muted,
                     ));
                 }
@@ -1335,5 +1362,91 @@ impl TreeSelector {
             self.apply_filter();
         }
         Outcome::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(iso: &str) -> u64 {
+        yapi_core::time::parse_iso(iso).expect("test timestamp")
+    }
+
+    fn label(timestamp: &str, tz: &str, now: &str) -> String {
+        let zone = TimeZone::from_posix_tz(tz).expect("test zone");
+        TreeSelector::label_time(timestamp, &zone, at(now))
+    }
+
+    #[test]
+    fn today_uses_the_local_date_not_the_utc_date() {
+        // 23:30 UTC on the 12th is 18:30 on the 12th in EST, and "now" is still the 12th there.
+        let got = label(
+            "2026-10-12T23:30:00.000Z",
+            "EST5",
+            "2026-10-13T02:00:00.000Z",
+        );
+        assert_eq!(got, "18:30");
+        assert_eq!(
+            label(
+                "2026-10-12T23:30:00.000Z",
+                "UTC0",
+                "2026-10-13T02:00:00.000Z"
+            ),
+            "10/12 23:30"
+        );
+    }
+
+    #[test]
+    fn same_year_shows_month_and_day() {
+        assert_eq!(
+            label(
+                "2026-03-02T09:05:00.000Z",
+                "EST5",
+                "2026-10-13T02:00:00.000Z"
+            ),
+            "3/2 04:05"
+        );
+    }
+
+    #[test]
+    fn other_year_shows_two_digit_year() {
+        assert_eq!(
+            label(
+                "2025-06-01T00:00:00.000Z",
+                "JST-9",
+                "2026-10-13T02:00:00.000Z"
+            ),
+            "25/6/1 09:00"
+        );
+        // Local year, not UTC year, decides: 2026-01-01T02:00Z is still 2025 in EST.
+        assert_eq!(
+            label(
+                "2026-01-01T02:00:00.000Z",
+                "EST5",
+                "2026-10-13T02:00:00.000Z"
+            ),
+            "25/12/31 21:00"
+        );
+    }
+
+    #[test]
+    fn offsets_follow_daylight_saving_per_instant() {
+        let tz = "CET-1CEST,M3.5.0,M10.5.0/3";
+        // Winter label (UTC+1) against a summer "now" (UTC+2).
+        assert_eq!(
+            label("2026-01-15T10:00:00.000Z", tz, "2026-07-01T12:00:00.000Z"),
+            "1/15 11:00"
+        );
+        // Summer label (UTC+2) on the same local day as "now".
+        assert_eq!(
+            label("2026-07-01T10:00:00.000Z", tz, "2026-07-01T12:00:00.000Z"),
+            "12:00"
+        );
+    }
+
+    #[test]
+    fn unparsable_timestamp_is_empty() {
+        assert_eq!(label("not a time", "EST5", "2026-10-13T02:00:00.000Z"), "");
     }
 }

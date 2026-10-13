@@ -38,6 +38,7 @@ similar.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "signal", "io-std", "io-util", "process", "sync", "time"] }
 tokio-util.workspace = true
+tz-rs.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]
