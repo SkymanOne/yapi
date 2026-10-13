@@ -115,11 +115,16 @@ pub async fn ensure_tool(tool: ExternalTool, bin_dir: &Path) -> Option<PathBuf> 
     download(tool, bin_dir).await.ok()
 }
 
-/// The version of the latest release on GitHub releases page `releases`,
-/// such as `https://github.com/sharkdp/fd/releases`, without a leading `v`.
-/// It comes from the redirect of `<releases>/latest`; the API endpoint's
-/// anonymous quota is often exhausted behind shared egress.
+/// The version of the latest release on the GitHub releases page
+/// `releases`, such as `https://github.com/sharkdp/fd/releases`, without a
+/// leading `v`: pi's `getLatestVersion`, which reads the redirect of
+/// `<releases>/latest` because the API endpoint's anonymous quota is often
+/// exhausted behind shared egress.
 pub async fn latest_version(releases: &str) -> Result<String, String> {
+    // pi's messages name the repository.
+    let repo = releases
+        .trim_start_matches("https://github.com/")
+        .trim_end_matches("/releases");
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(10))
@@ -139,20 +144,20 @@ pub async fn latest_version(releases: &str) -> Result<String, String> {
         .filter(|_| status.is_redirection())
         .ok_or_else(|| {
             format!(
-                "Failed to resolve the latest release of {releases}: HTTP {} without redirect",
+                "Failed to resolve latest {repo} release: HTTP {} without redirect",
                 status.as_u16()
             )
         })?;
-    if !location.contains("/releases/tag/") {
-        return Err(format!(
-            "Failed to resolve the latest release of {releases}: unexpected redirect to {location}"
-        ));
-    }
-    let tag = location
-        .split(['?', '#'])
-        .next()
-        .and_then(|path| path.rsplit('/').next())
-        .unwrap_or_default();
+    let unexpected =
+        || format!("Failed to resolve latest {repo} release: unexpected redirect to {location}");
+    let target = url::Url::parse(releases)
+        .and_then(|base| base.join(location))
+        .map_err(|_| unexpected())?;
+    let tag = target
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .filter(|tag| !tag.is_empty() && location.contains("/releases/tag/"))
+        .ok_or_else(unexpected)?;
     Ok(tag.strip_prefix('v').unwrap_or(tag).to_owned())
 }
 

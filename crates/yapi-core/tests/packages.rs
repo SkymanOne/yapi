@@ -259,24 +259,61 @@ async fn finds_and_applies_npm_updates_in_range() {
         let manifest = format!(r#"{{"name": "ext-pkg", "version": "{version}"}}"#);
         tarball(&[("package.json", &manifest)])
     };
+    // Each check reads the packument afresh, like pi's `npm view`: the
+    // check and the update's own check. The install reads it once more and
+    // keeps it for the check after.
     let server = registry(|base| {
         let versions =
             ["1.0.0", "1.2.0", "2.0.0"].map(|version| (version, json!({}), release(version)));
-        publish(base, "ext-pkg", &versions, "1.2.0")
+        let [packument, tarball] =
+            <[Interaction; 2]>::try_from(publish(base, "ext-pkg", &versions, "1.2.0")).unwrap();
+        vec![packument.clone(), packument.clone(), packument, tarball]
     })
     .await;
     let mut packages = manager(&dir, &server.url());
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = progress.clone();
+    packages.on_progress(move |line| log.lock().unwrap().push(line.to_owned()));
     assert_eq!(packages.available_updates().await, ["ext-pkg"]);
     packages.update(Some("npm:ext-pkg")).await.unwrap();
+    assert_eq!(
+        *progress.lock().unwrap(),
+        ["Updating npm:ext-pkg@^1.0.0..."]
+    );
     let manifest: Value =
         serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
     assert_eq!(manifest["version"], "1.2.0");
     assert!(packages.available_updates().await.is_empty());
-    assert_eq!(
-        server.finish().unwrap().len(),
-        2,
-        "one packument and one tarball"
-    );
+    // A current package is neither reported nor reinstalled.
+    packages.update(Some("npm:ext-pkg")).await.unwrap();
+    assert_eq!(progress.lock().unwrap().len(), 1);
+    assert_eq!(server.finish().unwrap().len(), 4);
+}
+
+/// With `npmCommand`, pi asks that command's `npm view` for the versions.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn checks_npm_updates_through_npm_command() {
+    let dir = scratch("npm-command-updates");
+    let script = dir.join("npm.sh");
+    std::fs::write(
+        &script,
+        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n",
+    )
+    .unwrap();
+    installed(&dir, "behind", "1.0.0");
+    installed(&dir, "current", "2.0.0");
+    std::fs::write(
+        dir.join("agent/settings.json"),
+        json!({
+            "npmCommand": ["sh", script],
+            "packages": ["npm:behind@^1.0.0", "npm:current@^2.0.0"],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let packages = manager(&dir, "http://127.0.0.1:9");
+    assert_eq!(packages.available_updates().await, ["behind"]);
 }
 
 fn git(dir: &Path, args: &[&str]) {
@@ -324,7 +361,7 @@ async fn finds_git_updates_on_the_remote() {
             "git:github.com/user/pinned@main"
         ]),
     );
-    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let packages = manager(&dir, "http://127.0.0.1:9");
     assert!(packages.available_updates().await.is_empty());
 
     git(&work, &["commit", "--allow-empty", "-m", "second"]);
