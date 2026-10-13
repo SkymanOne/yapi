@@ -16,11 +16,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use futures_util::future::BoxFuture;
 use indexmap::IndexMap;
+use regex_lite::Regex;
 use serde_json::Value;
 use tokio::sync::{oneshot, watch};
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
@@ -313,6 +314,20 @@ fn render_servers_section(servers: &[(&ServerEntry, Option<String>)]) -> Option<
     }
     lines.extend(omitted(listed.len() - kept));
     Some(lines.join("\n"))
+}
+
+static FINDS_TOOLS: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"\b(searchTools|describeNamespace|describeTool|ALL_TOOLS)\b").ok()
+});
+
+/// Whether a codemode script needs the server: it names the server's
+/// namespace, or searches, lists or describes tools, which may name the server
+/// in other forms.
+fn script_needs_server(code: &str, server: &str) -> bool {
+    FINDS_TOOLS
+        .as_ref()
+        .is_some_and(|finds| finds.is_match(code))
+        || code.contains(&namespace(server))
 }
 
 /// Short state for lists; `with_error` appends the first line of a failure.
@@ -1841,24 +1856,33 @@ impl Extension for McpExtension {
         })
     }
 
+    /// A codemode script waits for the servers it names, or for every server
+    /// when it searches or lists tools, so their tools are registered before it
+    /// runs. tool_search and the resource tools reach every server.
     fn tool_call<'a>(
         &'a self,
         ctx: &'a Context,
         tool: &'a str,
-        _input: &'a Value,
+        input: &'a Value,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let waits = tool == TOOL_SEARCH_TOOL_NAME
+            let info = ctx.tools.all().into_iter().find(|info| info.name == tool)?;
+            let pending = if codemode::is_codemode_tool(&info) {
+                let code = input["code"].as_str().unwrap_or_default();
+                self.pending(|entry| script_needs_server(code, &entry.name))
+            } else if is_tool_search(&info)
                 || [
                     LIST_MCP_RESOURCES_TOOL,
                     LIST_MCP_RESOURCE_TEMPLATES_TOOL,
                     READ_MCP_RESOURCE_TOOL,
                 ]
-                .contains(&tool);
-            if waits {
-                let pending = self.pending(|_| true);
-                Self::wait_for(pending, &ctx.cancel).await;
-            }
+                .contains(&tool)
+            {
+                self.pending(|_| true)
+            } else {
+                return None;
+            };
+            Self::wait_for(pending, &ctx.cancel).await;
             None
         })
     }
@@ -1878,5 +1902,24 @@ impl Extension for McpExtension {
                 connection.close().await;
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scripts_need_the_servers_they_name_or_search() {
+        let code = "await tools.mcp__my_docs__search({q: 1})";
+        assert!(script_needs_server(code, "my-docs"));
+        assert!(!script_needs_server(code, "other"));
+        assert!(script_needs_server(
+            "const found = await searchTools('x')",
+            "other"
+        ));
+        assert!(script_needs_server("ALL_TOOLS.length", "other"));
+        assert!(!script_needs_server("describeTools()", "other"));
+        assert!(!script_needs_server("my_searchTools()", "other"));
     }
 }

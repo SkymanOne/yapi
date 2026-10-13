@@ -50,6 +50,8 @@ By default, yapi offers MCP tools through codemode. Instead of one tool call per
 - `--tools read,bash,edit,write,codemode` routes the built-in tools through codemode as well.
 - `"codemode": { "mode": "only" }` in `settings.json` offers the tools that scripts can call only through codemode.
 
+The first prompt does not wait for servers whose tools only codemode reaches. A script that names a server's tools, such as `tools.mcp__docs__search`, waits until that server has connected. A script that searches, lists or describes tools waits for every server that is still connecting.
+
 A package that registers its own `codemode` tool replaces the built-in one, and yapi warns about it at startup.
 
 Scripts can also use the `models` global to list the catalog and run classifier and image models with the session's credentials. Pi's [codemode documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md) describes the scripting API.
