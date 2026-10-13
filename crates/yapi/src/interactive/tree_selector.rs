@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::{Line, Span};
 use serde_json::Value;
-use tz::TimeZone;
 use unicode_segmentation::UnicodeSegmentation;
 use yapi_core::session::{SessionTree, TreeNode};
+use yapi_core::zone::Zone;
 use yapi_tui::lines::{self, StyledLine, styled};
 use yapi_tui::select_list::{step, visible_range};
 use yapi_tui::text::grapheme_width;
@@ -215,22 +215,10 @@ fn replace_words(text: &str) -> String {
     out
 }
 
-/// The `TZ` zone, else the system zone from `/etc/localtime`, else UTC.
-/// `TimeZone::local` alone ignores `TZ`.
-fn local_zone() -> TimeZone {
-    std::env::var("TZ")
-        .ok()
-        .and_then(|tz| TimeZone::from_posix_tz(&tz).ok())
-        .or_else(|| TimeZone::local().ok())
-        .unwrap_or_else(TimeZone::utc)
-}
-
 /// ISO text of `ms` shifted by the zone's UT offset at that instant, so its date
 /// and time parts read as local time.
-fn local_iso(zone: &TimeZone, ms: u64) -> String {
-    let offset = zone
-        .find_local_time_type((ms / 1000) as i64)
-        .map_or(0, |kind| i64::from(kind.ut_offset()));
+fn local_iso(zone: &Zone, ms: u64) -> String {
+    let offset = i64::from(zone.offset((ms / 1000) as i64));
     yapi_core::time::iso(ms.saturating_add_signed(offset * 1000))
 }
 
@@ -248,8 +236,6 @@ pub struct TreeSelector {
     tool_calls: HashMap<String, (String, Value)>,
     multiple_roots: bool,
     show_label_times: bool,
-    /// The local zone, loaded once.
-    zone: TimeZone,
     active_path: HashSet<String>,
     visible_parent: HashMap<String, Option<String>>,
     visible_children: HashMap<Option<String>, Vec<String>>,
@@ -289,7 +275,6 @@ impl TreeSelector {
             search: String::new(),
             tool_calls: HashMap::new(),
             show_label_times: false,
-            zone: local_zone(),
             active_path: HashSet::new(),
             visible_parent: HashMap::new(),
             visible_children: HashMap::new(),
@@ -885,7 +870,7 @@ impl TreeSelector {
     /// Formats `timestamp` in the zone's local time, as pi's `formatLabelTimestamp`
     /// does: `HH:MM` today, `M/D HH:MM` this year, `YY/M/D HH:MM` otherwise.
     /// An unparsable timestamp gives an empty string.
-    fn label_time(timestamp: &str, zone: &TimeZone, now_ms: u64) -> String {
+    fn label_time(timestamp: &str, zone: &Zone, now_ms: u64) -> String {
         let Some(ms) = yapi_core::time::parse_iso(timestamp) else {
             return String::new();
         };
@@ -973,7 +958,11 @@ impl TreeSelector {
                     body.push(Span::styled(
                         format!(
                             "{} ",
-                            Self::label_time(timestamp, &self.zone, yapi_core::time::now_ms())
+                            Self::label_time(
+                                timestamp,
+                                yapi_core::zone::local(),
+                                yapi_core::time::now_ms(),
+                            )
                         ),
                         muted,
                     ));
@@ -1374,7 +1363,7 @@ mod tests {
     }
 
     fn label(timestamp: &str, tz: &str, now: &str) -> String {
-        let zone = TimeZone::from_posix_tz(tz).expect("test zone");
+        let zone = Zone::from_tz(Some(tz));
         TreeSelector::label_time(timestamp, &zone, at(now))
     }
 
