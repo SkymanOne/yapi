@@ -1112,11 +1112,42 @@ fn is_delta(entry: &serde_json::Value) -> bool {
     entry.is_object() && entry["autoload"] == serde_json::Value::Bool(false)
 }
 
-/// pi's `dedupePackages` and `findAutoloadDeltaBase`: the `packages` entries
-/// of the project, then the user, that are installed, as `install_path`
-/// places a source written in a scope's settings. A project entry wins over
-/// the user's for the same package, unless it sets `autoload: false`: then
-/// it only overrides the resources it names, on top of the user's entry.
+/// pi's `dedupePackages` with `findAutoloadDeltaBase`: each entry that
+/// [`dedupe_packages`] keeps, with its scope, then the source and scope its
+/// package is installed under, pi's `resolvedSource` and `resolvedScope`. A
+/// project entry with `autoload: false` takes the user's entry for the same
+/// package, when there is one.
+pub fn locate_packages(
+    project: &[serde_json::Value],
+    user: &[serde_json::Value],
+    identity: impl Fn(&str, &str) -> String,
+) -> Vec<(serde_json::Value, &'static str, String, &'static str)> {
+    let packages = dedupe_packages(project, user, &identity);
+    packages
+        .iter()
+        .map(|(entry, scope)| {
+            // `dedupe_packages` keeps only entries with a source.
+            let source = super::entry_source(entry).unwrap_or_default();
+            let base = (*scope == "project" && is_delta(entry))
+                .then(|| {
+                    let id = identity(source, scope);
+                    packages
+                        .iter()
+                        .filter(|(_, other)| *other == "user")
+                        .filter_map(|(other, _)| super::entry_source(other))
+                        .find(|other| identity(other, "user") == id)
+                })
+                .flatten();
+            let (located, located_scope) = base.map_or((source, *scope), |base| (base, "user"));
+            (entry.clone(), *scope, located.to_owned(), located_scope)
+        })
+        .collect()
+}
+
+/// The packages of [`locate_packages`] that are installed, as `install_path`
+/// places a source written in a scope's settings. A project entry with
+/// `autoload: false` only overrides the resources it names, on top of the
+/// user's entry.
 pub fn package_inputs(
     project: &[serde_json::Value],
     user: &[serde_json::Value],
@@ -1124,34 +1155,21 @@ pub fn package_inputs(
     install_path: impl Fn(&super::source::Source, &str) -> PathBuf,
 ) -> Vec<PackageInput> {
     use super::source::parse;
-    let source_of = |entry: &serde_json::Value| super::entry_source(entry).map(str::to_owned);
     let identity = |source: &str, scope: &str| parse(source).identity(&base(scope));
-    let result = dedupe_packages(project, user, identity);
     let mut inputs = Vec::new();
-    for (entry, scope) in &result {
-        let Some(source) = source_of(entry) else {
+    for (entry, scope, located, located_scope) in locate_packages(project, user, identity) {
+        let Some(source) = super::entry_source(&entry) else {
             continue;
         };
         let filter: Option<FilteredPackage> = entry
             .is_object()
             .then(|| serde_json::from_value(entry.clone()).ok())
             .flatten();
-        let (located, located_scope) = if *scope == "project" && is_delta(entry) {
-            let id = identity(&source, scope);
-            result
-                .iter()
-                .filter(|(_, other)| *other == "user")
-                .filter_map(|(other, _)| source_of(other))
-                .find(|other| identity(other, "user") == id)
-                .map_or((source.clone(), *scope), |other| (other, "user"))
-        } else {
-            (source.clone(), *scope)
-        };
         let root = install_path(&parse(&located), located_scope);
         if root.exists() {
             inputs.push(PackageInput {
-                source,
-                scope: (*scope).to_owned(),
+                source: source.to_owned(),
+                scope: scope.to_owned(),
                 root,
                 filter,
             });

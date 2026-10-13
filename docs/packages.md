@@ -14,7 +14,7 @@ yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 ```
 
-yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied.
+yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied. At startup and on `/reload`, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.
 
 Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.
 
