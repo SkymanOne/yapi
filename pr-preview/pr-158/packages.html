@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dfb1985c.js";
+            window.path_to_searchindex_js = "searchindex-f3aff01f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -199,6 +199,7 @@ yapi remove npm:@scope/some-pi-package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
 <pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
