@@ -16,6 +16,7 @@ mod builtins;
 mod codemode;
 mod encoding;
 mod fs;
+mod localtime;
 
 use std::cell::{Cell, RefCell};
 
@@ -204,6 +205,10 @@ fn install_natives(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
         Function::new(ctx.clone(), encoding::base64_decode)?,
     )?;
     native.set("compile", Function::new(ctx.clone(), compile)?)?;
+    native.set(
+        "wallClock",
+        Function::new(ctx.clone(), localtime::set_wall_clock)?,
+    )?;
     ctx.globals().set("__yapi_native", native)?;
     Ok(())
 }

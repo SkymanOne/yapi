@@ -15,7 +15,7 @@ Treat the commands and code the model generates as untrusted. Files, comments an
 | Processes that extensions start, including subagents | Child processes, outside the sandbox | Everything the user can access |
 | MCP servers over stdio | Child processes | Everything the user can access |
 | MCP servers over HTTP | Remote services | What the server allows |
-| Codemode scripts | Fresh WebAssembly instances with no grants | Only the tools they call |
+| Codemode scripts | Fresh WebAssembly instances with no grants | Only the tools they call, and the clock and time zone as in Pi |
 
 For untrusted repositories, unfamiliar packages or unattended runs, isolate yapi at the operating-system level:
 
