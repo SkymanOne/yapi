@@ -6,6 +6,7 @@
 )]
 
 use std::io::Write as _;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
@@ -583,11 +584,10 @@ async fn installs_missing_and_out_of_range_configured_packages() {
 
     // Missing: installed from the registry.
     configure("npm:ext-pkg@^2.0.0");
-    let mut errors = Vec::new();
-    manager(&dir, &server.url())
-        .install_missing(|_, message| errors.push(message))
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
         .await;
-    assert_eq!(errors, Vec::<String>::new());
+    assert_eq!(outcome, ControlFlow::Continue(()));
     assert_eq!(
         std::fs::read_to_string(installed.join("index.ts")).unwrap(),
         "2.0.0"
@@ -602,9 +602,10 @@ async fn installs_missing_and_out_of_range_configured_packages() {
         "npm:ext-pkg",
     ] {
         configure(source);
-        manager(&dir, &server.url())
-            .install_missing(|_, _| {})
+        let outcome = manager(&dir, &server.url())
+            .install_missing(|_, message| ControlFlow::Break(message))
             .await;
+        assert_eq!(outcome, ControlFlow::Continue(()));
     }
 
     // Out of range: replaced by the 1.x install put in its place.
@@ -629,11 +630,10 @@ async fn installs_missing_and_out_of_range_configured_packages() {
     })
     .await;
     configure("npm:ext-pkg@^2.0.0");
-    let mut errors = Vec::new();
-    manager(&dir, &server.url())
-        .install_missing(|_, message| errors.push(message))
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
         .await;
-    assert_eq!(errors, Vec::<String>::new());
+    assert_eq!(outcome, ControlFlow::Continue(()));
     assert_eq!(
         std::fs::read_to_string(installed.join("index.ts")).unwrap(),
         "2.0.0"
@@ -669,11 +669,10 @@ async fn installs_an_autoload_delta_as_the_users_package() {
         json!({"packages": [{"source": "npm:ext-pkg@^2", "autoload": false}]}).to_string(),
     )
     .unwrap();
-    let mut errors = Vec::new();
-    manager(&dir, &server.url())
-        .install_missing(|_, message| errors.push(message))
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
         .await;
-    assert_eq!(errors, Vec::<String>::new());
+    assert_eq!(outcome, ControlFlow::Continue(()));
     assert!(dir.join("agent/npm/node_modules/ext-pkg").exists());
     assert!(!dir.join("project/.yapi/npm").exists());
     assert_eq!(server.finish().unwrap().len(), 2);

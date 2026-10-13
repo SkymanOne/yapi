@@ -10,6 +10,7 @@ pub mod npm;
 pub mod resolve;
 pub mod source;
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -630,9 +631,12 @@ impl PackageManager {
     /// The installs of pi's `resolve`: the configured npm and git packages
     /// that are missing, and the npm packages whose installed version is
     /// outside the configured range, in the order and at the places of
-    /// [`resolve::locate_packages`]. `on_error` receives the failures, with
-    /// their sources.
-    pub async fn install_missing(&mut self, mut on_error: impl FnMut(&str, String)) {
+    /// [`resolve::locate_packages`]. `on_error` receives each failure, with
+    /// its source, and its `Break` ends the install and is returned.
+    pub async fn install_missing<B>(
+        &mut self,
+        mut on_error: impl FnMut(&str, String) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
         let scope = |name: &str| {
             if name == "project" {
                 Scope::Project
@@ -671,9 +675,10 @@ impl PackageManager {
                 Source::Local { .. } => Ok(()),
             };
             if let Err(err) = installed {
-                on_error(&source, format!("Failed to install {source}: {err}"));
+                on_error(&source, format!("Failed to install {source}: {err}"))?;
             }
         }
+        ControlFlow::Continue(())
     }
 }
 

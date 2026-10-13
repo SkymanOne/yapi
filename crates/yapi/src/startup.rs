@@ -2,6 +2,7 @@
 //! and prompt resources. Mirrors `main.ts` and `sdk.ts` in pi `v1.0.0`.
 
 use std::io::IsTerminal;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -916,7 +917,10 @@ pub async fn load_extensions(
         loaded: None,
     };
     let run = run_settings(args).map_err(|err| fail(err.to_string()))?;
-    let warn = |_: &str, message: String| eprintln!("Warning: {message}");
+    let warn = |_: &str, message: String| {
+        eprintln!("Warning: {message}");
+        ControlFlow::Continue(())
+    };
     let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, warn, None)
         .await
         .map_err(fail)?;
@@ -963,7 +967,10 @@ async fn session_extensions(
         trusted,
     };
     let mut uninstalled = Vec::new();
-    let install_failed = |source: &str, message| uninstalled.push((source.to_owned(), message));
+    let install_failed = |source: &str, message| {
+        uninstalled.push((source.to_owned(), message));
+        ControlFlow::Continue(())
+    };
     let (mut extensions, _) = start_extensions(args, &run, terminal_size, install_failed, previous)
         .await
         .map_err(anyhow::Error::msg)?;
@@ -981,7 +988,7 @@ async fn start_extensions(
     args: &Args,
     run: &RunSettings,
     terminal_size: Option<(usize, usize)>,
-    install_failed: impl FnMut(&str, String) + Send,
+    install_failed: impl FnMut(&str, String) -> ControlFlow<()> + Send,
     previous: Option<&Extensions>,
 ) -> Result<(Extensions, Vec<String>), String> {
     let cwd = run.cwd.clone();
@@ -996,8 +1003,9 @@ async fn start_extensions(
     );
     let offline = args.offline || yapi_core::tools::external::offline();
     // Installs missing packages; what they provide comes from pi's resolver.
+    // Unlike pi, a failure does not stop the others (docs/compat.md).
     if !offline {
-        packages.install_missing(install_failed).await;
+        let _ = packages.install_missing(install_failed).await;
     }
     let mut issues = Vec::new();
     let mut missing = Vec::new();
