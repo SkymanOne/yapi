@@ -12,6 +12,7 @@ use yapi_tui::lines::{self, StyledLine, box_content_width, boxed, styled};
 use yapi_tui::markdown::{self, MarkdownOptions, MarkdownTheme};
 use yapi_tui::theme::Theme;
 use yapi_types::message::{AssistantMessage, ContentBlock, StopReason};
+use yapi_types::settings::MermaidMode;
 
 use super::bash_view::BashView;
 use super::tools::ToolView;
@@ -46,6 +47,38 @@ pub struct RenderContext<'a> {
     pub thinking_label: &'a str,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     pub hyperlinks: bool,
+    /// The `markdown.mermaid` setting.
+    pub mermaid: MermaidMode,
+    /// The item is the message that is streaming.
+    pub streaming: bool,
+}
+
+/// Who wrote a message's Markdown, for pi's transformers.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MessageKind {
+    User,
+    Assistant,
+    Thinking,
+}
+
+/// pi's `createMarkdownTransform`: `text` as the Markdown transformers leave
+/// it, for content `width` columns wide. The Mermaid transformer draws
+/// diagrams when the setting allows, never in thinking.
+pub fn transform<'t>(
+    text: &'t str,
+    kind: MessageKind,
+    width: usize,
+    ctx: &RenderContext<'_>,
+) -> std::borrow::Cow<'t, str> {
+    let draws = match ctx.mermaid {
+        MermaidMode::Off => false,
+        MermaidMode::Final => !ctx.streaming,
+        MermaidMode::Streaming => true,
+    };
+    if !draws || kind == MessageKind::Thinking {
+        return text.into();
+    }
+    yapi_tui::mermaid::transform(text, width, ctx.streaming, Some(ctx.theme)).into()
 }
 
 /// What a left click on part of an item toggles, as pi's `MouseRegion`s do.
@@ -234,8 +267,9 @@ pub fn group_thousands(value: u64) -> String {
 
 /// pi's `UserMessageComponent`.
 fn user_message(text: &str, width: usize, ctx: &RenderContext<'_>) -> Vec<StyledLine> {
+    let content = width.saturating_sub(ctx.output_pad * 2).max(1);
     markdown::render(
-        text,
+        &transform(text, MessageKind::User, content, ctx),
         width,
         ctx.output_pad,
         1,
@@ -421,8 +455,9 @@ fn render_assistant(
     while index < blocks.len() {
         match &blocks[index] {
             ContentBlock::Text(text) if has_visible(&text.text) => {
+                let content = width.saturating_sub(pad * 2).max(1);
                 out.extend(markdown::render(
-                    text.text.trim(),
+                    &transform(text.text.trim(), MessageKind::Assistant, content, ctx),
                     width,
                     pad,
                     0,
@@ -457,8 +492,9 @@ fn render_assistant(
                         pad,
                     ));
                 } else {
+                    let content = width.saturating_sub(pad * 2).max(1);
                     out.extend(markdown::render(
-                        &parts.join("\n\n"),
+                        &transform(&parts.join("\n\n"), MessageKind::Thinking, content, ctx),
                         width,
                         pad,
                         0,
@@ -514,6 +550,51 @@ fn render_assistant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draws_mermaid_as_the_setting_says() {
+        let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let markdown = yapi_tui::markdown::MarkdownTheme::default();
+        let mut ctx = RenderContext {
+            theme: &theme,
+            markdown: &markdown,
+            expanded: false,
+            hide_thinking: false,
+            thinking: &[],
+            output_pad: 1,
+            expand_key: "ctrl+o",
+            cancel_key: "esc",
+            home: None,
+            cwd: std::path::Path::new("/work"),
+            agent_dir: std::path::Path::new("/agent"),
+            thinking_label: "Thinking...",
+            hyperlinks: false,
+            mermaid: MermaidMode::Streaming,
+            streaming: true,
+        };
+        let source = "```mermaid\nflowchart LR\n  A --> B\n```";
+        let drawn = |ctx: &RenderContext<'_>, kind| transform(source, kind, 80, ctx) != source;
+        assert!(drawn(&ctx, MessageKind::Assistant));
+        assert!(!drawn(&ctx, MessageKind::Thinking));
+        ctx.mermaid = MermaidMode::Final;
+        assert!(!drawn(&ctx, MessageKind::Assistant));
+        ctx.streaming = false;
+        assert!(drawn(&ctx, MessageKind::User));
+        ctx.mermaid = MermaidMode::Off;
+        assert!(!drawn(&ctx, MessageKind::Assistant));
+
+        // The diagram's colors come through the code spans.
+        ctx.mermaid = MermaidMode::Final;
+        let lines = user_message(source, 80, &ctx);
+        let border = theme.fg("borderMuted").fg;
+        assert!(
+            lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains('┌') && span.style.fg == border),
+            "{lines:?}"
+        );
+    }
 
     #[test]
     fn groups_thousands() {

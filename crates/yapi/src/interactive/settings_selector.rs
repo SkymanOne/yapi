@@ -1502,6 +1502,11 @@ impl super::App {
             }
             "mermaid-rendering" => {
                 nested("markdown", "mermaid", text());
+                self.mermaid = match value {
+                    "off" => yapi_types::settings::MermaidMode::Off,
+                    "final" => yapi_types::settings::MermaidMode::Final,
+                    _ => yapi_types::settings::MermaidMode::Streaming,
+                };
                 self.invalidate_all();
             }
             "cache-miss-notices" => {

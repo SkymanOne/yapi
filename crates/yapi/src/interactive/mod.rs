@@ -554,6 +554,8 @@ struct App {
     expanded: bool,
     hide_thinking: bool,
     output_pad: usize,
+    /// The `markdown.mermaid` setting.
+    mermaid: yapi_types::settings::MermaidMode,
     show_details: bool,
     fullscreen: bool,
     alt: AltScreen,
@@ -635,6 +637,15 @@ fn emit(data: &str) {
     let mut out = std::io::stdout().lock();
     let _ = out.write_all(data.as_bytes());
     let _ = out.flush();
+}
+
+/// pi's `getMermaidRenderingMode`: streaming unless set otherwise.
+fn mermaid_mode(settings: &yapi_types::settings::Settings) -> yapi_types::settings::MermaidMode {
+    settings
+        .markdown
+        .as_ref()
+        .and_then(|markdown| markdown.mermaid)
+        .unwrap_or(yapi_types::settings::MermaidMode::Streaming)
 }
 
 /// The theme's Markdown styles.
@@ -777,6 +788,8 @@ impl App {
             agent_dir: &self.agent_dir,
             thinking_label: self.ext.thinking_label.as_deref().unwrap_or("Thinking..."),
             hyperlinks: self.hyperlinks,
+            mermaid: self.mermaid,
+            streaming: false,
         }
     }
 
@@ -1351,6 +1364,7 @@ impl App {
                 let mut ctx = self.ctx();
                 ctx.expanded ^= toggles.expanded;
                 ctx.thinking = &toggles.thinking;
+                ctx.streaming = self.streaming == Some(index);
                 // Without drawers, nothing is asked.
                 let answers = self.drawers.any().then(|| &self.answers[index]);
                 let markdown = answers.map(|answers| self.item_markdown(answers));
@@ -4392,6 +4406,7 @@ impl App {
             expanded: options.verbose,
             hide_thinking: settings.hide_thinking_block.unwrap_or(false),
             output_pad: usize::from(settings.output_pad.unwrap_or(1).min(1)),
+            mermaid: mermaid_mode(&settings),
             show_details,
             fullscreen,
             alt: AltScreen::new(),

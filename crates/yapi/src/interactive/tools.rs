@@ -1577,6 +1577,8 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
         };
         let plain = |rows: Vec<StyledLine>| -> Vec<String> {
             rows.iter()
@@ -1640,6 +1642,8 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
         };
         let mut view = ToolView::new("mcp__demo__big", Value::Null);
         view.mcp_label = Some("demo/big".to_owned());
@@ -1711,6 +1715,8 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
         };
         let call = |args: Value, ctx: &RenderContext<'_>| {
             lines::plain(&ToolView::new("read", args).call_lines(ctx, 120)[0])
