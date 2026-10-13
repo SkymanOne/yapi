@@ -57,7 +57,7 @@ mod stats;
 pub use boundary::Boundary;
 pub use cache_warmer::{
     CacheWarmingDecision, CacheWarmingPhase, CacheWarmingState, CacheWarmingStatus,
-    format_cache_warming_status,
+    format_cache_warming_status, format_cache_warming_usage,
 };
 use extensions::Hooks;
 pub use models::CatalogRefresh;

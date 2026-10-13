@@ -14,7 +14,7 @@ use yapi_types::extension_event::ExtensionEvent;
 use yapi_types::js;
 use yapi_types::message::{Message, StopReason, Usage};
 use yapi_types::model::{AnthropicMessagesCompat, Model};
-use yapi_types::session::FileEntry;
+use yapi_types::session::{FileEntry, UsageEntry};
 use yapi_types::settings::CacheWarming;
 use yapi_types::sync::lock;
 
@@ -696,6 +696,21 @@ pub fn format_cache_warming_status(status: &CacheWarmingStatus, now: SystemTime)
     }
 }
 
+/// pi's transcript line for a recorded refresh: its cost with three to six
+/// decimals.
+pub fn format_cache_warming_usage(entry: &UsageEntry) -> String {
+    let note = entry
+        .note
+        .as_ref()
+        .map(|note| format!(" ({note})"))
+        .unwrap_or_default();
+    let mut cost = format!("{:.6}", entry.usage.cost.total);
+    while cost.ends_with('0') && cost.len() - cost.find('.').unwrap_or(0) > 4 {
+        cost.pop();
+    }
+    format!("Cache warmed{note}: ${cost}")
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, reason = "a panic is a test failure")]
@@ -1276,6 +1291,27 @@ mod tests {
         assert_eq!(
             format_cache_warming_status(&CacheWarmingStatus::inactive("agent run settled"), now),
             "Inactive (agent run settled)"
+        );
+    }
+
+    #[test]
+    fn formats_refresh_costs_with_three_to_six_decimals() {
+        let mut entry: UsageEntry = serde_json::from_value(serde_json::json!({
+            "id": "u", "parentId": null, "timestamp": "2026-10-13T10:00:00.000Z",
+            "kind": "cache_warm", "provider": "p", "model": "m",
+            "usage": {"input": 0, "output": 1, "cacheRead": 0, "cacheWrite": 0,
+                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0.006051}},
+        }))
+        .expect("a usage entry");
+        assert_eq!(
+            format_cache_warming_usage(&entry),
+            "Cache warmed: $0.006051"
+        );
+        entry.usage.cost.total = 0.01;
+        entry.note = Some("extension override".into());
+        assert_eq!(
+            format_cache_warming_usage(&entry),
+            "Cache warmed (extension override): $0.010"
         );
     }
 }
