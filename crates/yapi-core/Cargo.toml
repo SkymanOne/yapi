@@ -26,6 +26,7 @@ sha1.workspace = true
 sha2.workspace = true
 url.workspace = true
 similar.workspace = true
+syntect.workspace = true
 tar.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "macros", "process", "rt", "sync", "time"] }

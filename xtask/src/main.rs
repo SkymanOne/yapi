@@ -12,6 +12,7 @@ mod js_runtime;
 mod mock_sse;
 mod models;
 mod package_registrations;
+mod syntaxes;
 mod vendor_pi;
 
 use std::path::Path;
@@ -35,6 +36,7 @@ enum Command {
     MockSse(mock_sse::Args),
     Models(models::Args),
     PackageRegistrations(package_registrations::Args),
+    Syntaxes(syntaxes::Args),
     VendorPi(vendor_pi::Args),
 }
 
@@ -46,6 +48,7 @@ fn main() -> anyhow::Result<ExitCode> {
         Command::MockSse(args) => mock_sse::run(args),
         Command::Models(args) => models::run(args).map(|()| ExitCode::SUCCESS),
         Command::PackageRegistrations(args) => package_registrations::run(args),
+        Command::Syntaxes(args) => syntaxes::run(args).map(|()| ExitCode::SUCCESS),
         Command::VendorPi(args) => vendor_pi::run(args).map(|()| ExitCode::SUCCESS),
     }
 }

@@ -4,6 +4,7 @@
 accepted = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
     "BSD-3-Clause",
     "CDLA-Permissive-2.0",
     "ISC",
@@ -25,3 +26,18 @@ ignore-dev-dependencies = true
 # yapi's own crates, whose licenses the archives carry as LICENSE-MIT and
 # LICENSE-APACHE.
 private = { ignore = true }
+
+# onig_sys builds the Oniguruma C library it bundles, which is under its own
+# license.
+[onig_sys.clarify]
+license = "MIT AND BSD-2-Clause"
+
+[[onig_sys.clarify.files]]
+path = "LICENSE.md"
+license = "MIT"
+checksum = "71f321038b088358004bee991635ac09e4c703bec467d3c30c06992c0595f189"
+
+[[onig_sys.clarify.files]]
+path = "oniguruma/COPYING"
+license = "BSD-2-Clause"
+checksum = "70ba5469ea0bab6e18a32d7009068f996503168d27be57747e08da34337ff26f"

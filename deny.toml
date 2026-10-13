@@ -1,7 +1,11 @@
 # cargo-deny policy. See "Dependencies" in AGENTS.md.
 
 [advisories]
-ignore = []
+ignore = [
+    # bincode 1.3.3 is complete, its authors say. syntect decodes yapi's own
+    # syntax definitions with it.
+    "RUSTSEC-2025-0141",
+]
 
 [licenses]
 # Add a license together with the dependency that needs it. It must be
@@ -10,6 +14,8 @@ allow = [
     "Apache-2.0",
     # wasmtime and cranelift.
     "Apache-2.0 WITH LLVM-exception",
+    # Oniguruma, the C library onig_sys builds for syntect.
+    "BSD-2-Clause",
     "BSD-3-Clause",
     "CDLA-Permissive-2.0",
     "ISC",

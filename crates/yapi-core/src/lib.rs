@@ -9,6 +9,7 @@ pub mod config;
 pub mod docs;
 pub mod extensions;
 pub mod glob;
+pub mod highlight;
 pub mod images;
 pub mod import;
 pub mod llama;

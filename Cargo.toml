@@ -53,11 +53,16 @@ serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 sha1 = "0.11"
 sha2 = "0.11"
 similar = "2"
+# Code highlighting with Oniguruma, which is faster and uses far less memory
+# than fancy-regex on large grammars such as TypeScript.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-onig"] }
 tar = { version = "0.4", default-features = false }
 thiserror = "2"
 tokio = "1"
 tokio-util = "0.7.12"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
+# The syntax definitions `cargo xtask syntaxes` trims into yapi-core.
+two-face = { version = "=0.5.2", default-features = false, features = ["syntect-onig"] }
 url = "2.5"
 wasmtime = { version = "=49.0.2", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
 wasmtime-wasi = { version = "=49.0.2", default-features = false }
@@ -92,6 +97,12 @@ opt-level = 3
 [profile.dev.package.wasmtime-environ]
 opt-level = 3
 [profile.dev.package.wasmparser]
+opt-level = 3
+# Code is highlighted while frames draw; unoptimized, it takes about three
+# times as long.
+[profile.dev.package.onig_sys]
+opt-level = 3
+[profile.dev.package.syntect]
 opt-level = 3
 # `cargo xtask bench` parses terminal output inside timed intervals.
 [profile.dev.package.vt100]
