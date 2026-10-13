@@ -170,7 +170,8 @@ fn run_git(args: &[&str], dir: Option<&Path>) -> Result<(), PackageError> {
     )))
 }
 
-/// The scope [`resolve::dedupe_packages`] names `project` or `user`.
+/// The scope that [`resolve::dedupe_packages`] and
+/// [`resolve::locate_packages`] name `project` or `user`.
 fn named_scope(name: &str) -> Scope {
     if name == "project" {
         Scope::Project
@@ -843,17 +844,10 @@ impl PackageManager {
         &mut self,
         mut on_error: impl FnMut(&str, String) -> ControlFlow<B>,
     ) -> ControlFlow<B> {
-        let scope = |name: &str| {
-            if name == "project" {
-                Scope::Project
-            } else {
-                Scope::Global
-            }
-        };
         let packages = resolve::locate_packages(
             &self.packages(Scope::Project),
             &self.packages(Scope::Global),
-            |source, in_scope| parse(source).identity(&self.base(scope(in_scope))),
+            |source, in_scope| parse(source).identity(&self.base(named_scope(in_scope))),
         );
         let mut attempted = Vec::new();
         for (_, _, source, in_scope) in packages {
@@ -864,11 +858,11 @@ impl PackageManager {
             }
             attempted.push((source.clone(), in_scope));
             let parsed = parse(&source);
-            let root = self.install_path(&parsed, scope(in_scope));
+            let root = self.install_path(&parsed, named_scope(in_scope));
             let installed = match &parsed {
                 Source::Npm { name, version, .. } => {
                     if npm_stale(&root, version.as_deref()) {
-                        let npm_root = self.npm_root(scope(in_scope));
+                        let npm_root = self.npm_root(named_scope(in_scope));
                         self.install_npm(&npm_root, name, version.as_deref()).await
                     } else {
                         Ok(())
