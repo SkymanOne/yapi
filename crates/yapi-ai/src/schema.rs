@@ -4,9 +4,10 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value};
-use yapi_types::message::ToolDeclaration;
+use yapi_types::message::{Message, ToolDeclaration};
 
 use crate::http::is_truthy;
+use crate::transcript::declared_tools;
 use crate::validation::schema_types;
 
 /// Keywords no strict mode accepts.
@@ -283,15 +284,18 @@ fn grammar_property(schema: &Value) -> Result<&str, String> {
     Ok(property)
 }
 
-/// The tools among `tools` sent with a grammar, by name, with the argument that
-/// carries each one's raw input.
+/// The tools a transcript declares that are sent with a grammar, by name, with
+/// the argument that carries each one's raw input. `messages` is the
+/// transcript as the provider receives it, after
+/// [`resolve_transcript`](crate::transcript::resolve_transcript): a model that
+/// folds later system messages into the first one sees only the current tools.
 pub fn grammar_properties(
-    tools: &[ToolDeclaration],
+    messages: &[Message],
     supports_grammar: bool,
 ) -> Result<HashMap<String, String>, String> {
     let mut properties = HashMap::new();
-    for tool in tools {
-        if let Some(grammar) = grammar_sampling(tool, supports_grammar)? {
+    for tool in declared_tools(messages) {
+        if let Some(grammar) = grammar_sampling(&tool, supports_grammar)? {
             properties.insert(tool.name.clone(), grammar.property.to_owned());
         }
     }
@@ -476,6 +480,31 @@ mod tests {
         assert_eq!(
             grammar_sampling(&two, true).unwrap_err(),
             "Tool \"codemode\" cannot use grammar constrained sampling: grammar constrained sampling requires exactly one required string property."
+        );
+        let unusable = |parameters: Value| {
+            grammar_sampling(
+                &tool(
+                    json!({"type":"grammar","variants":{"openai_regex":"a+"}}),
+                    parameters,
+                ),
+                true,
+            )
+            .unwrap_err()
+        };
+        let prefix = "Tool \"codemode\" cannot use grammar constrained sampling: grammar constrained sampling";
+        assert_eq!(
+            unusable(json!({"type":"string"})),
+            format!("{prefix} requires an object parameter schema.")
+        );
+        assert_eq!(
+            unusable(json!({"type":"object","required":["code"],"properties":{}})),
+            format!("{prefix} requires a properties entry for code.")
+        );
+        assert_eq!(
+            unusable(
+                json!({"type":"object","required":["code"],"properties":{"code":{"type":"number"}}})
+            ),
+            format!("{prefix} property code must have type string.")
         );
     }
 

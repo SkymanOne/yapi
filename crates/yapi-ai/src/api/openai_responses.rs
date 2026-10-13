@@ -28,9 +28,7 @@ use crate::stream::{
     now_ms, send_error,
 };
 use crate::thinking::{effort, requested_max_tokens};
-use crate::transcript::{
-    declared_tools, resolve_transcript, resolve_transcript_tools, transform_messages,
-};
+use crate::transcript::{resolve_transcript, resolve_transcript_tools, transform_messages};
 
 /// Which Responses endpoint a request goes to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -881,15 +879,15 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
     } = request;
     let output = new_output(&model, now_ms());
     let compat = Compat::new(&model, flavor);
+    let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
     // Calls are stored as ordinary tool calls. Each request decides from the
     // declared tools which ones travel as custom tool calls.
-    let grammar =
-        match schema::grammar_properties(&declared_tools(&messages), compat.supports_grammar_tools)
-        {
-            Ok(grammar) => grammar,
-            Err(message) => return send_error(&sender, output, &options.cancel, message),
-        };
-    let response = match connect(&model, &messages, &options, &compat, &grammar).await {
+    let grammar = match schema::grammar_properties(&normalized, compat.supports_grammar_tools) {
+        Ok(grammar) => grammar,
+        Err(message) => return send_error(&sender, output, &options.cancel, message),
+    };
+    let response = match connect(&model, &messages, &normalized, &options, &compat, &grammar).await
+    {
         Ok(response) => response,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
@@ -925,12 +923,12 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
 async fn connect(
     model: &Model,
     messages: &[Message],
+    normalized: &[Message],
     options: &StreamOptions,
     compat: &Compat,
     grammar: &HashMap<String, String>,
 ) -> Result<reqwest::Response, String> {
     let flavor = compat.flavor;
-    let normalized = resolve_transcript(messages, compat.supports_mid_convo_system_messages);
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
         None if flavor == Flavor::OpenAi
@@ -952,13 +950,7 @@ async fn connect(
     let (params, url) = match flavor {
         Flavor::OpenAi => {
             let params = build_params(
-                model,
-                &normalized,
-                options,
-                compat,
-                grammar,
-                max_tokens,
-                effort,
+                model, normalized, options, compat, grammar, max_tokens, effort,
             )?;
             headers = super::openai_headers(&api_key, model.headers.as_ref());
             if model.provider == "github-copilot" {
@@ -983,13 +975,7 @@ async fn connect(
         Flavor::Azure => {
             let url = azure_endpoint(model)?;
             let params = build_azure_params(
-                model,
-                &normalized,
-                options,
-                compat,
-                grammar,
-                max_tokens,
-                effort,
+                model, normalized, options, compat, grammar, max_tokens, effort,
             )?;
             headers.set("api-key", Some(api_key.as_str()));
             headers.set("content-type", Some("application/json"));
@@ -1001,7 +987,7 @@ async fn connect(
         Flavor::Codex => {
             let account = crate::auth::codex::account_id(&api_key)
                 .ok_or("Failed to extract accountId from token")?;
-            let body = build_codex_body(model, &normalized, options, compat, grammar, effort)?;
+            let body = build_codex_body(model, normalized, options, compat, grammar, effort)?;
             headers.extend_model(model.headers.as_ref());
             headers.extend(&options.headers);
             headers.set("authorization", Some(format!("Bearer {api_key}")));
@@ -1740,10 +1726,77 @@ mod tests {
                 "arguments": "{\"code\":\"return 1;\"}"})
             ]
         );
+        // OpenAI pairs item ids with another model's reasoning, so they go.
+        let mut other = assistant.clone();
+        other.model = "gpt-5".into();
+        assert_eq!(
+            convert_assistant(&other, &model, 0, &grammar).unwrap(),
+            [
+                json!({"type": "custom_tool_call", "call_id": "call_1", "name": "codemode",
+                "input": "return 1;"})
+            ]
+        );
         assistant.content[0] = call(json!(1));
         assert_eq!(
             convert_assistant(&assistant, &model, 0, &grammar).unwrap_err(),
             "Grammar tool call \"codemode\" requires argument \"code\" to be a string."
+        );
+    }
+
+    #[test]
+    fn a_removed_grammar_tool_replays_as_a_function_without_mid_conversation_system_messages() {
+        let model: Model = serde_json::from_value(json!({
+            "id": "gpt-5.1", "name": "G", "api": "openai-responses", "provider": "openai",
+            "baseUrl": "u", "reasoning": false, "input": ["text"],
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000, "maxTokens": 100,
+            "compat": {"supportsOpenAIGrammarTools": true}
+        }))
+        .unwrap();
+        let grammar_tool = |name: &str, parameters: Value| {
+            json!({"name": name, "description": "", "parameters": parameters,
+                "constrainedSampling": {"type": "grammar", "variants": {"openai_regex": "a+"}}})
+        };
+        let codemode = grammar_tool(
+            "codemode",
+            json!({"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}}}),
+        );
+        // No usable grammar: declaring it now would fail the request.
+        let broken = grammar_tool("broken", json!({"type": "object"}));
+        let mut assistant = new_output(&model, 0);
+        assistant.content.push(ContentBlock::tool_call(
+            "call_1|ctc_1",
+            "codemode",
+            Map::from_iter([("code".to_owned(), json!("return 1;"))]),
+        ));
+        let mut messages: Vec<Message> = serde_json::from_value(json!([
+            {"role": "system", "content": "Prompt", "timestamp": 0, "toolsAdded": [codemode, broken]},
+            {"role": "user", "content": "Go", "timestamp": 0},
+        ]))
+        .unwrap();
+        messages.push(Message::Assistant(Box::new(assistant)));
+        messages.extend(
+            serde_json::from_value::<Vec<Message>>(json!([
+                {"role": "toolResult", "toolCallId": "call_1|ctc_1", "toolName": "codemode",
+                    "content": [{"type": "text", "text": "1"}], "isError": false, "timestamp": 0},
+                {"role": "system", "content": "", "timestamp": 0,
+                    "toolsRemoved": [{"name": "codemode"}, {"name": "broken"}]},
+            ]))
+            .unwrap(),
+        );
+        let compat = Compat::new(&model, Flavor::OpenAi);
+        assert!(schema::grammar_properties(&messages, true).is_err());
+        let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
+        let grammar = schema::grammar_properties(&normalized, true).unwrap();
+        assert!(grammar.is_empty());
+        let input = convert_messages(&model, &normalized, &compat, &grammar).unwrap();
+        assert_eq!(
+            input[2..],
+            [
+                json!({"type": "function_call", "call_id": "call_1", "name": "codemode",
+                    "arguments": "{\"code\":\"return 1;\"}"}),
+                json!({"type": "function_call_output", "call_id": "call_1", "output": "1"}),
+            ]
         );
     }
 }

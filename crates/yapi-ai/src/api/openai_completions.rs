@@ -23,9 +23,7 @@ use crate::stream::{
     send_error,
 };
 use crate::thinking::{MIN_ANSWER_TOKENS, budget_for_level, effort, requested_max_tokens};
-use crate::transcript::{
-    declared_tools, resolve_transcript, resolve_transcript_tools, transform_messages,
-};
+use crate::transcript::{resolve_transcript, resolve_transcript_tools, transform_messages};
 
 /// Compat flags with detected defaults applied.
 #[derive(Clone, Debug)]
@@ -999,15 +997,15 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     } = request;
     let compat = Compat::new(&model);
     let output = new_output(&model, now_ms());
+    let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
     // Calls are stored as ordinary tool calls. Each request decides from the
     // declared tools which ones travel as custom tool calls.
-    let grammar =
-        match schema::grammar_properties(&declared_tools(&messages), compat.supports_grammar_tools)
-        {
-            Ok(grammar) => grammar,
-            Err(message) => return send_error(&sender, output, &options.cancel, message),
-        };
-    let response = match connect(&model, &compat, &grammar, &messages, &options).await {
+    let grammar = match schema::grammar_properties(&normalized, compat.supports_grammar_tools) {
+        Ok(grammar) => grammar,
+        Err(message) => return send_error(&sender, output, &options.cancel, message),
+    };
+    let response = match connect(&model, &compat, &grammar, &messages, &normalized, &options).await
+    {
         Ok(response) => response,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
@@ -1041,9 +1039,9 @@ async fn connect(
     compat: &Compat,
     grammar: &HashMap<String, String>,
     messages: &[Message],
+    normalized: &[Message],
     options: &StreamOptions,
 ) -> Result<reqwest::Response, String> {
-    let normalized = resolve_transcript(messages, compat.supports_mid_convo_system_messages);
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
         None if options.has_header("authorization")
@@ -1058,13 +1056,7 @@ async fn connect(
     let effort = effort(model, options);
     let retention = options.resolved_cache_retention();
     let params = build_params(
-        model,
-        &normalized,
-        options,
-        compat,
-        grammar,
-        max_tokens,
-        effort,
+        model, normalized, options, compat, grammar, max_tokens, effort,
     )?;
 
     let mut headers = super::openai_headers(&api_key, model.headers.as_ref());
