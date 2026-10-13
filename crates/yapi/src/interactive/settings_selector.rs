@@ -73,6 +73,8 @@ pub struct SettingsConfig {
     pub follow_up_mode: String,
     /// The HTTP idle timeout in milliseconds.
     pub http_idle_timeout_ms: u64,
+    /// The cache warming mode, which only the global settings set.
+    pub cache_warming: yapi_types::settings::CacheWarming,
     /// Thinking blocks are hidden.
     pub hide_thinking: bool,
     /// The current TUI mode.
@@ -947,7 +949,7 @@ impl SettingsSelector {
                 "cache-warming-mode",
                 "Cache warming",
                 "off; streaming while the agent runs; idle also between runs while continuation stays profitable",
-                setting_name(settings.cache_warming, "streaming"),
+                setting_name(config.cache_warming, "streaming"),
                 &["off", "streaming", "idle"],
             ),
             bool_item(
@@ -1368,6 +1370,7 @@ impl super::App {
             steering_mode: mode(self.session.steering_mode()),
             follow_up_mode: mode(self.session.follow_up_mode()),
             http_idle_timeout_ms: self.session.http_idle_timeout_ms(),
+            cache_warming: self.session.cache_warming_mode(),
             hide_thinking: self.hide_thinking,
             fullscreen: self.fullscreen,
             models: self.session.available_models(),
@@ -1483,8 +1486,10 @@ impl super::App {
                 }
             }
             "cache-warming-mode" => {
-                global("cacheWarming", text());
-                self.status(format!("Cache warming: {value}"));
+                if let Ok(mode) = serde_json::from_value(text()) {
+                    let _ = self.session.set_cache_warming_mode(mode);
+                    self.status(format!("Cache warming: {value}"));
+                }
             }
             "hide-thinking" => {
                 self.hide_thinking = on;

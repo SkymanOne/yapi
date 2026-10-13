@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use ratatui_core::style::Modifier;
 use ratatui_core::text::{Line, Span};
-use yapi_core::agent_session::{AgentSession, Replacement, SessionChange};
+use yapi_core::agent_session::{
+    AgentSession, Replacement, SessionChange, format_cache_warming_status,
+};
 use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::{CombinedProvider, SlashCommand};
 use yapi_tui::fuzzy::fuzzy_filter;
@@ -309,7 +311,6 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
             file.name(),
         )
     });
-    let settings = session.settings();
     let dim = theme.fg("dim");
     let mut info: Vec<StyledLine> = vec![bold("Session Info"), Line::default()];
     if let Some(name) = name {
@@ -374,18 +375,32 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
     ));
     info.push(Line::default());
     info.push(bold("Cache Warming"));
-    let mode = settings
-        .cache_warming
-        .as_ref()
-        .and_then(|mode| serde_json::to_value(mode).ok())
+    let mode = serde_json::to_value(session.cache_warming_mode())
+        .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "streaming".into());
+        .unwrap_or_default();
     info.push(dim_label(theme, "Mode:", mode));
+    let status = session.cache_warming_status();
     info.push(dim_label(
         theme,
         "Status:",
-        "Inactive (cache warming unavailable)".into(),
+        format_cache_warming_status(&status, tokio::time::Instant::now()),
     ));
+    if let Some(decision) = status
+        .decision
+        .filter(|decision| decision.economics_available)
+    {
+        info.push(dim_label(
+            theme,
+            "Cache miss penalty:",
+            format!("${:.3}", decision.miss_cost),
+        ));
+        info.push(dim_label(
+            theme,
+            "Refresh cost:",
+            format!("${:.3}", decision.warm_cost),
+        ));
+    }
     if totals.cost > 0.0 {
         info.push(Line::default());
         info.push(bold("Cost"));

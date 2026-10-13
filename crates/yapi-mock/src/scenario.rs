@@ -1007,14 +1007,10 @@ fn normalize_screen(rows: &[String], normalizer: &mut Normalizer<'_>) -> Vec<Str
         }
         // The logos' bottom rows precede the first key hint: yapi's first,
         // since it ends with pi's.
-        let mut row = normalizer
+        let row = normalizer
             .text(row.trim_end())
             .replacen(" █ █▄█▄ █▀ █ ", "", 1)
             .replacen("█▀ █ ", "", 1);
-        // yapi has no cache warming (docs/compat.md), so its status differs.
-        if row.starts_with(" Status: Inactive (") {
-            row = " Status: Inactive (<reason>)".to_owned();
-        }
         let row = row
             .split(' ')
             .map(|word| if UUID.is_match(word) { "<uuid>" } else { word })
