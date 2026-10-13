@@ -1,0 +1,16 @@
+[package]
+name = "code-renderer"
+description = "An example native yapi extension: a code renderer that colors Rust keywords."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+yapi-extension-api = { path = "../../yapi-extension-api" }
+
+[lints]
+workspace = true

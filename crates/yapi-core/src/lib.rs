@@ -12,6 +12,7 @@ pub mod extensions;
 pub mod glob;
 pub mod images;
 pub mod import;
+pub mod language;
 pub mod llama;
 pub mod mcp;
 pub mod messages;

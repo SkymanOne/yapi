@@ -157,11 +157,12 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi never 
 | `Component` | A piece of interface that renders lines for a width and handles keys and mouse events. See [Interface components](#interface-components). |
 | `Context::custom`, `Context::set_widget`, `Context::set_footer`, `Context::set_header`, `Context::set_editor_component` | Show components, as Pi's `ctx.ui` does |
 | `Tool::render_call`, `Tool::render_result`, `Api::register_message_renderer` | Draw tool calls, tool results and custom messages in the transcript |
+| `Api::register_code_renderer` | Draw code in messages and tool rows, yapi's `pi.yapi.registerCodeRenderer`. See [Code renderers](#code-renderers). |
 | `Context::on_terminal_input`, `Context::add_autocomplete_provider`, `editor_text` | See raw keys before the editor does, complete text in the editor, and read the editor's text. See [Terminal input and completion](#terminal-input-and-completion). |
 | `theme`, `request_render`, `parse_key`, `terminal_size`, `editor_focused` | Style text in the session's theme, render components again, name keys, read the terminal's size, and tell whether the prompt editor has the keyboard |
 | `widgets` | pi-tui's widgets, such as `SelectList` and `Editor`, with the `widgets` feature |
 
-[Native extension examples](native-examples.md) walks through seventeen complete extensions.
+[Native extension examples](native-examples.md) walks through eighteen complete extensions.
 
 ### Host requests
 
@@ -314,6 +315,10 @@ Only the interactive mode shows components. In RPC, print and JSON modes, `custo
 `Tool::render_call` and `Tool::render_result` draw a tool's call and result in the transcript, as Pi's `renderCall` and `renderResult` do, and `Tool::render_shell("self")` says they draw the tool's whole box. `Api::register_message_renderer` draws custom messages of one type, as Pi's `registerMessageRenderer` does. A renderer returns a component, or `None` to keep yapi's own rendering.
 
 A tool renderer gets a `RenderContext`, with Pi's context fields such as `toolCallId`, `expanded` and `isPartial` in `data`, and a `state` value that the call's and the result's renderers share for one tool call. Pi's `lastComponent` has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one's place, and yapi shows the old one's lines until the new one has rendered.
+
+### Code renderers
+
+`Api::register_code_renderer` draws code, as [`pi.yapi.registerCodeRenderer`](extensions.md#yapi-only-apis) does for Pi extensions. It gets the code, its language when known and the columns it has, and returns lines of text with escape sequences colored with `theme`, or `None` to leave the code in one color. The [`code-renderer`](native-examples.md#code-renderer) example colors Rust keywords.
 
 ### Widgets
 

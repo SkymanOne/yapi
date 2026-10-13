@@ -322,6 +322,8 @@ pub struct Renderers {
     pub tools: std::collections::HashMap<String, ToolRenderers>,
     /// Custom message types it draws (`registerMessageRenderer`).
     pub messages: Vec<String>,
+    /// It renders code blocks (`pi.yapi.registerCodeRenderer`, yapi's own).
+    pub code: bool,
 }
 
 /// An extension. Every hook has a no-op default.
@@ -427,6 +429,16 @@ pub trait Extension: Send + Sync {
     /// "message", "options"}`. `None` keeps the built-in rendering.
     fn component<'a>(&'a self, _request: &'a Value) -> BoxFuture<'a, Option<RemoteComponent>> {
         Box::pin(async { None })
+    }
+
+    /// The lines its code renderer draws for `request`, `{"code", "lang",
+    /// "width"}` with `lang` possibly `null`, as text with escape sequences.
+    /// `Ok(None)` leaves the code to yapi; an error is the renderer's.
+    fn render_code<'a>(
+        &'a self,
+        _request: &'a Value,
+    ) -> BoxFuture<'a, Result<Option<Vec<String>>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// A tool is about to run; `Some(reason)` blocks it.

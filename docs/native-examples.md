@@ -1,6 +1,6 @@
 # Native extension examples
 
-The repository has seventeen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
+The repository has eighteen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
 
 | Example | Shows | Pi counterpart |
 |---|---|---|
@@ -21,6 +21,7 @@ The repository has seventeen native extensions in [`guest/examples`](https://git
 | [`input-hooks`](#input-hooks) | A terminal input listener that reads the editor, an autocomplete provider and a shortcut | None |
 | [`crash-recovery`](#crash-recovery) | What yapi does when an extension panics | None |
 | [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
+| [`code-renderer`](#code-renderer) | A code renderer, yapi's own API, that colors Rust keywords | None |
 
 Five of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
 
@@ -347,3 +348,7 @@ for left in (1..=seconds).rev() {
 ```
 
 `race` polls two futures until one finishes, so the tool needs no other crate. `futures::select!` does the same.
+
+## code-renderer
+
+A code renderer, yapi's own API: it colors the keywords of Rust code with the theme's keyword color, in code blocks and in `read`, `write` and codemode rows, and leaves other languages in one color.

@@ -977,7 +977,31 @@ impl Extension for JsExtension {
                 .iter()
                 .map(text)
                 .collect(),
+            code: self.description["codeRenderer"] == true,
         }
+    }
+
+    fn render_code<'a>(
+        &'a self,
+        request: &'a Value,
+    ) -> BoxFuture<'a, Result<Option<Vec<String>>, String>> {
+        Box::pin(async move {
+            // Only the bound session's extensions draw.
+            if *self.shared.bound.lock().await != self.generation + 1 {
+                return Ok(None);
+            }
+            let mut payload = request.clone();
+            payload["extension"] = json!(self.id);
+            let lines = self
+                .shared
+                .instance
+                .call("code", &payload)
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok(lines
+                .as_array()
+                .map(|lines| lines.iter().map(text).collect()))
+        })
     }
 
     fn component<'a>(&'a self, request: &'a Value) -> BoxFuture<'a, Option<RemoteComponent>> {

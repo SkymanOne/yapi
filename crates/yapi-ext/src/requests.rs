@@ -316,6 +316,7 @@ impl Host {
                     .abort(payload["id"].as_u64().unwrap_or_default());
                 Ok(Value::Null)
             }
+            "language.fromPath" => Ok(json!(yapi_core::language::from_path(text(payload, "path")))),
             "frontmatter.parse" => {
                 let (frontmatter, body) =
                     yapi_core::resources::parse_frontmatter(text(payload, "content"))?;

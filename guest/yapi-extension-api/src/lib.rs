@@ -215,6 +215,7 @@ pub struct Tool {
 type CallRenderer = dyn Fn(&Value, &mut RenderContext) -> Option<Box<dyn Component>>;
 type ResultRenderer = dyn Fn(&Value, &Value, &mut RenderContext) -> Option<Box<dyn Component>>;
 type MessageRenderer = dyn Fn(&Value, &Value) -> Option<Box<dyn Component>>;
+type CodeRenderer = dyn Fn(&str, Option<&str>, usize) -> Option<Vec<String>>;
 
 /// What a tool's renderer draws for; pi's `ToolRenderContext`.
 pub struct RenderContext<'a> {
@@ -357,6 +358,7 @@ pub struct Api {
     flags: Vec<Flag>,
     handlers: Vec<(String, Handler<Value, Option<Value>>)>,
     message_renderers: Vec<(String, Rc<MessageRenderer>)>,
+    code_renderer: Option<Rc<CodeRenderer>>,
 }
 
 impl Api {
@@ -442,6 +444,19 @@ impl Api {
         draws();
     }
 
+    /// yapi's `pi.yapi.registerCodeRenderer`, which pi lacks: the lines
+    /// the transcript shows for a code block, from its code, its language
+    /// and the width it has, as text with escape sequences, colored with
+    /// [`ui::theme`]. `None` leaves the code to yapi, and the first
+    /// extension's renderer that returns lines wins.
+    pub fn register_code_renderer(
+        &mut self,
+        render: impl Fn(&str, Option<&str>, usize) -> Option<Vec<String>> + 'static,
+    ) {
+        self.code_renderer = Some(Rc::new(render));
+        RENDER_CODE.set(Some(render_code));
+    }
+
     fn describe(&self, id: u64, path: &str) -> Value {
         let mut events: Vec<&str> = self
             .handlers
@@ -483,6 +498,7 @@ impl Api {
             "messageRenderers": self.message_renderers.iter().map(|(name, _)| name).collect::<Vec<_>>(),
             "entryRenderers": [],
             "markdownTransformer": false,
+            "codeRenderer": self.code_renderer.is_some(),
             "providers": [],
             "mcpServers": [],
         })
@@ -718,6 +734,9 @@ fn call(
             answer(Ok(Value::Null))
         }
         "component" => answer(Ok(DRAW.get().map_or(Value::Null, |draw| draw(&payload)))),
+        "code" => answer(Ok(RENDER_CODE
+            .get()
+            .map_or(Value::Null, |render| render(&payload)))),
         "terminalInput" => answer(Ok(input::TERMINAL_INPUT
             .get()
             .map_or(Value::Null, |run| run(&payload)))),
@@ -843,6 +862,24 @@ thread_local! {
 
 fn draws() {
     DRAW.set(Some(component));
+}
+
+thread_local! {
+    /// Answers the `code` call once a code renderer is registered, as
+    /// [`DRAW`] does for components.
+    static RENDER_CODE: std::cell::Cell<Option<Draw>> = const { std::cell::Cell::new(None) };
+}
+
+/// The `code` call: the lines the code renderer draws, or `null`.
+fn render_code(payload: &Value) -> Value {
+    let lines = registered(|api| api.code_renderer.clone()).and_then(|render| {
+        render(
+            payload["code"].as_str().unwrap_or_default(),
+            payload["lang"].as_str(),
+            payload["width"].as_u64().unwrap_or_default() as usize,
+        )
+    });
+    lines.map_or(Value::Null, |lines| json!(lines))
 }
 
 /// The `component` call: what a registered renderer draws.

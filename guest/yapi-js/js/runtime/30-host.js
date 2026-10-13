@@ -273,6 +273,12 @@
 					return eventBus.on(channel, handler);
 				},
 			}),
+			// yapi's own API, which pi lacks: packages call it as `pi.yapi?.…`.
+			yapi: active({
+				registerCodeRenderer(render) {
+					extension.codeRenderer = render;
+				},
+			}),
 		});
 		return {
 			api,
@@ -381,6 +387,7 @@
 			messageRenderers: [...extension.messageRenderers.keys()],
 			entryRenderers: [...extension.entryRenderers.keys()],
 			markdownTransformer: typeof extension.markdownTransformer === "function",
+			codeRenderer: typeof extension.codeRenderer === "function",
 			providers: extension.providers,
 			mcpServers: [...extension.mcpServers].map(([name, { config }]) => ({ name, config })),
 		};
@@ -422,6 +429,7 @@
 			messageRenderers: new Map(),
 			entryRenderers: new Map(),
 			markdownTransformer: undefined,
+			codeRenderer: undefined,
 			providers: [],
 			mcpServers: new Map(),
 			virtualModels: [],
@@ -1596,6 +1604,16 @@
 			);
 			result.models = plain(models) ?? null;
 			return result;
+		},
+		/**
+		 * The lines extension `payload.extension`'s code renderer draws for
+		 * `{ code, lang, width }`, or `null` to leave the code to yapi. An
+		 * error is the renderer's.
+		 */
+		code(payload) {
+			const render = extensionOf(payload.extension).codeRenderer;
+			const lines = render?.(payload.code, payload.lang ?? undefined, { width: payload.width }, theme);
+			return Array.isArray(lines) ? lines.map(String) : null;
 		},
 		/**
 		 * Builds the component a tool's `renderCall`/`renderResult` or a

@@ -73,6 +73,49 @@ async fn native_extensions_register_and_run() {
     assert_eq!(session.extensions()[0].commands()[0].name, "hello");
 }
 
+/// A UI whose theme colors keywords magenta.
+struct Themed;
+
+impl ExtensionUi for Themed {
+    fn has_ui(&self) -> bool {
+        true
+    }
+
+    fn notify(&self, _message: &str, _kind: NotifyKind) {}
+
+    fn theme(&self) -> serde_json::Value {
+        json!({"fg": {"syntaxKeyword": "\x1b[35m"}, "bg": {}, "dim": []})
+    }
+}
+
+/// The `code-renderer` example draws Rust code with its keywords in the
+/// theme's color and leaves other languages to yapi.
+#[tokio::test(flavor = "multi_thread")]
+async fn code_renderers_color_code() {
+    let dir = scratch("code-renderer");
+    let host = load(&dir, "code-renderer").await;
+    let faux = Faux::new([Response::text("unused")]);
+    let session = session(&faux, &dir, host.for_session());
+    session
+        .bind_extensions(Arc::new(Themed), Mode::Tui, None, None)
+        .await;
+    let renderers = session.code_renderers();
+    assert_eq!(renderers.len(), 1);
+    let request =
+        |lang: &str| json!({"code": "pub fn main() {}\nlet x;", "lang": lang, "width": 40});
+    assert_eq!(
+        renderers[0].render_code(&request("rust")).await.unwrap(),
+        Some(vec![
+            "\x1b[35mpub\x1b[39m \x1b[35mfn\x1b[39m main() {}".to_owned(),
+            "\x1b[35mlet\x1b[39m x;".to_owned(),
+        ])
+    );
+    assert_eq!(
+        renderers[0].render_code(&request("python")).await.unwrap(),
+        None
+    );
+}
+
 fn fixture(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.wasm"))
 }
