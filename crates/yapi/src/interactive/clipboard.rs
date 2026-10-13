@@ -272,7 +272,9 @@ async fn image_linux() -> Option<(Vec<u8>, &'static str)> {
         image = image_via("xclip", &list, read).await;
     }
     let (bytes, mime) = image.flatten()?;
-    pasteable(bytes, &mime)
+    tokio::task::spawn_blocking(move || pasteable(bytes, &mime))
+        .await
+        .ok()?
 }
 
 /// pi's `readClipboardImageVia{WlPaste,Xclip}`: `None` when `command`
@@ -327,25 +329,14 @@ fn image_type(types: &str) -> Option<&str> {
 }
 
 /// An image of type `mime` as pi pastes it, with its file extension: as it
-/// is when of one of [`IMAGE_TYPES`], else converted to PNG. `None` when
-/// the conversion fails.
+/// is when of one of [`IMAGE_TYPES`], else decoded and encoded as PNG, with
+/// no EXIF orientation. `None` when the conversion fails.
 fn pasteable(bytes: Vec<u8>, mime: &str) -> Option<(Vec<u8>, &'static str)> {
-    let extension = |mime: &str| {
-        IMAGE_TYPES
-            .iter()
-            .find(|(kind, _)| *kind == mime)
-            .map(|(_, extension)| *extension)
-    };
-    if let Some(extension) = extension(mime) {
-        return Some((bytes, extension));
+    let base = base_type(mime);
+    match IMAGE_TYPES.iter().find(|(kind, _)| *kind == base) {
+        Some((_, extension)) => Some((bytes, extension)),
+        None => Some((yapi_core::images::to_png(&bytes)?, "png")),
     }
-    let image = yapi_core::images::process(&bytes, mime, false, None)
-        .ok()?
-        .image;
-    Some((
-        STANDARD.decode(image.data).ok()?,
-        extension(&image.mime_type)?,
-    ))
 }
 
 /// pi's `readClipboardText` on Linux, without its native fallback: the
@@ -442,10 +433,17 @@ mod tests {
 
     #[test]
     fn other_image_types_become_png() {
-        assert_eq!(
-            pasteable(b"jpeg".to_vec(), "image/jpeg"),
-            Some((b"jpeg".to_vec(), "jpg"))
-        );
+        for (mime, extension) in [
+            ("image/png", "png"),
+            ("image/jpeg", "jpg"),
+            ("image/webp", "webp"),
+            ("image/gif", "gif"),
+        ] {
+            assert_eq!(
+                pasteable(b"bytes".to_vec(), mime),
+                Some((b"bytes".to_vec(), extension))
+            );
+        }
         // pi's 1×1 red BMP.
         let mut bmp = b"BM".to_vec();
         for value in [58u32, 0, 54, 40, 1, 1] {
@@ -458,6 +456,8 @@ mod tests {
                 .flat_map(|value| value.to_le_bytes()),
         );
         bmp.extend([0, 0, 0xff, 0]);
+        // `image/jpg` is not a pasted type, so it converts too.
+        assert_eq!(pasteable(bmp.clone(), "image/jpg").unwrap().1, "png");
         let (png, extension) = pasteable(bmp, "image/bmp").unwrap();
         assert!(png.starts_with(b"\x89PNG"));
         assert_eq!(extension, "png");

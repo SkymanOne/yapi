@@ -32,9 +32,10 @@ pub struct Processed {
 }
 
 /// pi's `processImage`: an image that is not PNG, JPEG, GIF or WebP becomes
-/// PNG, and with `auto_resize` the image is fitted to `limits`, pi's defaults
-/// where unset: 2000×2000 and 4.5 MB of base64. The error is pi's omission
-/// note.
+/// PNG when the `image` crate, with Photon's formats, recognizes it from its
+/// bytes (BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld), and with `auto_resize`
+/// the image is fitted to `limits`, pi's defaults where unset: 2000×2000 and
+/// 4.5 MB of base64. The error is pi's omission note.
 pub fn process(
     bytes: &[u8],
     mime_type: &str,
@@ -234,6 +235,14 @@ fn decode(bytes: &[u8]) -> Option<DynamicImage> {
         8 => imageops::rotate270(&image),
         _ => image,
     }))
+}
+
+/// The clipboard's `convertToPng`: `bytes` decoded to RGBA and encoded as
+/// PNG, with no EXIF orientation and no resizing. `None` when they do not
+/// decode.
+pub fn to_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    let image = DynamicImage::ImageRgba8(image::load_from_memory(bytes).ok()?.to_rgba8());
+    encode(&image, ImageOutputFormat::Png)
 }
 
 /// `image` in `format`. JPEG drops the alpha channel, as with Photon.
@@ -477,21 +486,103 @@ mod tests {
     }
 
     #[test]
-    fn other_formats_become_png() {
-        let image = pixels(3, 2, false);
-        let bmp = file(&image, ImageOutputFormat::Bmp);
+    fn to_png_ignores_exif_orientation() {
+        let jpeg = file(&pixels(4, 2, false), ImageOutputFormat::Jpeg(90));
+        let mut exif = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01".to_vec();
+        exif.extend_from_slice(b"\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0");
+        let rotated = [&jpeg[..2], &exif, &jpeg[2..]].concat();
+        let png = to_png(&rotated).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
+        let decoded = image::load_from_memory(&png).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (4, 2));
+    }
+
+    /// Runs `bytes` through `process` as `mime_type` with and without resizing
+    /// and returns the PNG it becomes, after checking pi's conversion note.
+    fn converted(bytes: &[u8], mime_type: &str) -> Vec<u8> {
+        let mut png = None;
         for auto_resize in [true, false] {
-            let processed = process(&bmp, "image/bmp", auto_resize, None).unwrap();
+            let processed = process(bytes, mime_type, auto_resize, None)
+                .unwrap_or_else(|note| panic!("{mime_type}: {note}"));
             assert_eq!(processed.image.mime_type, "image/png");
             assert_eq!(
-                STANDARD.decode(&processed.image.data).unwrap(),
-                file(&image, ImageOutputFormat::Png)
-            );
-            assert_eq!(
                 processed.hints,
-                ["[Image converted from image/bmp to image/png.]"]
+                [format!("[Image converted from {mime_type} to image/png.]")]
             );
+            let data = STANDARD.decode(&processed.image.data).unwrap();
+            assert!(png.replace(data.clone()).is_none_or(|first| first == data));
         }
+        png.unwrap()
+    }
+
+    /// A 2x2 RGB TIFF holding red, green, blue and white.
+    const TIFF: &str = "SUkqAAgAAAAJAAABAwABAAAAAgAAAAEBAwABAAAAAgAAAAIBAwADAAAAegAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAABEBBAABAAAAgAAAABUBAwABAAAAAwAAABYBAwABAAAAAgAAABcBBAABAAAADAAAAAAAAAAIAAgACAD/AAAA/wAAAP////8=";
+
+    /// A 4x4 DDS of one DXT1 block that is solid red.
+    fn dds() -> Vec<u8> {
+        let mut bytes = b"DDS ".to_vec();
+        let mut header = [0u32; 31];
+        header[0] = 124; // size
+        header[1] = 0x1 | 0x2 | 0x4 | 0x1000; // caps, height, width, pixel format
+        header[2] = 4; // height
+        header[3] = 4; // width
+        header[4] = 8; // linear size
+        header[18] = 32; // pixel format size
+        header[19] = 0x4; // fourcc
+        header[20] = u32::from_le_bytes(*b"DXT1");
+        header[26] = 0x1000; // texture
+        bytes.extend(header.iter().flat_map(|word| word.to_le_bytes()));
+        bytes.extend([0x00, 0xf8, 0x00, 0x00, 0, 0, 0, 0]);
+        bytes
+    }
+
+    #[test]
+    fn other_formats_become_png() {
+        let image = pixels(3, 2, false);
+        let png = file(&image, ImageOutputFormat::Png);
+        let rgba16 = DynamicImage::ImageRgba16(image.to_rgba16());
+        // PNM has no alpha channel, so it takes the opaque pixels as RGB.
+        let rgb = DynamicImage::ImageRgb8(image.to_rgb8());
+        let pnm = ImageOutputFormat::Pnm(image::codecs::pnm::PnmSubtype::Pixmap(
+            image::codecs::pnm::SampleEncoding::Binary,
+        ));
+        for (mime_type, bytes) in [
+            ("image/bmp", file(&image, ImageOutputFormat::Bmp)),
+            ("image/x-icon", file(&image, ImageOutputFormat::Ico)),
+            ("image/x-portable-pixmap", file(&rgb, pnm)),
+            (
+                "image/x-farbfeld",
+                file(&rgba16, ImageOutputFormat::Farbfeld),
+            ),
+        ] {
+            assert_eq!(converted(&bytes, mime_type), png, "{mime_type}");
+        }
+
+        let tiff = RgbaImage::from_fn(2, 2, |x, y| match (x, y) {
+            (0, 0) => Rgba([255, 0, 0, 255]),
+            (1, 0) => Rgba([0, 255, 0, 255]),
+            (0, 1) => Rgba([0, 0, 255, 255]),
+            _ => Rgba([255; 4]),
+        });
+        assert_eq!(
+            converted(&STANDARD.decode(TIFF).unwrap(), "image/tiff"),
+            file(&DynamicImage::ImageRgba8(tiff), ImageOutputFormat::Png)
+        );
+
+        let red = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([255, 0, 0, 255])));
+        assert_eq!(
+            converted(&dds(), "image/vnd.ms-dds"),
+            file(&red, ImageOutputFormat::Png)
+        );
+
+        // Radiance HDR stores shared-exponent floats, so only the size is exact.
+        let mut hdr = Vec::new();
+        image::codecs::hdr::HdrEncoder::new(&mut hdr)
+            .encode(&[image::Rgb([0.5f32, 0.25, 1.0]); 6], 3, 2)
+            .unwrap();
+        let decoded = image::load_from_memory(&converted(&hdr, "image/vnd.radiance")).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (3, 2));
+
         assert_eq!(
             process(b"not an image", "image/tiff", true, None),
             Err(CONVERT_FAILED)
