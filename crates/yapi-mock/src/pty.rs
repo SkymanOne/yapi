@@ -1,6 +1,6 @@
 //! A program in a pseudo-terminal, with its screen emulated.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::Write as _;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};
@@ -126,7 +126,7 @@ impl Pty {
         executable: &Path,
         args: &[String],
         cwd: &Path,
-        env: &[(&str, OsString)],
+        env: &[(impl AsRef<OsStr>, OsString)],
         (cols, rows): (u16, u16),
         answer: bool,
     ) -> std::io::Result<Pty> {

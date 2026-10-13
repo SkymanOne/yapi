@@ -1,0 +1,121 @@
+{
+  "exitCode": -1,
+  "stdout": "",
+  "stderr": "",
+  "requests": [],
+  "sessions": [
+    {
+      "file": "2026-10-01T10-00-00-000Z_019a0000-0000-7000-8000-0000000071ee.jsonl",
+      "lines": [
+        {
+          "type": "session",
+          "version": 3,
+          "id": "<id-1>",
+          "timestamp": "<timestamp>",
+          "cwd": "<cwd>"
+        },
+        {
+          "type": "model_change",
+          "id": "<id-2>",
+          "parentId": null,
+          "timestamp": "<timestamp>",
+          "provider": "anthropic",
+          "modelId": "claude-sonnet-4-5"
+        },
+        {
+          "type": "message",
+          "id": "<id-3>",
+          "parentId": "<id-2>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Remember the word pineapple."
+              }
+            ],
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-4>",
+          "parentId": "<id-3>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Noted: pineapple."
+              }
+            ],
+            "api": "anthropic-messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+            "usage": {
+              "input": 120,
+              "output": 8,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "totalTokens": 128,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "label",
+          "id": "<id-5>",
+          "parentId": "<id-4>",
+          "timestamp": "<timestamp>",
+          "targetId": "<id-3>",
+          "label": "ask"
+        },
+        {
+          "type": "label",
+          "id": "<id-6>",
+          "parentId": "<id-5>",
+          "timestamp": "<timestamp>",
+          "targetId": "<id-4>",
+          "label": "answer"
+        },
+        {
+          "type": "thinking_level_change",
+          "id": "<id-7>",
+          "parentId": "<id-6>",
+          "timestamp": "<timestamp>",
+          "thinkingLevel": "medium"
+        }
+      ]
+    }
+  ],
+  "screen": [
+    " Remember the word pineapple.",
+    "",
+    " Noted: pineapple.",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "   Session Tree",
+    "  ↑/↓ move · ←/→ page · option+←/→ branch · ctrl+x copy · shift+l label · shift+t label time",
+    "  filters ctrl+d/t/u/l/a · cycle ctrl+o/shift+ctrl+o",
+    "  Type to search:",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "",
+    "  • [ask] 24/7/4 12:05 user: Remember the word pineapple.",
+    "› • [answer] 24/12/31 22:15 assistant: Noted: pineapple.",
+    "  (2/2) [+label time]",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "~/project",
+    "↑120 ↓8 0.0%/1.0M (auto)                                      (anthropic) claude-sonnet-4-5 • medium"
+  ]
+}

@@ -6,7 +6,7 @@
 //! providers at the mock server; credentials are dummy environment variables.
 
 use std::collections::HashMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::LazyLock;
@@ -40,6 +40,10 @@ pub struct Scenario {
     /// Files to create in the agent directory, such as `settings.json`.
     #[serde(default, rename = "agentFiles")]
     pub agent_files: IndexMap<String, String>,
+    /// Environment variables to set on top of the clean environment, such as
+    /// `TZ`.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub env: IndexMap<String, String>,
     /// Runs the program in a terminal and types into it.
     #[serde(default)]
     pub tty: Option<Tty>,
@@ -399,12 +403,21 @@ pub async fn run(scenario: &Scenario, program: &Program) -> Result<Run, Error> {
         None => (executable, scenario.args.clone()),
     };
     let executable = &executable;
-    let mut env = clean_env(dir_var, &agent_dir, &root);
+    let mut env: Vec<(String, OsString)> = clean_env(dir_var, &agent_dir, &root)
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect();
     if let Program::Pi(pi) = program
         && let Some(link) = pi_package_link(pi, &root).map_err(io(&root))?
     {
-        env.push(("PI_PACKAGE_DIR", link.into()));
+        env.push(("PI_PACKAGE_DIR".to_owned(), link.into()));
     }
+    env.extend(
+        scenario
+            .env
+            .iter()
+            .map(|(key, value)| (key.clone(), value.into())),
+    );
     let mut progress = None;
     let (exit_code, stdout, stderr, screen) = match &scenario.tty {
         Some(tty) => {
@@ -513,7 +526,7 @@ pub fn command(
     executable: &Path,
     args: &[String],
     cwd: &Path,
-    env: &[(&str, OsString)],
+    env: &[(impl AsRef<OsStr>, OsString)],
 ) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(executable);
     command
@@ -556,7 +569,7 @@ async fn run_rpc(
     executable: &Path,
     args: &[String],
     cwd: &Path,
-    env: &[(&'static str, OsString)],
+    env: &[(String, OsString)],
     steps: &[RpcStep],
 ) -> std::io::Result<(i32, String, String)> {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
@@ -659,7 +672,7 @@ fn run_tty(
     executable: &Path,
     args: &[String],
     cwd: &Path,
-    env: &[(&'static str, OsString)],
+    env: &[(String, OsString)],
     tty: &Tty,
 ) -> std::io::Result<(i32, Vec<String>, Option<Vec<String>>)> {
     let mut pty = crate::pty::Pty::spawn(executable, args, cwd, env, (tty.cols, tty.rows), false)?;
