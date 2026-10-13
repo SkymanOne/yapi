@@ -1062,6 +1062,56 @@ pub fn string_list(
         .collect()
 }
 
+/// pi's `dedupePackages`: the `packages` entries of the project, then the
+/// user, with their scopes, `project` or `user`. A project entry wins over
+/// the user's for the same package, as `identity` names it for a source and
+/// scope, unless it sets `autoload: false`: then both stay.
+pub fn dedupe_packages(
+    project: &[serde_json::Value],
+    user: &[serde_json::Value],
+    identity: impl Fn(&str, &str) -> String,
+) -> Vec<(serde_json::Value, &'static str)> {
+    let mut result: Vec<(serde_json::Value, &'static str)> = Vec::new();
+    let mut seen: Vec<(String, usize)> = Vec::new();
+    let entries = project
+        .iter()
+        .map(|entry| (entry, "project"))
+        .chain(user.iter().map(|entry| (entry, "user")));
+    for (entry, scope) in entries {
+        let Some(source) = super::entry_source(entry) else {
+            continue;
+        };
+        let id = identity(source, scope);
+        match seen
+            .iter()
+            .find(|(seen_id, _)| *seen_id == id)
+            .map(|(_, index)| *index)
+        {
+            None => {
+                seen.push((id, result.len()));
+                result.push((entry.clone(), scope));
+            }
+            Some(index) => {
+                let (existing, existing_scope) = &result[index];
+                if *existing_scope == "project" && scope == "user" {
+                    if is_delta(existing) {
+                        result.push((entry.clone(), scope));
+                    }
+                } else if scope == "project" {
+                    result[index] = (entry.clone(), scope);
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Whether a project's `packages` entry only adjusts the user's entry for
+/// the same package: it sets `autoload: false`.
+fn is_delta(entry: &serde_json::Value) -> bool {
+    entry.is_object() && entry["autoload"] == serde_json::Value::Bool(false)
+}
+
 /// pi's `dedupePackages` and `findAutoloadDeltaBase`: the `packages` entries
 /// of the project, then the user, that are installed, as `install_path`
 /// places a source written in a scope's settings. A project entry wins over
@@ -1076,41 +1126,7 @@ pub fn package_inputs(
     use super::source::parse;
     let source_of = |entry: &serde_json::Value| super::entry_source(entry).map(str::to_owned);
     let identity = |source: &str, scope: &str| parse(source).identity(&base(scope));
-    let delta = |entry: &serde_json::Value| {
-        entry.is_object() && entry["autoload"] == serde_json::Value::Bool(false)
-    };
-    let mut result: Vec<(serde_json::Value, &str)> = Vec::new();
-    let mut seen: Vec<(String, usize)> = Vec::new();
-    let entries = project
-        .iter()
-        .map(|entry| (entry, "project"))
-        .chain(user.iter().map(|entry| (entry, "user")));
-    for (entry, scope) in entries {
-        let Some(source) = source_of(entry) else {
-            continue;
-        };
-        let id = identity(&source, scope);
-        match seen
-            .iter()
-            .find(|(seen_id, _)| *seen_id == id)
-            .map(|(_, index)| *index)
-        {
-            None => {
-                seen.push((id, result.len()));
-                result.push((entry.clone(), scope));
-            }
-            Some(index) => {
-                let (existing, existing_scope) = &result[index];
-                if *existing_scope == "project" && scope == "user" {
-                    if delta(existing) {
-                        result.push((entry.clone(), scope));
-                    }
-                } else if scope == "project" {
-                    result[index] = (entry.clone(), scope);
-                }
-            }
-        }
-    }
+    let result = dedupe_packages(project, user, identity);
     let mut inputs = Vec::new();
     for (entry, scope) in &result {
         let Some(source) = source_of(entry) else {
@@ -1120,7 +1136,7 @@ pub fn package_inputs(
             .is_object()
             .then(|| serde_json::from_value(entry.clone()).ok())
             .flatten();
-        let (located, located_scope) = if *scope == "project" && delta(entry) {
+        let (located, located_scope) = if *scope == "project" && is_delta(entry) {
             let id = identity(&source, scope);
             result
                 .iter()
