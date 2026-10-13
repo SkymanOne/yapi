@@ -218,6 +218,120 @@ async fn installs_npm_packages_with_dependencies() {
     server.finish().unwrap();
 }
 
+/// Writes the agent's `settings.json` with `packages`.
+fn configure(dir: &Path, packages: Value) {
+    let agent = dir.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    std::fs::write(
+        agent.join("settings.json"),
+        json!({ "packages": packages }).to_string(),
+    )
+    .unwrap();
+}
+
+/// `npm/node_modules/<name>` in the agent directory, as installed at
+/// `version`.
+fn installed(dir: &Path, name: &str, version: &str) -> PathBuf {
+    let root = dir.join("agent/npm/node_modules").join(name);
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = json!({"name": name, "version": version});
+    std::fs::write(root.join("package.json"), manifest.to_string()).unwrap();
+    root
+}
+
+/// pi compares the installed version with the newest one in the source's
+/// range, and `update` installs that one.
+#[tokio::test(flavor = "multi_thread")]
+async fn finds_and_applies_npm_updates_in_range() {
+    let dir = scratch("npm-updates");
+    configure(
+        &dir,
+        json!([
+            "npm:ext-pkg@^1.0.0",
+            "npm:fixed@1.0.0",
+            "npm:missing",
+            "./local"
+        ]),
+    );
+    installed(&dir, "fixed", "0.9.0");
+    let root = installed(&dir, "ext-pkg", "1.0.0");
+    let release = |version: &str| {
+        let manifest = format!(r#"{{"name": "ext-pkg", "version": "{version}"}}"#);
+        tarball(&[("package.json", &manifest)])
+    };
+    let server = registry(|base| {
+        let versions =
+            ["1.0.0", "1.2.0", "2.0.0"].map(|version| (version, json!({}), release(version)));
+        publish(base, "ext-pkg", &versions, "1.2.0")
+    })
+    .await;
+    let mut packages = manager(&dir, &server.url());
+    assert_eq!(packages.available_updates().await, ["ext-pkg"]);
+    packages.update(Some("npm:ext-pkg")).await.unwrap();
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+    assert_eq!(manifest["version"], "1.2.0");
+    assert!(packages.available_updates().await.is_empty());
+    assert_eq!(
+        server.finish().unwrap().len(),
+        2,
+        "one packument and one tarball"
+    );
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .args(["-c", "user.name=yapi", "-c", "user.email=yapi@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "git {args:?}: {output:?}");
+}
+
+/// pi compares a git package's commit with its remote branch's. Pinned
+/// sources are left alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn finds_git_updates_on_the_remote() {
+    let dir = scratch("git-updates");
+    let origin = dir.join("origin.git");
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&dir, &["init", "--bare", "-b", "main", "origin.git"]);
+    git(&work, &["init", "-b", "main"]);
+    git(&work, &["commit", "--allow-empty", "-m", "first"]);
+    git(
+        &work,
+        &["remote", "add", "origin", origin.to_str().unwrap()],
+    );
+    git(&work, &["push", "origin", "main"]);
+    for path in ["user/repo", "user/pinned"] {
+        let checkout = dir.join("agent/git/github.com").join(path);
+        std::fs::create_dir_all(checkout.parent().unwrap()).unwrap();
+        git(
+            &dir,
+            &[
+                "clone",
+                origin.to_str().unwrap(),
+                checkout.to_str().unwrap(),
+            ],
+        );
+    }
+    configure(
+        &dir,
+        json!([
+            "git:github.com/user/repo",
+            "git:github.com/user/pinned@main"
+        ]),
+    );
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    assert!(packages.available_updates().await.is_empty());
+
+    git(&work, &["commit", "--allow-empty", "-m", "second"]);
+    git(&work, &["push", "origin", "main"]);
+    assert_eq!(packages.available_updates().await, ["github.com/user/repo"]);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn installs_native_addons_unbuilt_and_rejects_bad_integrity() {
     let dir = scratch("native");

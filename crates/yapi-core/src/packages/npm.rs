@@ -231,6 +231,32 @@ pub fn satisfies(version: &str, range: &str) -> bool {
         .is_some_and(|alternatives| alternatives.iter().any(|req| req.matches(&version)))
 }
 
+/// Whether `candidate` is a later version than `current`, as node-semver's
+/// `gt`; `false` when either is not a version.
+pub(crate) fn newer(candidate: &str, current: &str) -> bool {
+    match (
+        semver::Version::parse(candidate),
+        semver::Version::parse(current),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => false,
+    }
+}
+
+/// The highest of a packument's `versions` that `range` matches, with its
+/// manifest.
+fn highest<'a>(versions: &'a Map<String, Value>, range: &str) -> Option<(&'a String, &'a Value)> {
+    let alternatives = requirements(range)?;
+    versions
+        .iter()
+        .filter_map(|(version, manifest)| {
+            Some((semver::Version::parse(version).ok()?, version, manifest))
+        })
+        .filter(|(parsed, ..)| alternatives.iter().any(|req| req.matches(parsed)))
+        .max_by(|(a, ..), (b, ..)| a.cmp(b))
+        .map(|(_, version, manifest)| (version, manifest))
+}
+
 /// What npm asks a registry for: the abbreviated packument, which holds only
 /// what installs need. Full packuments of long-lived packages run to tens of
 /// megabytes.
@@ -369,16 +395,27 @@ impl Npm {
         {
             return Ok(manifest.clone());
         }
-        let alternatives = requirements(range).ok_or_else(no_match)?;
-        versions
-            .iter()
-            .filter_map(|(version, manifest)| {
-                Some((semver::Version::parse(version).ok()?, manifest))
-            })
-            .filter(|(version, _)| alternatives.iter().any(|req| req.matches(version)))
-            .max_by(|(a, _), (b, _)| a.cmp(b))
+        highest(versions, range)
             .map(|(_, manifest)| manifest.clone())
             .ok_or_else(no_match)
+    }
+
+    /// The version pi's update checks compare with the installed one, as
+    /// `npm view <name>@<range> version` reports it: the version a dist-tag
+    /// names, else the highest version in the range.
+    pub(crate) async fn latest(&mut self, name: &str, range: &str) -> Result<String, NpmError> {
+        let packument = self.packument(name).await?;
+        if let Some(tagged) = packument["dist-tags"][range].as_str() {
+            return Ok(tagged.to_owned());
+        }
+        packument["versions"]
+            .as_object()
+            .and_then(|versions| highest(versions, range))
+            .map(|(version, _)| version.clone())
+            .ok_or_else(|| NpmError::NoMatch {
+                name: name.to_owned(),
+                range: range.to_owned(),
+            })
     }
 
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {

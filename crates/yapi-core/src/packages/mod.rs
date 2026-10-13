@@ -168,6 +168,62 @@ fn run_git(args: &[&str], dir: Option<&Path>) -> Result<(), PackageError> {
     )))
 }
 
+/// The output of `git` with `args` in `dir`, given up after pi's network
+/// timeout. `None` when git fails.
+async fn git_output(args: &[&str], dir: &Path) -> Option<String> {
+    let output = tokio::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .envs(crate::config::child_env())
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    let output = tokio::time::timeout(std::time::Duration::from_secs(10), output)
+        .await
+        .ok()?
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// pi's `gitHasAvailableUpdate`: whether the remote commit of the checkout
+/// in `dir`'s upstream branch, else of the remote's `HEAD`, differs from the
+/// checkout's. `false` when git cannot tell.
+async fn git_newer(dir: &Path) -> bool {
+    let Some(local) = git_output(&["rev-parse", "HEAD"], dir).await else {
+        return false;
+    };
+    let branch = git_output(&["rev-parse", "--abbrev-ref", "@{upstream}"], dir)
+        .await
+        .and_then(|upstream| {
+            let branch = upstream.trim().strip_prefix("origin/")?;
+            (!branch.is_empty()).then(|| format!("refs/heads/{branch}"))
+        });
+    let commit = |listing: &str, reference: Option<&str>| {
+        listing.lines().find_map(|line| {
+            let (commit, name) = line.split_once(char::is_whitespace)?;
+            let named = reference.is_none_or(|reference| name.trim() == reference);
+            (commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) && named)
+                .then(|| commit.to_owned())
+        })
+    };
+    let mut remote = None;
+    if let Some(branch) = branch
+        && let Some(listing) = git_output(&["ls-remote", "origin", &branch], dir).await
+    {
+        remote = commit(&listing, None);
+    }
+    if remote.is_none()
+        && let Some(listing) = git_output(&["ls-remote", "origin", "HEAD"], dir).await
+    {
+        remote = commit(&listing, Some("HEAD"));
+    }
+    remote.is_some_and(|remote| remote != local.trim())
+}
+
 /// pi's `resolveManagedPath`: `parts` resolved against `root`, which it
 /// must not leave.
 fn managed_path(root: &Path, parts: &Path) -> Result<PathBuf, PackageError> {
@@ -532,14 +588,13 @@ impl PackageManager {
                     pinned,
                 } if !pinned => {
                     (self.progress)(&format!("Updating {configured}..."));
-                    let range = version.as_deref().unwrap_or("latest");
                     let installed = self.install_path(&parse(&configured), scope);
-                    let current = npm::installed_version(&installed);
-                    let stale = match &current {
-                        Some(current) => !npm::satisfies(current, range) || range == "latest",
-                        None => true,
-                    };
-                    if stale {
+                    // pi also reinstalls when either version is unknown.
+                    if self
+                        .npm_newer(&name, version.as_deref(), &installed)
+                        .await
+                        .unwrap_or(true)
+                    {
                         self.install_npm(&self.npm_root(scope), &name, version.as_deref())
                             .await?;
                     }
@@ -553,6 +608,68 @@ impl PackageManager {
             }
         }
         Ok(())
+    }
+
+    /// Whether the registry has a later version of npm package `name`, as
+    /// `version` (a range or dist-tag, else `latest`) selects it, than the
+    /// one installed in `root`. `None` when either version is unknown.
+    async fn npm_newer(&mut self, name: &str, version: Option<&str>, root: &Path) -> Option<bool> {
+        let installed = npm::installed_version(root)?;
+        let latest = self
+            .npm
+            .latest(name, version.unwrap_or("latest"))
+            .await
+            .ok()?;
+        Some(npm::newer(&latest, &installed))
+    }
+
+    /// pi's `checkForAvailableUpdates`: the installed npm and git packages
+    /// that settings list which have a later version than the one installed,
+    /// by name: the npm package's, or `<host>/<path>` for git. Local and
+    /// pinned sources are skipped, and so is a package whose check fails.
+    pub async fn available_updates(&mut self) -> Vec<String> {
+        let project = self.packages(Scope::Project);
+        let user = self.packages(Scope::Global);
+        let scope = |name: &str| {
+            if name == "project" {
+                Scope::Project
+            } else {
+                Scope::Global
+            }
+        };
+        let entries = resolve::dedupe_packages(&project, &user, |source, in_scope| {
+            parse(source).identity(&self.base(scope(in_scope)))
+        });
+        let mut updates = Vec::new();
+        // ponytail: one check at a time where pi runs four, which only
+        // delays a notice that arrives in the background.
+        for (entry, in_scope) in entries {
+            let Some(source) = entry_source(&entry) else {
+                continue;
+            };
+            let parsed = parse(source);
+            let root = self.install_path(&parsed, scope(in_scope));
+            if !root.exists() {
+                continue;
+            }
+            let update = match parsed {
+                Source::Npm {
+                    name,
+                    version,
+                    pinned: false,
+                } => (self.npm_newer(&name, version.as_deref(), &root).await == Some(true))
+                    .then_some(name),
+                Source::Git {
+                    host,
+                    path,
+                    reference: None,
+                    ..
+                } => git_newer(&root).await.then(|| format!("{host}/{path}")),
+                _ => None,
+            };
+            updates.extend(update);
+        }
+        updates
     }
 
     /// pi's temporary package for `-e`: where `source` is for this run. npm
