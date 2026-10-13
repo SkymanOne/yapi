@@ -2,8 +2,8 @@
 # Writes the notices that release archives ship next to the yapi binary: the
 # licenses of the Rust crates in the binary and in the JavaScript runtime it
 # embeds, found by cargo-about with about.toml and about.hbs, and the notices
-# of the vendored JavaScript packages and of pi's HTML export template, which
-# the binary embeds.
+# of the vendored JavaScript packages, of pi's HTML export template and of the
+# ported Mermaid renderer, which the binary embeds.
 #
 # Usage: scripts/third-party-notices.sh <out-file>
 # Needs cargo-about.
@@ -42,4 +42,10 @@ about() {
     echo "================================================================================"
     echo
     cat "$root/crates/yapi/assets/export-html/LICENSES.md"
+    echo
+    echo "================================================================================"
+    echo "Ported Mermaid renderer in the yapi binary"
+    echo "================================================================================"
+    echo
+    cat "$root/crates/yapi-tui/src/mermaid/LICENSES.md"
 } >"$1"

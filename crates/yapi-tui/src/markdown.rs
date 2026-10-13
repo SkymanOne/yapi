@@ -895,6 +895,18 @@ fn quote_spans(spans: Vec<Span<'static>>, quote: Style) -> Vec<Span<'static>> {
         .collect()
 }
 
+/// `text` in `style`, with the SGR sequences in it applied on top: pi-tui
+/// passes text with escape sequences through, as a Markdown transformer
+/// writes it.
+fn with_escapes(text: &str, style: Style) -> Vec<Span<'static>> {
+    if !text.contains('\x1b') {
+        return vec![Span::styled(text.to_owned(), style)];
+    }
+    crate::ansi::parse_line(&format!("{}{text}", crate::ansi::sgr(style)))
+        .0
+        .spans
+}
+
 fn longest_word(line: &StyledLine, cap: usize) -> usize {
     crate::lines::plain(line)
         .split_whitespace()
@@ -917,8 +929,8 @@ impl Renderer<'_> {
         let mut out = Vec::new();
         for inline in inlines {
             match inline {
-                Inline::Text(text) => out.push(Span::styled(text.clone(), text_style)),
-                Inline::Code(code) => out.push(Span::styled(code.clone(), self.theme.code)),
+                Inline::Text(text) => out.extend(with_escapes(text, text_style)),
+                Inline::Code(code) => out.extend(with_escapes(code, self.theme.code)),
                 Inline::Strong(children) => out.extend(under(children, Modifier::BOLD.into())),
                 Inline::Emphasis(children) => out.extend(under(children, Modifier::ITALIC.into())),
                 Inline::Strike(children) => {

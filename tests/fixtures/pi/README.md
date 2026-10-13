@@ -15,6 +15,7 @@ node keys.mjs
 node editor.mjs
 node theme.mjs
 node text.mjs
+node mermaid.mjs
 node selection.mjs
 node autocomplete.mjs   # needs fd on PATH
 node models-api.mjs
@@ -46,7 +47,8 @@ The script runs pi offline in `/tmp/yapi-pi-fixtures` with faux providers. Ids a
 | `keys/keys.json` | pi-tui `matchesKey`, `parseKey`, `decodePrintableKey` over generated input | Legacy, Kitty and Windows Terminal key decoding; the Kitty and Windows modes list only inputs that decode differently from legacy |
 | `keys/input.json` | pi-tui `StdinBuffer` fed chunk by chunk | Sequence splitting, partial sequences, pastes |
 | `theme/theme.json` | pi's built-in themes in both color modes; `generateSystemThemeColors` | Every token's escape sequence; system themes for no report, black, white, mid-gray and palette terminals |
-| `text/text.json` | pi-tui `wrapTextWithAnsi`, `truncateToWidth` and `Markdown` with an identity theme | Wrapping, truncation and markdown blocks at three widths, with and without preserved list markers and escapes, and links as OSC 8 hyperlinks |
+| `text/text.json` | pi-tui `wrapTextWithAnsi`, `truncateToWidth` and `Markdown` with an identity theme | Wrapping, truncation and markdown blocks at three widths, with and without preserved list markers and escapes, links as OSC 8 hyperlinks, and LaTeX |
+| `mermaid/render.json`, `mermaid/transform.json` | grok-mermaid's `render`, and pi's Mermaid Markdown transformer rendered by pi-tui's `Markdown` | Diagrams of every kind pi draws and each state of them as they stream in, and Mermaid code blocks in Markdown |
 | `editor/editor.json` | pi-tui `Editor` driven key by key | Text, cursor, rendered rows and submissions after every key: wrapping, word motion, kill ring, undo, history, pastes and markers, sticky columns, jumps, scrolling |
 | `settings/migrations.json` | `SettingsManager` loading legacy files and saving one setting | The `queueMode`, `websockets`, `skills` object and `retry.maxDelayMs` migrations, as written back; checked by `crates/yapi-core/src/settings.rs` |
 | `models-api/cases.json` | pi-ai's `pi-messages`, System One, llama.cpp classifier and OpenRouter image APIs, with `fetch` stubbed | Request URLs, headers and bodies, results and error messages; checked by `crates/yapi-ai/tests/models_api.rs` |

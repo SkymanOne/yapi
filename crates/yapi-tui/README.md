@@ -6,4 +6,4 @@ yapi publishes this crate for the `widgets` feature of [`yapi-extension-api`](ht
 
 ## License
 
-MIT OR Apache-2.0, at your option. `themes/dark.json` and `themes/light.json` are Pi's built-in themes, under the MIT License, as `themes/README.md` states.
+MIT OR Apache-2.0, at your option. `themes/dark.json` and `themes/light.json` are Pi's built-in themes, under the MIT License, as `themes/README.md` states. `src/mermaid` ports the grok-mermaid renderer, under the Apache License 2.0, as `src/mermaid/LICENSES.md` states.

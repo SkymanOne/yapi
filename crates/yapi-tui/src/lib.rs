@@ -13,6 +13,7 @@ mod kill_ring;
 pub mod latex;
 pub mod lines;
 pub mod markdown;
+pub mod mermaid;
 pub mod screen;
 mod segment;
 pub mod select_list;
