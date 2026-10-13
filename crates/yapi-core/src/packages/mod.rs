@@ -13,6 +13,8 @@ pub mod source;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
+use futures_util::StreamExt as _;
+use futures_util::future::Either;
 use serde_json::Value;
 use sha2::Digest as _;
 use yapi_types::settings::FilteredPackage;
@@ -166,6 +168,111 @@ fn run_git(args: &[&str], dir: Option<&Path>) -> Result<(), PackageError> {
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stderr).trim()
     )))
+}
+
+/// The scope that [`resolve::dedupe_packages`] and
+/// [`resolve::locate_packages`] name `project` or `user`.
+fn named_scope(name: &str) -> Scope {
+    if name == "project" {
+        Scope::Project
+    } else {
+        Scope::Global
+    }
+}
+
+/// pi's `NETWORK_TIMEOUT_MS`, for registry lookups and git remotes.
+const NETWORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// pi's `UPDATE_CHECK_CONCURRENCY`: how many update checks run at once.
+const UPDATE_CHECK_CONCURRENCY: usize = 4;
+
+/// The standard output of `command`, given up after pi's network timeout.
+/// `None` when it fails.
+async fn command_output(mut command: tokio::process::Command) -> Option<String> {
+    command
+        .envs(crate::config::child_env())
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(NETWORK_TIMEOUT, command.output())
+        .await
+        .ok()?
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// The output of `git` with `args` in `dir`, as [`command_output`].
+async fn git_output(args: &[&str], dir: &Path) -> Option<String> {
+    let mut command = tokio::process::Command::new("git");
+    command
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    command_output(command).await
+}
+
+/// pi's `getLatestNpmVersion` for npm package `name` from `version`: what
+/// `npm view` reports through the `npmCommand` setting when it is set, else
+/// the built-in registry client's answer, given up after pi's network
+/// timeout.
+async fn latest_npm_version(
+    npm: &mut npm::Npm,
+    command: Option<&[String]>,
+    cwd: &Path,
+    name: &str,
+    version: Option<&str>,
+) -> Option<String> {
+    let Some((program, args)) = command.and_then(<[String]>::split_first) else {
+        let lookup = npm.latest(name, version.unwrap_or("latest"));
+        return tokio::time::timeout(NETWORK_TIMEOUT, lookup)
+            .await
+            .ok()?
+            .ok();
+    };
+    let spec = version.map_or_else(|| name.to_owned(), |version| format!("{name}@{version}"));
+    let mut view = tokio::process::Command::new(program);
+    view.args(args)
+        .args(["view", &spec, "version", "--json"])
+        .current_dir(cwd);
+    let output = command_output(view).await?;
+    npm::viewed_version(&output, version.filter(|version| npm::is_range(version)))
+}
+
+/// pi's `gitHasAvailableUpdate`: whether the remote commit of the checkout
+/// in `dir`'s upstream branch, else of the remote's `HEAD`, differs from the
+/// checkout's. `false` when git cannot tell.
+async fn git_newer(dir: &Path) -> bool {
+    let Some(local) = git_output(&["rev-parse", "HEAD"], dir).await else {
+        return false;
+    };
+    let branch = git_output(&["rev-parse", "--abbrev-ref", "@{upstream}"], dir)
+        .await
+        .and_then(|upstream| {
+            let branch = upstream.trim().strip_prefix("origin/")?;
+            (!branch.is_empty()).then(|| format!("refs/heads/{branch}"))
+        });
+    let commit = |listing: &str, reference: Option<&str>| {
+        listing.lines().find_map(|line| {
+            let (commit, name) = line.split_once(char::is_whitespace)?;
+            let named = reference.is_none_or(|reference| name.trim() == reference);
+            (commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) && named)
+                .then(|| commit.to_owned())
+        })
+    };
+    let mut remote = None;
+    if let Some(branch) = branch
+        && let Some(listing) = git_output(&["ls-remote", "origin", &branch], dir).await
+    {
+        remote = commit(&listing, None);
+    }
+    if remote.is_none()
+        && let Some(listing) = git_output(&["ls-remote", "origin", "HEAD"], dir).await
+    {
+        remote = commit(&listing, Some("HEAD"));
+    }
+    remote.is_some_and(|remote| remote != local.trim())
 }
 
 /// pi's `resolveManagedPath`: `parts` resolved against `root`, which it
@@ -524,35 +631,135 @@ impl PackageManager {
         if crate::tools::external::offline() {
             return Ok(());
         }
+        let mut npm_targets = Vec::new();
+        let mut git_targets = Vec::new();
         for (configured, scope) in targets {
             match parse(&configured) {
                 Source::Npm {
                     name,
                     version,
-                    pinned,
-                } if !pinned => {
-                    (self.progress)(&format!("Updating {configured}..."));
-                    let range = version.as_deref().unwrap_or("latest");
-                    let installed = self.install_path(&parse(&configured), scope);
-                    let current = npm::installed_version(&installed);
-                    let stale = match &current {
-                        Some(current) => !npm::satisfies(current, range) || range == "latest",
-                        None => true,
-                    };
-                    if stale {
-                        self.install_npm(&self.npm_root(scope), &name, version.as_deref())
-                            .await?;
-                    }
-                }
-                Source::Git { reference, .. } => {
-                    (self.progress)(&format!("Updating {configured}..."));
-                    let dir = self.install_path(&parse(&configured), scope);
-                    self.update_git(&dir, reference.as_deref()).await?;
-                }
+                    pinned: false,
+                } => npm_targets.push((configured, scope, name, version)),
+                // pi also reconciles checkouts pinned to a ref.
+                Source::Git { reference, .. } => git_targets.push((configured, scope, reference)),
                 _ => {}
             }
         }
+        // pi updates a package whose versions it cannot compare.
+        let checks = npm_targets
+            .iter()
+            .map(|(configured, scope, name, version)| {
+                let root = self.install_path(&parse(configured), *scope);
+                self.npm_check(name.clone(), version.clone(), root)
+            });
+        let stale: Vec<bool> = futures_util::stream::iter(checks)
+            .buffered(UPDATE_CHECK_CONCURRENCY)
+            .map(|newer| newer.unwrap_or(true))
+            .collect()
+            .await;
+        for scope in [Scope::Global, Scope::Project] {
+            let batch: Vec<_> = npm_targets
+                .iter()
+                .zip(&stale)
+                .filter(|((_, target_scope, ..), stale)| *target_scope == scope && **stale)
+                .map(|(target, _)| target)
+                .collect();
+            match batch.as_slice() {
+                [] => continue,
+                [(configured, ..)] => (self.progress)(&format!("Updating {configured}...")),
+                _ => {
+                    let scope = if scope == Scope::Global {
+                        "user"
+                    } else {
+                        "project"
+                    };
+                    (self.progress)(&format!("Updating {scope} npm packages..."));
+                }
+            }
+            for (_, _, name, version) in batch {
+                self.install_npm(&self.npm_root(scope), name, version.as_deref())
+                    .await?;
+            }
+        }
+        for (configured, scope, reference) in git_targets {
+            (self.progress)(&format!("Updating {configured}..."));
+            let dir = self.install_path(&parse(&configured), scope);
+            self.update_git(&dir, reference.as_deref()).await?;
+        }
         Ok(())
+    }
+
+    /// pi's npm update check for package `name` from `version` (a range or
+    /// dist-tag, else `latest`) installed in `root`: whether the newest
+    /// version is later than the installed one. `None` when either is
+    /// unknown. The check owns what it needs, so several can run at once.
+    fn npm_check(
+        &self,
+        name: String,
+        version: Option<String>,
+        root: PathBuf,
+    ) -> impl Future<Output = Option<bool>> + Send + use<> {
+        let mut npm = self.npm.clone();
+        let command = self.settings.settings().npm_command.clone();
+        let cwd = self.cwd.clone();
+        async move {
+            let installed = npm::installed_version(&root)?;
+            let latest = latest_npm_version(
+                &mut npm,
+                command.as_deref(),
+                &cwd,
+                &name,
+                version.as_deref(),
+            )
+            .await?;
+            npm::newer(&latest, &installed)
+        }
+    }
+
+    /// pi's `checkForAvailableUpdates`: the installed npm and git packages
+    /// that settings list which have a later version than the one installed,
+    /// by name: the npm package's, or `<host>/<path>` for git. Local and
+    /// pinned sources are skipped, and so is a package whose check fails.
+    pub async fn available_updates(&self) -> Vec<String> {
+        let project = self.packages(Scope::Project);
+        let user = self.packages(Scope::Global);
+        let entries = resolve::dedupe_packages(&project, &user, |source, in_scope| {
+            parse(source).identity(&self.base(named_scope(in_scope)))
+        });
+        let checks = entries.into_iter().filter_map(|(entry, in_scope)| {
+            let parsed = parse(entry_source(&entry)?);
+            let root = self.install_path(&parsed, named_scope(in_scope));
+            if !root.exists() {
+                return None;
+            }
+            match parsed {
+                Source::Npm {
+                    name,
+                    version,
+                    pinned: false,
+                } => {
+                    let check = self.npm_check(name.clone(), version, root);
+                    Some(Either::Left(async move {
+                        (check.await == Some(true)).then_some(name)
+                    }))
+                }
+                Source::Git {
+                    host,
+                    path,
+                    reference: None,
+                    ..
+                } => Some(Either::Right(async move {
+                    git_newer(&root).await.then(|| format!("{host}/{path}"))
+                })),
+                _ => None,
+            }
+        });
+        let checks: Vec<_> = checks.collect();
+        futures_util::stream::iter(checks)
+            .buffered(UPDATE_CHECK_CONCURRENCY)
+            .filter_map(std::future::ready)
+            .collect()
+            .await
     }
 
     /// pi's temporary package for `-e`: where `source` is for this run. npm
@@ -637,17 +844,10 @@ impl PackageManager {
         &mut self,
         mut on_error: impl FnMut(&str, String) -> ControlFlow<B>,
     ) -> ControlFlow<B> {
-        let scope = |name: &str| {
-            if name == "project" {
-                Scope::Project
-            } else {
-                Scope::Global
-            }
-        };
         let packages = resolve::locate_packages(
             &self.packages(Scope::Project),
             &self.packages(Scope::Global),
-            |source, in_scope| parse(source).identity(&self.base(scope(in_scope))),
+            |source, in_scope| parse(source).identity(&self.base(named_scope(in_scope))),
         );
         let mut attempted = Vec::new();
         for (_, _, source, in_scope) in packages {
@@ -658,11 +858,11 @@ impl PackageManager {
             }
             attempted.push((source.clone(), in_scope));
             let parsed = parse(&source);
-            let root = self.install_path(&parsed, scope(in_scope));
+            let root = self.install_path(&parsed, named_scope(in_scope));
             let installed = match &parsed {
                 Source::Npm { name, version, .. } => {
                     if npm_stale(&root, version.as_deref()) {
-                        let npm_root = self.npm_root(scope(in_scope));
+                        let npm_root = self.npm_root(named_scope(in_scope));
                         self.install_npm(&npm_root, name, version.as_deref()).await
                     } else {
                         Ok(())

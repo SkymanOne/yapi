@@ -231,6 +231,56 @@ pub fn satisfies(version: &str, range: &str) -> bool {
         .is_some_and(|alternatives| alternatives.iter().any(|req| req.matches(&version)))
 }
 
+/// Whether version `candidate` is later than `current`, as node-semver's
+/// `gt` compares them, ignoring surrounding whitespace. `None` when either
+/// is not a version, where `gt` throws.
+pub fn newer(candidate: &str, current: &str) -> Option<bool> {
+    let candidate = semver::Version::parse(candidate.trim()).ok()?;
+    let current = semver::Version::parse(current.trim()).ok()?;
+    Some(candidate > current)
+}
+
+/// The highest of `versions`, each with an item, that `range` matches, or of
+/// all of them without a range.
+fn highest<'a, T>(
+    versions: impl IntoIterator<Item = (&'a str, T)>,
+    range: Option<&str>,
+) -> Option<(&'a str, T)> {
+    let alternatives = match range {
+        Some(range) => Some(requirements(range)?),
+        None => None,
+    };
+    versions
+        .into_iter()
+        .filter_map(|(version, item)| Some((semver::Version::parse(version).ok()?, version, item)))
+        .filter(|(parsed, ..)| {
+            alternatives
+                .as_ref()
+                .is_none_or(|alternatives| alternatives.iter().any(|req| req.matches(parsed)))
+        })
+        .max_by(|(a, ..), (b, ..)| a.cmp(b))
+        .map(|(_, version, item)| (version, item))
+}
+
+/// The newest version in `npm view <spec> version --json` output: the one
+/// version, else the highest in the source's `range` (pi's `maxSatisfying`),
+/// or of all without one.
+pub(crate) fn viewed_version(output: &str, range: Option<&str>) -> Option<String> {
+    match serde_json::from_str::<Value>(output.trim()).ok()? {
+        Value::String(version) => Some(version),
+        Value::Array(versions) => highest(
+            versions
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|version| !version.is_empty())
+                .map(|version| (version, ())),
+            range,
+        )
+        .map(|(version, ())| version.to_owned()),
+        _ => None,
+    }
+}
+
 /// What npm asks a registry for: the abbreviated packument, which holds only
 /// what installs need. Full packuments of long-lived packages run to tens of
 /// megabytes.
@@ -238,6 +288,7 @@ const PACKUMENT_ACCEPT: &str =
     "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
 /// A registry client with a per-run packument cache.
+#[derive(Clone)]
 pub struct Npm {
     config: HashMap<String, String>,
     packuments: HashMap<String, Value>,
@@ -369,16 +420,33 @@ impl Npm {
         {
             return Ok(manifest.clone());
         }
-        let alternatives = requirements(range).ok_or_else(no_match)?;
-        versions
+        let versions = versions
             .iter()
-            .filter_map(|(version, manifest)| {
-                Some((semver::Version::parse(version).ok()?, manifest))
-            })
-            .filter(|(version, _)| alternatives.iter().any(|req| req.matches(version)))
-            .max_by(|(a, _), (b, _)| a.cmp(b))
+            .map(|(version, manifest)| (version.as_str(), manifest));
+        highest(versions, Some(range))
             .map(|(_, manifest)| manifest.clone())
             .ok_or_else(no_match)
+    }
+
+    /// The version pi's update checks compare with the installed one, as
+    /// `npm view <name>@<range> version` reports it: the version a dist-tag
+    /// names, else the highest version in the range.
+    pub(crate) async fn latest(&mut self, name: &str, range: &str) -> Result<String, NpmError> {
+        let packument = self.packument(name).await?;
+        if let Some(tagged) = packument["dist-tags"][range].as_str() {
+            return Ok(tagged.to_owned());
+        }
+        packument["versions"]
+            .as_object()
+            .and_then(|versions| {
+                let versions = versions.keys().map(|version| (version.as_str(), ()));
+                highest(versions, Some(range))
+            })
+            .map(|(version, ())| version.to_owned())
+            .ok_or_else(|| NpmError::NoMatch {
+                name: name.to_owned(),
+                range: range.to_owned(),
+            })
     }
 
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
@@ -723,6 +791,31 @@ fn prune(modules: &Path, roots: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compares_versions_as_node_semver_gt() {
+        assert_eq!(newer("1.2.0", "1.0.0"), Some(true));
+        assert_eq!(newer(" 1.0.0\n", "1.0.0"), Some(false));
+        assert_eq!(newer("1.0.0-rc.1", "1.0.0"), Some(false));
+        // `gt` throws, and pi's update goes ahead while its check reports none.
+        assert_eq!(newer("1.0.0", "next"), None);
+    }
+
+    #[test]
+    fn reads_npm_view_output_as_pi() {
+        assert_eq!(
+            viewed_version("\"2.0.0\"\n", Some("^1")).as_deref(),
+            Some("2.0.0")
+        );
+        let several = r#"["1.0.0", "1.5.0", "2.0.0", ""]"#;
+        assert_eq!(
+            viewed_version(several, Some("^1")).as_deref(),
+            Some("1.5.0")
+        );
+        assert_eq!(viewed_version(several, None).as_deref(), Some("2.0.0"));
+        assert_eq!(viewed_version(several, Some("^3")), None);
+        assert_eq!(viewed_version("", None), None);
+    }
 
     #[test]
     fn matches_npm_ranges() {

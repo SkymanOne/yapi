@@ -582,6 +582,12 @@ impl AgentSession {
         });
     }
 
+    /// A copy of the session's settings manager, for work that reads both
+    /// scopes, such as package checks.
+    pub fn settings_manager(&self) -> SettingsManager {
+        lock(&self.inner.settings).clone()
+    }
+
     /// A snapshot of the merged settings.
     pub fn settings(&self) -> yapi_types::settings::Settings {
         lock(&self.inner.settings).settings().clone()

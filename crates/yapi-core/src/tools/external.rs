@@ -115,9 +115,16 @@ pub async fn ensure_tool(tool: ExternalTool, bin_dir: &Path) -> Option<PathBuf> 
     download(tool, bin_dir).await.ok()
 }
 
-/// The latest release version, from the redirect of the release page; the API
-/// endpoint's anonymous quota is often exhausted behind shared egress.
-async fn latest_version(repo: &str) -> Result<String, String> {
+/// The version of the latest release on the GitHub releases page
+/// `releases`, such as `https://github.com/sharkdp/fd/releases`, without a
+/// leading `v`: pi's `getLatestVersion`, which reads the redirect of
+/// `<releases>/latest` because the API endpoint's anonymous quota is often
+/// exhausted behind shared egress.
+pub async fn latest_version(releases: &str) -> Result<String, String> {
+    // pi's messages name the repository.
+    let repo = releases
+        .trim_start_matches("https://github.com/")
+        .trim_end_matches("/releases");
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(10))
@@ -125,7 +132,7 @@ async fn latest_version(repo: &str) -> Result<String, String> {
         .build()
         .map_err(|err| err.to_string())?;
     let response = client
-        .get(format!("https://github.com/{repo}/releases/latest"))
+        .get(format!("{releases}/latest"))
         .send()
         .await
         .map_err(|err| err.to_string())?;
@@ -141,16 +148,16 @@ async fn latest_version(repo: &str) -> Result<String, String> {
                 status.as_u16()
             )
         })?;
-    if !location.contains("/releases/tag/") {
-        return Err(format!(
-            "Failed to resolve latest {repo} release: unexpected redirect to {location}"
-        ));
-    }
-    let tag = location
-        .split(['?', '#'])
-        .next()
-        .and_then(|path| path.rsplit('/').next())
-        .unwrap_or_default();
+    let unexpected =
+        || format!("Failed to resolve latest {repo} release: unexpected redirect to {location}");
+    let target = url::Url::parse(releases)
+        .and_then(|base| base.join(location))
+        .map_err(|_| unexpected())?;
+    let tag = target
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .filter(|tag| !tag.is_empty() && location.contains("/releases/tag/"))
+        .ok_or_else(unexpected)?;
     Ok(tag.strip_prefix('v').unwrap_or(tag).to_owned())
 }
 
@@ -211,7 +218,7 @@ pub(crate) async fn fetch(url: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn download(tool: ExternalTool, bin_dir: &Path) -> Result<PathBuf, String> {
-    let version = latest_version(tool.repo()).await?;
+    let version = latest_version(&format!("https://github.com/{}/releases", tool.repo())).await?;
     let asset = tool.asset(&version).ok_or_else(|| {
         format!(
             "Unsupported platform: {}/{}",

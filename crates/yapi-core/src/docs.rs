@@ -8,7 +8,7 @@ use std::path::Path;
 use sha2::Digest as _;
 
 /// Where yapi's releases are published.
-pub const RELEASES_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/releases");
+const RELEASES_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/releases");
 /// The docs archive in each release.
 const ARCHIVE: &str = "yapi-docs.tar.gz";
 /// The file in the docs naming the yapi version they document.
@@ -18,6 +18,15 @@ const VERSION_FILE: &str = ".version";
 const BOOK_URL: &str = "https://nikolish.in/yapi/";
 /// pi's docs and examples at the release yapi follows.
 const PI_URL: &str = "https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent";
+
+/// The releases page yapi downloads its docs from and checks for a newer
+/// version: `YAPI_RELEASES_URL`, which install.sh reads too, else GitHub's.
+pub fn releases_url() -> String {
+    std::env::var("YAPI_RELEASES_URL")
+        .ok()
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| RELEASES_URL.to_owned())
+}
 
 /// Where the model reads the docs: the local copy in the agent directory
 /// when it documents this version, else the published pages.

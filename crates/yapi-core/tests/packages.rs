@@ -218,6 +218,157 @@ async fn installs_npm_packages_with_dependencies() {
     server.finish().unwrap();
 }
 
+/// Writes the agent's `settings.json` with `packages`.
+fn configure(dir: &Path, packages: Value) {
+    let agent = dir.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    std::fs::write(
+        agent.join("settings.json"),
+        json!({ "packages": packages }).to_string(),
+    )
+    .unwrap();
+}
+
+/// `npm/node_modules/<name>` in the agent directory, as installed at
+/// `version`.
+fn installed(dir: &Path, name: &str, version: &str) -> PathBuf {
+    let root = dir.join("agent/npm/node_modules").join(name);
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = json!({"name": name, "version": version});
+    std::fs::write(root.join("package.json"), manifest.to_string()).unwrap();
+    root
+}
+
+/// pi compares the installed version with the newest one in the source's
+/// range, and `update` installs that one.
+#[tokio::test(flavor = "multi_thread")]
+async fn finds_and_applies_npm_updates_in_range() {
+    let dir = scratch("npm-updates");
+    configure(
+        &dir,
+        json!([
+            "npm:ext-pkg@^1.0.0",
+            "npm:fixed@1.0.0",
+            "npm:missing",
+            "./local"
+        ]),
+    );
+    installed(&dir, "fixed", "0.9.0");
+    let root = installed(&dir, "ext-pkg", "1.0.0");
+    let release = |version: &str| {
+        let manifest = format!(r#"{{"name": "ext-pkg", "version": "{version}"}}"#);
+        tarball(&[("package.json", &manifest)])
+    };
+    // Each check reads the packument afresh, like pi's `npm view`: the
+    // check and the update's own check. The install reads it once more and
+    // keeps it for the check after.
+    let server = registry(|base| {
+        let versions =
+            ["1.0.0", "1.2.0", "2.0.0"].map(|version| (version, json!({}), release(version)));
+        let [packument, tarball] =
+            <[Interaction; 2]>::try_from(publish(base, "ext-pkg", &versions, "1.2.0")).unwrap();
+        vec![packument.clone(), packument.clone(), packument, tarball]
+    })
+    .await;
+    let mut packages = manager(&dir, &server.url());
+    let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = progress.clone();
+    packages.on_progress(move |line| log.lock().unwrap().push(line.to_owned()));
+    assert_eq!(packages.available_updates().await, ["ext-pkg"]);
+    packages.update(Some("npm:ext-pkg")).await.unwrap();
+    assert_eq!(
+        *progress.lock().unwrap(),
+        ["Updating npm:ext-pkg@^1.0.0..."]
+    );
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+    assert_eq!(manifest["version"], "1.2.0");
+    assert!(packages.available_updates().await.is_empty());
+    // A current package is neither reported nor reinstalled.
+    packages.update(Some("npm:ext-pkg")).await.unwrap();
+    assert_eq!(progress.lock().unwrap().len(), 1);
+    assert_eq!(server.finish().unwrap().len(), 4);
+}
+
+/// With `npmCommand`, pi asks that command's `npm view` for the versions.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn checks_npm_updates_through_npm_command() {
+    let dir = scratch("npm-command-updates");
+    let script = dir.join("npm.sh");
+    std::fs::write(
+        &script,
+        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n",
+    )
+    .unwrap();
+    installed(&dir, "behind", "1.0.0");
+    installed(&dir, "current", "2.0.0");
+    std::fs::write(
+        dir.join("agent/settings.json"),
+        json!({
+            "npmCommand": ["sh", script],
+            "packages": ["npm:behind@^1.0.0", "npm:current@^2.0.0"],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let packages = manager(&dir, "http://127.0.0.1:9");
+    assert_eq!(packages.available_updates().await, ["behind"]);
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .args(["-c", "user.name=yapi", "-c", "user.email=yapi@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "git {args:?}: {output:?}");
+}
+
+/// pi compares a git package's commit with its remote branch's. Pinned
+/// sources are left alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn finds_git_updates_on_the_remote() {
+    let dir = scratch("git-updates");
+    let origin = dir.join("origin.git");
+    let work = dir.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&dir, &["init", "--bare", "-b", "main", "origin.git"]);
+    git(&work, &["init", "-b", "main"]);
+    git(&work, &["commit", "--allow-empty", "-m", "first"]);
+    git(
+        &work,
+        &["remote", "add", "origin", origin.to_str().unwrap()],
+    );
+    git(&work, &["push", "origin", "main"]);
+    for path in ["user/repo", "user/pinned"] {
+        let checkout = dir.join("agent/git/github.com").join(path);
+        std::fs::create_dir_all(checkout.parent().unwrap()).unwrap();
+        git(
+            &dir,
+            &[
+                "clone",
+                origin.to_str().unwrap(),
+                checkout.to_str().unwrap(),
+            ],
+        );
+    }
+    configure(
+        &dir,
+        json!([
+            "git:github.com/user/repo",
+            "git:github.com/user/pinned@main"
+        ]),
+    );
+    let packages = manager(&dir, "http://127.0.0.1:9");
+    assert!(packages.available_updates().await.is_empty());
+
+    git(&work, &["commit", "--allow-empty", "-m", "second"]);
+    git(&work, &["push", "origin", "main"]);
+    assert_eq!(packages.available_updates().await, ["github.com/user/repo"]);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn installs_native_addons_unbuilt_and_rejects_bad_integrity() {
     let dir = scratch("native");

@@ -84,6 +84,10 @@ fn block_on(future: impl std::future::Future<Output = u8>) -> ExitCode {
 fn main() -> ExitCode {
     yapi_ext::reset_signal_dispositions();
     let raw: Vec<String> = std::env::args().skip(1).collect();
+    // pi checks the raw arguments, so `--offline` holds for every command.
+    if raw.iter().any(|arg| arg == "--offline") || yapi_core::config::env_flag("PI_OFFLINE") {
+        yapi_core::config::set_offline();
+    }
     match raw.first().map(String::as_str) {
         Some("import") => return ExitCode::from(import::run(&raw[1..])),
         Some("new") => return ExitCode::from(new_command::run(&raw[1..])),
@@ -159,10 +163,10 @@ fn main() -> ExitCode {
 static PANIC_MESSAGE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// Whether model catalogs and the docs for the model may be fetched: pi's
-/// model runtime fetches only while `PI_OFFLINE` is unset, which `--offline`
-/// sets.
-fn model_network(args: &args::Args) -> bool {
-    !args.offline && std::env::var_os("PI_OFFLINE").is_none()
+/// model runtime fetches only while `PI_OFFLINE` is unset or empty, and
+/// `--offline` sets it.
+fn model_network() -> bool {
+    !yapi_core::config::env_set("PI_OFFLINE")
 }
 
 /// Runs the interactive session so that a panic leaves the terminal usable,
@@ -249,14 +253,11 @@ async fn run(parsed: &mut args::Args) -> u8 {
     let metadata_to_stderr = parsed.print || parsed.mode.is_some();
     // install.sh puts the docs for the model in place. Other installs fetch
     // them here, in the background. Debug builds name no released version.
-    if !cfg!(debug_assertions)
-        && model_network(parsed)
-        && !yapi_core::config::env_flag("YAPI_NO_DOCS")
-    {
+    if !cfg!(debug_assertions) && model_network() && !yapi_core::config::env_flag("YAPI_NO_DOCS") {
         let agent_dir = yapi_core::config::agent_dir();
         tokio::spawn(async move {
             // The model reads the published docs until a later start succeeds.
-            let _ = yapi_core::docs::download(yapi_core::docs::RELEASES_URL, &agent_dir).await;
+            let _ = yapi_core::docs::download(&yapi_core::docs::releases_url(), &agent_dir).await;
         });
     }
     let interactive = !parsed.help
@@ -372,7 +373,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
                 factory: startup::factory(parsed, extensions, true),
                 use_theme: parsed.use_theme.clone(),
                 model_fallback: startup.model_fallback,
-                model_network: model_network(parsed),
+                model_network: model_network(),
             },
         );
         return survive_crash(run).await;
@@ -396,7 +397,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
     }
     if rpc {
         // pi refreshes model catalogs in the background for RPC.
-        if model_network(parsed) {
+        if model_network() {
             let session = startup.session.clone();
             tokio::spawn(async move {
                 use yapi_ai::model_catalog::{REFRESH_TIMEOUT, RefreshOptions, cancel_after};

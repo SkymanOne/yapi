@@ -2227,7 +2227,7 @@ impl Bridge for SessionBridge {
                         providers,
                         allow_network: payload["allowNetwork"]
                             .as_bool()
-                            .unwrap_or_else(|| std::env::var_os("PI_OFFLINE").is_none()),
+                            .unwrap_or_else(|| !yapi_core::config::env_set("PI_OFFLINE")),
                         force: payload["force"].as_bool().unwrap_or(false),
                         cancel: caller_cancel,
                         ..Default::default()

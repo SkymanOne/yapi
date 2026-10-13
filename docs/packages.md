@@ -28,6 +28,8 @@ User packages:
     /home/you/extensions/shout.wasm
 ```
 
+`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
+
 ## Try a package
 
 `-e` loads a package for one run without adding it to settings:

@@ -37,7 +37,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | npm configuration | npm reads all its configuration files and settings | Registries and credentials from `~/.npmrc`, or the file `npm_config_userconfig` names, and from `npm_config_*` variables. Other settings, such as `cafile`, are ignored. |
 | Project folder | The working folder | `--project-dir <dir>`, a yapi-only flag, takes the project's files, trust and `AGENTS.md` from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent's project. See [Project trust](security.md#project-trust). |
 | Package manifests | The `pi` key | A `yapi` key of the same shape takes precedence, so one package can ship a native build for yapi. |
-| Self-update | `pi update` updates Pi | `yapi update` prints how to upgrade instead. `--extensions` and `--models` update packages and model catalogs. See [Install](install.md#upgrade). |
+| Self-update | `pi update` updates Pi | `yapi update` prints how to upgrade instead. `--extensions` and `--models` update packages and model catalogs. The update notice takes the version from yapi's latest GitHub release and links the releases page as the changelog. Pi's release note has no counterpart. See [Install](install.md#upgrade). |
 | `new` | `pi new ...` is a prompt | `yapi new` creates a native extension. Quote a prompt that starts with `new`. |
 
 ## Interface and providers
@@ -63,6 +63,5 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 | Syntax highlighting in tool rows | `read` results, `write` previews and codemode scripts are highlighted | Shown in the default color. | [#32](https://github.com/SkymanOne/yapi/issues/32) |
 | Cache warming | Refreshes the prompt cache while the model streams (`cacheWarming`) and reports cache misses | Sends no refresh requests. The setting is saved and ignored. | [#33](https://github.com/SkymanOne/yapi/issues/33) |
 | Images in the terminal | Inline images, with the "Show images" and "Image width" settings | Not shown. | [#34](https://github.com/SkymanOne/yapi/issues/34) |
-| Update notices | Checks at startup for new versions and package updates and shows a notice | Makes no such checks and shows no update notices. `/changelog` and the list of changes after an upgrade work as in Pi. | [#37](https://github.com/SkymanOne/yapi/issues/37) |
 | Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
 | `newSession` setup | `setup` gets the new session's writable session manager before its extensions start | `setup` runs after the new session's `session_start` and gets the read-only session manager. | [#67](https://github.com/SkymanOne/yapi/issues/67) |

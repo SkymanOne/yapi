@@ -97,6 +97,10 @@ yapi does not update itself. `yapi update` prints how to upgrade, `yapi update -
 
 Settings, credentials, sessions and packages are kept.
 
+In the terminal, yapi checks at startup for a newer release and for package updates, and shows a notice when it finds one. `PI_SKIP_VERSION_CHECK=1` turns off the release check. `--offline` and `PI_OFFLINE=1` turn off both.
+
+`YAPI_RELEASES_URL` points the install script, the release check and the documentation download at another releases page, such as a mirror. It defaults to `https://github.com/SkymanOne/yapi/releases`.
+
 ## Uninstall
 
 - Install script or release archive: delete `~/.local/bin/yapi`, or the file in the directory you chose.
