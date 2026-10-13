@@ -41,7 +41,7 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 ## Turn resources on and off
 
-`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`. Tab switches between global settings and the current project. `yapi config -l` starts with the project.
+`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`. Tab switches between global settings and the current project. `yapi config -l` starts with the project. It first installs configured npm and git packages that are missing, and npm packages whose installed version is outside the configured range. `PI_OFFLINE` skips this.
 
 ## Package manifests
 

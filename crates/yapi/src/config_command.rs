@@ -4,7 +4,7 @@
 use std::io::Write as _;
 
 use yapi_core::config::{PROJECT_DIR, agent_dir};
-use yapi_core::packages::resolve_resources;
+use yapi_core::packages::{PackageManager, resolve_resources};
 use yapi_core::settings::SettingsManager;
 
 use crate::interactive::config_selector::ConfigSelector;
@@ -19,7 +19,7 @@ fn help() -> String {
 }
 
 /// Runs `yapi config` with the arguments after `config`; its exit code.
-pub fn run(args: &[String]) -> u8 {
+pub async fn run(args: &[String]) -> u8 {
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         // pi's console.log adds a newline after the text's own.
         let _ = writeln!(std::io::stdout(), "{}", help());
@@ -44,7 +44,7 @@ pub fn run(args: &[String]) -> u8 {
             }
         }
     }
-    match configure(local, trust) {
+    match configure(local, trust).await {
         Ok(code) => code,
         Err(error) => {
             eprintln!("Error: {error}");
@@ -53,7 +53,7 @@ pub fn run(args: &[String]) -> u8 {
     }
 }
 
-fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
+async fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
     let cwd = std::env::current_dir()?;
     let agent_dir = agent_dir();
     let (settings, trusted) = crate::startup::load_settings(&cwd, &agent_dir, trust, true)?;
@@ -63,6 +63,18 @@ fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
     }
     for error in settings.errors() {
         eprintln!("Warning: {error}");
+    }
+    // As in pi, resolving installs what the settings list and is missing.
+    if !yapi_core::tools::external::offline() {
+        let mut packages = PackageManager::new(
+            settings.project_dir().to_path_buf(),
+            agent_dir.clone(),
+            settings.clone(),
+            yapi_core::packages::npm::config(),
+        );
+        packages
+            .install_missing(|_, message| eprintln!("Warning: {message}"))
+            .await;
     }
     // Global mode shows what the user's settings alone resolve to.
     let global_settings = SettingsManager::load(&agent_dir, &cwd, false);
