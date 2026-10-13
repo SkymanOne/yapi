@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1ae2b57f.js";
+            window.path_to_searchindex_js = "searchindex-2ca4542c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -190,7 +190,7 @@ yapi list
 yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 </code></pre>
-<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place and are not copied.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code>User packages:
@@ -206,7 +206,7 @@ yapi -e git:github.com/user/repo
 </code></pre>
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="native-extensions.html">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
