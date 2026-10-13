@@ -1397,6 +1397,59 @@ impl SessionBridge {
         self.runtime.spawn(future);
     }
 
+    /// pi's `sendMessage` (`kind` `session.sendMessage`) or `sendUserMessage`
+    /// with request `payload`, up to the first await of the run it starts:
+    /// the message is delivered, queued or deferred now. The rest of the
+    /// work, unless there is none: pi defers a run started while
+    /// `agent_settled` handlers run until they return, and the call
+    /// resolves at once.
+    fn send(
+        &self,
+        session: &AgentSession,
+        kind: &str,
+        payload: &Value,
+    ) -> Option<BoxFuture<'static, Result<(), String>>> {
+        let options = &payload["options"];
+        let work: BoxFuture<'static, Result<(), String>> = if kind == "session.sendMessage" {
+            let run = session.deliver_custom_message(
+                custom_message(&payload["message"]),
+                options["triggerTurn"].as_bool(),
+                options["deliverAs"].as_str(),
+            )?;
+            Box::pin(async move {
+                run.await;
+                Ok(())
+            })
+        } else {
+            let (text, images) = user_content(&payload["content"]);
+            let options = PromptOptions {
+                expand_prompt_templates: options["expandPromptTemplates"]
+                    .as_bool()
+                    .unwrap_or(false),
+                streaming_behavior: match options["deliverAs"].as_str() {
+                    Some("followUp") => Some(StreamingBehavior::FollowUp),
+                    Some(_) => Some(StreamingBehavior::Steer),
+                    None => None,
+                },
+                images,
+                source: InputSource::Extension,
+            };
+            if session.queue_now(&text, &options) {
+                return None;
+            }
+            let session = session.clone();
+            Box::pin(async move { session.prompt_with(&text, options, |_| {}).await })
+        };
+        let Some(turn) = session.settled_turn() else {
+            return Some(work);
+        };
+        self.spawn(reporting(session.clone(), async move {
+            let _turn = turn.await;
+            work.await
+        }));
+        None
+    }
+
     /// Sets the MCP servers the runtime's extensions registered, in the
     /// session the runtime is bound to. Before it binds, as its factories
     /// run, checks them as pi checks registrations made while extensions
@@ -1699,50 +1752,13 @@ fn user_content(content: &Value) -> (String, Vec<ImageContent>) {
     (texts.join("\n"), images)
 }
 
-/// pi's `sendMessage` with request `payload`: the message is delivered now,
-/// and the run it triggers is returned.
-fn send_message(
-    session: &AgentSession,
-    payload: &Value,
-) -> Option<impl Future<Output = ()> + Send + 'static> {
-    let options = &payload["options"];
-    session.deliver_custom_message(
-        custom_message(&payload["message"]),
-        options["triggerTurn"].as_bool(),
-        options["deliverAs"].as_str(),
-    )
-}
-
-/// pi's `sendUserMessage` with request `payload`: a message pi queues or
-/// defers before any later event is queued or deferred now. The rest of the
-/// prompt, unless it was queued.
-fn send_user_message(
-    session: &AgentSession,
-    payload: &Value,
-) -> Option<impl Future<Output = Result<(), String>> + Send + 'static> {
-    let (text, images) = user_content(&payload["content"]);
-    let options = &payload["options"];
-    let options = PromptOptions {
-        expand_prompt_templates: options["expandPromptTemplates"].as_bool().unwrap_or(false),
-        streaming_behavior: match options["deliverAs"].as_str() {
-            Some("followUp") => Some(StreamingBehavior::FollowUp),
-            Some(_) => Some(StreamingBehavior::Steer),
-            None => None,
-        },
-        images,
-        source: InputSource::Extension,
-    };
-    if session.queue_now(&text, &options) {
-        return None;
+/// Runs `work`, the rest of an extension's `sendUserMessage`, and reports
+/// its failure as pi's `emitError` does. A `sendMessage` run does not fail.
+async fn reporting(session: AgentSession, work: impl Future<Output = Result<(), String>>) {
+    if let Err(error) = work.await {
+        let (ui, _) = session.extension_binding();
+        ui.extension_error("<runtime>", "send_user_message", &error, None);
     }
-    let (session, turn) = (session.clone(), session.settled_turn());
-    Some(async move {
-        let _turn = match turn {
-            Some(turn) => turn.await,
-            None => None,
-        };
-        session.prompt_with(&text, options, |_| {}).await
-    })
 }
 
 fn to_json(value: impl serde::Serialize) -> Value {
@@ -1927,21 +1943,9 @@ impl Bridge for SessionBridge {
         // such as `ui_prompt_start` and `mcp_servers_change`.
         let _runtime = self.runtime.enter();
         match kind {
-            "session.sendMessage" => {
-                // pi records and reports the message before the call returns.
-                if let Some(run) = send_message(&session, payload) {
-                    self.spawn(run);
-                }
-                Ok(Value::Null)
-            }
-            "session.sendUserMessage" => {
-                if let Some(prompt) = send_user_message(&session, payload) {
-                    self.spawn(async move {
-                        if let Err(error) = prompt.await {
-                            let (ui, _) = session.extension_binding();
-                            ui.extension_error("<runtime>", "send_user_message", &error, None);
-                        }
-                    });
+            "session.sendMessage" | "session.sendUserMessage" => {
+                if let Some(work) = self.send(&session, kind, payload) {
+                    self.spawn(reporting(session, work));
                 }
                 Ok(Value::Null)
             }
@@ -2181,22 +2185,12 @@ impl Bridge for SessionBridge {
         };
         // A replaced session context's `sendMessage` and `sendUserMessage`
         // deliver at once, and settle as the run they start ends.
-        if kind == "session.sendMessage" {
+        if matches!(kind, "session.sendMessage" | "session.sendUserMessage") {
             let _runtime = self.runtime.enter();
-            let run = send_message(&session, &payload);
+            let work = self.send(&session, kind, &payload);
             return Box::pin(async move {
-                if let Some(run) = run {
-                    run.await;
-                }
-                Ok(Value::Null)
-            });
-        }
-        if kind == "session.sendUserMessage" {
-            let _runtime = self.runtime.enter();
-            let prompt = send_user_message(&session, &payload);
-            return Box::pin(async move {
-                if let Some(prompt) = prompt {
-                    prompt.await?;
+                if let Some(work) = work {
+                    work.await?;
                 }
                 Ok(Value::Null)
             });

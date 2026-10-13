@@ -976,7 +976,7 @@ impl AgentSession {
     /// `deliver_as` `nextTurn` holds the message for the next prompt; while a
     /// run streams it steers (or follows up) unless `trigger_turn` is false, in
     /// which case it is appended when the turn ends; otherwise `trigger_turn`
-    /// returns the run it starts, which pi defers as it defers a prompt (see
+    /// returns the run it starts, which the caller defers as pi does (see
     /// [`AgentSession::settled_turn`]), and without one it is appended at
     /// once.
     pub fn deliver_custom_message(
@@ -996,14 +996,8 @@ impl AgentSession {
             };
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
-            let (session, turn) = (self.clone(), self.settled_turn());
-            return Some(async move {
-                let _turn = match turn {
-                    Some(turn) => turn.await,
-                    None => None,
-                };
-                session.run(vec![message]).await;
-            });
+            let session = self.clone();
+            return Some(async move { session.run(vec![message]).await });
         } else if self.is_streaming() {
             lock(&self.inner.pending_custom).push(message);
         } else {
