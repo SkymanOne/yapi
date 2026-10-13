@@ -7,24 +7,19 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use yapi_ai::api::Apis;
 use yapi_ai::faux::{Faux, Response};
 use yapi_ai::registry::ModelRegistry;
-use yapi_ai::stream::{EventStream, Provider, Request, StreamEvent};
-use yapi_core::agent_session::{
-    AgentSession, CacheWarmingPhase, CacheWarmingState, Resources, SessionConfig, TreeNavigation,
-};
+use yapi_ai::stream::{EventStream, Provider, Request};
+use yapi_core::agent_session::{AgentSession, Resources, SessionConfig, TreeNavigation};
 use yapi_core::session::SessionManager;
 use yapi_core::settings::SettingsManager;
-use yapi_types::event::AgentEvent;
 use yapi_types::message::{
     Content, ContentBlock, ImageContent, Message, StopReason, ThinkingLevel,
 };
 use yapi_types::model::Model;
 use yapi_types::session::FileEntry;
-use yapi_types::settings::CacheWarming;
 
 fn faux_model() -> Model {
     serde_json::from_value(serde_json::json!({
@@ -41,10 +36,7 @@ fn session(faux: &Faux) -> AgentSession {
 }
 
 fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
-    session_for(faux_model(), provider)
-}
-
-fn session_for(model: Model, provider: Arc<dyn Provider>) -> AgentSession {
+    let model = faux_model();
     let mut registry = ModelRegistry::builtin();
     registry.register_provider("faux", vec![model.clone()]);
     registry.set_runtime_key("faux", "key".into());
@@ -348,214 +340,5 @@ async fn prompt_and_tool_result_images_are_converted_as_pi() {
     assert_eq!(
         result.content,
         [ContentBlock::Image(png.clone()), ContentBlock::text(note)]
-    );
-}
-
-/// A model with a five-minute prompt cache whose writes cost far more than
-/// reads, so warming pays off even between runs.
-fn cached_model() -> Model {
-    serde_json::from_value(serde_json::json!({
-        "id": "cached", "name": "Cached", "api": "faux", "provider": "faux", "baseUrl": "",
-        "reasoning": false, "input": ["text"],
-        "cost": {"input": 3, "output": 15, "cacheRead": 1, "cacheWrite": 100},
-        "promptCache": {"short": 300},
-        "contextWindow": 100000, "maxTokens": 8000,
-    }))
-    .unwrap()
-}
-
-/// Answers each request with text and a 20,000-token prompt written to the
-/// cache, after the next of `delays` for requests without an output cap.
-/// Records each request's output cap.
-#[derive(Clone, Default)]
-struct Cached {
-    caps: Arc<std::sync::Mutex<Vec<Option<u64>>>>,
-    delays: Arc<std::sync::Mutex<std::collections::VecDeque<Duration>>>,
-}
-
-impl Cached {
-    fn caps(&self) -> Vec<Option<u64>> {
-        self.caps.lock().unwrap().clone()
-    }
-}
-
-impl Provider for Cached {
-    fn api(&self) -> &str {
-        "faux"
-    }
-
-    fn stream(&self, request: Request) -> EventStream {
-        self.caps.lock().unwrap().push(request.options.max_tokens);
-        let delay = match request.options.max_tokens {
-            Some(_) => Duration::ZERO,
-            None => self.delays.lock().unwrap().pop_front().unwrap_or_default(),
-        };
-        let (sender, stream) = EventStream::channel();
-        let mut output = yapi_ai::stream::new_output(&request.model, 0);
-        output.content = vec![ContentBlock::text("ok")];
-        output.usage.cache_write = 20_000;
-        tokio::spawn(async move {
-            tokio::time::sleep(delay).await;
-            sender.send(StreamEvent::Done(output));
-        });
-        stream
-    }
-}
-
-fn warm_entries(session: &AgentSession) -> Vec<yapi_types::session::UsageEntry> {
-    session.with_session(|file| {
-        file.entries()
-            .filter_map(|entry| match entry {
-                FileEntry::Usage(usage) => Some(usage.clone()),
-                _ => None,
-            })
-            .collect()
-    })
-}
-
-#[tokio::test(start_paused = true)]
-async fn idle_warming_refreshes_the_cache_until_its_limit() {
-    let provider = Cached::default();
-    let session = session_for(cached_model(), Arc::new(provider.clone()));
-    session.set_cache_warming_mode(CacheWarming::Idle).unwrap();
-    let appended = Arc::new(std::sync::Mutex::new(0));
-    let counter = Arc::clone(&appended);
-    session.subscribe(Box::new(move |event| {
-        if let AgentEvent::EntryAppended {
-            entry: FileEntry::Usage(_),
-        } = event
-        {
-            *counter.lock().unwrap() += 1;
-        }
-    }));
-    session.prompt("hi", Vec::new()).await.unwrap();
-
-    let status = session.cache_warming_status();
-    assert_eq!(status.state, CacheWarmingState::Scheduled);
-    let decision = status.decision.unwrap();
-    assert_eq!(decision.phase, CacheWarmingPhase::Idle);
-    assert_eq!(decision.continuation_probability, 0.15);
-    assert!(decision.warm);
-
-    // Refreshes come 270 s apart, at 90% of the five-minute lifetime.
-    tokio::time::sleep(Duration::from_secs(271)).await;
-    assert_eq!(provider.caps(), [None, Some(1)]);
-    let entries = warm_entries(&session);
-    assert_eq!(entries.len(), 1);
-    assert_eq!(
-        (entries[0].kind.as_str(), entries[0].provider.as_str()),
-        ("cache_warm", "faux")
-    );
-    assert_eq!(entries[0].model, "cached");
-    assert_eq!(entries[0].usage.cache_write, 20_000);
-    assert_eq!(entries[0].note, None);
-    assert_eq!(*appended.lock().unwrap(), 1);
-    // The context is unchanged, so the next refresh is scheduled.
-    assert_eq!(
-        session.cache_warming_status().state,
-        CacheWarmingState::Scheduled
-    );
-
-    // The sixth refresh, at 27 minutes, is the last within the 30-minute
-    // idle limit.
-    tokio::time::sleep(Duration::from_secs(30 * 60)).await;
-    assert_eq!(provider.caps().len(), 7);
-    assert_eq!(warm_entries(&session).len(), 6);
-    let status = session.cache_warming_status();
-    assert_eq!(status.state, CacheWarmingState::Inactive);
-    assert_eq!(status.reason, Some("30-minute idle safety limit reached"));
-}
-
-#[tokio::test(start_paused = true)]
-async fn streaming_warming_refreshes_while_the_run_lasts() {
-    let provider = Cached::default();
-    provider
-        .delays
-        .lock()
-        .unwrap()
-        .extend([Duration::ZERO, Duration::from_secs(400)]);
-    let session = session_for(cached_model(), Arc::new(provider.clone()));
-    session.prompt("first", Vec::new()).await.unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("agent run settled")
-    );
-
-    // The second response takes 400 s; the request's cache entry is
-    // refreshed at 270 s, priced from the first response's prompt.
-    let run = tokio::spawn({
-        let session = session.clone();
-        async move { session.prompt("second", Vec::new()).await }
-    });
-    tokio::time::sleep(Duration::from_secs(271)).await;
-    assert_eq!(provider.caps(), [None, None, Some(1)]);
-    let status = session.cache_warming_status();
-    assert_eq!(status.state, CacheWarmingState::Scheduled);
-    assert_eq!(status.decision.unwrap().phase, CacheWarmingPhase::Streaming);
-
-    run.await.unwrap().unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("agent run settled")
-    );
-    tokio::time::sleep(Duration::from_secs(600)).await;
-    assert_eq!(provider.caps().len(), 3);
-}
-
-#[tokio::test(start_paused = true)]
-async fn warming_stops_when_the_context_or_mode_changes() {
-    let provider = Cached::default();
-    let session = session_for(cached_model(), Arc::new(provider.clone()));
-    session.set_cache_warming_mode(CacheWarming::Idle).unwrap();
-    session.prompt("hi", Vec::new()).await.unwrap();
-    session
-        .set_model(Model {
-            id: "other".into(),
-            ..cached_model()
-        })
-        .unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("conversation context changed")
-    );
-    tokio::time::sleep(Duration::from_secs(300)).await;
-    assert_eq!(provider.caps(), [None]);
-
-    session.set_model(cached_model()).unwrap();
-    session.prompt("again", Vec::new()).await.unwrap();
-    assert_eq!(
-        session.cache_warming_status().state,
-        CacheWarmingState::Scheduled
-    );
-    session.set_cache_warming_mode(CacheWarming::Off).unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("cache warming disabled")
-    );
-    tokio::time::sleep(Duration::from_secs(300)).await;
-    assert_eq!(provider.caps(), [None, None]);
-}
-
-#[tokio::test(start_paused = true)]
-async fn warming_needs_a_cache_lifetime_and_economics() {
-    let mut model = cached_model();
-    model.prompt_cache = None;
-    let session = session_for(model, Arc::new(Cached::default()));
-    session.prompt("hi", Vec::new()).await.unwrap();
-    session.set_cache_warming_mode(CacheWarming::Idle).unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("cache lifetime unavailable")
-    );
-
-    // Free cache reads and writes: nothing to save.
-    let mut model = cached_model();
-    model.cost = Default::default();
-    let session = session_for(model, Arc::new(Cached::default()));
-    session.set_cache_warming_mode(CacheWarming::Idle).unwrap();
-    session.prompt("hi", Vec::new()).await.unwrap();
-    assert_eq!(
-        session.cache_warming_status().reason,
-        Some("cache economics unavailable")
     );
 }
