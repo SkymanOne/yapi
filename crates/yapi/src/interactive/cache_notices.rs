@@ -7,6 +7,7 @@
 
 use yapi_core::agent_session::{failed, format_cache_warming_usage};
 use yapi_core::cache_stats::{CACHE_TTL_MS, CacheMiss, collect_cache_misses, detect_cache_miss};
+use yapi_types::js::{self, to_fixed};
 use yapi_types::message::{AssistantMessage, Message, Usage};
 use yapi_types::session::{FileEntry, UsageEntry};
 
@@ -27,7 +28,7 @@ fn miss_notice(miss: &CacheMiss) -> Option<String> {
         return None;
     }
     let cost = if miss.missed_cost >= 0.01 {
-        format!(" (~${:.2})", miss.missed_cost)
+        format!(" (~${})", to_fixed(miss.missed_cost, 2))
     } else {
         String::new()
     };
@@ -36,7 +37,7 @@ fn miss_notice(miss: &CacheMiss) -> Option<String> {
     } else if miss.idle_ms >= CACHE_TTL_MS {
         format!(
             "Cache miss after {}m idle",
-            (miss.idle_ms as f64 / 60_000.0).round()
+            js::round(miss.idle_ms as f64 / 60_000.0)
         )
     } else {
         "Cache miss".to_owned()
@@ -52,7 +53,7 @@ fn miss_notice(miss: &CacheMiss) -> Option<String> {
 fn summary_notice(label: &str, usage: &Usage) -> String {
     let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
     let cost = if usage.cost.total >= 0.01 {
-        format!(" (~${:.2})", usage.cost.total)
+        format!(" (~${})", to_fixed(usage.cost.total, 2))
     } else {
         String::new()
     };
@@ -85,13 +86,6 @@ impl App {
     pub(super) fn cache_warmed_notice(&mut self, entry: &UsageEntry) {
         if self.cache_notices() {
             self.note(format_cache_warming_usage(entry), "dim");
-        }
-    }
-
-    /// The notice for a finished compaction's cost.
-    pub(super) fn compaction_notice(&mut self, usage: &Usage) {
-        if self.cache_notices() {
-            self.note(summary_notice("Compaction", usage), "warning");
         }
     }
 
@@ -142,9 +136,11 @@ impl App {
 
     /// The current branch's context entry by entry, with the cost notices
     /// for refreshes, summaries and cache misses pi shows when the
-    /// transcript is drawn again. Without `summary`, the latest
-    /// compaction's summary and its notice are left out.
-    pub(super) fn shown_history(&self, summary: bool) -> Vec<Shown> {
+    /// transcript is drawn again. The latest compaction comes first, as
+    /// the context has it, or with `in_place` where it happened: after the
+    /// entries it kept and before later ones, as pi draws a compaction that
+    /// just happened.
+    pub(super) fn shown_history(&self, in_place: bool) -> Vec<Shown> {
         let notices = self.cache_notices();
         let registry = self.session.registry();
         self.session.with_session(|session| {
@@ -153,16 +149,34 @@ impl App {
             } else {
                 Vec::new()
             };
-            let projection = session.build_projection();
-            let skip = usize::from(
-                !summary
-                    && projection
-                        .entries
-                        .first()
-                        .is_some_and(|entry| matches!(entry.source, FileEntry::Compaction(_))),
-            );
+            let mut entries = session.build_projection().entries;
+            if in_place
+                && let Some(compaction) = entries
+                    .first()
+                    .filter(|entry| matches!(entry.source, FileEntry::Compaction(_)))
+                    .and_then(|entry| entry.source.meta())
+            {
+                let path = session.branch_path(None);
+                let later: Vec<&str> = path
+                    .iter()
+                    .skip_while(|entry| entry.meta() != Some(compaction))
+                    .skip(1)
+                    .filter_map(|entry| entry.meta().map(|meta| meta.id.as_str()))
+                    .collect();
+                let compaction = entries.remove(0);
+                let at = entries
+                    .iter()
+                    .position(|entry| {
+                        entry
+                            .source
+                            .meta()
+                            .is_some_and(|meta| later.contains(&meta.id.as_str()))
+                    })
+                    .unwrap_or(entries.len());
+                entries.insert(at, compaction);
+            }
             let mut shown = Vec::new();
-            for entry in projection.entries.into_iter().skip(skip) {
+            for entry in entries {
                 if let FileEntry::Usage(usage) = entry.source
                     && usage.kind == "cache_warm"
                 {
@@ -236,5 +250,32 @@ mod tests {
             ..miss
         };
         assert_eq!(miss_notice(&small), None);
+        let switched = CacheMiss {
+            model_changed: true,
+            idle_ms: CACHE_TTL_MS,
+            ..miss
+        };
+        assert_eq!(
+            miss_notice(&switched).as_deref(),
+            Some("Cache miss after model switch: 21k tokens re-billed (~$0.06)")
+        );
+    }
+
+    #[test]
+    fn words_summary_costs_as_pi() {
+        let mut usage: Usage = serde_json::from_value(serde_json::json!({
+            "input": 25_000, "output": 800, "cacheRead": 0, "cacheWrite": 0,
+            "cost": {"input": 0.075, "output": 0.012, "cacheRead": 0, "cacheWrite": 0, "total": 0.087},
+        }))
+        .expect("a usage");
+        assert_eq!(
+            summary_notice("Branch summary", &usage),
+            "Branch summary: 26k tokens billed (~$0.09)"
+        );
+        usage.cost.total = 0.009;
+        assert_eq!(
+            summary_notice("Compaction", &usage),
+            "Compaction: 26k tokens billed"
+        );
     }
 }

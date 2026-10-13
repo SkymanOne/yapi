@@ -389,7 +389,7 @@
                 "id": "<id-1>",
                 "name": "bash",
                 "input": {
-                  "command": "sleep 3; echo slept"
+                  "command": "sleep 6; echo slept"
                 }
               }
             ]
@@ -594,7 +594,7 @@
                 "id": "<id-1>",
                 "name": "bash",
                 "input": {
-                  "command": "sleep 3; echo slept"
+                  "command": "sleep 6; echo slept"
                 }
               }
             ]
@@ -797,7 +797,7 @@
   "screen": [
     " Run it",
     "",
-    " $ sleep 3; echo slept",
+    " $ sleep 6; echo slept",
     "",
     " slept",
     "",

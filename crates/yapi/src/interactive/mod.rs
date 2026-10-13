@@ -1018,7 +1018,7 @@ impl App {
 
     /// Renders the current branch's messages, as when a session opens.
     fn render_history(&mut self) {
-        for text in self.render_entries(true) {
+        for text in self.render_entries(false) {
             self.add_to_history(&text);
         }
         self.trust_notice();
@@ -1040,15 +1040,15 @@ impl App {
     /// session.
     fn rebuild_chat(&mut self) {
         self.clear_chat();
-        self.render_entries(true);
+        self.render_entries(false);
     }
 
-    /// Renders the current branch's context, with the latest compaction's
-    /// summary when `summary`; returns the user prompts for the editor
-    /// history.
-    fn render_entries(&mut self, summary: bool) -> Vec<String> {
+    /// Renders the current branch's context, with the latest compaction
+    /// where it happened when `in_place`; returns the user prompts for the
+    /// editor history.
+    fn render_entries(&mut self, in_place: bool) -> Vec<String> {
         let mut history: Vec<String> = Vec::new();
-        for shown in self.shown_history(summary) {
+        for shown in self.shown_history(in_place) {
             let message = match shown {
                 cache_notices::Shown::Message(message) => *message,
                 cache_notices::Shown::Notice(text, style) => {
@@ -1973,6 +1973,25 @@ impl App {
             AgentEvent::EntryAppended {
                 entry: yapi_types::session::FileEntry::Usage(entry),
             } if entry.kind == "cache_warm" => self.cache_warmed_notice(&entry),
+            // A compaction an extension staged at a turn boundary redraws the
+            // transcript, as one that just finished does.
+            AgentEvent::EntryAppended {
+                entry: yapi_types::session::FileEntry::Compaction(entry),
+            } => {
+                let starts_context = self.session.with_session(|session| {
+                    session
+                        .build_projection()
+                        .entries
+                        .first()
+                        .is_some_and(|first| {
+                            first.source.meta().map(|meta| &meta.id) == Some(&entry.meta.id)
+                        })
+                });
+                if starts_context {
+                    self.clear_chat();
+                    self.render_compacted();
+                }
+            }
             // Calls a tool made, such as codemode's nested calls, get no row.
             AgentEvent::ToolExecutionStart {
                 parent_tool_call_id: Some(_),
@@ -2113,16 +2132,9 @@ impl App {
                     } else {
                         self.status("Auto-compaction cancelled");
                     }
-                } else if let Some(result) = result {
+                } else if result.is_some() {
                     self.clear_chat();
-                    self.render_history_without_summary();
-                    self.push(Item::Compaction {
-                        tokens_before: result.tokens_before,
-                        summary: result.summary,
-                    });
-                    if let Some(usage) = &result.usage {
-                        self.compaction_notice(usage);
-                    }
+                    self.render_compacted();
                 } else if let Some(message) = error_message {
                     if manual {
                         self.error(message);
@@ -2164,8 +2176,10 @@ impl App {
         }
     }
 
-    fn render_history_without_summary(&mut self) {
-        for text in self.render_entries(false) {
+    /// The transcript after a compaction: the entries it kept, its summary
+    /// and cost, then any later entries.
+    fn render_compacted(&mut self) {
+        for text in self.render_entries(true) {
             self.add_to_history(&text);
         }
         self.trust_notice();

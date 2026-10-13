@@ -435,7 +435,7 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
             info.push(if waste.missed_cost >= 0.0001 {
                 Line::from(vec![
                     Span::styled("Cache Re-billed:", dim),
-                    Span::raw(format!(" ${:.3} ", waste.missed_cost)),
+                    Span::raw(format!(" ${} ", to_fixed(waste.missed_cost, 3))),
                     Span::styled(format!("({detail})"), dim),
                 ])
             } else {
