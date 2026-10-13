@@ -20,7 +20,7 @@ use yapi_types::model::Model;
 use yapi_types::rpc::SourceInfo;
 use yapi_types::rpc::StreamingBehavior;
 use yapi_types::settings::QueueMode;
-use yapi_types::sync::{lock, write};
+use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::extensions::{Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers};
@@ -1220,6 +1220,10 @@ impl AgentSession {
         let ctx = self.extension_context(CancellationToken::new());
         for extension in &self.inner.extensions {
             extension.session_shutdown(&ctx).await;
+        }
+        // pi's `cleanupSessionResources`: the session's cached sockets close.
+        if let Some(id) = read(&self.inner.runtime).session_id.clone() {
+            yapi_ai::api::close_codex_websockets(&id);
         }
     }
 

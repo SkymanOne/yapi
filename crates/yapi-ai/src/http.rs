@@ -36,7 +36,8 @@ pub fn set_idle_timeout_ms(ms: u64) {
     IDLE_TIMEOUT_MS.store(ms, Ordering::Relaxed);
 }
 
-fn idle_timeout() -> Option<Duration> {
+/// The idle timeout; `None` waits forever.
+pub(crate) fn idle_timeout() -> Option<Duration> {
     match IDLE_TIMEOUT_MS.load(Ordering::Relaxed) {
         0 => None,
         ms => Some(Duration::from_millis(ms)),
@@ -77,19 +78,27 @@ pub fn proxy_env() -> Vec<(&'static str, String)> {
 /// the `httpProxy` setting.
 pub fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        let mut builder = reqwest::Client::builder().user_agent(user_agent());
-        for (name, proxy) in proxy_env() {
-            let proxy = match name {
-                "HTTP_PROXY" => reqwest::Proxy::http(&proxy),
-                _ => reqwest::Proxy::https(&proxy),
-            };
-            if let Ok(proxy) = proxy {
-                builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
-            }
+    CLIENT.get_or_init(|| builder().build().unwrap_or_default())
+}
+
+/// [`client`] limited to HTTP/1.1, which WebSocket upgrades need.
+pub(crate) fn upgrade_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| builder().http1_only().build().unwrap_or_default())
+}
+
+fn builder() -> reqwest::ClientBuilder {
+    let mut builder = reqwest::Client::builder().user_agent(user_agent());
+    for (name, proxy) in proxy_env() {
+        let proxy = match name {
+            "HTTP_PROXY" => reqwest::Proxy::http(&proxy),
+            _ => reqwest::Proxy::https(&proxy),
+        };
+        if let Ok(proxy) = proxy {
+            builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
         }
-        builder.build().unwrap_or_default()
-    })
+    }
+    builder
 }
 
 /// `yapi (<os>; <arch>)`, after pi's `pi (<platform> <release>; <arch>)`.

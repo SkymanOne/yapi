@@ -813,6 +813,19 @@
     "agentFiles": {"auth.json": "{\"openai-codex\": {\"type\": \"oauth\", \"refresh\": \"r\", \"access\": \"eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig\", \"expires\": 4102444800000, \"accountId\": \"acct_mock\"}}", "settings.json": "{\"transport\": \"sse\", \"retry\": {\"baseDelayMs\": 5}}"}
   },
   {
+    "name": "codex-websocket-tool-call-json",
+    "cassette": "openai-codex-responses/websocket-tool-call.json",
+    "args": ["--mode", "json", "--no-session", "--model", "openai-codex/gpt-5.5", "Read hello.txt"],
+    "files": {"hello.txt": "hi\n"},
+    "agentFiles": {"auth.json": "{\"openai-codex\": {\"type\": \"oauth\", \"refresh\": \"r\", \"access\": \"eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig\", \"expires\": 4102444800000, \"accountId\": \"acct_mock\"}}", "settings.json": "{\"retry\": {\"baseDelayMs\": 5}}"}
+  },
+  {
+    "name": "codex-websocket-fallback-json",
+    "cassette": "openai-codex-responses/websocket-fallback.json",
+    "args": ["--mode", "json", "--no-session", "--model", "openai-codex/gpt-5.5", "Say hello"],
+    "agentFiles": {"auth.json": "{\"openai-codex\": {\"type\": \"oauth\", \"refresh\": \"r\", \"access\": \"eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig\", \"expires\": 4102444800000, \"accountId\": \"acct_mock\"}}", "settings.json": "{\"retry\": {\"baseDelayMs\": 5}}"}
+  },
+  {
     "name": "azure-text-json",
     "cassette": "azure-openai-responses/text.json",
     "args": ["--mode", "json", "--no-session", "--model", "azure-openai-responses/gpt-5", "Say hello"],

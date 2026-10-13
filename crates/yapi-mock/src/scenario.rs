@@ -847,10 +847,23 @@ impl Normalizer<'_> {
                         (
                             "timestamp"
                             | "estimatedTokensAfter"
+                            | "requestBytes"
                             | "durationMs"
                             | "wall_time_seconds",
                             Value::String(_) | Value::Number(_),
                         ) => Value::from(format!("<{key}>")),
+                        // pi's diagnostics carry the error's stack trace.
+                        ("diagnostics", Value::Array(items)) => {
+                            let mut items = self.value(&Value::Array(items.clone()));
+                            for item in items.as_array_mut().into_iter().flatten() {
+                                if let Some(error) =
+                                    item.get_mut("error").and_then(Value::as_object_mut)
+                                {
+                                    error.shift_remove("stack");
+                                }
+                            }
+                            items
+                        }
                         ("sections", Value::Object(sections)) => {
                             let mut kept = Map::new();
                             for (name, text) in sections {
@@ -881,7 +894,8 @@ impl Normalizer<'_> {
 /// pi serializes live objects, so `message_update.usage` and the partial in an
 /// assistant `message_start` depend on network timing; both are dropped.
 /// `estimatedTokensAfter` estimates the whole prompt, which includes pi's
-/// `docs` section, so it is masked too. Parallel tools finish in any order, so
+/// `docs` section, and a transport diagnostic's `requestBytes` measures it,
+/// so both are masked too. Parallel tools finish in any order, so
 /// each run of consecutive tool update and end events is sorted.
 pub fn normalize(run: &Run) -> Value {
     let mut new_files: Vec<&SessionFile> =
