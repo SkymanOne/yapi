@@ -26,6 +26,7 @@ mod settings_selector;
 mod themes;
 mod tools;
 mod tree_selector;
+mod updates;
 mod word_diff;
 
 use std::collections::HashMap;
@@ -201,6 +202,10 @@ enum Event {
     /// The current session's extensions started, after a change `Reply`
     /// waits on.
     Bound(Reply),
+    /// A newer yapi release, from the startup check.
+    NewVersion(String),
+    /// The packages with updates, from the startup check.
+    PackageUpdates(Vec<String>),
     /// A model catalog refresh finished.
     Catalogs(
         Box<catalogs::Refresh>,
@@ -4004,6 +4009,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     if app.model_network {
         app.refresh_catalogs(None, catalogs::Refresh::Startup);
     }
+    app.check_for_updates();
 
     #[cfg(unix)]
     let mut resize =
@@ -4474,6 +4480,12 @@ impl App {
             Event::Auth(id, request) => self.on_auth_request(id, request),
             Event::LoginDone(id, result) => self.on_login_done(id, result),
             Event::Catalogs(purpose, result) => self.on_catalogs(*purpose, result),
+            Event::NewVersion(version) => {
+                self.push(updates::version_notice(version));
+            }
+            Event::PackageUpdates(names) => {
+                self.push(updates::packages_notice(names));
+            }
             Event::LogoutDone(option, result) => self.on_logout_done(&option, result),
             Event::Notify(epoch, message, kind) if epoch == self.epoch => match kind {
                 NotifyKind::Error => self.error(message),

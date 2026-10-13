@@ -256,7 +256,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
         let agent_dir = yapi_core::config::agent_dir();
         tokio::spawn(async move {
             // The model reads the published docs until a later start succeeds.
-            let _ = yapi_core::docs::download(yapi_core::docs::RELEASES_URL, &agent_dir).await;
+            let _ = yapi_core::docs::download(&yapi_core::docs::releases_url(), &agent_dir).await;
         });
     }
     let interactive = !parsed.help

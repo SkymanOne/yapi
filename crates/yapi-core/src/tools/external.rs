@@ -115,9 +115,11 @@ pub async fn ensure_tool(tool: ExternalTool, bin_dir: &Path) -> Option<PathBuf> 
     download(tool, bin_dir).await.ok()
 }
 
-/// The latest release version, from the redirect of the release page; the API
-/// endpoint's anonymous quota is often exhausted behind shared egress.
-async fn latest_version(repo: &str) -> Result<String, String> {
+/// The version of the latest release on GitHub releases page `releases`,
+/// such as `https://github.com/sharkdp/fd/releases`, without a leading `v`.
+/// It comes from the redirect of `<releases>/latest`; the API endpoint's
+/// anonymous quota is often exhausted behind shared egress.
+pub async fn latest_version(releases: &str) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(10))
@@ -125,7 +127,7 @@ async fn latest_version(repo: &str) -> Result<String, String> {
         .build()
         .map_err(|err| err.to_string())?;
     let response = client
-        .get(format!("https://github.com/{repo}/releases/latest"))
+        .get(format!("{releases}/latest"))
         .send()
         .await
         .map_err(|err| err.to_string())?;
@@ -137,13 +139,13 @@ async fn latest_version(repo: &str) -> Result<String, String> {
         .filter(|_| status.is_redirection())
         .ok_or_else(|| {
             format!(
-                "Failed to resolve latest {repo} release: HTTP {} without redirect",
+                "Failed to resolve the latest release of {releases}: HTTP {} without redirect",
                 status.as_u16()
             )
         })?;
     if !location.contains("/releases/tag/") {
         return Err(format!(
-            "Failed to resolve latest {repo} release: unexpected redirect to {location}"
+            "Failed to resolve the latest release of {releases}: unexpected redirect to {location}"
         ));
     }
     let tag = location
@@ -211,7 +213,7 @@ pub(crate) async fn fetch(url: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn download(tool: ExternalTool, bin_dir: &Path) -> Result<PathBuf, String> {
-    let version = latest_version(tool.repo()).await?;
+    let version = latest_version(&format!("https://github.com/{}/releases", tool.repo())).await?;
     let asset = tool.asset(&version).ok_or_else(|| {
         format!(
             "Unsupported platform: {}/{}",

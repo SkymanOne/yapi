@@ -27,6 +27,7 @@ futures-util = { workspace = true, features = ["std"] }
 indexmap.workspace = true
 regex-lite.workspace = true
 ratatui-core.workspace = true
+semver.workspace = true
 yapi-ai.workspace = true
 yapi-core.workspace = true
 yapi-ext.workspace = true

@@ -1114,3 +1114,181 @@ fn native_extensions_read_the_project_as_they_load() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// At startup, interactive mode checks for a newer release and for package
+/// updates, as pi does, and shows a notice for each it finds.
+/// `PI_SKIP_VERSION_CHECK` turns off the release check, and `--offline`
+/// both.
+#[tokio::test(flavor = "multi_thread")]
+async fn startup_shows_update_notices() {
+    use std::time::Duration;
+    use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
+    let get = |path: &str, status: u16, location: Option<String>, body: &str| Interaction {
+        request: RequestMatch {
+            method: "GET".into(),
+            path: path.into(),
+        },
+        response: Response {
+            status,
+            headers: location
+                .map(|location| ("location".to_owned(), location))
+                .into_iter()
+                .collect(),
+            chunks: vec![body.to_owned()],
+            body_base64: None,
+            chunk_delay_ms: 0,
+        },
+    };
+    // The checks run at once, so releases and packages each have a server.
+    let releases = |release: bool| {
+        MockServer::local_with(move |base| Cassette {
+            interactions: release
+                .then(|| {
+                    let tag = format!("{base}/releases/tag/v99.0.0");
+                    get("/releases/latest", 302, Some(tag), "")
+                })
+                .into_iter()
+                .collect(),
+        })
+    };
+    let registry = |packument: bool| {
+        let body = r#"{"name": "ext-pkg", "dist-tags": {"latest": "1.1.0"}, "versions": {"1.0.0": {}, "1.1.0": {}}}"#;
+        MockServer::local(Cassette {
+            interactions: packument
+                .then(|| get("/ext-pkg", 200, None, body))
+                .into_iter()
+                .collect(),
+        })
+    };
+    let home = common::scratch("update-notices");
+    let agent = home.join("agent");
+    let installed = agent.join("npm/node_modules/ext-pkg");
+    std::fs::create_dir_all(&installed).unwrap();
+    std::fs::write(
+        installed.join("package.json"),
+        r#"{"name": "ext-pkg", "version": "1.0.0"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        agent.join("settings.json"),
+        r#"{"packages": ["npm:ext-pkg"]}"#,
+    )
+    .unwrap();
+    // The agent's own `fd`, so that startup downloads nothing.
+    std::fs::create_dir_all(agent.join("bin")).unwrap();
+    std::fs::write(agent.join("bin/fd"), "").unwrap();
+    let start = |releases: &MockServer, registry: &MockServer, extra: &[(&'static str, &str)]| {
+        let mut env = vec![
+            ("HOME", home.clone().into_os_string()),
+            ("YAPI_CODING_AGENT_DIR", agent.clone().into_os_string()),
+            (
+                "YAPI_RELEASES_URL",
+                format!("{}/releases", releases.url()).into(),
+            ),
+            ("npm_config_registry", format!("{}/", registry.url()).into()),
+        ];
+        env.extend(extra.iter().map(|(name, value)| (*name, (*value).into())));
+        yapi_mock::pty::Pty::spawn(
+            std::path::Path::new(env!("CARGO_BIN_EXE_yapi")),
+            &["--no-session".to_owned()],
+            &home,
+            &env,
+            (100, 40),
+            true,
+        )
+        .unwrap()
+    };
+    let shown = |texts: &'static [&'static str]| {
+        move |rows: &[String]| {
+            texts
+                .iter()
+                .all(|text| rows.iter().any(|row| row.contains(text)))
+        }
+    };
+
+    let (releases_server, registry_server) =
+        (releases(true).await.unwrap(), registry(true).await.unwrap());
+    let pty = start(&releases_server, &registry_server, &[]);
+    const BOTH: &[&str] = &["Update Available", "Package Updates Available"];
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown(BOTH)).is_some(),
+        "{:#?}",
+        pty.rows()
+    );
+    let text = pty
+        .rows()
+        .iter()
+        .map(|row| row.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let border = "─".repeat(100);
+    let version = [
+        "",
+        &border,
+        " Update Available",
+        " New version 99.0.0 is available. Run yapi update",
+        &format!(" Changelog: {}/releases", releases_server.url()),
+        &border,
+    ]
+    .join("\n");
+    let packages = [
+        "",
+        &border,
+        " Package Updates Available",
+        " Package updates are available. Run yapi update --extensions",
+        " Packages:",
+        " - ext-pkg",
+        &border,
+    ]
+    .join("\n");
+    assert!(text.contains(&version), "{text}");
+    assert!(text.contains(&packages), "{text}");
+    pty.finish().unwrap();
+    releases_server.finish().unwrap();
+    registry_server.finish().unwrap();
+
+    let (releases_server, registry_server) = (
+        releases(false).await.unwrap(),
+        registry(true).await.unwrap(),
+    );
+    let pty = start(
+        &releases_server,
+        &registry_server,
+        &[("PI_SKIP_VERSION_CHECK", "1")],
+    );
+    assert!(
+        pty.wait_for(
+            Duration::from_secs(20),
+            shown(&["Package Updates Available"])
+        )
+        .is_some(),
+        "{:#?}",
+        pty.rows()
+    );
+    pty.settle();
+    let rows = pty.rows();
+    assert!(!shown(&["Update Available"])(&rows), "{rows:#?}");
+    pty.finish().unwrap();
+    assert!(releases_server.finish().unwrap().is_empty());
+    registry_server.finish().unwrap();
+
+    let (releases_server, registry_server) = (
+        releases(false).await.unwrap(),
+        registry(false).await.unwrap(),
+    );
+    let pty = start(&releases_server, &registry_server, &[("PI_OFFLINE", "1")]);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown(&["No models available"]))
+            .is_some(),
+        "{:#?}",
+        pty.rows()
+    );
+    pty.settle();
+    let rows = pty.rows();
+    assert!(!shown(&["Update Available"])(&rows), "{rows:#?}");
+    assert!(!shown(&["Package Updates Available"])(&rows), "{rows:#?}");
+    pty.finish().unwrap();
+    assert!(releases_server.finish().unwrap().is_empty());
+    assert!(registry_server.finish().unwrap().is_empty());
+    let _ = std::fs::remove_dir_all(&home);
+}
