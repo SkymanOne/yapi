@@ -141,6 +141,11 @@
     "rpc": [{"send": {"id": "p", "type": "prompt", "message": "Hello"}, "until": "agent_settled"}, {"send": null, "until": "entry_appended"}]
   },
   {
+    "name": "anthropic-input-transformations-json",
+    "cassette": "anthropic-messages/input-transformations.json",
+    "args": ["--mode", "json", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "Say hello"]
+  },
+  {
     "name": "anthropic-error-json",
     "cassette": "anthropic-messages/error.json",
     "args": ["--mode", "json", "--no-session", "--model", "anthropic/claude-sonnet-4-5", "hi"]
