@@ -569,14 +569,7 @@ impl PackageManager {
             Source::Npm { name, version, .. } => {
                 let root = self.temporary_dir("npm", "", None)?;
                 let dir = root.join("node_modules").join(&name);
-                // A dist-tag such as `latest` is no range, so it never
-                // reinstalls an installed package.
-                let stale = npm::installed_version(&dir).is_none_or(|installed| {
-                    version.as_deref().is_some_and(|range| {
-                        npm::is_range(range) && !npm::satisfies(&installed, range)
-                    })
-                });
-                if stale {
+                if npm_stale(&dir, version.as_deref()) {
                     if offline {
                         return Ok(None);
                     }
@@ -635,8 +628,9 @@ impl PackageManager {
     }
 
     /// pi's startup install: the configured npm and git packages that are
-    /// missing, the project's first, each identity once. `on_error` receives
-    /// the failures.
+    /// missing, and the npm packages whose installed version is outside the
+    /// configured range, the project's first, each identity once. `on_error`
+    /// receives the failures.
     pub async fn install_missing(&mut self, mut on_error: impl FnMut(&str, String)) {
         let mut identities: Vec<String> = Vec::new();
         for scope in [Scope::Project, Scope::Global] {
@@ -652,11 +646,15 @@ impl PackageManager {
                 identities.push(identity);
                 let root = self.install_path(&parsed, scope);
                 let installed = match &parsed {
-                    _ if root.exists() => Ok(()),
                     Source::Npm { name, version, .. } => {
-                        self.install_npm(&self.npm_root(scope), name, version.as_deref())
-                            .await
+                        if npm_stale(&root, version.as_deref()) {
+                            self.install_npm(&self.npm_root(scope), name, version.as_deref())
+                                .await
+                        } else {
+                            Ok(())
+                        }
                     }
+                    _ if root.exists() => Ok(()),
                     Source::Git {
                         repo, reference, ..
                     } => self.install_git(repo, reference.as_deref(), &root).await,
@@ -671,6 +669,15 @@ impl PackageManager {
             }
         }
     }
+}
+
+/// Whether the npm package at `dir` must be installed: it is missing, or
+/// `range` is a version range its installed version does not satisfy. A
+/// dist-tag such as `latest` is no range, so it never reinstalls.
+fn npm_stale(dir: &Path, range: Option<&str>) -> bool {
+    npm::installed_version(dir).is_none_or(|installed| {
+        range.is_some_and(|range| npm::is_range(range) && !npm::satisfies(&installed, range))
+    })
 }
 
 #[cfg(test)]

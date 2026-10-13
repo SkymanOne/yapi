@@ -544,3 +544,95 @@ async fn installs_temporary_packages_outside_settings() {
         "one packument and one tarball"
     );
 }
+
+/// pi's startup install: a missing configured package is installed, one
+/// whose installed version is outside the configured range is replaced, and
+/// one in range is left alone (the registry serves one install only).
+#[tokio::test(flavor = "multi_thread")]
+async fn installs_missing_and_out_of_range_configured_packages() {
+    let dir = scratch("missing");
+    let version = |version: &str| {
+        tarball(&[
+            (
+                "package.json",
+                &format!(r#"{{"name": "ext-pkg", "version": "{version}"}}"#),
+            ),
+            ("index.ts", version),
+        ])
+    };
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    let installed = dir.join("agent/npm/node_modules/ext-pkg");
+    let configure = |source: &str| {
+        std::fs::create_dir_all(dir.join("agent")).unwrap();
+        std::fs::write(
+            dir.join("agent/settings.json"),
+            json!({"packages": [source]}).to_string(),
+        )
+        .unwrap();
+    };
+
+    // Missing: installed from the registry.
+    configure("npm:ext-pkg@^2.0.0");
+    let mut errors = Vec::new();
+    manager(&dir, &server.url())
+        .install_missing(|_, message| errors.push(message))
+        .await;
+    assert_eq!(errors, Vec::<String>::new());
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+
+    // In range, a different range that 2.0.0 satisfies, and a dist-tag: no
+    // request reaches the registry.
+    for source in [
+        "npm:ext-pkg@^2.0.0",
+        "npm:ext-pkg@>=1",
+        "npm:ext-pkg@latest",
+        "npm:ext-pkg",
+    ] {
+        configure(source);
+        manager(&dir, &server.url())
+            .install_missing(|_, _| {})
+            .await;
+    }
+
+    // Out of range: replaced by the 1.x install put in its place.
+    std::fs::write(
+        installed.join("package.json"),
+        r#"{"name": "ext-pkg", "version": "1.0.0"}"#,
+    )
+    .unwrap();
+    std::fs::write(installed.join("index.ts"), "1.0.0").unwrap();
+    assert_eq!(
+        server.finish().unwrap().len(),
+        2,
+        "one packument and one tarball"
+    );
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    configure("npm:ext-pkg@^2.0.0");
+    manager(&dir, &server.url())
+        .install_missing(|_, _| {})
+        .await;
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+    assert_eq!(server.finish().unwrap().len(), 2);
+}
