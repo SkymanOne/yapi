@@ -1,0 +1,31 @@
+{
+  "exitCode": 0,
+  "stdout": [
+    {
+      "type": "session",
+      "version": 3
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "custom",
+        "customType": "other",
+        "content": "other: y",
+        "display": true,
+        "timestamp": "<timestamp>"
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "custom",
+        "customType": "other",
+        "content": "other: y",
+        "display": true,
+        "timestamp": "<timestamp>"
+      }
+    }
+  ],
+  "stderr": "",
+  "requests": []
+}

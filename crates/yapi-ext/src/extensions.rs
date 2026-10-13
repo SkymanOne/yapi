@@ -1900,10 +1900,13 @@ impl Bridge for SessionBridge {
                     Some(_) => Some(StreamingBehavior::Steer),
                     None => None,
                 };
+                let expand = payload["options"]["expandPromptTemplates"]
+                    .as_bool()
+                    .unwrap_or(false);
                 self.spawn(async move {
                     let source = yapi_core::agent_session::InputSource::Extension;
                     if let Err(error) = session
-                        .prompt_with(&text, images, behavior, source, |_| {})
+                        .prompt_with(&text, images, behavior, source, expand, |_| {})
                         .await
                     {
                         let (ui, _) = session.extension_binding();

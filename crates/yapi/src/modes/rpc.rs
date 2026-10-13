@@ -461,6 +461,7 @@ async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
                 images,
                 streaming_behavior,
                 InputSource::Rpc,
+                true,
                 |disposition| {
                     started.set(true);
                     let reply =

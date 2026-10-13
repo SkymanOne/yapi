@@ -1289,23 +1289,25 @@ impl AgentSession {
     /// Sends a user prompt and runs until the agent settles. Templates and
     /// `/skill:` commands expand first.
     pub async fn prompt(&self, text: &str, images: Vec<ImageContent>) -> Result<(), String> {
-        self.prompt_with(text, images, None, InputSource::Interactive, |_| {})
+        self.prompt_with(text, images, None, InputSource::Interactive, true, |_| {})
             .await
     }
 
     /// pi's `prompt`: while a run streams, `behavior` queues the message, and
     /// without one it is an error; otherwise the message starts a run that
     /// lasts until the agent settles. `preflight` learns which, before any
-    /// event of the run.
+    /// event of the run. Without `expand`, extension commands, `/skill:` and
+    /// prompt templates stay literal text, but `input` handlers still run.
     pub async fn prompt_with(
         &self,
         text: &str,
         images: Vec<ImageContent>,
         behavior: Option<StreamingBehavior>,
         source: InputSource,
+        expand: bool,
         preflight: impl FnOnce(PromptDisposition),
     ) -> Result<(), String> {
-        if self.run_extension_command(text).await {
+        if expand && self.run_extension_command(text).await {
             preflight(PromptDisposition::Handled);
             return Ok(());
         }
@@ -1318,7 +1320,7 @@ impl AgentSession {
             preflight(PromptDisposition::Handled);
             return Ok(());
         };
-        let expanded = self.expand(&text);
+        let expanded = if expand { self.expand(&text) } else { text };
         if self.is_streaming() {
             let behavior = behavior.ok_or("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.")?;
             self.queue(behavior, expanded, images);
