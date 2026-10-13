@@ -704,7 +704,7 @@ pub fn format_cache_warming_usage(entry: &UsageEntry) -> String {
         .as_ref()
         .map(|note| format!(" ({note})"))
         .unwrap_or_default();
-    let mut cost = format!("{:.6}", entry.usage.cost.total);
+    let mut cost = js::to_fixed(entry.usage.cost.total, 6);
     while cost.ends_with('0') && cost.len() - cost.find('.').unwrap_or(0) > 4 {
         cost.pop();
     }

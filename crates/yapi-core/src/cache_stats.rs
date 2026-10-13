@@ -248,12 +248,71 @@ mod tests {
         assert_eq!(compute_cache_waste(&entries, &registry).miss_count, 1);
 
         // A message already recorded is compared with the request before it.
-        let Some(FileEntry::Message(entry)) = entries.get(2) else {
-            panic!("an assistant entry");
+        assert_eq!(
+            detect_cache_miss(&entries, message(&entries[2]), &registry),
+            Some(*miss)
+        );
+    }
+
+    fn message(entry: &FileEntry) -> &AssistantMessage {
+        match entry {
+            FileEntry::Message(entry) => match &entry.message {
+                Message::Assistant(message) => message,
+                _ => panic!("an assistant message"),
+            },
+            _ => panic!("a message entry"),
+        }
+    }
+
+    #[test]
+    fn providers_that_never_report_caching_have_no_misses() {
+        let registry = ModelRegistry::builtin();
+        let entries = [
+            assistant("a", 0, 100_000, 0, 0),
+            assistant("b", 1_000, 110_000, 0, 0),
+        ];
+        assert_eq!(
+            compute_cache_waste(&entries, &registry),
+            CacheWaste::default()
+        );
+    }
+
+    #[test]
+    fn model_switches_count_as_misses() {
+        let registry = ModelRegistry::builtin();
+        let mut switched = assistant("b", 1_000, 0, 0, 100_000);
+        if let FileEntry::Message(entry) = &mut switched
+            && let Message::Assistant(message) = &mut entry.message
+        {
+            message.model = "other".into();
+        }
+        let entries = [assistant("a", 0, 0, 0, 100_000), switched];
+        let misses = collect_cache_misses(&entries, &registry);
+        assert_eq!(misses.len(), 1);
+        assert_eq!(misses[0].1.missed_tokens, 100_000);
+        assert!(misses[0].1.model_changed);
+    }
+
+    #[test]
+    fn only_cache_warming_refreshes_count_as_requests() {
+        let registry = ModelRegistry::builtin();
+        let usage = |kind: &str| -> FileEntry {
+            serde_json::from_value(json!({
+                "type": "usage", "id": kind, "parentId": null,
+                "timestamp": "1970-01-01T00:08:20.000Z",
+                "kind": kind, "provider": "p", "model": "m",
+                "usage": {"input": 0, "output": 0, "cacheRead": 100_000, "cacheWrite": 0,
+                    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}},
+            }))
+            .expect("a usage entry")
         };
-        let Message::Assistant(message) = &entry.message else {
-            panic!("an assistant message");
+        let first = assistant("a", 0, 0, 0, 100_000);
+        let missed = assistant("b", 600_000, 0, 0, 110_000);
+        let after = |kind| {
+            detect_cache_miss(&[first.clone(), usage(kind)], message(&missed), &registry)
+                .map(|miss| miss.idle_ms)
         };
-        assert_eq!(detect_cache_miss(&entries, message, &registry), Some(*miss));
+        assert_eq!(after("cache_warm"), Some(100_000));
+        assert_eq!(after("custom_operation"), Some(600_000));
     }
 }
