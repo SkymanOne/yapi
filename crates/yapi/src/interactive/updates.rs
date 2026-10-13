@@ -1,13 +1,13 @@
 //! The update checks interactive mode starts with, and their notices: pi's
-//! `checkForNewPiVersion` and `checkForPackageUpdates` in
-//! `interactive-mode.ts`. yapi's releases are its GitHub releases, and the
-//! notice names `yapi update`, which prints how to upgrade.
+//! `checkForNewPiVersion` (`utils/version-check.ts`) and
+//! `checkForPackageUpdates` in `interactive-mode.ts`. yapi's releases are its
+//! GitHub releases, and the notice names `yapi update`, which prints how to
+//! upgrade.
 
 use ratatui_core::style::Modifier;
 use ratatui_core::text::{Line, Span};
-use yapi_core::config::APP_NAME;
+use yapi_core::config::{APP_NAME, env_set};
 use yapi_core::packages::PackageManager;
-use yapi_core::settings::SettingsManager;
 use yapi_tui::lines::{self, StyledLine, styled};
 
 use super::chat::{Item, RenderContext};
@@ -15,14 +15,14 @@ use super::{App, Event};
 
 impl App {
     /// Checks in the background for a newer yapi release and for package
-    /// updates, and reports each that finds one as an event. Like pi's
-    /// startup network work, neither runs with `--offline` or `PI_OFFLINE`.
+    /// updates, and reports each that finds one as an event. Neither runs
+    /// while `PI_OFFLINE` is set, which `--offline` does, and
     /// `PI_SKIP_VERSION_CHECK` turns off the release check.
     pub(super) fn check_for_updates(&self) {
-        if !self.model_network {
+        if env_set("PI_OFFLINE") {
             return;
         }
-        if std::env::var_os("PI_SKIP_VERSION_CHECK").is_none_or(|value| value.is_empty()) {
+        if !env_set("PI_SKIP_VERSION_CHECK") {
             let tx = self.tx.clone();
             tokio::spawn(async move {
                 if let Some(version) = new_version().await {
@@ -30,14 +30,10 @@ impl App {
                 }
             });
         }
-        let agent_dir = yapi_core::config::agent_dir();
-        let project_dir = self.session.project_dir();
-        let settings =
-            SettingsManager::load(&agent_dir, &project_dir, self.session.project_trusted());
-        let mut packages = PackageManager::new(
-            project_dir,
-            agent_dir,
-            settings,
+        let packages = PackageManager::new(
+            self.session.project_dir(),
+            self.agent_dir.clone(),
+            self.session.settings_manager(),
             yapi_core::packages::npm::config(),
         );
         let tx = self.tx.clone();
@@ -50,26 +46,18 @@ impl App {
     }
 }
 
-/// The latest release's version, when it is newer than this yapi.
+/// The latest release's version, when it is newer than this yapi: by semver
+/// when both are versions, else whenever they differ, as pi's
+/// `isNewerPackageVersion`.
 async fn new_version() -> Option<String> {
     let releases = yapi_core::docs::releases_url();
     let latest = yapi_core::tools::external::latest_version(&releases)
         .await
         .ok()?;
-    newer(&latest, env!("CARGO_PKG_VERSION")).then_some(latest)
-}
-
-/// pi's `isNewerPackageVersion`: by semver when both are versions, else
-/// whenever they differ.
-fn newer(candidate: &str, current: &str) -> bool {
-    let (candidate, current) = (candidate.trim(), current.trim());
-    match (
-        semver::Version::parse(candidate),
-        semver::Version::parse(current),
-    ) {
-        (Ok(candidate), Ok(current)) => candidate > current,
-        _ => candidate != current,
-    }
+    let current = env!("CARGO_PKG_VERSION");
+    yapi_core::packages::npm::newer(&latest, current)
+        .unwrap_or(latest.trim() != current)
+        .then_some(latest)
 }
 
 /// pi's `showNewVersionNotification` for release `version`. A release
@@ -135,21 +123,4 @@ fn framed(text: &[StyledLine], width: usize, ctx: &RenderContext<'_>) -> Vec<Sty
     out.extend(lines::text(text, width, 1, 0, None));
     out.push(border);
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn newer_compares_as_pi() {
-        assert!(newer("0.2.0", "0.1.0"));
-        assert!(newer(" 1.0.0\n", "0.9.9"));
-        assert!(!newer("0.1.0", "0.1.0"));
-        assert!(!newer("0.1.0", "0.2.0"));
-        assert!(!newer("0.2.0-rc.1", "0.2.0"));
-        // A tag that is no version is news whenever it differs.
-        assert!(newer("nightly", "0.1.0"));
-        assert!(!newer("nightly", "nightly"));
-    }
 }

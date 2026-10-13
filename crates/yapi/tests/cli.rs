@@ -1116,9 +1116,9 @@ fn native_extensions_read_the_project_as_they_load() {
 }
 
 /// At startup, interactive mode checks for a newer release and for package
-/// updates, as pi does, and shows a notice for each it finds.
-/// `PI_SKIP_VERSION_CHECK` turns off the release check, and `--offline`
-/// both.
+/// updates, as pi does, and shows a notice for each it finds, wrapped to the
+/// terminal. `PI_SKIP_VERSION_CHECK` turns off the release check, and a
+/// non-empty `PI_OFFLINE` or `--offline` both.
 #[tokio::test(flavor = "multi_thread")]
 async fn startup_shows_update_notices() {
     use std::time::Duration;
@@ -1177,10 +1177,15 @@ async fn startup_shows_update_notices() {
     // The agent's own `fd`, so that startup downloads nothing.
     std::fs::create_dir_all(agent.join("bin")).unwrap();
     std::fs::write(agent.join("bin/fd"), "").unwrap();
-    let start = |releases: &MockServer, registry: &MockServer, extra: &[(&'static str, &str)]| {
+    let start = |releases: &MockServer,
+                 registry: &MockServer,
+                 extra: &[(&'static str, &str)],
+                 args: &[&str],
+                 cols: u16| {
         let mut env = vec![
             ("HOME", home.clone().into_os_string()),
             ("YAPI_CODING_AGENT_DIR", agent.clone().into_os_string()),
+            ("YAPI_NO_DOCS", "1".into()),
             (
                 "YAPI_RELEASES_URL",
                 format!("{}/releases", releases.url()).into(),
@@ -1188,15 +1193,26 @@ async fn startup_shows_update_notices() {
             ("npm_config_registry", format!("{}/", registry.url()).into()),
         ];
         env.extend(extra.iter().map(|(name, value)| (*name, (*value).into())));
+        let args: Vec<String> = ["--no-session"]
+            .iter()
+            .chain(args)
+            .map(|arg| (*arg).to_owned())
+            .collect();
         yapi_mock::pty::Pty::spawn(
             std::path::Path::new(env!("CARGO_BIN_EXE_yapi")),
-            &["--no-session".to_owned()],
+            &args,
             &home,
             &env,
-            (100, 40),
+            (cols, 40),
             true,
         )
         .unwrap()
+    };
+    let text = |rows: Vec<String>| {
+        rows.iter()
+            .map(|row| row.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let shown = |texts: &'static [&'static str]| {
         move |rows: &[String]| {
@@ -1208,19 +1224,21 @@ async fn startup_shows_update_notices() {
 
     let (releases_server, registry_server) =
         (releases(true).await.unwrap(), registry(true).await.unwrap());
-    let pty = start(&releases_server, &registry_server, &[]);
+    // pi reads an empty `PI_OFFLINE` as unset.
+    let pty = start(
+        &releases_server,
+        &registry_server,
+        &[("PI_OFFLINE", "")],
+        &[],
+        100,
+    );
     const BOTH: &[&str] = &["Update Available", "Package Updates Available"];
     assert!(
         pty.wait_for(Duration::from_secs(20), shown(BOTH)).is_some(),
         "{:#?}",
         pty.rows()
     );
-    let text = pty
-        .rows()
-        .iter()
-        .map(|row| row.trim_end())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let shown_text = text(pty.rows());
     let border = "─".repeat(100);
     let version = [
         "",
@@ -1241,8 +1259,8 @@ async fn startup_shows_update_notices() {
         &border,
     ]
     .join("\n");
-    assert!(text.contains(&version), "{text}");
-    assert!(text.contains(&packages), "{text}");
+    assert!(shown_text.contains(&version), "{shown_text}");
+    assert!(shown_text.contains(&packages), "{shown_text}");
     pty.finish().unwrap();
     releases_server.finish().unwrap();
     registry_server.finish().unwrap();
@@ -1255,6 +1273,8 @@ async fn startup_shows_update_notices() {
         &releases_server,
         &registry_server,
         &[("PI_SKIP_VERSION_CHECK", "1")],
+        &[],
+        40,
     );
     assert!(
         pty.wait_for(
@@ -1268,27 +1288,81 @@ async fn startup_shows_update_notices() {
     pty.settle();
     let rows = pty.rows();
     assert!(!shown(&["Update Available"])(&rows), "{rows:#?}");
+    let narrow = [
+        "─".repeat(40).as_str(),
+        " Package Updates Available",
+        " Package updates are available. Run",
+        " yapi update --extensions",
+        " Packages:",
+        " - ext-pkg",
+    ]
+    .join("\n");
+    let shown_text = text(rows);
+    assert!(shown_text.contains(&narrow), "{shown_text}");
     pty.finish().unwrap();
     assert!(releases_server.finish().unwrap().is_empty());
     registry_server.finish().unwrap();
 
-    let (releases_server, registry_server) = (
-        releases(false).await.unwrap(),
-        registry(false).await.unwrap(),
-    );
-    let pty = start(&releases_server, &registry_server, &[("PI_OFFLINE", "1")]);
-    assert!(
-        pty.wait_for(Duration::from_secs(20), shown(&["No models available"]))
-            .is_some(),
-        "{:#?}",
-        pty.rows()
-    );
-    pty.settle();
-    let rows = pty.rows();
-    assert!(!shown(&["Update Available"])(&rows), "{rows:#?}");
-    assert!(!shown(&["Package Updates Available"])(&rows), "{rows:#?}");
-    pty.finish().unwrap();
-    assert!(releases_server.finish().unwrap().is_empty());
-    assert!(registry_server.finish().unwrap().is_empty());
+    for (env, args) in [(&[("PI_OFFLINE", "1")][..], &[][..]), (&[], &["--offline"])] {
+        let (releases_server, registry_server) = (
+            releases(false).await.unwrap(),
+            registry(false).await.unwrap(),
+        );
+        let pty = start(&releases_server, &registry_server, env, args, 100);
+        assert!(
+            pty.wait_for(Duration::from_secs(20), shown(&["No models available"]))
+                .is_some(),
+            "{:#?}",
+            pty.rows()
+        );
+        pty.settle();
+        let rows = pty.rows();
+        assert!(!shown(&["Update Available"])(&rows), "{rows:#?}");
+        assert!(!shown(&["Package Updates Available"])(&rows), "{rows:#?}");
+        pty.finish().unwrap();
+        assert!(releases_server.finish().unwrap().is_empty());
+        assert!(registry_server.finish().unwrap().is_empty());
+    }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `--offline` is pi's `PI_OFFLINE=1` and `PI_SKIP_VERSION_CHECK=1` for the
+/// whole process: extensions and the programs they run see both.
+#[test]
+fn offline_flag_reaches_extensions_and_children() {
+    let home = common::scratch("offline-env");
+    std::fs::create_dir_all(home.join("agent")).unwrap();
+    std::fs::write(
+        home.join("env.ts"),
+        r#"export default function (pi) {
+	pi.registerCommand("env", {
+		handler: async () => {
+			const child = await pi.exec("sh", ["-c", "echo $PI_OFFLINE $PI_SKIP_VERSION_CHECK"]);
+			const own = `${process.env.PI_OFFLINE} ${process.env.PI_SKIP_VERSION_CHECK}`;
+			pi.sendMessage({ customType: "env", content: `${own} ${child.stdout.trim()}`, display: true });
+		},
+	});
+}
+"#,
+    )
+    .unwrap();
+    let output = common::yapi(&home)
+        .args([
+            "--offline",
+            "--mode",
+            "json",
+            "--no-session",
+            "-e",
+            "env.ts",
+            "--model",
+            "anthropic/claude-sonnet-4-5",
+            "/env",
+        ])
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("ANTHROPIC_API_KEY", "mock")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let _ = std::fs::remove_dir_all(&home);
+    assert!(stdout.contains(r#""content":"1 1 1 1""#), "{stdout}");
 }

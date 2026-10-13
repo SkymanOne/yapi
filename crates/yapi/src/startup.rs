@@ -1001,7 +1001,7 @@ async fn start_extensions(
         run.settings.clone(),
         yapi_core::packages::npm::config(),
     );
-    let offline = args.offline || yapi_core::tools::external::offline();
+    let offline = yapi_core::tools::external::offline();
     // Installs missing packages; what they provide comes from pi's resolver.
     // Unlike pi, a failure does not stop the others (docs/compat.md).
     if !offline {
