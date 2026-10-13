@@ -2,7 +2,9 @@
 //! endpoints, with per-provider compat flags.
 //!
 //! Port of `packages/ai/src/api/openai-completions.ts` in pi `v1.0.0`. Not yet
-//! ported: grammar-constrained custom tools and GitHub Copilot dynamic headers.
+//! ported: GitHub Copilot dynamic headers.
+
+use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
 use yapi_types::message::{
@@ -15,13 +17,15 @@ use super::sanitize_id_part;
 use crate::cost::calculate_cost;
 use crate::http::{self, Failure, SseReader};
 use crate::json_parse::parse_streaming_json;
-use crate::schema;
+use crate::schema::{self, GrammarInput};
 use crate::stream::{
     CacheRetention, EventSender, Request, StreamEvent, StreamOptions, new_output, now_ms,
     send_error,
 };
 use crate::thinking::{MIN_ANSWER_TOKENS, budget_for_level, effort, requested_max_tokens};
-use crate::transcript::{resolve_transcript, resolve_transcript_tools, transform_messages};
+use crate::transcript::{
+    declared_tools, resolve_transcript, resolve_transcript_tools, transform_messages,
+};
 
 /// Compat flags with detected defaults applied.
 #[derive(Clone, Debug)]
@@ -44,6 +48,7 @@ struct Compat {
     zai_tool_stream: bool,
     thinking_token_budget_field: Option<String>,
     supports_strict_mode: bool,
+    supports_grammar_tools: bool,
     supports_mid_convo_system_messages: bool,
     supports_mid_convo_tool_additions: bool,
     cache_control_format: Option<String>,
@@ -162,6 +167,7 @@ impl Compat {
                     .then(|| "thinking_token_budget".to_owned())
             }),
             supports_strict_mode: raw.supports_strict_mode.unwrap_or(false),
+            supports_grammar_tools: raw.supports_open_ai_grammar_tools.unwrap_or(false),
             supports_mid_convo_system_messages: raw
                 .supports_mid_convo_system_messages
                 .unwrap_or(false),
@@ -308,6 +314,14 @@ fn convert_tools(tools: &[ToolDeclaration], compat: &Compat) -> Result<Vec<Value
     tools
         .iter()
         .map(|tool| {
+            if let Some(grammar) = schema::grammar_sampling(tool, compat.supports_grammar_tools)? {
+                return Ok(json!({"type": "custom", "custom": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "format": {"type": "grammar", "grammar": {
+                        "syntax": grammar.syntax,
+                        "definition": grammar.definition}}}}));
+            }
             let strict = schema::strict_sampling(tool, compat.supports_strict_mode, None)?;
             let mut function = Map::new();
             function.insert("name".into(), json!(tool.name));
@@ -329,6 +343,7 @@ fn convert_messages(
     model: &Model,
     messages: &[Message],
     compat: &Compat,
+    grammar: &HashMap<String, String>,
 ) -> Result<Vec<Value>, String> {
     let provider = model.provider.clone();
     let normalize = move |id: &str, _: &AssistantMessage| normalize_tool_call_id(id, &provider);
@@ -492,14 +507,19 @@ fn convert_messages(
                     out.insert("content".into(), json!(text));
                 }
                 if !calls.is_empty() {
-                    let tool_calls: Vec<Value> = calls
+                    let tool_calls = calls
                         .iter()
                         .map(|call| {
-                            json!({"id": call.id, "type": "function", "function": {
-                                "name": call.name,
-                                "arguments": yapi_types::json::stringify(&call.arguments)}})
+                            Ok(match grammar.get(&call.name) {
+                                Some(property) => json!({"id": call.id, "type": "custom", "custom": {
+                                    "name": call.name,
+                                    "input": schema::grammar_input(&call.name, &call.arguments, property)?}}),
+                                None => json!({"id": call.id, "type": "function", "function": {
+                                    "name": call.name,
+                                    "arguments": yapi_types::json::stringify(&call.arguments)}}),
+                            })
                         })
-                        .collect();
+                        .collect::<Result<Vec<Value>, String>>()?;
                     out.insert("tool_calls".into(), Value::Array(tool_calls));
                 }
                 if let Some(details) = preserved {
@@ -657,7 +677,7 @@ fn build_params(
     messages: &[Message],
     options: &StreamOptions,
     compat: &Compat,
-    retention: CacheRetention,
+    grammar: &HashMap<String, String>,
     max_tokens: u64,
     effort: Option<ThinkingLevel>,
 ) -> Result<Value, String> {
@@ -665,7 +685,8 @@ fn build_params(
         messages,
         compat.supports_mid_convo_system_messages && compat.supports_mid_convo_tool_additions,
     );
-    let mut converted = convert_messages(model, messages, compat)?;
+    let mut converted = convert_messages(model, messages, compat, grammar)?;
+    let retention = options.resolved_cache_retention();
     let cache_control = (compat.cache_control_format.as_deref() == Some("anthropic")
         && retention != CacheRetention::None)
         .then(|| {
@@ -978,7 +999,15 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     } = request;
     let compat = Compat::new(&model);
     let output = new_output(&model, now_ms());
-    let response = match connect(&model, &compat, &messages, &options).await {
+    // Calls are stored as ordinary tool calls. Each request decides from the
+    // declared tools which ones travel as custom tool calls.
+    let grammar =
+        match schema::grammar_properties(&declared_tools(&messages), compat.supports_grammar_tools)
+        {
+            Ok(grammar) => grammar,
+            Err(message) => return send_error(&sender, output, &options.cancel, message),
+        };
+    let response = match connect(&model, &compat, &grammar, &messages, &options).await {
         Ok(response) => response,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
@@ -987,6 +1016,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     sender.send(StreamEvent::Start(output.clone()));
     let mut state = State {
         output,
+        grammar,
         text: None,
         thinking: None,
         calls: Vec::new(),
@@ -1009,6 +1039,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
 async fn connect(
     model: &Model,
     compat: &Compat,
+    grammar: &HashMap<String, String>,
     messages: &[Message],
     options: &StreamOptions,
 ) -> Result<reqwest::Response, String> {
@@ -1031,7 +1062,7 @@ async fn connect(
         &normalized,
         options,
         compat,
-        retention,
+        grammar,
         max_tokens,
         effort,
     )?;
@@ -1092,10 +1123,14 @@ struct CallState {
     stream_index: Option<u64>,
     id: String,
     partial_args: String,
+    /// The input of a custom tool call.
+    custom: Option<GrammarInput>,
 }
 
 struct State {
     output: AssistantMessage,
+    /// The input argument of each tool sent with a grammar, by name.
+    grammar: HashMap<String, String>,
     text: Option<usize>,
     thinking: Option<usize>,
     calls: Vec<CallState>,
@@ -1134,7 +1169,11 @@ impl State {
     fn ensure_call(&mut self, delta: &Value, sender: &EventSender) -> usize {
         let stream_index = delta["index"].as_u64();
         let id = delta["id"].as_str().unwrap_or_default();
-        let name = delta["function"]["name"].as_str().unwrap_or_default();
+        let name = delta["function"]["name"]
+            .as_str()
+            .or(delta["custom"]["name"].as_str())
+            .unwrap_or_default();
+        let custom = delta["custom"].is_object() && delta["function"].is_null();
         let existing = stream_index
             .and_then(|index| {
                 self.calls
@@ -1156,6 +1195,7 @@ impl State {
                     stream_index,
                     id: id.to_owned(),
                     partial_args: String::new(),
+                    custom: None,
                 });
                 self.calls.len() - 1
             }
@@ -1174,6 +1214,12 @@ impl State {
             if block.name.is_empty() && !name.is_empty() {
                 block.name = name.to_owned();
             }
+            if custom && call.custom.is_none() {
+                let custom = GrammarInput::for_call(&self.grammar, &block.name);
+                block.arguments = Map::from_iter([(custom.property.clone(), json!(""))]);
+                call.partial_args.clear();
+                call.custom = Some(custom);
+            }
         }
         index
     }
@@ -1181,10 +1227,24 @@ impl State {
     fn finish_blocks(&mut self, sender: &EventSender) {
         self.apply_details();
         for position in 0..self.output.content.len() {
+            let mut delta = None;
             if let ContentBlock::ToolCall(call) = &mut self.output.content[position]
-                && let Some(state) = self.calls.iter().find(|state| state.position == position)
+                && let Some(state) = self
+                    .calls
+                    .iter_mut()
+                    .find(|state| state.position == position)
             {
-                call.arguments = parse_streaming_json(&state.partial_args);
+                match &mut state.custom {
+                    Some(custom) => {
+                        let input = custom.input(&call.arguments).to_owned();
+                        // Closing at the input streamed so far cannot fail.
+                        delta = custom.set(&mut call.arguments, input, true).ok().flatten();
+                    }
+                    None => call.arguments = parse_streaming_json(&state.partial_args),
+                }
+            }
+            if let Some(delta) = delta {
+                sender.delta(&mut self.output, position, &delta);
             }
             sender.end(&self.output, position);
         }
@@ -1295,18 +1355,33 @@ impl State {
         if let Some(calls) = delta["tool_calls"].as_array() {
             for call in calls {
                 let index = self.ensure_call(call, sender);
-                let position = self.calls[index].position;
-                let arguments = call["function"]["arguments"]
+                let state = &mut self.calls[index];
+                let position = state.position;
+                let mut streamed = String::new();
+                if let Some(arguments) = call["function"]["arguments"]
                     .as_str()
-                    .filter(|a| !a.is_empty());
-                if let Some(arguments) = arguments {
-                    self.calls[index].partial_args.push_str(arguments);
-                    let parsed = parse_streaming_json(&self.calls[index].partial_args);
+                    .filter(|a| !a.is_empty())
+                {
+                    state.partial_args.push_str(arguments);
+                    let parsed = parse_streaming_json(&state.partial_args);
                     if let ContentBlock::ToolCall(block) = &mut self.output.content[position] {
                         block.arguments = parsed;
                     }
+                    streamed = arguments.to_owned();
+                } else if let Some(added) =
+                    call["custom"]["input"].as_str().filter(|a| !a.is_empty())
+                    && let Some(custom) = &mut state.custom
+                    && let ContentBlock::ToolCall(block) = &mut self.output.content[position]
+                {
+                    let input = format!("{}{added}", custom.input(&block.arguments));
+                    // The input only grows until the call finishes, so this cannot fail.
+                    streamed = custom
+                        .set(&mut block.arguments, input, false)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
                 }
-                sender.delta(&mut self.output, position, arguments.unwrap_or_default());
+                sender.delta(&mut self.output, position, &streamed);
             }
         }
         if let Some(details) = delta["reasoning_details"].as_array() {
