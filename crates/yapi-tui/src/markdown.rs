@@ -3,8 +3,9 @@
 //! Port of `packages/tui/src/components/markdown.ts` in pi `v1.0.0`. pi parses
 //! with marked; this uses pulldown-cmark and rebuilds marked's block structure,
 //! including its blank-line tokens, from source offsets, and marked's links
-//! for bare URLs. LaTeX is shown as written. Code blocks are drawn by the
-//! theme's code renderer when it has one.
+//! for bare URLs. pi's LaTeX tokenizers run as marked runs them, before its
+//! own; the `math` module explains how. Code blocks are drawn by the theme's
+//! code renderer when it has one.
 
 use std::ops::Range;
 
@@ -14,6 +15,9 @@ use ratatui_core::text::{Line, Span};
 
 use crate::lines::{StyledLine, pad, raw as raw_line, width as line_width, wrap};
 use crate::text::visible_width;
+
+mod math;
+use math::{Math, Segment};
 
 /// Draws a code block's lines from its code, its language and the columns
 /// the lines have: pi's `highlightCode`, with the width yapi's code
@@ -98,6 +102,10 @@ enum Inline {
         href: String,
     },
     Break,
+    /// Inline LaTeX.
+    Math(Math),
+    /// Display LaTeX, where marked ends the paragraph.
+    Split(Math),
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +124,8 @@ enum Block {
     Quote(Vec<Spaced>),
     Rule,
     Html(String),
+    /// Display LaTeX.
+    Math(Math),
     Table {
         header: Vec<Vec<Inline>>,
         rows: Vec<Vec<Vec<Inline>>>,
@@ -143,6 +153,8 @@ struct Builder<'a> {
     preserve_escapes: bool,
     /// Inside a link's text, where marked links no bare URLs.
     in_link: bool,
+    /// The LaTeX expressions whose placeholders `source` holds.
+    maths: Vec<Math>,
 }
 
 /// Whether a blank line follows the block ending at byte `end`: two or more
@@ -224,12 +236,10 @@ impl<'a> Builder<'a> {
                     && range.start > 0
                     && self.source.as_bytes()[range.start - 1] == b'\\'
                     && text.starts_with(|c: char| c.is_ascii_punctuation());
-                let text = if escaped {
-                    format!("\\{text}")
-                } else {
-                    text.into_string()
-                };
-                push_text(out, text);
+                if escaped {
+                    push_text(out, "\\".to_owned());
+                }
+                self.text(&text, out);
             }
             Event::Code(code) => out.push(Inline::Code(code.into_string())),
             Event::Html(html) | Event::InlineHtml(html) => push_text(out, html.into_string()),
@@ -290,6 +300,30 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Adds text, with the LaTeX its placeholders stand for.
+    fn text(&self, text: &str, out: &mut Vec<Inline>) {
+        if !math::marked(text) {
+            push_text(out, text.to_owned());
+            return;
+        }
+        for segment in math::segments(text) {
+            match segment {
+                Segment::Text(text) => push_text(out, text.to_owned()),
+                Segment::Math(index) => {
+                    let Some(math) = self.maths.get(index).cloned() else {
+                        continue;
+                    };
+                    out.push(if math.display {
+                        Inline::Split(math)
+                    } else {
+                        Inline::Math(math)
+                    });
+                }
+                Segment::Continuation => drop_line_break(out),
+            }
+        }
+    }
+
     fn inlines(&mut self, end: TagEnd) -> Vec<Inline> {
         let mut out = Vec::new();
         while let Some((event, range)) = self.events.next() {
@@ -325,7 +359,7 @@ impl<'a> Builder<'a> {
         Block::Table {
             header,
             rows,
-            raw: self.source[range].trim_end().to_owned(),
+            raw: math::restore(self.source[range].trim_end(), &self.maths),
         }
     }
 
@@ -460,10 +494,13 @@ impl<'a> Builder<'a> {
                 }
             };
             if let Some(block) = block {
-                out.push(Spaced {
+                let blocks = split_paragraph(block);
+                let count = blocks.len();
+                out.extend(blocks.into_iter().enumerate().map(|(index, block)| Spaced {
                     block,
-                    blank_after: blank_line_after(self.source, block_end, false),
-                });
+                    blank_after: index + 1 == count
+                        && blank_line_after(self.source, block_end, false),
+                }));
             }
         }
         // Blank lines after the last nested block belong to the enclosing block;
@@ -474,6 +511,66 @@ impl<'a> Builder<'a> {
         }
         out
     }
+}
+
+/// Drops the line break that ends `out`, before a line of an expression that
+/// its first line stands for.
+fn drop_line_break(out: &mut Vec<Inline>) {
+    match out.last_mut() {
+        Some(Inline::Break) => {
+            out.pop();
+        }
+        Some(Inline::Text(text)) => {
+            if text.ends_with('\n') {
+                text.pop();
+            }
+            if text.is_empty() {
+                out.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+/// marked's blocks for a paragraph or a text run that holds [`Inline::Split`]
+/// markers: the text before each, the display block, then the rest, without
+/// the line breaks between them.
+fn split_paragraph(block: Block) -> Vec<Block> {
+    let splits = |inlines: &[Inline]| {
+        inlines
+            .iter()
+            .any(|inline| matches!(inline, Inline::Split(_)))
+    };
+    let (inlines, paragraph) = match block {
+        Block::Paragraph(inlines) if splits(&inlines) => (inlines, Block::Paragraph as fn(_) -> _),
+        Block::Text(inlines) if splits(&inlines) => (inlines, Block::Text as fn(_) -> _),
+        block => return vec![block],
+    };
+    let mut blocks = Vec::new();
+    let mut current: Vec<Inline> = Vec::new();
+    for inline in inlines {
+        match inline {
+            Inline::Split(math) => {
+                drop_line_break(&mut current);
+                if !current.is_empty() {
+                    blocks.push(paragraph(std::mem::take(&mut current)));
+                }
+                blocks.push(Block::Math(math));
+            }
+            Inline::Text(text) if current.is_empty() => {
+                let text = text.strip_prefix('\n').map(str::to_owned).unwrap_or(text);
+                if !text.is_empty() {
+                    current.push(Inline::Text(text));
+                }
+            }
+            Inline::Break if current.is_empty() => {}
+            inline => current.push(inline),
+        }
+    }
+    if !current.is_empty() {
+        blocks.push(paragraph(current));
+    }
+    blocks
 }
 
 fn push_text(out: &mut Vec<Inline>, text: String) {
@@ -665,6 +762,8 @@ fn plain_text(inlines: &[Inline]) -> String {
             }
             Inline::Link { children, .. } => out.push_str(&plain_text(children)),
             Inline::Break => out.push('\n'),
+            Inline::Math(math) => out.push_str(&math.raw),
+            Inline::Split(_) => {}
         }
     }
     out
@@ -757,6 +856,14 @@ impl Renderer<'_> {
                     }
                 }
                 Inline::Break => out.push(Span::raw("\n")),
+                Inline::Math(math) => {
+                    let text = (!math.pending)
+                        .then(|| crate::latex::render_latex(&math.text, false))
+                        .flatten()
+                        .unwrap_or_else(|| math.raw.clone());
+                    out.push(Span::styled(text, text_style));
+                }
+                Inline::Split(_) => {}
             }
         }
         out
@@ -874,6 +981,18 @@ impl Renderer<'_> {
                     "─".repeat(width.min(80)),
                     self.theme.hr,
                 )));
+                spaced_unless(&mut lines, false);
+            }
+            Block::Math(math) => {
+                let text = (!math.pending)
+                    .then(|| crate::latex::render_latex(&math.text, true))
+                    .flatten()
+                    .unwrap_or_else(|| math.raw.trim().to_owned());
+                let style = self.text_style(quoted);
+                lines.extend(
+                    text.split('\n')
+                        .map(|line| Line::from(Span::styled(line.to_owned(), style))),
+                );
                 spaced_unless(&mut lines, false);
             }
             Block::Html(html) => lines.push(Line::from(Span::styled(
@@ -1152,7 +1271,12 @@ pub fn render(
     parser_options.insert(Options::ENABLE_TABLES);
     parser_options.insert(Options::ENABLE_STRIKETHROUGH);
     parser_options.insert(Options::ENABLE_TASKLISTS);
+    let (source, maths) = match math::extract(&source, parser_options) {
+        Some(extracted) => extracted,
+        None => (source, Vec::new()),
+    };
     let mut builder = Builder {
+        maths,
         source: &source,
         events: Parser::new_ext(&source, parser_options)
             .into_offset_iter()
@@ -1209,6 +1333,88 @@ mod tests {
         );
         let tilde = md("~~~\nx\n~", 40);
         assert_eq!((tilde.len(), tilde[1].as_str()), (3, "  x"));
+    }
+
+    /// pi-tui's LaTeX tests in `test/markdown.test.ts`.
+    #[test]
+    fn renders_latex_as_pi() {
+        assert_eq!(
+            md(
+                r"A map $\mathbb{C}^3 \to \mathbb{C}^3$, $xy$, $x-y$, $-x$, $\frac{1}{2}$, $\rightarrow$, and \(s \to \infty\).",
+                80
+            ),
+            ["A map ℂ³ → ℂ³, xy, x-y, -x, 1/2, →, and s → ∞."]
+        );
+        assert_eq!(
+            md(
+                "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\nafter",
+                80
+            ),
+            ["Before", "", "{3x+2y, x ∈ {0, ± 1}}", "", "after"]
+        );
+        assert_eq!(
+            md(
+                "Before\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+                80
+            ),
+            [
+                "Before",
+                "",
+                "    0.1 lux",
+                "E ≈ ────────",
+                "    100 lm/W",
+                "",
+                "after"
+            ]
+        );
+        assert_eq!(
+            md(
+                "Consider the matrix\n\n\\[\nA=\n\\begin{pmatrix}\n\\pi & 0\\\\\n0 & \\frac{1}{\\pi}\n\\end{pmatrix}.\n\\]",
+                80
+            ),
+            [
+                "Consider the matrix",
+                "",
+                "A = ⎛ π │ 0   ⎞",
+                "    ⎝ 0 │ 1/π ⎠."
+            ]
+        );
+        assert_eq!(
+            md(
+                "\\[\n\\lim_{x\\to 0}\\frac{\\frac{\\sin x}{x}-1}{\\frac{e^x-1}{x}-1}=0\n\\]",
+                80
+            ),
+            [
+                "     (sin x)/x-1",
+                "lim  ─────────── = 0",
+                "x→0  (eˣ-1)/x-1"
+            ]
+        );
+        let list_and_table = md(
+            "- Formula: $F_1 = u^2$\n\n| Value |\n| --- |\n| $\\mathbb{C}^3$ |",
+            80,
+        )
+        .join("\n");
+        assert!(
+            list_and_table.contains("- Formula: F₁ = u²"),
+            "{list_and_table}"
+        );
+        assert!(list_and_table.contains("│ ℂ³"), "{list_and_table}");
+        for source in [
+            "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}.",
+            "Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+            r"Unknown $x + \unknown{y}$ after",
+            r"Streaming $\mathbb{C}^3",
+            r"Map \(\mathbb{C}^3",
+        ] {
+            let expected = source.replace('`', "");
+            assert_eq!(md(source, 80), [expected.as_str()], "{source}");
+        }
+        assert_eq!(md("\\[\nx^2", 80), ["\\[", "x^2"]);
+        assert_eq!(
+            md("Escaped \\$x-y\\$.\n\n```text\n$\\mathbb{C}^3$\n```", 80),
+            ["Escaped $x-y$.", "", "```text", "  $\\mathbb{C}^3$", "```"]
+        );
     }
 
     #[test]

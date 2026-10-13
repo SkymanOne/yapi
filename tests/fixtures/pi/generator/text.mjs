@@ -67,8 +67,37 @@ const autolinks = {
 	urlEdges: "HTTPS://EXAMPLE.COM, Www.example.com, http:// and www.-x. https://example.com/?a=1&amp; x!foo@bar.com a*b@c.com a@b.com.c@d.com",
 	urlBlocks: "## See www.heading.com\n\n- item https://example.com/list\n- mail list@example.com\n\n| Site | Mail |\n|---|---|\n| www.cell.com | cell@example.com |",
 };
+// LaTeX, which pi-tui's tokenizers find before marked's own.
+const latex = {
+	latexInline: String.raw`A map $\mathbb{C}^3 \to \mathbb{C}^3$, $xy$, $x-y$, $\frac{1}{2}$, and \(s \to \infty\).`,
+	latexDisplay: String.raw`Before
+
+$$\{3x+2y,\; x \in \{0, \pm 1\}\}$$
+
+\[
+E \approx \frac{0.1\ \text{lux}}{100\ \text{lm/W}}
+\]
+
+after`,
+	latexCut: "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+	latexContainers: "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+	latexTable: "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+	latexNotMath: "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and $" + "{PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+	latexPending: String.raw`Streaming $\mathbb{C}^3 and *more*
+next line
+
+Text
+\[
+x^2
+*not italic*`,
+	latexEscapes: String.raw`Escaped \$x-y\$ and \\$x$ end, and \$$y$$.`,
+	latexEmphasis: "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+	latexLinks: "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+	latexHeading: "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+	latexBlank: "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+};
 const markdown = [];
-for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks)]) {
+for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {
 	const underline = name in autolinks || undefined;
 	for (const [width, paddingX, paddingY] of [[40, 0, 0], [24, 1, 0], [80, 1, 1]]) {
 		for (const preserve of [false, true]) {

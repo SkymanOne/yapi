@@ -2906,6 +2906,1194 @@
 			]
 		},
 		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"A map ℂ³ → ℂ³, xy, x-y, 1/2, and s → ∞. "
+			]
+		},
+		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"A map ℂ³ → ℂ³, xy, x-y, 1/2, and s → ∞. "
+			]
+		},
+		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" A map ℂ³ → ℂ³, xy,     ",
+				" x-y, 1/2, and s → ∞.   "
+			]
+		},
+		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" A map ℂ³ → ℂ³, xy,     ",
+				" x-y, 1/2, and s → ∞.   "
+			]
+		},
+		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" A map ℂ³ → ℂ³, xy, x-y, 1/2, and s → ∞.                                        ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexInline",
+			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" A map ℂ³ → ℂ³, xy, x-y, 1/2, and s → ∞.                                        ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Before                                  ",
+				"                                        ",
+				"{3x+2y, x ∈ {0, ± 1}}                   ",
+				"                                        ",
+				"    0.1 lux                             ",
+				"E ≈ ────────                            ",
+				"    100 lm/W                            ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Before                                  ",
+				"                                        ",
+				"{3x+2y, x ∈ {0, ± 1}}                   ",
+				"                                        ",
+				"    0.1 lux                             ",
+				"E ≈ ────────                            ",
+				"    100 lm/W                            ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Before                 ",
+				"                        ",
+				" {3x+2y, x ∈ {0, ± 1}}  ",
+				"                        ",
+				"     0.1 lux            ",
+				" E ≈ ────────           ",
+				"     100 lm/W           ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Before                 ",
+				"                        ",
+				" {3x+2y, x ∈ {0, ± 1}}  ",
+				"                        ",
+				"     0.1 lux            ",
+				" E ≈ ────────           ",
+				"     100 lm/W           ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Before                                                                         ",
+				"                                                                                ",
+				" {3x+2y, x ∈ {0, ± 1}}                                                          ",
+				"                                                                                ",
+				"     0.1 lux                                                                    ",
+				" E ≈ ────────                                                                   ",
+				"     100 lm/W                                                                   ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexDisplay",
+			"text": "Before\n\n$$\\{3x+2y,\\; x \\in \\{0, \\pm 1\\}\\}$$\n\n\\[\nE \\approx \\frac{0.1\\ \\text{lux}}{100\\ \\text{lm/W}}\n\\]\n\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Before                                                                         ",
+				"                                                                                ",
+				" {3x+2y, x ∈ {0, ± 1}}                                                          ",
+				"                                                                                ",
+				"     0.1 lux                                                                    ",
+				" E ≈ ────────                                                                   ",
+				"     100 lm/W                                                                   ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Intro line                              ",
+				"                                        ",
+				"x² + y²                                 ",
+				"                                        ",
+				"after text                              ",
+				"more                                    ",
+				"$$ not math                             ",
+				"last                                    "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Intro line                              ",
+				"                                        ",
+				"x² + y²                                 ",
+				"                                        ",
+				"after text                              ",
+				"more                                    ",
+				"$$ not math                             ",
+				"last                                    "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Intro line             ",
+				"                        ",
+				" x² + y²                ",
+				"                        ",
+				" after text             ",
+				" more                   ",
+				" $$ not math            ",
+				" last                   "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Intro line             ",
+				"                        ",
+				" x² + y²                ",
+				"                        ",
+				" after text             ",
+				" more                   ",
+				" $$ not math            ",
+				" last                   "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Intro line                                                                     ",
+				"                                                                                ",
+				" x² + y²                                                                        ",
+				"                                                                                ",
+				" after text                                                                     ",
+				" more                                                                           ",
+				" $$ not math                                                                    ",
+				" last                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexCut",
+			"text": "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Intro line                                                                     ",
+				"                                                                                ",
+				" x² + y²                                                                        ",
+				"                                                                                ",
+				" after text                                                                     ",
+				" more                                                                           ",
+				" $$ not math                                                                    ",
+				" last                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- Formula: F₁ = u²                      ",
+				"- block:                                ",
+				"  1                                     ",
+				"  ─                                     ",
+				"  2                                     ",
+				"- end x                                 ",
+				"                                        ",
+				"│ quote a²                              ",
+				"│                                       ",
+				"│ x₁                                    ",
+				"│                                       ",
+				"│ after                                 "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- Formula: F₁ = u²                      ",
+				"- block:                                ",
+				"  1                                     ",
+				"  ─                                     ",
+				"  2                                     ",
+				"- end x                                 ",
+				"                                        ",
+				"│ quote a²                              ",
+				"│                                       ",
+				"│ x₁                                    ",
+				"│                                       ",
+				"│ after                                 "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - Formula: F₁ = u²     ",
+				" - block:               ",
+				"   1                    ",
+				"   ─                    ",
+				"   2                    ",
+				" - end x                ",
+				"                        ",
+				" │ quote a²             ",
+				" │                      ",
+				" │ x₁                   ",
+				" │                      ",
+				" │ after                "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - Formula: F₁ = u²     ",
+				" - block:               ",
+				"   1                    ",
+				"   ─                    ",
+				"   2                    ",
+				" - end x                ",
+				"                        ",
+				" │ quote a²             ",
+				" │                      ",
+				" │ x₁                   ",
+				" │                      ",
+				" │ after                "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - Formula: F₁ = u²                                                             ",
+				" - block:                                                                       ",
+				"   1                                                                            ",
+				"   ─                                                                            ",
+				"   2                                                                            ",
+				" - end x                                                                        ",
+				"                                                                                ",
+				" │ quote a²                                                                     ",
+				" │                                                                              ",
+				" │ x₁                                                                           ",
+				" │                                                                              ",
+				" │ after                                                                        ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexContainers",
+			"text": "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - Formula: F₁ = u²                                                             ",
+				" - block:                                                                       ",
+				"   1                                                                            ",
+				"   ─                                                                            ",
+				"   2                                                                            ",
+				" - end x                                                                        ",
+				"                                                                                ",
+				" │ quote a²                                                                     ",
+				" │                                                                              ",
+				" │ x₁                                                                           ",
+				" │                                                                              ",
+				" │ after                                                                        ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"┌───────┬──────┐                        ",
+				"│ Value │ Math │                        ",
+				"├───────┼──────┤                        ",
+				"│ a     │ ℂ³   │                        ",
+				"├───────┼──────┤                        ",
+				"│ b     │ $x   │                        ",
+				"└───────┴──────┘                        "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"┌───────┬──────┐                        ",
+				"│ Value │ Math │                        ",
+				"├───────┼──────┤                        ",
+				"│ a     │ ℂ³   │                        ",
+				"├───────┼──────┤                        ",
+				"│ b     │ $x   │                        ",
+				"└───────┴──────┘                        "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" ┌───────┬──────┐       ",
+				" │ Value │ Math │       ",
+				" ├───────┼──────┤       ",
+				" │ a     │ ℂ³   │       ",
+				" ├───────┼──────┤       ",
+				" │ b     │ $x   │       ",
+				" └───────┴──────┘       "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" ┌───────┬──────┐       ",
+				" │ Value │ Math │       ",
+				" ├───────┼──────┤       ",
+				" │ a     │ ℂ³   │       ",
+				" ├───────┼──────┤       ",
+				" │ b     │ $x   │       ",
+				" └───────┴──────┘       "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" ┌───────┬──────┐                                                               ",
+				" │ Value │ Math │                                                               ",
+				" ├───────┼──────┤                                                               ",
+				" │ a     │ ℂ³   │                                                               ",
+				" ├───────┼──────┤                                                               ",
+				" │ b     │ $x   │                                                               ",
+				" └───────┴──────┘                                                               ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTable",
+			"text": "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" ┌───────┬──────┐                                                               ",
+				" │ Value │ Math │                                                               ",
+				" ├───────┼──────┤                                                               ",
+				" │ a     │ ℂ³   │                                                               ",
+				" ├───────┼──────┤                                                               ",
+				" │ b     │ $x   │                                                               ",
+				" └───────┴──────┘                                                               ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Costs $5 and $10 or $8k–$12k; use $x$,  ",
+				"$HOME, and ${PATH}. Paths: $HOME/$USER  ",
+				"and $XDG_CONFIG_HOME/$APP_CONFIG        "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Costs $5 and $10 or $8k–$12k; use $x$,  ",
+				"$HOME, and ${PATH}. Paths: $HOME/$USER  ",
+				"and $XDG_CONFIG_HOME/$APP_CONFIG        "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Costs $5 and $10 or    ",
+				" $8k–$12k; use $x$,     ",
+				" $HOME, and ${PATH}.    ",
+				" Paths: $HOME/$USER and ",
+				" $XDG_CONFIG_HOME/$APP_ ",
+				" CONFIG                 "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Costs $5 and $10 or    ",
+				" $8k–$12k; use $x$,     ",
+				" $HOME, and ${PATH}.    ",
+				" Paths: $HOME/$USER and ",
+				" $XDG_CONFIG_HOME/$APP_ ",
+				" CONFIG                 "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Costs $5 and $10 or $8k–$12k; use $x$, $HOME, and ${PATH}. Paths: $HOME/$USER  ",
+				" and $XDG_CONFIG_HOME/$APP_CONFIG                                               ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexNotMath",
+			"text": "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and ${PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Costs $5 and $10 or $8k–$12k; use $x$, $HOME, and ${PATH}. Paths: $HOME/$USER  ",
+				" and $XDG_CONFIG_HOME/$APP_CONFIG                                               ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Streaming $\\mathbb{C}^3 and *more*      ",
+				"next line                               ",
+				"                                        ",
+				"Text                                    ",
+				"                                        ",
+				"\\[                                      ",
+				"x^2                                     ",
+				"*not italic*                            "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Streaming $\\mathbb{C}^3 and *more*      ",
+				"next line                               ",
+				"                                        ",
+				"Text                                    ",
+				"                                        ",
+				"\\[                                      ",
+				"x^2                                     ",
+				"*not italic*                            "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Streaming              ",
+				" $\\mathbb{C}^3 and      ",
+				" *more*                 ",
+				" next line              ",
+				"                        ",
+				" Text                   ",
+				"                        ",
+				" \\[                     ",
+				" x^2                    ",
+				" *not italic*           "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Streaming              ",
+				" $\\mathbb{C}^3 and      ",
+				" *more*                 ",
+				" next line              ",
+				"                        ",
+				" Text                   ",
+				"                        ",
+				" \\[                     ",
+				" x^2                    ",
+				" *not italic*           "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Streaming $\\mathbb{C}^3 and *more*                                             ",
+				" next line                                                                      ",
+				"                                                                                ",
+				" Text                                                                           ",
+				"                                                                                ",
+				" \\[                                                                             ",
+				" x^2                                                                            ",
+				" *not italic*                                                                   ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexPending",
+			"text": "Streaming $\\mathbb{C}^3 and *more*\nnext line\n\nText\n\\[\nx^2\n*not italic*",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Streaming $\\mathbb{C}^3 and *more*                                             ",
+				" next line                                                                      ",
+				"                                                                                ",
+				" Text                                                                           ",
+				"                                                                                ",
+				" \\[                                                                             ",
+				" x^2                                                                            ",
+				" *not italic*                                                                   ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Escaped $x-y$ and \\x end, and $y$.      "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Escaped \\$x-y\\$ and \\\\x end, and \\$y$.  "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Escaped $x-y$ and \\x   ",
+				" end, and $y$.          "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Escaped \\$x-y\\$ and    ",
+				" \\\\x end, and \\$y$.     "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Escaped $x-y$ and \\x end, and $y$.                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexEscapes",
+			"text": "Escaped \\$x-y\\$ and \\\\$x$ end, and \\$$y$$.",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Escaped \\$x-y\\$ and \\\\x end, and \\$y$.                                         ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"a b c and x*y*z and a $b c$ and α       "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"a b c and x*y*z and a $b c$ and α       "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" a b c and x*y*z and a  ",
+				" $b c$ and α            "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" a b c and x*y*z and a  ",
+				" $b c$ and α            "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" a b c and x*y*z and a $b c$ and α                                              ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexEmphasis",
+			"text": "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" a b c and x*y*z and a $b c$ and α                                              ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"cost x² (http://a.com/$y$) and          ",
+				"http://a.com/$z$ and alt $q$            "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"cost x² (http://a.com/$y$) and          ",
+				"http://a.com/$z$ and alt $q$            "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" cost x²                ",
+				" (http://a.com/$y$) and ",
+				" http://a.com/$z$ and   ",
+				" alt $q$                "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" cost x²                ",
+				" (http://a.com/$y$) and ",
+				" http://a.com/$z$ and   ",
+				" alt $q$                "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" cost x² (http://a.com/$y$) and http://a.com/$z$ and alt $q$                    ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexLinks",
+			"text": "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" cost x² (http://a.com/$y$) and http://a.com/$z$ and alt $q$                    ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Area π r²                               ",
+				"                                        ",
+				"Unknown $x + \\unknown{y}$ after         ",
+				"                                        ",
+				"$$                                      ",
+				"\\unknown{x}                             ",
+				"$$                                      "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Area π r²                               ",
+				"                                        ",
+				"Unknown $x + \\unknown{y}$ after         ",
+				"                                        ",
+				"$$                                      ",
+				"\\unknown{x}                             ",
+				"$$                                      "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Area π r²              ",
+				"                        ",
+				" Unknown $x +           ",
+				" \\unknown{y}$ after     ",
+				"                        ",
+				" $$                     ",
+				" \\unknown{x}            ",
+				" $$                     "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Area π r²              ",
+				"                        ",
+				" Unknown $x +           ",
+				" \\unknown{y}$ after     ",
+				"                        ",
+				" $$                     ",
+				" \\unknown{x}            ",
+				" $$                     "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Area π r²                                                                      ",
+				"                                                                                ",
+				" Unknown $x + \\unknown{y}$ after                                                ",
+				"                                                                                ",
+				" $$                                                                             ",
+				" \\unknown{x}                                                                    ",
+				" $$                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexHeading",
+			"text": "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Area π r²                                                                      ",
+				"                                                                                ",
+				" Unknown $x + \\unknown{y}$ after                                                ",
+				"                                                                                ",
+				" $$                                                                             ",
+				" \\unknown{x}                                                                    ",
+				" $$                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"a b                                     ",
+				"                                        ",
+				"after                                   ",
+				"                                        ",
+				"a$$ inline and                          ",
+				"                                        ",
+				"b                                       ",
+				"$$                                      "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"a b                                     ",
+				"                                        ",
+				"after                                   ",
+				"                                        ",
+				"a$$ inline and                          ",
+				"                                        ",
+				"b                                       ",
+				"$$                                      "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" a b                    ",
+				"                        ",
+				" after                  ",
+				"                        ",
+				" a$$ inline and         ",
+				"                        ",
+				" b                      ",
+				" $$                     "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" a b                    ",
+				"                        ",
+				" after                  ",
+				"                        ",
+				" a$$ inline and         ",
+				"                        ",
+				" b                      ",
+				" $$                     "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" a b                                                                            ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                ",
+				" a$$ inline and                                                                 ",
+				"                                                                                ",
+				" b                                                                              ",
+				" $$                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexBlank",
+			"text": "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" a b                                                                            ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                ",
+				" a$$ inline and                                                                 ",
+				"                                                                                ",
+				" b                                                                              ",
+				" $$                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "links",
 			"text": "See [the docs](https://example.com/docs) and <https://example.com> or mail <me@example.com>.",
 			"width": 40,
