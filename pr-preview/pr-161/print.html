@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f45f0a5f.js";
+            window.path_to_searchindex_js = "searchindex-c6d65fc6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -568,7 +568,7 @@ yapi --no-session            # do not save this run
 <tr><td>Processes that extensions start, including subagents</td><td>Child processes, outside the sandbox</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over stdio</td><td>Child processes</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over HTTP</td><td>Remote services</td><td>What the server allows</td></tr>
-<tr><td>Codemode scripts</td><td>Fresh WebAssembly instances with no grants</td><td>Only the tools they call</td></tr>
+<tr><td>Codemode scripts</td><td>Fresh WebAssembly instances with no grants</td><td>Only the tools they call, and the clock and time zone as in Pi</td></tr>
 </tbody>
 </table>
 </div>
@@ -705,7 +705,7 @@ yapi list
 yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 </code></pre>
-<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code>User packages:
@@ -721,7 +721,7 @@ yapi -e git:github.com/user/repo
 </code></pre>
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="#native-extensions-in-rust">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
@@ -768,6 +768,7 @@ yapi mcp remove docs
 <li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
 <li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
 </ul>
+<p>The first prompt does not wait for servers whose tools only codemode reaches. A script that names a server’s tools, such as <code>tools.mcp__docs__search</code>, waits until that server has connected or failed to connect. A script that searches, lists or describes tools waits for every server that is still connecting. Aborting the turn ends the wait.</p>
 <p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
 <p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -863,6 +864,7 @@ export default function (pi: ExtensionAPI) {
 <li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi.</li>
 <li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
+<li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
 </ul>
 <p><a href="#extensions-1">Differences from Pi</a> lists where the behavior differs.</p>
@@ -974,7 +976,7 @@ yapi install . -l    # for this project only
 <tr><th>Item</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines.</td></tr>
+<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines, and <code>Tool::constrained_sampling</code> takes Pi’s <code>constrainedSampling</code>, such as a grammar the tool’s input must follow on OpenAI models.</td></tr>
 <tr><td><code>Api::register_command</code></td><td>Handle <code>/name args</code></td></tr>
 <tr><td><code>Api::register_flag</code></td><td>Accept <code>--name</code> on the command line, read later with <code>get_flag</code></td></tr>
 <tr><td><code>Api::register_shortcut</code></td><td>Run a handler when the user presses a key such as <code>alt+k</code>, as Pi’s <code>pi.registerShortcut</code> does. An empty description lists the shortcut by the extension’s path.</td></tr>
@@ -1572,6 +1574,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
 <tr><td>Codemode scripts</td><td>May compute without limit</td><td>Stop after 60 seconds of computing without awaiting a call.</td></tr>
+<tr><td>Zone names in dates</td><td><code>Date</code>’s <code>toString</code> and <code>toTimeString</code> end with the zone’s name, such as <code>(Eastern Daylight Time)</code></td><td>They end with the zone’s offset, such as <code>(GMT-04:00)</code>, as in Node for a zone without a name. UTC keeps its name.</td></tr>
 <tr><td>Native extensions</td><td>None</td><td>WebAssembly components written in Rust. See <a href="#native-extensions-in-rust">Native extensions</a>. Unstable until 1.0.</td></tr>
 </tbody>
 </table>
@@ -1604,6 +1607,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td><code>/share</code> and <code>/bug</code></td><td>Use Pi’s services</td><td>Not available.</td></tr>
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
+<tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
 <tr><td>Codex transport</td><td>WebSocket, then compressed SSE</td><td>Uncompressed SSE, the same requests and events as Pi’s fallback.</td></tr>
 <tr><td>Image formats</td><td>Any format Pi’s image library reads becomes PNG</td><td>Only BMP is converted. Other prompt images are left out with a note.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
@@ -1625,8 +1629,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
 <tr><td>Update notices</td><td>Checks at startup for new versions and package updates and shows a notice</td><td>Makes no such checks and shows no update notices. <code>/changelog</code> and the list of changes after an upgrade work as in Pi.</td><td><a href="https://github.com/SkymanOne/yapi/issues/37">#37</a></td></tr>
-<tr><td>Codemode</td><td>Scripts use grammar-constrained sampling on the Responses APIs, and a script waits for the MCP servers it names</td><td>Scripts are ordinary tool calls, and scripts do not wait for servers.</td><td><a href="https://github.com/SkymanOne/yapi/issues/38">#38</a></td></tr>
-<tr><td>OpenAI custom tools</td><td>Sent as grammar-constrained tools</td><td>Sent as function tools.</td><td><a href="https://github.com/SkymanOne/yapi/issues/39">#39</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
 </tbody>

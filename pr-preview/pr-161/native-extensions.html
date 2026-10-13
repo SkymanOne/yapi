@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f45f0a5f.js";
+            window.path_to_searchindex_js = "searchindex-c6d65fc6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -275,7 +275,7 @@ yapi install . -l    # for this project only
 <tr><th>Item</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines.</td></tr>
+<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines, and <code>Tool::constrained_sampling</code> takes Pi’s <code>constrainedSampling</code>, such as a grammar the tool’s input must follow on OpenAI models.</td></tr>
 <tr><td><code>Api::register_command</code></td><td>Handle <code>/name args</code></td></tr>
 <tr><td><code>Api::register_flag</code></td><td>Accept <code>--name</code> on the command line, read later with <code>get_flag</code></td></tr>
 <tr><td><code>Api::register_shortcut</code></td><td>Run a handler when the user presses a key such as <code>alt+k</code>, as Pi’s <code>pi.registerShortcut</code> does. An empty description lists the shortcut by the extension’s path.</td></tr>
