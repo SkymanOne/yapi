@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-30e96508.js";
+            window.path_to_searchindex_js = "searchindex-2ceae83e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -234,7 +234,7 @@ cargo xtask bench --pi &lt;path-to-pi&gt;    # time and memory against Pi
 <li>Update the versions that the <code>yapi new</code> template, the README and these docs pin. <code>git grep</code> for the old version lists them, such as <code>git grep -n '0\.1\.0'</code>.</li>
 <li>Run <code>cargo metadata --format-version 1 &gt;/dev/null</code> in <code>guest</code> to update <code>guest/Cargo.lock</code>, then <code>cargo xtask js-runtime</code> with a WASI SDK. The lock file is an input of <code>yapi-js.wasm</code>.</li>
 <li>Add the release’s section to <code>CHANGELOG.md</code>.</li>
-<li>Merge, then push the tag <code>v&lt;version&gt;</code>. The Release workflow builds and publishes the binaries and the documentation archive, then publishes <code>yapi-types</code>, <code>yapi-tui</code> and <code>yapi-extension-api</code> to crates.io with the <code>CARGO_REGISTRY_TOKEN</code> secret.</li>
+<li>Merge, then push the tag <code>v&lt;version&gt;</code>. The Release workflow builds and publishes the binaries and the documentation archive, then publishes <code>yapi-types</code>, <code>yapi-tui</code> and <code>yapi-extension-api</code> to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository <code>SkymanOne/yapi</code>, workflow <code>release.yml</code> and no environment.</li>
 </ol>
 <h2 id="documentation"><a class="header" href="#documentation">Documentation</a></h2>
 <p>This site lives in <code>docs/</code>, is configured in <code>book.toml</code> and builds with <a href="https://rust-lang.github.io/mdBook/">mdBook</a>:</p>
