@@ -21,6 +21,7 @@ use yapi_tui::lines::{self, StyledLine, styled};
 use yapi_tui::markdown::{self, MarkdownOptions};
 use yapi_tui::theme::Theme;
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
+use yapi_types::js::to_fixed;
 
 use super::chat::group_thousands;
 use super::footer::format_tokens;
@@ -384,7 +385,7 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
     info.push(dim_label(
         theme,
         "Status:",
-        format_cache_warming_status(&status, tokio::time::Instant::now()),
+        format_cache_warming_status(&status, std::time::SystemTime::now()),
     ));
     if let Some(decision) = status
         .decision
@@ -393,18 +394,22 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
         info.push(dim_label(
             theme,
             "Cache miss penalty:",
-            format!("${:.3}", decision.miss_cost),
+            format!("${}", to_fixed(decision.miss_cost, 3)),
         ));
         info.push(dim_label(
             theme,
             "Refresh cost:",
-            format!("${:.3}", decision.warm_cost),
+            format!("${}", to_fixed(decision.warm_cost, 3)),
         ));
     }
     if totals.cost > 0.0 {
         info.push(Line::default());
         info.push(bold("Cost"));
-        info.push(dim_label(theme, "Total:", format!("${:.3}", totals.cost)));
+        info.push(dim_label(
+            theme,
+            "Total:",
+            format!("${}", to_fixed(totals.cost, 3)),
+        ));
         let selected = session.model().map(|model| model.reference());
         let single_selected =
             stats.breakdown.len() == 1 && Some(&stats.breakdown[0].0) == selected.as_ref();
@@ -413,7 +418,7 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
                 info.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(format!("{key}:"), dim),
-                    Span::raw(format!(" ${cost:.3} ")),
+                    Span::raw(format!(" ${} ", to_fixed(*cost, 3))),
                     Span::styled(format!("({} tokens)", format_tokens(*tokens)), dim),
                 ]));
             }

@@ -327,7 +327,7 @@
       "assistantMessageEvent": {
         "type": "toolcall_delta",
         "contentIndex": 0,
-        "delta": "{\"command\": \"sleep 3; echo slept\"}"
+        "delta": "{\"command\": \"sleep 6; echo slept\"}"
       }
     },
     {
@@ -340,7 +340,7 @@
           "id": "<id-1>",
           "name": "bash",
           "arguments": {
-            "command": "sleep 3; echo slept"
+            "command": "sleep 6; echo slept"
           }
         }
       }
@@ -355,7 +355,7 @@
             "id": "<id-1>",
             "name": "bash",
             "arguments": {
-              "command": "sleep 3; echo slept"
+              "command": "sleep 6; echo slept"
             }
           }
         ],
@@ -389,7 +389,7 @@
       "toolCallId": "<id-1>",
       "toolName": "bash",
       "args": {
-        "command": "sleep 3; echo slept"
+        "command": "sleep 6; echo slept"
       }
     },
     {
@@ -397,7 +397,7 @@
       "toolCallId": "<id-1>",
       "toolName": "bash",
       "args": {
-        "command": "sleep 3; echo slept"
+        "command": "sleep 6; echo slept"
       },
       "partialResult": {
         "content": []
@@ -455,7 +455,7 @@
       "toolCallId": "<id-1>",
       "toolName": "bash",
       "args": {
-        "command": "sleep 3; echo slept"
+        "command": "sleep 6; echo slept"
       },
       "partialResult": {
         "content": [
@@ -509,7 +509,7 @@
             "id": "<id-1>",
             "name": "bash",
             "arguments": {
-              "command": "sleep 3; echo slept"
+              "command": "sleep 6; echo slept"
             }
           }
         ],
@@ -809,7 +809,7 @@
               "id": "<id-1>",
               "name": "bash",
               "arguments": {
-                "command": "sleep 3; echo slept"
+                "command": "sleep 6; echo slept"
               }
             }
           ],
@@ -1277,7 +1277,7 @@
                 "id": "<id-1>",
                 "name": "bash",
                 "input": {
-                  "command": "sleep 3; echo slept"
+                  "command": "sleep 6; echo slept"
                 }
               }
             ]
@@ -1652,7 +1652,7 @@
                 "id": "<id-1>",
                 "name": "bash",
                 "arguments": {
-                  "command": "sleep 3; echo slept"
+                  "command": "sleep 6; echo slept"
                 }
               }
             ],

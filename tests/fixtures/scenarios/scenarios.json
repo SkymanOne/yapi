@@ -131,7 +131,7 @@
     "name": "cache-warming-streaming-json",
     "cassette": "anthropic-messages/cache-warm.json",
     "args": ["--mode", "json", "--model", "anthropic/claude-sonnet-4-5", "--thinking", "off", "Wait a moment"],
-    "agentFiles": {"models.json": "{\"providers\": {\"anthropic\": {\"modelOverrides\": {\"claude-sonnet-4-5\": {\"promptCache\": {\"short\": 12}}}}}}"}
+    "agentFiles": {"models.json": "{\"providers\": {\"anthropic\": {\"modelOverrides\": {\"claude-sonnet-4-5\": {\"promptCache\": {\"short\": 14}}}}}}"}
   },
   {
     "name": "cache-warming-idle-rpc",
