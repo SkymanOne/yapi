@@ -12,6 +12,10 @@ OpenCode's Completions and Responses routes record through `https://opencode.ai/
 
 The proxy forwards each request with its credentials and stores the response chunks as they arrive. Recorded requests and cassettes never contain credentials: authorization headers and `key` query parameters are redacted, and cookies are dropped.
 
+## WebSocket exchanges
+
+An interaction with status 101 is a WebSocket exchange, such as a Codex request over a WebSocket. The server accepts an upgrade at the interaction's path when it is next, records each message the client sends as a request whose body is the message, and answers it with the next exchange, one text message per chunk. It closes the socket once the next interaction is not an exchange. Recording does not capture WebSocket traffic, so these cassettes are hand-written.
+
 ## Serve a cassette to pi
 
 Start the server. It prints its base URL:

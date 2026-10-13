@@ -1,7 +1,11 @@
 #![doc = env!("CARGO_PKG_DESCRIPTION")]
 //!
 //! A [`Cassette`] lists the HTTP interactions a client is expected to make, in order.
-//! [`MockServer::start`] serves them on a local port, one per request.
+//! [`MockServer::start`] serves them on a local port, one per request. An
+//! interaction with status 101 is a WebSocket exchange instead: the server accepts
+//! an upgrade at its path when it is next, answers each message on the socket with
+//! the next such exchange, and closes the socket once the next interaction is not
+//! one.
 //! [`MockServer::record`] instead forwards every request to a real provider and
 //! records the responses as a cassette. Either way, every request is recorded with
 //! credentials redacted. Point a provider's base URL at [`MockServer::url`]: yapi's tests
@@ -22,6 +26,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use bytes::Bytes;
+use futures_util::{SinkExt as _, StreamExt as _};
 use http_body_util::{BodyExt, Channel};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
@@ -31,6 +36,9 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::task::{JoinHandle, JoinSet};
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 
 pub use cassette::{Cassette, Interaction, RequestMatch, Response};
 
@@ -86,6 +94,9 @@ pub struct RecordedRequest {
     /// Body as text; invalid UTF-8 is replaced.
     pub body: String,
 }
+
+/// The status of an interaction that is a WebSocket exchange.
+const WEBSOCKET: u16 = 101;
 
 /// Value that replaces credentials in recorded requests.
 pub const REDACTED: &str = "<redacted>";
@@ -238,6 +249,7 @@ async fn accept(listener: TcpListener, state: Arc<Mutex<State>>) {
             // the client's choice, not a cassette mismatch.
             let _ = http1::Builder::new()
                 .serve_connection(TokioIo::new(stream), service)
+                .with_upgrades()
                 .await;
         });
         while connections.try_join_next().is_some() {}
@@ -255,6 +267,15 @@ async fn respond(
     state: Arc<Mutex<State>>,
     request: hyper::Request<Incoming>,
 ) -> Result<hyper::Response<Channel<Bytes>>, Infallible> {
+    if websocket_expected(&state, &request) {
+        return Ok(
+            accept_websocket(Arc::clone(&state), request).unwrap_or_else(|err| {
+                let problem = err.to_string();
+                lock(&state).problems.push(problem.clone());
+                failure(problem)
+            }),
+        );
+    }
     let (parts, body) = request.into_parts();
     let body = body
         .collect()
@@ -292,6 +313,116 @@ async fn respond(
         lock(&state).problems.push(problem.clone());
         failure(problem)
     }))
+}
+
+/// Whether `request` asks to upgrade to a WebSocket that the next interaction,
+/// a WebSocket exchange at its method and path, serves.
+fn websocket_expected(state: &Mutex<State>, request: &hyper::Request<Incoming>) -> bool {
+    let upgrade = request
+        .headers()
+        .get(hyper::header::UPGRADE)
+        .is_some_and(|value| value.as_bytes().eq_ignore_ascii_case(b"websocket"));
+    upgrade
+        && matches!(&lock(state).mode, Mode::Replay(pending) if pending.front().is_some_and(|next| {
+            next.response.status == WEBSOCKET
+                && next.request.method.eq_ignore_ascii_case(request.method().as_str())
+                && next.request.path == request.uri().path()
+        }))
+}
+
+/// Accepts a WebSocket upgrade and serves the socket from a task.
+fn accept_websocket(
+    state: Arc<Mutex<State>>,
+    mut request: hyper::Request<Incoming>,
+) -> Result<hyper::Response<Channel<Bytes>>, hyper::http::Error> {
+    let accept = request
+        .headers()
+        .get("sec-websocket-key")
+        .map(|key| accept_key(key.as_bytes()))
+        .unwrap_or_default();
+    let upgrade = hyper::upgrade::on(&mut request);
+    let (parts, _) = request.into_parts();
+    let recorded = recorded_request(&parts, &Bytes::new());
+    tokio::spawn(async move {
+        if let Ok(upgraded) = upgrade.await {
+            let socket =
+                WebSocketStream::from_raw_socket(TokioIo::new(upgraded), Role::Server, None).await;
+            serve_websocket(state, recorded, socket).await;
+        }
+    });
+    hyper::Response::builder()
+        .status(WEBSOCKET)
+        .header(hyper::header::UPGRADE, "websocket")
+        .header(hyper::header::CONNECTION, "Upgrade")
+        .header("sec-websocket-accept", accept)
+        .body(Channel::new(1).1)
+}
+
+/// Answers each message on a socket with the next interaction, a WebSocket
+/// exchange at the socket's path, and records the message as a request with
+/// the upgrade's method, path and headers. The socket closes once the next
+/// interaction is not such an exchange.
+async fn serve_websocket(
+    state: Arc<Mutex<State>>,
+    upgrade: RecordedRequest,
+    mut socket: WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>,
+) {
+    let exchange_next = |pending: &VecDeque<Interaction>| {
+        pending.front().is_some_and(|next| {
+            next.response.status == WEBSOCKET && matches(&next.request, &upgrade)
+        })
+    };
+    while let Some(Ok(message)) = socket.next().await {
+        let body = match message {
+            Message::Text(text) => text.to_string(),
+            Message::Binary(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Message::Close(_) => return,
+            _ => continue,
+        };
+        let (reply, more) = {
+            let mut state = lock(&state);
+            let number = state.requests.len() + 1;
+            let (reply, more) = match &mut state.mode {
+                Mode::Replay(pending) if exchange_next(pending) => {
+                    let reply = pending.pop_front();
+                    (reply, exchange_next(pending))
+                }
+                _ => (None, false),
+            };
+            if reply.is_none() {
+                let path = &upgrade.path;
+                let problem =
+                    format!("request {number} (WebSocket message on {path}): no exchange is next");
+                state.problems.push(problem);
+            }
+            state.requests.push(RecordedRequest {
+                body,
+                ..upgrade.clone()
+            });
+            (reply, more)
+        };
+        let Some(reply) = reply else { return };
+        for chunk in reply.response.chunks {
+            if socket.send(Message::text(chunk)).await.is_err() {
+                return;
+            }
+        }
+        if !more {
+            let _ = socket.close(None).await;
+            return;
+        }
+    }
+}
+
+/// RFC 6455's `Sec-WebSocket-Accept` for `key`.
+fn accept_key(key: &[u8]) -> String {
+    use base64::Engine as _;
+    use sha1::Digest as _;
+    let digest = sha1::Sha1::new()
+        .chain_update(key)
+        .chain_update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+        .finalize();
+    base64::engine::general_purpose::STANDARD.encode(digest)
 }
 
 fn recorded_request(parts: &hyper::http::request::Parts, body: &Bytes) -> RecordedRequest {

@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 base64.workspace = true
 bytes.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
@@ -21,8 +22,10 @@ reqwest.workspace = true
 ruzstd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha1.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "net", "process", "rt", "sync", "time"] }
+tokio-tungstenite.workspace = true
 vt100.workspace = true
 
 [dev-dependencies]

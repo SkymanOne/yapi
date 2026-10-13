@@ -175,3 +175,73 @@ async fn delays_each_chunk() {
     assert_eq!(response.text().await.unwrap(), "abc");
     assert!(started.elapsed() >= Duration::from_millis(90));
 }
+
+/// Opens a WebSocket to `path` with the handshake of RFC 6455's example.
+async fn websocket(
+    server: &MockServer,
+    path: &str,
+) -> tokio_tungstenite::WebSocketStream<tokio::net::TcpStream> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let mut stream = tokio::net::TcpStream::connect(server.url().trim_start_matches("http://"))
+        .await
+        .unwrap();
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: mock\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        head.push(stream.read_u8().await.unwrap());
+    }
+    let head = String::from_utf8(head).unwrap().to_lowercase();
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    assert!(head.contains("sec-websocket-accept: s3pplmbitxaq9kygzzhzrbk+xoo="));
+    tokio_tungstenite::WebSocketStream::from_raw_socket(
+        stream,
+        tokio_tungstenite::tungstenite::protocol::Role::Client,
+        None,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn replays_websocket_exchanges() {
+    use futures_util::{SinkExt as _, StreamExt as _};
+    use tokio_tungstenite::tungstenite::Message;
+    let exchange = |chunks: &[&str]| interaction("GET", "/ws", reply(101, chunks));
+    let server = start(Cassette {
+        interactions: vec![
+            exchange(&["a", "b"]),
+            exchange(&["c"]),
+            interaction("POST", "/ws", reply(200, &["done"])),
+        ],
+    })
+    .await;
+
+    let mut socket = websocket(&server, "/ws").await;
+    let mut received = Vec::new();
+    socket.send(Message::text("one")).await.unwrap();
+    received.push(socket.next().await.unwrap().unwrap());
+    received.push(socket.next().await.unwrap().unwrap());
+    socket.send(Message::text("two")).await.unwrap();
+    received.push(socket.next().await.unwrap().unwrap());
+    assert_eq!(received, ["a", "b", "c"].map(Message::text));
+    // The next interaction is not an exchange, so the socket closes.
+    assert!(matches!(
+        socket.next().await.unwrap().unwrap(),
+        Message::Close(_)
+    ));
+    let response = reqwest::Client::new()
+        .post(format!("{}/ws", server.url()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.text().await.unwrap(), "done");
+
+    let requests = server.finish().unwrap();
+    let seen: Vec<(&str, &str)> = requests
+        .iter()
+        .map(|request| (request.method.as_str(), request.body.as_str()))
+        .collect();
+    assert_eq!(seen, [("GET", "one"), ("GET", "two"), ("POST", "")]);
+}
