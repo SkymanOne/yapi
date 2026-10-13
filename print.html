@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ed49a092.js";
+            window.path_to_searchindex_js = "searchindex-5686e79a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -975,7 +975,7 @@ yapi install . -l    # for this project only
 <tr><th>Item</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines.</td></tr>
+<tr><td><code>Api::register_tool</code></td><td>Offer a tool to the model. <code>Tool</code> sets a label, prompt snippet and prompt guidelines, and <code>Tool::constrained_sampling</code> takes Pi’s <code>constrainedSampling</code>, such as a grammar the tool’s input must follow on OpenAI models.</td></tr>
 <tr><td><code>Api::register_command</code></td><td>Handle <code>/name args</code></td></tr>
 <tr><td><code>Api::register_flag</code></td><td>Accept <code>--name</code> on the command line, read later with <code>get_flag</code></td></tr>
 <tr><td><code>Api::register_shortcut</code></td><td>Run a handler when the user presses a key such as <code>alt+k</code>, as Pi’s <code>pi.registerShortcut</code> does. An empty description lists the shortcut by the extension’s path.</td></tr>
@@ -1627,8 +1627,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
 <tr><td>Update notices</td><td>Checks at startup for new versions and package updates and shows a notice</td><td>Makes no such checks and shows no update notices. <code>/changelog</code> and the list of changes after an upgrade work as in Pi.</td><td><a href="https://github.com/SkymanOne/yapi/issues/37">#37</a></td></tr>
-<tr><td>Codemode</td><td>Scripts use grammar-constrained sampling on the Responses APIs</td><td>Scripts are ordinary tool calls.</td><td><a href="https://github.com/SkymanOne/yapi/issues/38">#38</a></td></tr>
-<tr><td>OpenAI custom tools</td><td>Sent as grammar-constrained tools</td><td>Sent as function tools.</td><td><a href="https://github.com/SkymanOne/yapi/issues/39">#39</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
 </tbody>
