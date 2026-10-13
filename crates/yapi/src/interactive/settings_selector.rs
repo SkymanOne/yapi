@@ -1505,7 +1505,7 @@ impl super::App {
             }
             "cache-miss-notices" => {
                 global("showCacheMissNotices", on.into());
-                self.invalidate_all();
+                self.rebuild_chat();
             }
             "collapse-changelog" => global("collapseChangelog", on.into()),
             "quiet-startup" => global(

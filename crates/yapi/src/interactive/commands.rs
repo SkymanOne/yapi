@@ -12,6 +12,7 @@ use ratatui_core::text::{Line, Span};
 use yapi_core::agent_session::{
     AgentSession, Replacement, SessionChange, format_cache_warming_status,
 };
+use yapi_core::cache_stats::compute_cache_waste;
 use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::{CombinedProvider, SlashCommand};
 use yapi_tui::fuzzy::fuzzy_filter;
@@ -402,7 +403,9 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
             format!("${}", to_fixed(decision.warm_cost, 3)),
         ));
     }
-    if totals.cost > 0.0 {
+    let registry = session.registry();
+    let waste = session.with_session(|file| compute_cache_waste(file.entries(), &registry));
+    if totals.cost > 0.0 || waste.missed_tokens > 0 {
         info.push(Line::default());
         info.push(bold("Cost"));
         info.push(dim_label(
@@ -422,6 +425,22 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
                     Span::styled(format!("({} tokens)", format_tokens(*tokens)), dim),
                 ]));
             }
+        }
+        if waste.missed_tokens > 0 {
+            let misses = match waste.miss_count {
+                1 => "1 miss".to_owned(),
+                count => format!("{count} misses"),
+            };
+            let detail = format!("{} tokens, {misses}", group_thousands(waste.missed_tokens));
+            info.push(if waste.missed_cost >= 0.0001 {
+                Line::from(vec![
+                    Span::styled("Cache Re-billed:", dim),
+                    Span::raw(format!(" ${:.3} ", waste.missed_cost)),
+                    Span::styled(format!("({detail})"), dim),
+                ])
+            } else {
+                dim_label(theme, "Cache Re-billed:", detail)
+            });
         }
     }
     info
