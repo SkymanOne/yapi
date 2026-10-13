@@ -171,7 +171,10 @@
 				action("session.sendMessage")(messageRequest(message, options));
 			},
 			sendUserMessage(content, options) {
-				action("session.sendUserMessage")(userMessageRequest(content, options));
+				if (!bound) notInitialized();
+				const payload = userMessageRequest(content, options);
+				// pi's `prompt` queues or starts the message after its first await, once the caller's code has run.
+				queueMicrotask(() => yapi.request("session.sendUserMessage", payload));
 			},
 			appendEntry(customType, data) {
 				action("session.appendEntry")({ customType, data: plain(data) });
@@ -962,11 +965,12 @@
 	/** pi's `ReplacedSessionContext`: a command context for the session now current. */
 	function createReplacedContext() {
 		return createCommandContext(yapi.request("session.context", {}) ?? {}, {
+			// These settle as the run they start ends.
 			sendMessage: async (message, options) => {
-				yapi.request("session.sendMessage", messageRequest(message, options));
+				await yapi.op("session.sendMessage", messageRequest(message, options));
 			},
 			sendUserMessage: async (content, options) => {
-				yapi.request("session.sendUserMessage", userMessageRequest(content, options));
+				await yapi.op("session.sendUserMessage", userMessageRequest(content, options));
 			},
 		});
 	}

@@ -1699,6 +1699,52 @@ fn user_content(content: &Value) -> (String, Vec<ImageContent>) {
     (texts.join("\n"), images)
 }
 
+/// pi's `sendMessage` with request `payload`: the message is delivered now,
+/// and the run it triggers is returned.
+fn send_message(
+    session: &AgentSession,
+    payload: &Value,
+) -> Option<impl Future<Output = ()> + Send + 'static> {
+    let options = &payload["options"];
+    session.deliver_custom_message(
+        custom_message(&payload["message"]),
+        options["triggerTurn"].as_bool(),
+        options["deliverAs"].as_str(),
+    )
+}
+
+/// pi's `sendUserMessage` with request `payload`: a message pi queues or
+/// defers before any later event is queued or deferred now. The rest of the
+/// prompt, unless it was queued.
+fn send_user_message(
+    session: &AgentSession,
+    payload: &Value,
+) -> Option<impl Future<Output = Result<(), String>> + Send + 'static> {
+    let (text, images) = user_content(&payload["content"]);
+    let options = &payload["options"];
+    let options = PromptOptions {
+        expand_prompt_templates: options["expandPromptTemplates"].as_bool().unwrap_or(false),
+        streaming_behavior: match options["deliverAs"].as_str() {
+            Some("followUp") => Some(StreamingBehavior::FollowUp),
+            Some(_) => Some(StreamingBehavior::Steer),
+            None => None,
+        },
+        images,
+        source: InputSource::Extension,
+    };
+    if session.queue_now(&text, &options) {
+        return None;
+    }
+    let (session, turn) = (session.clone(), session.settled_turn());
+    Some(async move {
+        let _turn = match turn {
+            Some(turn) => turn.await,
+            None => None,
+        };
+        session.prompt_with(&text, options, |_| {}).await
+    })
+}
+
 fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
@@ -1882,38 +1928,21 @@ impl Bridge for SessionBridge {
         let _runtime = self.runtime.enter();
         match kind {
             "session.sendMessage" => {
-                let message = custom_message(&payload["message"]);
-                let options = &payload["options"];
-                let trigger = options["triggerTurn"].as_bool();
-                let deliver_as = options["deliverAs"].as_str();
                 // pi records and reports the message before the call returns.
-                if let Some(message) = session.deliver_custom_message(message, trigger, deliver_as)
-                {
-                    self.spawn(async move { session.run_triggered(message).await });
+                if let Some(run) = send_message(&session, payload) {
+                    self.spawn(run);
                 }
                 Ok(Value::Null)
             }
             "session.sendUserMessage" => {
-                let (text, images) = user_content(&payload["content"]);
-                let options = &payload["options"];
-                let options = PromptOptions {
-                    expand_prompt_templates: options["expandPromptTemplates"]
-                        .as_bool()
-                        .unwrap_or(false),
-                    streaming_behavior: match options["deliverAs"].as_str() {
-                        Some("followUp") => Some(StreamingBehavior::FollowUp),
-                        Some(_) => Some(StreamingBehavior::Steer),
-                        None => None,
-                    },
-                    images,
-                    source: InputSource::Extension,
-                };
-                self.spawn(async move {
-                    if let Err(error) = session.prompt_with(&text, options, |_| {}).await {
-                        let (ui, _) = session.extension_binding();
-                        ui.notify(&error, NotifyKind::Error);
-                    }
-                });
+                if let Some(prompt) = send_user_message(&session, payload) {
+                    self.spawn(async move {
+                        if let Err(error) = prompt.await {
+                            let (ui, _) = session.extension_binding();
+                            ui.extension_error("<runtime>", "send_user_message", &error, None);
+                        }
+                    });
+                }
                 Ok(Value::Null)
             }
             "session.appendEntry" => session
@@ -2150,6 +2179,28 @@ impl Bridge for SessionBridge {
         let Some(session) = self.session() else {
             return Box::pin(async { Err(not_bound()) });
         };
+        // A replaced session context's `sendMessage` and `sendUserMessage`
+        // deliver at once, and settle as the run they start ends.
+        if kind == "session.sendMessage" {
+            let _runtime = self.runtime.enter();
+            let run = send_message(&session, &payload);
+            return Box::pin(async move {
+                if let Some(run) = run {
+                    run.await;
+                }
+                Ok(Value::Null)
+            });
+        }
+        if kind == "session.sendUserMessage" {
+            let _runtime = self.runtime.enter();
+            let prompt = send_user_message(&session, &payload);
+            return Box::pin(async move {
+                if let Some(prompt) = prompt {
+                    prompt.await?;
+                }
+                Ok(Value::Null)
+            });
+        }
         // Nested calls and scripts take the calling tool's cancellation, and
         // run as its jobs.
         let caller_id = text(&payload["toolCallId"]);

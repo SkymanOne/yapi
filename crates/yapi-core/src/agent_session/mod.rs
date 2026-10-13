@@ -311,6 +311,12 @@ struct Inner {
     docs: crate::docs::Locations,
     /// Woken when a run ends.
     idle: tokio::sync::Notify,
+    /// `agent_settled` handlers are running.
+    settling: std::sync::atomic::AtomicBool,
+    /// Prompts started while `agent_settled` handlers ran, in order, as pi's
+    /// `_deferredSettledActions`: each learns when it may start, with a guard
+    /// it drops as it ends.
+    deferred: Mutex<Vec<tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>>>,
     /// Compactions and branch summaries in progress.
     compacting: AtomicUsize,
     /// A manual compaction is running.
@@ -528,6 +534,8 @@ impl AgentSession {
                 docs,
                 agent_dir,
                 idle: tokio::sync::Notify::new(),
+                settling: std::sync::atomic::AtomicBool::new(false),
+                deferred: Mutex::new(Vec::new()),
                 compacting: AtomicUsize::new(0),
                 manual_compaction: std::sync::atomic::AtomicBool::new(false),
                 retry_cancel: Mutex::new(None),
@@ -968,14 +976,15 @@ impl AgentSession {
     /// `deliver_as` `nextTurn` holds the message for the next prompt; while a
     /// run streams it steers (or follows up) unless `trigger_turn` is false, in
     /// which case it is appended when the turn ends; otherwise `trigger_turn`
-    /// returns it to start a run with [`AgentSession::run_triggered`], and
-    /// without one it is appended at once.
+    /// returns the run it starts, which pi defers as it defers a prompt (see
+    /// [`AgentSession::settled_turn`]), and without one it is appended at
+    /// once.
     pub fn deliver_custom_message(
         &self,
         message: yapi_types::message::CustomMessage,
         trigger_turn: Option<bool>,
         deliver_as: Option<&str>,
-    ) -> Option<Message> {
+    ) -> Option<impl Future<Output = ()> + Send + 'static> {
         let message = Message::Custom(message);
         if deliver_as == Some("nextTurn") {
             lock(&self.inner.next_turn).push(message);
@@ -987,7 +996,14 @@ impl AgentSession {
             };
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
-            return Some(message);
+            let (session, turn) = (self.clone(), self.settled_turn());
+            return Some(async move {
+                let _turn = match turn {
+                    Some(turn) => turn.await,
+                    None => None,
+                };
+                session.run(vec![message]).await;
+            });
         } else if self.is_streaming() {
             lock(&self.inner.pending_custom).push(message);
         } else {
@@ -996,9 +1012,21 @@ impl AgentSession {
         None
     }
 
-    /// Runs the turn an extension message triggers.
-    pub async fn run_triggered(&self, message: Message) {
-        self.run(vec![message]).await;
+    /// pi defers a prompt started while `agent_settled` handlers run: the
+    /// run that settled starts it once they return, and ends after it. `None`
+    /// outside those handlers; otherwise the prompt's place is taken now, and
+    /// the future resolves when it may start, to a guard it holds until it
+    /// ends.
+    pub fn settled_turn(
+        &self,
+    ) -> Option<impl Future<Output = Option<tokio::sync::oneshot::Sender<()>>> + Send + 'static>
+    {
+        if !self.inner.settling.load(Ordering::SeqCst) {
+            return None;
+        }
+        let (turn, start) = tokio::sync::oneshot::channel();
+        lock(&self.inner.deferred).push(turn);
+        Some(async move { start.await.ok() })
     }
 
     /// Records an extension message and reports it as pi's `_appendCustomMessage` does.
@@ -1314,6 +1342,30 @@ impl AgentSession {
         .text())
     }
 
+    /// [`AgentSession::prompt_with`] while a run streams, when the message
+    /// has a streaming behavior and neither an `input` handler nor an
+    /// extension command takes it: it is queued before this returns, as pi
+    /// queues it before any later event. Whether it was.
+    pub fn queue_now(&self, text: &str, options: &PromptOptions) -> bool {
+        let Some(behavior) = options.streaming_behavior.filter(|_| self.is_streaming()) else {
+            return false;
+        };
+        let expand = options.expand_prompt_templates;
+        if self.has_handlers("input")
+            || (expand && self.is_extension_command(text))
+            || self.inner.manual_compaction.load(Ordering::SeqCst)
+        {
+            return false;
+        }
+        let text = if expand {
+            self.expand(text)
+        } else {
+            text.to_owned()
+        };
+        self.queue(behavior, text, options.images.clone());
+        true
+    }
+
     /// Sends a user prompt and runs until the agent settles. Templates and
     /// `/skill:` commands expand first.
     pub async fn prompt(&self, text: &str, images: Vec<ImageContent>) -> Result<(), String> {
@@ -1327,13 +1379,18 @@ impl AgentSession {
     /// pi's `prompt`: while a run streams, the options' streaming behavior
     /// queues the message, and without one it is an error; otherwise the
     /// message starts a run that lasts until the agent settles. `preflight`
-    /// learns which, before any event of the run.
+    /// learns which, before any event of the run. A prompt started while
+    /// `agent_settled` handlers run waits until they return.
     pub async fn prompt_with(
         &self,
         text: &str,
         options: PromptOptions,
         preflight: impl FnOnce(PromptDisposition),
     ) -> Result<(), String> {
+        let _turn = match self.settled_turn() {
+            Some(turn) => turn.await,
+            None => None,
+        };
         let PromptOptions {
             expand_prompt_templates: expand,
             streaming_behavior: behavior,
@@ -1469,12 +1526,22 @@ impl AgentSession {
         *lock(&self.inner.cancel) = None;
         self.cache_warming_settled();
         // Extensions hear it first, as in pi.
+        self.inner.settling.store(true, Ordering::SeqCst);
         self.emit_extension_event(
             &ExtensionEvent::AgentSettled.to_value(),
             CancellationToken::new(),
         )
         .await;
         self.emit(&AgentEvent::AgentSettled);
+        self.inner.settling.store(false, Ordering::SeqCst);
+        let deferred = std::mem::take(&mut *lock(&self.inner.deferred));
+        for turn in deferred {
+            let (guard, ended) = tokio::sync::oneshot::channel();
+            if turn.send(guard).is_ok() {
+                // Fails once the prompt drops the guard as it ends.
+                let _ = ended.await;
+            }
+        }
         self.inner.idle.notify_waiters();
     }
 
