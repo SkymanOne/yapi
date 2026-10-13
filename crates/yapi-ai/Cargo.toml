@@ -17,6 +17,7 @@ indexmap.workspace = true
 percent-encoding.workspace = true
 regex-lite.workspace = true
 reqwest.workspace = true
+ruzstd.workspace = true
 yapi-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -45,7 +45,7 @@ pulldown-cmark = { version = "0.13", default-features = false }
 ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
 rustix = { version = "1", features = ["process"] }
 ryu-js = "1"
-ruzstd = "0.9"
+ruzstd = { version = "0.9.1", default-features = false, features = ["std"] }
 md-5 = "0.11"
 semver = "1"
 serde = { version = "1", features = ["derive"] }

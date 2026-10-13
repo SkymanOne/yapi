@@ -5,8 +5,8 @@
 //! Port of `packages/ai/src/api/openai-responses.ts`,
 //! `azure-openai-responses.ts`, `openai-codex-responses.ts` and
 //! `openai-responses-shared.ts` in pi `v1.0.0`. Not yet ported: service tier
-//! selection, and Codex's WebSocket transport and zstd request compression (Codex
-//! requests use pi's SSE fallback, uncompressed).
+//! selection, and Codex's WebSocket transport (Codex requests use pi's SSE
+//! fallback).
 
 use std::collections::HashMap;
 
@@ -1006,7 +1006,16 @@ async fn connect(
         }
     };
     let params = options.hooks.payload(params).await;
-    let body = yapi_types::json::stringify(&params);
+    let mut body = yapi_types::json::stringify(&params).into_bytes();
+    if flavor == Flavor::Codex {
+        // ruzstd implements only its fastest level, near zstd's level 1, so the
+        // bytes differ from pi's level 3. The Codex backend decodes either.
+        body = ruzstd::encoding::compress_to_vec(
+            body.as_slice(),
+            ruzstd::encoding::CompressionLevel::Fastest,
+        );
+        headers.set("content-encoding", Some("zstd"));
+    }
     let build = || headers.apply(http::client().post(&url).body(body.clone()));
     http::send(build, options)
         .await
