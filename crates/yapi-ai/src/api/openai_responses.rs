@@ -4,10 +4,11 @@
 //!
 //! Port of `packages/ai/src/api/openai-responses.ts`,
 //! `azure-openai-responses.ts`, `openai-codex-responses.ts` and
-//! `openai-responses-shared.ts` in pi `v1.0.0`. Not yet ported: grammar-constrained
-//! custom tools (such tools are sent as function tools), service tier selection,
-//! and Codex's WebSocket transport and zstd request compression (Codex requests
-//! use pi's SSE fallback, uncompressed).
+//! `openai-responses-shared.ts` in pi `v1.0.0`. Not yet ported: service tier
+//! selection, and Codex's WebSocket transport and zstd request compression (Codex
+//! requests use pi's SSE fallback, uncompressed).
+
+use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -21,13 +22,15 @@ use crate::cost::calculate_cost;
 use crate::hash::short_hash;
 use crate::http::{self, Failure, Headers, SseReader, is_truthy};
 use crate::json_parse::parse_streaming_json;
-use crate::schema;
+use crate::schema::{self, GrammarInput};
 use crate::stream::{
     CacheRetention, EventSender, Request, StreamEvent, StreamOptions, check_complete, new_output,
     now_ms, send_error,
 };
 use crate::thinking::{effort, requested_max_tokens};
-use crate::transcript::{resolve_transcript, resolve_transcript_tools, transform_messages};
+use crate::transcript::{
+    declared_tools, resolve_transcript, resolve_transcript_tools, transform_messages,
+};
 
 /// Which Responses endpoint a request goes to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +71,7 @@ struct Compat {
     session_affinity_format: String,
     supports_long_cache_retention: bool,
     supports_strict_mode: bool,
+    supports_grammar_tools: bool,
     supports_additional_tools: bool,
     supports_tool_search: bool,
     supports_explicit_prompt_cache_mode: bool,
@@ -94,6 +98,7 @@ impl Compat {
                 .unwrap_or_else(|| detected.to_owned()),
             supports_long_cache_retention: raw.supports_long_cache_retention.unwrap_or(true),
             supports_strict_mode: raw.supports_strict_mode.unwrap_or(flavor != Flavor::OpenAi),
+            supports_grammar_tools: raw.supports_open_ai_grammar_tools.unwrap_or(false),
             supports_additional_tools: raw.supports_additional_tools.unwrap_or(false),
             supports_tool_search: raw.supports_tool_search.unwrap_or(false),
             supports_explicit_prompt_cache_mode: raw
@@ -194,6 +199,20 @@ fn convert_tools(
     tools
         .iter()
         .map(|tool| {
+            if let Some(grammar) = schema::grammar_sampling(tool, compat.supports_grammar_tools)? {
+                let mut custom = Map::new();
+                custom.insert("type".into(), json!("custom"));
+                custom.insert("name".into(), json!(tool.name));
+                custom.insert("description".into(), json!(tool.description));
+                custom.insert(
+                    "format".into(),
+                    json!({"type": "grammar", "syntax": grammar.syntax, "definition": grammar.definition}),
+                );
+                if tool_search_result {
+                    custom.insert("defer_loading".into(), json!(true));
+                }
+                return Ok(Value::Object(custom));
+            }
             let strict = schema::strict_sampling(tool, compat.supports_strict_mode, None)?;
             let mut function = Map::new();
             function.insert("type".into(), json!("function"));
@@ -256,6 +275,7 @@ fn convert_assistant(
     assistant: &AssistantMessage,
     model: &Model,
     index: usize,
+    grammar: &HashMap<String, String>,
 ) -> Result<Vec<Value>, String> {
     let same_api = assistant.provider == model.provider && assistant.api == model.api;
     let same_model = same_api && assistant.model == model.id;
@@ -303,22 +323,43 @@ fn convert_assistant(
                 output.push(Value::Object(item));
             }
             ContentBlock::ToolCall(call) => {
+                let property = grammar.get(&call.name);
                 let mut parts = call.id.split('|');
                 let call_id = parts.next().unwrap_or_default();
+                // An item id must match the replayed type: a call switches between
+                // the two when grammar support differs between models.
+                let prefix = if property.is_some() { "ctc_" } else { "fc_" };
                 let item_id = parts
                     .next()
-                    .filter(|item| !different_model && item.starts_with("fc_"));
+                    .filter(|item| !different_model && item.starts_with(prefix));
                 let mut item = Map::new();
-                item.insert("type".into(), json!("function_call"));
+                item.insert(
+                    "type".into(),
+                    json!(if property.is_some() {
+                        "custom_tool_call"
+                    } else {
+                        "function_call"
+                    }),
+                );
                 if let Some(item_id) = item_id {
                     item.insert("id".into(), json!(item_id));
                 }
                 item.insert("call_id".into(), json!(call_id));
                 item.insert("name".into(), json!(call.name));
-                item.insert(
-                    "arguments".into(),
-                    json!(yapi_types::json::stringify(&call.arguments)),
-                );
+                match property {
+                    Some(property) => item.insert(
+                        "input".into(),
+                        json!(schema::grammar_input(
+                            &call.name,
+                            &call.arguments,
+                            property
+                        )?),
+                    ),
+                    None => item.insert(
+                        "arguments".into(),
+                        json!(yapi_types::json::stringify(&call.arguments)),
+                    ),
+                };
                 if same_model && let Some(namespace) = &call.namespace {
                     item.insert("namespace".into(), json!(namespace));
                 }
@@ -335,6 +376,7 @@ fn convert_messages(
     model: &Model,
     messages: &[Message],
     compat: &Compat,
+    grammar: &HashMap<String, String>,
 ) -> Result<Vec<Value>, String> {
     let messages = resolve_transcript(messages, compat.supports_mid_convo_system_messages);
     let normalize = |id: &str, source: &AssistantMessage| {
@@ -426,7 +468,7 @@ fn convert_messages(
                 }
             },
             Message::Assistant(assistant) => {
-                let output = convert_assistant(assistant, model, index)?;
+                let output = convert_assistant(assistant, model, index, grammar)?;
                 if output.is_empty() {
                     continue;
                 }
@@ -434,8 +476,13 @@ fn convert_messages(
             }
             Message::ToolResult(result) => {
                 let call_id = result.tool_call_id.split('|').next().unwrap_or_default();
+                let kind = if grammar.contains_key(&result.tool_name) {
+                    "custom_tool_call_output"
+                } else {
+                    "function_call_output"
+                };
                 input.push(json!({
-                    "type": "function_call_output",
+                    "type": kind,
                     "call_id": call_id,
                     "output": tool_result_output(model, result),
                 }));
@@ -454,6 +501,7 @@ fn build_params(
     messages: &[Message],
     options: &StreamOptions,
     compat: &Compat,
+    grammar: &HashMap<String, String>,
     max_tokens: u64,
     effort: Option<ThinkingLevel>,
 ) -> Result<Value, String> {
@@ -461,7 +509,7 @@ fn build_params(
         messages,
         compat.supports_additional_tools || compat.supports_tool_search,
     );
-    let input = convert_messages(model, messages, compat)?;
+    let input = convert_messages(model, messages, compat, grammar)?;
     let retention = options.resolved_cache_retention();
     let omit = options
         .api_key
@@ -567,17 +615,17 @@ fn build_azure_params(
     messages: &[Message],
     options: &StreamOptions,
     compat: &Compat,
+    grammar: &HashMap<String, String>,
     max_tokens: u64,
     effort: Option<ThinkingLevel>,
-    deployment: &str,
 ) -> Result<Value, String> {
     let (request_tools, _) = resolve_transcript_tools(
         messages,
         compat.supports_additional_tools || compat.supports_tool_search,
     );
-    let input = convert_messages(model, messages, compat)?;
+    let input = convert_messages(model, messages, compat, grammar)?;
     let mut params = Map::new();
-    params.insert("model".into(), json!(deployment));
+    params.insert("model".into(), json!(azure_deployment(model)));
     params.insert("input".into(), Value::Array(input));
     params.insert("stream".into(), json!(true));
     if let Some(session) = &options.session_id {
@@ -635,13 +683,14 @@ fn build_codex_body(
     messages: &[Message],
     options: &StreamOptions,
     compat: &Compat,
+    grammar: &HashMap<String, String>,
     effort: Option<ThinkingLevel>,
 ) -> Result<Value, String> {
     let (request_tools, _) = resolve_transcript_tools(
         messages,
         compat.supports_additional_tools || compat.supports_tool_search,
     );
-    let input = convert_messages(model, messages, compat)?;
+    let input = convert_messages(model, messages, compat, grammar)?;
     let instructions = match messages.first() {
         Some(Message::System(system)) => system.text(),
         _ => String::new(),
@@ -831,7 +880,16 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
         options,
     } = request;
     let output = new_output(&model, now_ms());
-    let response = match connect(&model, &messages, &options, flavor).await {
+    let compat = Compat::new(&model, flavor);
+    // Calls are stored as ordinary tool calls. Each request decides from the
+    // declared tools which ones travel as custom tool calls.
+    let grammar =
+        match schema::grammar_properties(&declared_tools(&messages), compat.supports_grammar_tools)
+        {
+            Ok(grammar) => grammar,
+            Err(message) => return send_error(&sender, output, &options.cancel, message),
+        };
+    let response = match connect(&model, &messages, &options, &compat, &grammar).await {
         Ok(response) => response,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
@@ -841,8 +899,10 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
     let mut state = State {
         flavor,
         output,
+        grammar,
         slots: IndexMap::new(),
         partial_args: IndexMap::new(),
+        custom_inputs: IndexMap::new(),
         reasoning_by_id: IndexMap::new(),
         terminal: false,
     };
@@ -866,9 +926,10 @@ async fn connect(
     model: &Model,
     messages: &[Message],
     options: &StreamOptions,
-    flavor: Flavor,
+    compat: &Compat,
+    grammar: &HashMap<String, String>,
 ) -> Result<reqwest::Response, String> {
-    let compat = Compat::new(model, flavor);
+    let flavor = compat.flavor;
     let normalized = resolve_transcript(messages, compat.supports_mid_convo_system_messages);
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
@@ -890,7 +951,15 @@ async fn connect(
         .filter(|_| options.resolved_cache_retention() != CacheRetention::None);
     let (params, url) = match flavor {
         Flavor::OpenAi => {
-            let params = build_params(model, &normalized, options, &compat, max_tokens, effort)?;
+            let params = build_params(
+                model,
+                &normalized,
+                options,
+                compat,
+                grammar,
+                max_tokens,
+                effort,
+            )?;
             headers = super::openai_headers(&api_key, model.headers.as_ref());
             if model.provider == "github-copilot" {
                 for (key, value) in super::copilot_headers(messages) {
@@ -913,15 +982,14 @@ async fn connect(
         }
         Flavor::Azure => {
             let url = azure_endpoint(model)?;
-            let deployment = azure_deployment(model);
             let params = build_azure_params(
                 model,
                 &normalized,
                 options,
-                &compat,
+                compat,
+                grammar,
                 max_tokens,
                 effort,
-                &deployment,
             )?;
             headers.set("api-key", Some(api_key.as_str()));
             headers.set("content-type", Some("application/json"));
@@ -933,7 +1001,7 @@ async fn connect(
         Flavor::Codex => {
             let account = crate::auth::codex::account_id(&api_key)
                 .ok_or("Failed to extract accountId from token")?;
-            let body = build_codex_body(model, &normalized, options, &compat, effort)?;
+            let body = build_codex_body(model, &normalized, options, compat, grammar, effort)?;
             headers.extend_model(model.headers.as_ref());
             headers.extend(&options.headers);
             headers.set("authorization", Some(format!("Bearer {api_key}")));
@@ -996,9 +1064,13 @@ enum Slot {
 struct State {
     flavor: Flavor,
     output: AssistantMessage,
+    /// The input argument of each tool sent with a grammar, by name.
+    grammar: HashMap<String, String>,
     slots: IndexMap<u64, Slot>,
-    /// Argument text of tool calls still streaming, by content position.
+    /// Argument text of function calls still streaming, by content position.
     partial_args: IndexMap<usize, String>,
+    /// Input of custom tool calls still streaming, by content position.
+    custom_inputs: IndexMap<usize, GrammarInput>,
     reasoning_by_id: IndexMap<String, usize>,
     terminal: bool,
 }
@@ -1038,13 +1110,27 @@ impl State {
                 self.partial_args
                     .insert(position, string_or(&item["arguments"], "").to_owned());
                 let call = ToolCall {
-                    id: format!(
-                        "{}|{}",
-                        template_or_undefined(item.get("call_id")),
-                        template_or_undefined(item.get("id"))
-                    ),
+                    id: call_id(item),
                     name: item["name"].as_str().unwrap_or_default().to_owned(),
                     arguments: Map::new(),
+                    thought_signature: None,
+                    namespace: item["namespace"].as_str().map(str::to_owned),
+                };
+                (Slot::ToolCall(position), ContentBlock::ToolCall(call))
+            }
+            "custom_tool_call" => {
+                let name = item["name"].as_str().unwrap_or_default();
+                let custom = GrammarInput::for_call(&self.grammar, name);
+                let mut arguments = Map::new();
+                arguments.insert(
+                    custom.property.clone(),
+                    json!(string_or(&item["input"], "")),
+                );
+                self.custom_inputs.insert(position, custom);
+                let call = ToolCall {
+                    id: call_id(item),
+                    name: name.to_owned(),
+                    arguments,
                     thought_signature: None,
                     namespace: item["namespace"].as_str().map(str::to_owned),
                 };
@@ -1107,7 +1193,50 @@ impl State {
         }
     }
 
-    fn item_done(&mut self, index: u64, item: &Value, sender: &EventSender) {
+    fn custom_call(&self, index: u64) -> Option<usize> {
+        match self.slots.get(&index) {
+            Some(Slot::ToolCall(position)) if self.custom_inputs.contains_key(position) => {
+                Some(*position)
+            }
+            _ => None,
+        }
+    }
+
+    /// The input a custom tool call carries so far.
+    fn custom_input(&self, position: usize) -> String {
+        match (
+            self.custom_inputs.get(&position),
+            self.output.content.get(position),
+        ) {
+            (Some(custom), Some(ContentBlock::ToolCall(call))) => {
+                custom.input(&call.arguments).to_owned()
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Sets a custom tool call's input and streams what it adds to the
+    /// arguments JSON.
+    fn set_custom_input(
+        &mut self,
+        position: usize,
+        input: String,
+        close: bool,
+        sender: &EventSender,
+    ) -> Result<(), String> {
+        let (Some(custom), Some(ContentBlock::ToolCall(call))) = (
+            self.custom_inputs.get_mut(&position),
+            self.output.content.get_mut(position),
+        ) else {
+            return Ok(());
+        };
+        if let Some(delta) = custom.set(&mut call.arguments, input, close)? {
+            sender.delta(&mut self.output, position, &delta);
+        }
+        Ok(())
+    }
+
+    fn item_done(&mut self, index: u64, item: &Value, sender: &EventSender) -> Result<(), String> {
         self.apply_phase(item);
         let slot = match self.slots.get(&index).copied() {
             Some(slot) => Some(slot),
@@ -1130,7 +1259,7 @@ impl State {
                 let (summary, content) = (join("summary"), join("content"));
                 let signature = yapi_types::json::stringify(item);
                 let Some(block) = self.thinking(position) else {
-                    return;
+                    return Ok(());
                 };
                 if !summary.is_empty() {
                     block.thinking = summary;
@@ -1165,7 +1294,7 @@ impl State {
                     item["phase"].as_str().filter(|phase| !phase.is_empty()),
                 );
                 let Some(block) = self.text(position) else {
-                    return;
+                    return Ok(());
                 };
                 block.text = text;
                 block.text_signature = Some(signature);
@@ -1190,7 +1319,7 @@ impl State {
                     });
                 let arguments = parse_streaming_json(&source);
                 let Some(call) = self.tool_call(position) else {
-                    return;
+                    return Ok(());
                 };
                 call.arguments = arguments;
                 if let Some(namespace) = item["namespace"].as_str() {
@@ -1199,8 +1328,25 @@ impl State {
                 sender.end(&self.output, position);
                 self.slots.shift_remove(&index);
             }
+            (Some("custom_tool_call"), Some(Slot::ToolCall(position)))
+                if self.custom_inputs.contains_key(&position) =>
+            {
+                let input = item["input"]
+                    .as_str()
+                    .map_or_else(|| self.custom_input(position), str::to_owned);
+                self.set_custom_input(position, input, true, sender)?;
+                self.custom_inputs.shift_remove(&position);
+                if let Some(namespace) = item["namespace"].as_str()
+                    && let Some(call) = self.tool_call(position)
+                {
+                    call.namespace = Some(namespace.to_owned());
+                }
+                sender.end(&self.output, position);
+                self.slots.shift_remove(&index);
+            }
             _ => {}
         }
+        Ok(())
     }
 
     /// Azure can leave `encrypted_content` out of `output_item.done` and send it
@@ -1405,7 +1551,19 @@ impl State {
                     }
                 }
             }
-            "response.output_item.done" => self.item_done(index, &event["item"], sender),
+            "response.custom_tool_call_input.delta" => {
+                if let Some(position) = self.custom_call(index) {
+                    let input = format!("{}{delta}", self.custom_input(position));
+                    self.set_custom_input(position, input, false, sender)?;
+                }
+            }
+            "response.custom_tool_call_input.done" => {
+                if let Some(position) = self.custom_call(index) {
+                    let input = event["input"].as_str().unwrap_or_default().to_owned();
+                    self.set_custom_input(position, input, true, sender)?;
+                }
+            }
+            "response.output_item.done" => self.item_done(index, &event["item"], sender)?,
             "response.completed" | "response.incomplete" => {
                 self.finalize(&event["response"], model)?;
             }
@@ -1472,7 +1630,8 @@ impl State {
                     .enumerate()
                     .find_map(|(position, block)| match block {
                         ContentBlock::ToolCall(call)
-                            if self.partial_args.contains_key(&position) =>
+                            if self.partial_args.contains_key(&position)
+                                || self.custom_inputs.contains_key(&position) =>
                         {
                             Some(call)
                         }
@@ -1494,6 +1653,15 @@ fn join_part(value: &Value) -> String {
         Value::Null => String::new(),
         other => template(other),
     }
+}
+
+/// A streamed call's `call|item` id.
+fn call_id(item: &Value) -> String {
+    format!(
+        "{}|{}",
+        template_or_undefined(item.get("call_id")),
+        template_or_undefined(item.get("id"))
+    )
 }
 
 fn template_or_undefined(value: Option<&Value>) -> String {
@@ -1534,6 +1702,48 @@ mod tests {
         assert_eq!(
             foreign_item_id("item"),
             format!("fc_{}", short_hash("item"))
+        );
+    }
+
+    #[test]
+    fn replays_grammar_calls_by_the_current_tools() {
+        let model: Model = serde_json::from_value(json!({
+            "id": "gpt-5.1", "name": "G", "api": "openai-responses", "provider": "openai",
+            "baseUrl": "u", "reasoning": false, "input": ["text"],
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000, "maxTokens": 100
+        }))
+        .unwrap();
+        let call = |code: Value| {
+            ContentBlock::tool_call(
+                "call_1|ctc_1",
+                "codemode",
+                Map::from_iter([("code".to_owned(), code)]),
+            )
+        };
+        let mut assistant = new_output(&model, 0);
+        assistant.content.push(call(json!("return 1;")));
+        let grammar = HashMap::from([("codemode".to_owned(), "code".to_owned())]);
+        assert_eq!(
+            convert_assistant(&assistant, &model, 0, &grammar).unwrap(),
+            [
+                json!({"type": "custom_tool_call", "id": "ctc_1", "call_id": "call_1",
+                "name": "codemode", "input": "return 1;"})
+            ]
+        );
+        // Without grammar support the call travels as a function call, which
+        // cannot keep the custom item id.
+        assert_eq!(
+            convert_assistant(&assistant, &model, 0, &HashMap::new()).unwrap(),
+            [
+                json!({"type": "function_call", "call_id": "call_1", "name": "codemode",
+                "arguments": "{\"code\":\"return 1;\"}"})
+            ]
+        );
+        assistant.content[0] = call(json!(1));
+        assert_eq!(
+            convert_assistant(&assistant, &model, 0, &grammar).unwrap_err(),
+            "Grammar tool call \"codemode\" requires argument \"code\" to be a string."
         );
     }
 }

@@ -1,0 +1,54 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "chunks": [
+          "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_mock_cm_1\",\"object\":\"response\",\"created_at\":1790000000,\"status\":\"in_progress\",\"model\":\"gpt-5.1-2025-11-13\",\"output\":[]},\"sequence_number\":0}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_mock_cm_1\",\"type\":\"reasoning\",\"summary\":[]},\"sequence_number\":1}\n\n",
+          "event: response.reasoning_summary_part.added\ndata: {\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"rs_mock_cm_1\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"\"},\"sequence_number\":2}\n\n",
+          "event: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_mock_cm_1\",\"output_index\":0,\"summary_index\":0,\"delta\":\"**Batching the calls**\",\"sequence_number\":3}\n\n",
+          "event: response.reasoning_summary_text.done\ndata: {\"type\":\"response.reasoning_summary_text.done\",\"item_id\":\"rs_mock_cm_1\",\"output_index\":0,\"summary_index\":0,\"text\":\"**Batching the calls**\",\"sequence_number\":4}\n\n",
+          "event: response.reasoning_summary_part.done\ndata: {\"type\":\"response.reasoning_summary_part.done\",\"item_id\":\"rs_mock_cm_1\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"**Batching the calls**\"},\"sequence_number\":5}\n\n",
+          "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_mock_cm_1\",\"type\":\"reasoning\",\"encrypted_content\":\"gAAAAA-encrypted-cm\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Batching the calls**\"}]},\"sequence_number\":6}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"id\":\"ctc_mock_cm_1\",\"type\":\"custom_tool_call\",\"status\":\"in_progress\",\"call_id\":\"call_mock_cm_1\",\"input\":\"\",\"name\":\"codemode\"},\"sequence_number\":7}\n\n",
+          "event: response.custom_tool_call_input.delta\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"item_id\":\"ctc_mock_cm_1\",\"output_index\":1,\"delta\":\"const a = await tools.read({path: 'hello.txt'});\\nconst b = await tools.bash({command: \\\"echo two; exit 2\\\"});\",\"sequence_number\":8}\n\n",
+          "event: response.custom_tool_call_input.delta\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"item_id\":\"ctc_mock_cm_1\",\"output_index\":1,\"delta\":\"\\ntext(a);\\nconsole.log('exit', b.exit_code);\\nstore('seen', {n: 1});\",\"sequence_number\":9}\n\n",
+          "event: response.custom_tool_call_input.delta\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"item_id\":\"ctc_mock_cm_1\",\"output_index\":1,\"delta\":\"\\nreturn {output: b.output, seen: load('seen')};\",\"sequence_number\":10}\n\n",
+          "event: response.custom_tool_call_input.done\ndata: {\"type\":\"response.custom_tool_call_input.done\",\"item_id\":\"ctc_mock_cm_1\",\"output_index\":1,\"input\":\"const a = await tools.read({path: 'hello.txt'});\\nconst b = await tools.bash({command: \\\"echo two; exit 2\\\"});\\ntext(a);\\nconsole.log('exit', b.exit_code);\\nstore('seen', {n: 1});\\nreturn {output: b.output, seen: load('seen')};\",\"sequence_number\":11}\n\n",
+          "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"id\":\"ctc_mock_cm_1\",\"type\":\"custom_tool_call\",\"status\":\"completed\",\"call_id\":\"call_mock_cm_1\",\"input\":\"const a = await tools.read({path: 'hello.txt'});\\nconst b = await tools.bash({command: \\\"echo two; exit 2\\\"});\\ntext(a);\\nconsole.log('exit', b.exit_code);\\nstore('seen', {n: 1});\\nreturn {output: b.output, seen: load('seen')};\",\"name\":\"codemode\"},\"sequence_number\":12}\n\n",
+          "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_mock_cm_1\",\"object\":\"response\",\"created_at\":1790000000,\"status\":\"completed\",\"model\":\"gpt-5.1-2025-11-13\",\"output\":[{\"id\":\"rs_mock_cm_1\",\"type\":\"reasoning\",\"encrypted_content\":\"gAAAAA-encrypted-cm\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"**Batching the calls**\"}]},{\"id\":\"ctc_mock_cm_1\",\"type\":\"custom_tool_call\",\"status\":\"completed\",\"call_id\":\"call_mock_cm_1\",\"input\":\"const a = await tools.read({path: 'hello.txt'});\\nconst b = await tools.bash({command: \\\"echo two; exit 2\\\"});\\ntext(a);\\nconsole.log('exit', b.exit_code);\\nstore('seen', {n: 1});\\nreturn {output: b.output, seen: load('seen')};\",\"name\":\"codemode\"}],\"usage\":{\"input_tokens\":1500,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":64,\"output_tokens_details\":{\"reasoning_tokens\":16},\"total_tokens\":1564},\"service_tier\":\"default\"},\"sequence_number\":13}\n\n"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/event-stream"
+        },
+        "chunks": [
+          "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_mock_cm_2\",\"object\":\"response\",\"created_at\":1790000000,\"status\":\"in_progress\",\"model\":\"gpt-5.1-2025-11-13\",\"output\":[]},\"sequence_number\":0}\n\n",
+          "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_mock_cm_2\",\"type\":\"message\",\"status\":\"in_progress\",\"content\":[],\"role\":\"assistant\",\"phase\":\"final_answer\"},\"sequence_number\":1}\n\n",
+          "event: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_mock_cm_2\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"\"},\"sequence_number\":2}\n\n",
+          "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_mock_cm_2\",\"output_index\":0,\"content_index\":0,\"delta\":\"Done.\",\"logprobs\":[],\"sequence_number\":3}\n\n",
+          "event: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"item_id\":\"msg_mock_cm_2\",\"output_index\":0,\"content_index\":0,\"text\":\"Done.\",\"logprobs\":[],\"sequence_number\":4}\n\n",
+          "event: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"item_id\":\"msg_mock_cm_2\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"Done.\"},\"sequence_number\":5}\n\n",
+          "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_mock_cm_2\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"Done.\"}],\"role\":\"assistant\",\"phase\":\"final_answer\"},\"sequence_number\":6}\n\n",
+          "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_mock_cm_2\",\"object\":\"response\",\"created_at\":1790000000,\"status\":\"completed\",\"model\":\"gpt-5.1-2025-11-13\",\"output\":[{\"id\":\"msg_mock_cm_2\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"Done.\"}],\"role\":\"assistant\",\"phase\":\"final_answer\"}],\"usage\":{\"input_tokens\":1700,\"input_tokens_details\":{\"cached_tokens\":1500},\"output_tokens\":4,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":1704},\"service_tier\":\"default\"},\"sequence_number\":7}\n\n"
+        ]
+      }
+    }
+  ]
+}
