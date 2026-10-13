@@ -50,9 +50,10 @@ Choose a theme in `/settings` or with `"theme"` in settings. `--use-theme <name>
 
 yapi prepares images in prompts, `@path` arguments and tool results before they reach the model:
 
-- Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld.
+- Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld. This applies to images that arrive with a MIME type: RPC and SDK prompts, tool results and the clipboard. `@path` arguments and the `read` tool only recognize PNG, JPEG, GIF, WebP and BMP files, so other formats are read as text.
 - With `"images": {"autoResize": true}`, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.
-- An image that cannot be converted or made to fit is left out, with a note that says so.
+- A prompt or `read` image that cannot be converted or made to fit is left out, with a note that says so. A tool result keeps its original image unchanged.
+- A pasted clipboard image that is not PNG, JPEG, WebP or GIF is converted to PNG when pasted, ignoring its EXIF orientation.
 - `"images": {"blockImages": true}` keeps all images from the model.
 
 Both settings are also in `/settings`.
