@@ -14,6 +14,7 @@
 //! environment variables as pi's side.
 
 use std::collections::BTreeMap;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -131,11 +132,10 @@ async fn load(
     )?;
     let settings = SettingsManager::load(&agent, &cwd, false);
     let mut packages = PackageManager::new(cwd.clone(), agent.clone(), settings, npm::config());
-    let mut install_errors = Vec::new();
-    packages
-        .install_missing(|_, error| install_errors.push(error))
-        .await;
-    if let Some(error) = install_errors.first() {
+    if let ControlFlow::Break(error) = packages
+        .install_missing(|_, error| ControlFlow::Break(error))
+        .await
+    {
         return Ok(json!({"version": version, "install": error}));
     }
     let entries: Vec<PathBuf> = packages

@@ -14,7 +14,7 @@ yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 ```
 
-yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied.
+yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied. At startup and on `/reload`, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.
 
 Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.
 
@@ -41,7 +41,7 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 ## Turn resources on and off
 
-`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`. Tab switches between global settings and the current project. `yapi config -l` starts with the project.
+`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`. Tab switches between global settings and the current project. `yapi config -l` starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, `yapi config` prints the error and exits. `PI_OFFLINE` skips these installs.
 
 ## Package manifests
 

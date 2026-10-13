@@ -87,7 +87,10 @@ fn main() -> ExitCode {
     match raw.first().map(String::as_str) {
         Some("import") => return ExitCode::from(import::run(&raw[1..])),
         Some("new") => return ExitCode::from(new_command::run(&raw[1..])),
-        Some("config") => return ExitCode::from(config_command::run(&raw[1..])),
+        Some("config") => {
+            apply_http_proxy();
+            return block_on(config_command::run(&raw[1..]));
+        }
         Some("mcp") => {
             apply_http_proxy();
             return block_on(mcp_command::run(&raw[1..]));

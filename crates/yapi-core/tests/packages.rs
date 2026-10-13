@@ -6,6 +6,7 @@
 )]
 
 use std::io::Write as _;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
@@ -112,11 +113,13 @@ async fn registry(interactions: impl Fn(&str) -> Vec<Interaction>) -> MockServer
     .unwrap()
 }
 
+/// A manager for the trusted project `<dir>/project` and the agent directory
+/// `<dir>/agent`, with `url` as the registry.
 fn manager(dir: &Path, url: &str) -> PackageManager {
     let cwd = dir.join("project");
     let agent = dir.join("agent");
     std::fs::create_dir_all(&cwd).unwrap();
-    let settings = SettingsManager::load(&agent, &cwd, false);
+    let settings = SettingsManager::load(&agent, &cwd, true);
     let config = [("registry".to_owned(), format!("{url}/"))];
     PackageManager::new(cwd, agent, settings, config.into())
 }
@@ -543,4 +546,134 @@ async fn installs_temporary_packages_outside_settings() {
         2,
         "one packument and one tarball"
     );
+}
+
+/// pi's startup install: a missing configured package is installed, one
+/// whose installed version is outside the configured range is replaced, and
+/// one in range is left alone (the registry serves one install only).
+#[tokio::test(flavor = "multi_thread")]
+async fn installs_missing_and_out_of_range_configured_packages() {
+    let dir = scratch("missing");
+    let version = |version: &str| {
+        tarball(&[
+            (
+                "package.json",
+                &format!(r#"{{"name": "ext-pkg", "version": "{version}"}}"#),
+            ),
+            ("index.ts", version),
+        ])
+    };
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    let installed = dir.join("agent/npm/node_modules/ext-pkg");
+    let configure = |source: &str| {
+        std::fs::create_dir_all(dir.join("agent")).unwrap();
+        std::fs::write(
+            dir.join("agent/settings.json"),
+            json!({"packages": [source]}).to_string(),
+        )
+        .unwrap();
+    };
+
+    // Missing: installed from the registry.
+    configure("npm:ext-pkg@^2.0.0");
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+
+    // In range, a different range that 2.0.0 satisfies, and a dist-tag: no
+    // request reaches the registry.
+    for source in [
+        "npm:ext-pkg@^2.0.0",
+        "npm:ext-pkg@>=1",
+        "npm:ext-pkg@latest",
+        "npm:ext-pkg",
+    ] {
+        configure(source);
+        let outcome = manager(&dir, &server.url())
+            .install_missing(|_, message| ControlFlow::Break(message))
+            .await;
+        assert_eq!(outcome, ControlFlow::Continue(()));
+    }
+
+    // Out of range: replaced by the 1.x install put in its place.
+    std::fs::write(
+        installed.join("package.json"),
+        r#"{"name": "ext-pkg", "version": "1.0.0"}"#,
+    )
+    .unwrap();
+    std::fs::write(installed.join("index.ts"), "1.0.0").unwrap();
+    assert_eq!(
+        server.finish().unwrap().len(),
+        2,
+        "one packument and one tarball"
+    );
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    configure("npm:ext-pkg@^2.0.0");
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+    assert_eq!(server.finish().unwrap().len(), 2);
+}
+
+/// pi's `findAutoloadDeltaBase`: a project entry with `autoload: false` over
+/// the user's entry for the same package installs the user's copy, which
+/// both entries resolve to, and no project copy.
+#[tokio::test(flavor = "multi_thread")]
+async fn installs_an_autoload_delta_as_the_users_package() {
+    let dir = scratch("delta");
+    let package = tarball(&[("package.json", r#"{"name": "ext-pkg", "version": "2.0.0"}"#)]);
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), package.clone())],
+            "2.0.0",
+        )
+    })
+    .await;
+    std::fs::create_dir_all(dir.join("agent")).unwrap();
+    std::fs::create_dir_all(dir.join("project/.yapi")).unwrap();
+    std::fs::write(
+        dir.join("agent/settings.json"),
+        json!({"packages": ["npm:ext-pkg@^2"]}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("project/.yapi/settings.json"),
+        json!({"packages": [{"source": "npm:ext-pkg@^2", "autoload": false}]}).to_string(),
+    )
+    .unwrap();
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert!(dir.join("agent/npm/node_modules/ext-pkg").exists());
+    assert!(!dir.join("project/.yapi/npm").exists());
+    assert_eq!(server.finish().unwrap().len(), 2);
 }

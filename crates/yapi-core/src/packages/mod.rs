@@ -10,6 +10,7 @@ pub mod npm;
 pub mod resolve;
 pub mod source;
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -569,14 +570,7 @@ impl PackageManager {
             Source::Npm { name, version, .. } => {
                 let root = self.temporary_dir("npm", "", None)?;
                 let dir = root.join("node_modules").join(&name);
-                // A dist-tag such as `latest` is no range, so it never
-                // reinstalls an installed package.
-                let stale = npm::installed_version(&dir).is_none_or(|installed| {
-                    version.as_deref().is_some_and(|range| {
-                        npm::is_range(range) && !npm::satisfies(&installed, range)
-                    })
-                });
-                if stale {
+                if npm_stale(&dir, version.as_deref()) {
                     if offline {
                         return Ok(None);
                     }
@@ -634,43 +628,67 @@ impl PackageManager {
         managed_path(&root, &Path::new(&hash[..8]).join(suffix))
     }
 
-    /// pi's startup install: the configured npm and git packages that are
-    /// missing, the project's first, each identity once. `on_error` receives
-    /// the failures.
-    pub async fn install_missing(&mut self, mut on_error: impl FnMut(&str, String)) {
-        let mut identities: Vec<String> = Vec::new();
-        for scope in [Scope::Project, Scope::Global] {
-            for entry in self.packages(scope) {
-                let Some(configured) = entry_source(&entry).map(str::to_owned) else {
-                    continue;
-                };
-                let parsed = parse(&configured);
-                let identity = parsed.identity(&self.base(scope));
-                if identities.contains(&identity) {
-                    continue;
-                }
-                identities.push(identity);
-                let root = self.install_path(&parsed, scope);
-                let installed = match &parsed {
-                    _ if root.exists() => Ok(()),
-                    Source::Npm { name, version, .. } => {
-                        self.install_npm(&self.npm_root(scope), name, version.as_deref())
-                            .await
+    /// The installs of pi's `resolve`: the configured npm and git packages
+    /// that are missing, and the npm packages whose installed version is
+    /// outside the configured range, in the order and at the places of
+    /// [`resolve::locate_packages`]. `on_error` receives each failure, with
+    /// its source, and its `Break` ends the install and is returned.
+    pub async fn install_missing<B>(
+        &mut self,
+        mut on_error: impl FnMut(&str, String) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
+        let scope = |name: &str| {
+            if name == "project" {
+                Scope::Project
+            } else {
+                Scope::Global
+            }
+        };
+        let packages = resolve::locate_packages(
+            &self.packages(Scope::Project),
+            &self.packages(Scope::Global),
+            |source, in_scope| parse(source).identity(&self.base(scope(in_scope))),
+        );
+        let mut attempted = Vec::new();
+        for (_, _, source, in_scope) in packages {
+            // An `autoload: false` entry and the user's entry it adjusts
+            // install the same package.
+            if attempted.contains(&(source.clone(), in_scope)) {
+                continue;
+            }
+            attempted.push((source.clone(), in_scope));
+            let parsed = parse(&source);
+            let root = self.install_path(&parsed, scope(in_scope));
+            let installed = match &parsed {
+                Source::Npm { name, version, .. } => {
+                    if npm_stale(&root, version.as_deref()) {
+                        let npm_root = self.npm_root(scope(in_scope));
+                        self.install_npm(&npm_root, name, version.as_deref()).await
+                    } else {
+                        Ok(())
                     }
-                    Source::Git {
-                        repo, reference, ..
-                    } => self.install_git(repo, reference.as_deref(), &root).await,
-                    Source::Local { .. } => Ok(()),
-                };
-                if let Err(err) = installed {
-                    on_error(
-                        &configured,
-                        format!("Failed to install {configured}: {err}"),
-                    );
                 }
+                _ if root.exists() => Ok(()),
+                Source::Git {
+                    repo, reference, ..
+                } => self.install_git(repo, reference.as_deref(), &root).await,
+                Source::Local { .. } => Ok(()),
+            };
+            if let Err(err) = installed {
+                on_error(&source, format!("Failed to install {source}: {err}"))?;
             }
         }
+        ControlFlow::Continue(())
     }
+}
+
+/// Whether the npm package at `dir` must be installed: it is missing, or
+/// `range` is a version range its installed version does not satisfy. A
+/// dist-tag such as `latest` is no range, so it never reinstalls.
+fn npm_stale(dir: &Path, range: Option<&str>) -> bool {
+    npm::installed_version(dir).is_none_or(|installed| {
+        range.is_some_and(|range| npm::is_range(range) && !npm::satisfies(&installed, range))
+    })
 }
 
 #[cfg(test)]
