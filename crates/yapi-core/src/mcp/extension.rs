@@ -16,11 +16,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use futures_util::future::BoxFuture;
 use indexmap::IndexMap;
+use regex_lite::Regex;
 use serde_json::Value;
 use tokio::sync::{oneshot, watch};
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
@@ -313,6 +314,20 @@ fn render_servers_section(servers: &[(&ServerEntry, Option<String>)]) -> Option<
     }
     lines.extend(omitted(listed.len() - kept));
     Some(lines.join("\n"))
+}
+
+static FINDS_TOOLS: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"\b(searchTools|describeNamespace|describeTool|ALL_TOOLS)\b").ok()
+});
+
+/// Whether a codemode script needs the server: it names the server's
+/// namespace, or searches, lists or describes tools, which may name the server
+/// in other forms.
+fn script_needs_server(code: &str, server: &str) -> bool {
+    FINDS_TOOLS
+        .as_ref()
+        .is_some_and(|finds| finds.is_match(code))
+        || code.contains(&namespace(server))
 }
 
 /// Short state for lists; `with_error` appends the first line of a failure.
@@ -1841,24 +1856,36 @@ impl Extension for McpExtension {
         })
     }
 
+    /// A codemode script waits for the servers it names, or for every server
+    /// when it searches or lists tools, so their tools are registered before it
+    /// runs. tool_search and the resource tools reach every server.
     fn tool_call<'a>(
         &'a self,
         ctx: &'a Context,
         tool: &'a str,
-        _input: &'a Value,
+        input: &'a Value,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let waits = tool == TOOL_SEARCH_TOOL_NAME
+            if self.pending(|_| true).is_empty() {
+                return None;
+            }
+            let info = ctx.tools.all().into_iter().find(|info| info.name == tool)?;
+            let pending = if codemode::is_codemode_tool(&info) {
+                let code = input["code"].as_str().unwrap_or_default();
+                self.pending(|entry| script_needs_server(code, &entry.name))
+            } else if is_tool_search(&info)
                 || [
                     LIST_MCP_RESOURCES_TOOL,
                     LIST_MCP_RESOURCE_TEMPLATES_TOOL,
                     READ_MCP_RESOURCE_TOOL,
                 ]
-                .contains(&tool);
-            if waits {
-                let pending = self.pending(|_| true);
-                Self::wait_for(pending, &ctx.cancel).await;
-            }
+                .contains(&tool)
+            {
+                self.pending(|_| true)
+            } else {
+                return None;
+            };
+            Self::wait_for(pending, &ctx.cancel).await;
             None
         })
     }
@@ -1878,5 +1905,170 @@ impl Extension for McpExtension {
                 connection.close().await;
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use futures_util::future::BoxFuture;
+    use serde_json::json;
+    use tokio_util::sync::CancellationToken;
+    use yapi_agent::{Tool, UpdateSink};
+    use yapi_types::event::ToolResult;
+    use yapi_types::message::ToolDeclaration;
+
+    use super::*;
+    use crate::extensions::NoUi;
+    use crate::tools::registry::ToolRegistry;
+
+    #[test]
+    fn scripts_need_the_servers_they_name_or_search() {
+        let code = "await tools.mcp__my_docs__search({q: 1})";
+        assert!(script_needs_server(code, "my-docs"));
+        assert!(!script_needs_server(code, "other"));
+        assert!(script_needs_server(
+            "const found = await searchTools('x')",
+            "other"
+        ));
+        assert!(script_needs_server("ALL_TOOLS.length", "other"));
+        assert!(!script_needs_server("describeTools()", "other"));
+        assert!(!script_needs_server("my_searchTools()", "other"));
+    }
+
+    struct Declared(ToolDeclaration);
+
+    impl Tool for Declared {
+        fn declaration(&self) -> &ToolDeclaration {
+            &self.0
+        }
+
+        fn execute(
+            &self,
+            _call_id: String,
+            _args: Value,
+            _cancel: CancellationToken,
+            _updates: UpdateSink,
+        ) -> BoxFuture<'_, Result<ToolResult, String>> {
+            Box::pin(async { Err("unused".into()) })
+        }
+    }
+
+    fn tool(name: &str, parameters: Value, exposure: Exposure) -> RegisteredTool {
+        RegisteredTool {
+            exposure,
+            ..RegisteredTool::direct(
+                Arc::new(Declared(ToolDeclaration {
+                    name: name.into(),
+                    description: String::new(),
+                    parameters,
+                    constrained_sampling: None,
+                })),
+                None,
+                Vec::new(),
+            )
+        }
+    }
+
+    /// An extension with servers `docs` and `other` still connecting, a
+    /// context whose tools hold codemode, tool_search and `named_like_search`,
+    /// another extension's tool, and the senders that settle the servers.
+    fn connecting() -> (McpExtension, Context, Vec<watch::Sender<bool>>) {
+        let extension = McpExtension::new();
+        let mut senders = Vec::new();
+        for name in ["docs", "other"] {
+            let (sender, ready) = watch::channel(false);
+            let entry = ServerEntry {
+                name: name.into(),
+                config: config::validate_server(name, &json!({"command": "true"})).unwrap(),
+                source: PathBuf::new(),
+                scope: Scope::Global,
+            };
+            let mut server = Server::new(entry, None);
+            server.ready = Some(ready);
+            lock(&extension.shared).servers.push(server);
+            senders.push(sender);
+        }
+        let tools = Tools::new(ToolRegistry::default());
+        tools.register(tool(
+            codemode::NAME,
+            codemode::parameters(),
+            Exposure::ModelOnly,
+        ));
+        tools.register(tool(
+            TOOL_SEARCH_TOOL_NAME,
+            json!({"type": "object"}),
+            Exposure::ModelOnly,
+        ));
+        tools.register(tool(
+            "named_like_search",
+            json!({"type": "object"}),
+            Exposure::Direct,
+        ));
+        let ctx = Context {
+            cwd: PathBuf::new(),
+            agent_dir: PathBuf::new(),
+            project_dir: PathBuf::new(),
+            project_trusted: false,
+            mode: Mode::Print,
+            ui: Arc::new(NoUi),
+            tools,
+            cancel: CancellationToken::new(),
+            session: Default::default(),
+        };
+        (extension, ctx, senders)
+    }
+
+    /// Whether the call still waits after a moment.
+    async fn waits(extension: &McpExtension, ctx: &Context, tool: &str, input: Value) -> bool {
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            extension.tool_call(ctx, tool, &input),
+        )
+        .await
+        .is_err()
+    }
+
+    #[tokio::test]
+    async fn calls_wait_for_the_servers_they_reach() {
+        let (extension, ctx, senders) = connecting();
+        let script = |code: &str| json!({"code": code});
+        assert!(waits(&extension, &ctx, "codemode", script("tools.mcp__docs__a()")).await);
+        assert!(
+            waits(
+                &extension,
+                &ctx,
+                "codemode",
+                script("await searchTools('a')")
+            )
+            .await
+        );
+        assert!(waits(&extension, &ctx, "codemode", script("ALL_TOOLS")).await);
+        assert!(!waits(&extension, &ctx, "codemode", script("return 1")).await);
+        assert!(waits(&extension, &ctx, TOOL_SEARCH_TOOL_NAME, json!({})).await);
+        assert!(!waits(&extension, &ctx, "named_like_search", json!({})).await);
+        assert!(!waits(&extension, &ctx, "unknown", json!({})).await);
+        // A server that connected or failed no longer holds a script back.
+        senders[0].send_replace(true);
+        assert!(!waits(&extension, &ctx, "codemode", script("tools.mcp__docs__a()")).await);
+        assert!(waits(&extension, &ctx, "codemode", script("ALL_TOOLS")).await);
+    }
+
+    #[tokio::test]
+    async fn an_abort_ends_the_wait() {
+        let (extension, ctx, _senders) = connecting();
+        let input = json!({"code": "ALL_TOOLS"});
+        let call = extension.tool_call(&ctx, "codemode", &input);
+        let cancel = ctx.cancel.clone();
+        let (outcome, ()) = tokio::join!(
+            tokio::time::timeout(Duration::from_secs(5), call),
+            async move {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                cancel.cancel();
+            }
+        );
+        assert_eq!(outcome, Ok(None));
     }
 }
