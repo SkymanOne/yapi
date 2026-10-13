@@ -204,6 +204,7 @@ pub struct Tool {
     parameters: Value,
     prompt_snippet: Option<String>,
     prompt_guidelines: Vec<String>,
+    constrained_sampling: Option<Value>,
     execute: Handler<Value, ToolResult>,
     render_call: Option<Rc<CallRenderer>>,
     render_result: Option<Rc<ResultRenderer>>,
@@ -246,6 +247,7 @@ impl Tool {
             parameters,
             prompt_snippet: None,
             prompt_guidelines: Vec::new(),
+            constrained_sampling: None,
             execute: handler(execute),
             render_call: None,
             render_result: None,
@@ -269,6 +271,18 @@ impl Tool {
     /// A rule added to the system prompt while the tool is active.
     pub fn prompt_guideline(mut self, guideline: impl Into<String>) -> Tool {
         self.prompt_guidelines.push(guideline.into());
+        self
+    }
+
+    /// pi's `constrainedSampling`: how models that support it constrain the
+    /// tool's arguments. `{"type": "json_schema", "strict": "prefer"}` asks
+    /// for strict JSON-schema sampling, and `"require"` fails requests that
+    /// cannot have it. `{"type": "grammar", "variants": {"openai_lark": ...,
+    /// "openai_regex": ...}}` sends the tool to OpenAI models as a custom
+    /// tool whose raw input follows the grammar; its parameters then hold one
+    /// required string argument, which carries that input.
+    pub fn constrained_sampling(mut self, config: Value) -> Tool {
+        self.constrained_sampling = Some(config);
         self
     }
 
@@ -446,6 +460,7 @@ impl Api {
                 "parameters": tool.parameters,
                 "promptSnippet": tool.prompt_snippet,
                 "promptGuidelines": tool.prompt_guidelines,
+                "constrainedSampling": tool.constrained_sampling,
                 "renderShell": tool.render_shell,
                 "executionMode": tool.execution_mode,
                 "hasRenderCall": tool.render_call.is_some(),

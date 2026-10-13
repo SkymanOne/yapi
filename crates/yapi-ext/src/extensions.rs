@@ -1117,7 +1117,8 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         name: text(&tool["name"]),
         description: text(&tool["description"]),
         parameters: tool["parameters"].clone(),
-        constrained_sampling: None,
+        constrained_sampling: Some(tool["constrainedSampling"].clone())
+            .filter(|config| !config.is_null()),
     };
     let label = tool["label"]
         .as_str()

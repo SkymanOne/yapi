@@ -137,7 +137,7 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi never 
 
 | Item | Purpose |
 |---|---|
-| `Api::register_tool` | Offer a tool to the model. `Tool` sets a label, prompt snippet and prompt guidelines. |
+| `Api::register_tool` | Offer a tool to the model. `Tool` sets a label, prompt snippet and prompt guidelines, and `Tool::constrained_sampling` takes Pi's `constrainedSampling`, such as a grammar the tool's input must follow on OpenAI models. |
 | `Api::register_command` | Handle `/name args` |
 | `Api::register_flag` | Accept `--name` on the command line, read later with `get_flag` |
 | `Api::register_shortcut` | Run a handler when the user presses a key such as `alt+k`, as Pi's `pi.registerShortcut` does. An empty description lists the shortcut by the extension's path. |
