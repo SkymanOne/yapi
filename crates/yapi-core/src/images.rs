@@ -237,6 +237,14 @@ fn decode(bytes: &[u8]) -> Option<DynamicImage> {
     }))
 }
 
+/// The clipboard's `convertToPng`: `bytes` decoded to RGBA and encoded as
+/// PNG, with no EXIF orientation and no resizing. `None` when they do not
+/// decode.
+pub fn to_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    let image = DynamicImage::ImageRgba8(image::load_from_memory(bytes).ok()?.to_rgba8());
+    encode(&image, ImageOutputFormat::Png)
+}
+
 /// `image` in `format`. JPEG drops the alpha channel, as with Photon.
 fn encode(image: &DynamicImage, format: ImageOutputFormat) -> Option<Vec<u8>> {
     let mut bytes = Cursor::new(Vec::new());
@@ -475,6 +483,18 @@ mod tests {
                 "[Image: original 2x4, displayed at 2x3. Multiply coordinates by 1.00 to map to original image.]"
             ]
         );
+    }
+
+    #[test]
+    fn to_png_ignores_exif_orientation() {
+        let jpeg = file(&pixels(4, 2, false), ImageOutputFormat::Jpeg(90));
+        let mut exif = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01".to_vec();
+        exif.extend_from_slice(b"\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0");
+        let rotated = [&jpeg[..2], &exif, &jpeg[2..]].concat();
+        let png = to_png(&rotated).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
+        let decoded = image::load_from_memory(&png).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (4, 2));
     }
 
     /// Runs `bytes` through `process` as `mime_type` with and without resizing
