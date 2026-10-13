@@ -24,6 +24,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
 | Codemode scripts | May compute without limit | Stop after 60 seconds of computing without awaiting a call. |
+| Zone names in dates | `Date`'s `toString` and `toTimeString` end with the zone's name, such as `(Eastern Daylight Time)` | They end with the zone's offset, such as `(GMT-04:00)`, as in Node for a zone without a name. UTC keeps its name. |
 | Native extensions | None | WebAssembly components written in Rust. See [Native extensions](native-extensions.md). Unstable until 1.0. |
 
 ## Packages and installation
@@ -46,7 +47,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | `/share` and `/bug` | Use Pi's services | Not available. |
 | Clipboard paste | Copied files, images and text on every platform | Nothing on Windows, and images copied in Windows do not reach WSL. |
 | Word motions in Chinese, Japanese and Thai | By dictionary word | By character, to keep ICU's dictionaries out of the binary. |
-| Tree label times | Local time | UTC, with no time zone database. |
+| Time zones | Node's own time zone data | The system's time zone database. With `TZ` set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless `TZ` holds a POSIX rule such as `EST5EDT`. |
 | Codex transport | WebSocket, then compressed SSE | Uncompressed SSE, the same requests and events as Pi's fallback. |
 | Links | A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written. | A click opens only `http`, `https` and `mailto` links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command. |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |

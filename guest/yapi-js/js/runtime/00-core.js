@@ -667,6 +667,85 @@
 		};
 	}
 
+	// ----- local time ------------------------------------------------------------------
+	// QuickJS takes offsets from the host's zone (the runtime's `localtime_r`).
+	// Wall-clock times become instants as in Node, and formats are Node's in
+	// en-US. Node names a zone by its long name, which yapi has only for UTC,
+	// so other zones are named by their offset, as Node names a zone it has
+	// no name for.
+	const localZone = yapi.request("timezone") ?? undefined;
+	const isUtc = (zone) => /^(etc\/)?(utc|uct|gmt|universal|zulu)$/i.test(String(zone));
+	const pad2 = (number) => String(number).padStart(2, "0");
+	{
+		const NativeDate = Date;
+		const proto = NativeDate.prototype;
+		/** Runs `convert`, which turns wall-clock times into instants, with Node's rule for them. */
+		const wallClock = (convert) => {
+			native.wallClock(true);
+			try {
+				return convert();
+			} finally {
+				native.wallClock(false);
+			}
+		};
+		/** The instant of wall-clock time `local`, in milliseconds as if UTC. */
+		const fromLocal = (local) => {
+			const date = new NativeDate(local);
+			return Number.isNaN(date.getTime()) ? Number.NaN : wallClock(() => NativeDate.parse(date.toISOString().slice(0, -1)));
+		};
+		const LocalDate = function Date(...args) {
+			if (new.target === undefined) return new NativeDate().toString();
+			const construct = () => Reflect.construct(NativeDate, args, new.target);
+			return args.length > 1 || typeof args[0] === "string" ? wallClock(construct) : construct();
+		};
+		Object.defineProperties(LocalDate, { length: { value: 7 }, prototype: { value: proto, writable: false } });
+		LocalDate.now = NativeDate.now;
+		LocalDate.UTC = NativeDate.UTC;
+		LocalDate.parse = function parse(text) {
+			return wallClock(() => NativeDate.parse(text));
+		};
+		proto.constructor = LocalDate;
+		globalThis.Date = LocalDate;
+		// Each local setter sets the UTC field of the wall-clock time; an invalid
+		// date's year is set from local time zero, as in Node.
+		for (const field of ["FullYear", "Month", "Date", "Hours", "Minutes", "Seconds", "Milliseconds"]) {
+			const setUtc = proto[`setUTC${field}`];
+			proto[`set${field}`] = function (...args) {
+				const time = this.getTime();
+				const local = new NativeDate(Number.isNaN(time) && field === "FullYear" ? 0 : time - this.getTimezoneOffset() * 60000);
+				return this.setTime(fromLocal(setUtc.apply(local, args)));
+			};
+		}
+		const zoneName = (date) => {
+			if (localZone === "UTC") return "Coordinated Universal Time";
+			const offset = -date.getTimezoneOffset();
+			const minutes = Math.abs(offset);
+			return `GMT${offset < 0 ? "-" : "+"}${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
+		};
+		const named = (format) =>
+			function () {
+				const text = format.call(this);
+				return Number.isNaN(this.getTime()) ? text : `${text} (${zoneName(this)})`;
+			};
+		proto.toString = named(proto.toString);
+		proto.toTimeString = named(proto.toTimeString);
+		// Year, month, day, hours, minutes and seconds, in UTC when the
+		// options' `timeZone` names it, else in local time.
+		const fields = (date, options) => {
+			const utc = isUtc(options?.timeZone) ? "UTC" : "";
+			return ["FullYear", "Month", "Date", "Hours", "Minutes", "Seconds"].map((field) => date[`get${utc}${field}`]());
+		};
+		const localeDate = ([year, month, day]) => `${month + 1}/${day}/${year}`;
+		const localeTime = ([, , , hours, minutes, seconds]) => `${hours % 12 || 12}:${pad2(minutes)}:${pad2(seconds)} ${hours < 12 ? "AM" : "PM"}`;
+		const locale = (format) =>
+			function (_locales, options) {
+				return Number.isNaN(this.getTime()) ? "Invalid Date" : format(fields(this, options));
+			};
+		proto.toLocaleString = locale((parts) => `${localeDate(parts)}, ${localeTime(parts)}`);
+		proto.toLocaleDateString = locale(localeDate);
+		proto.toLocaleTimeString = locale(localeTime);
+	}
+
 	// ----- Intl ------------------------------------------------------------------------
 	// QuickJS has no Intl. Segmentation follows Unicode's rules (natively);
 	// formatting is en-US.
@@ -741,24 +820,36 @@
 				return [].concat(locales ?? []);
 			}
 		}
-		class DateTimeFormat {
+		class DateTimeFormatClass {
 			#options;
 			constructor(_locales, options = {}) {
 				this.#options = options;
 			}
+			/** The date, the time or both, as the options ask; the date alone by default. */
 			format(date) {
-				return new Date(date ?? Date.now()).toLocaleString();
+				const options = this.#options;
+				const value = new Date(date ?? Date.now());
+				const time = ["hour", "minute", "second", "timeStyle"].some((key) => key in options);
+				const day = !time || ["year", "month", "day", "weekday", "dateStyle"].some((key) => key in options);
+				const parts = [day && value.toLocaleDateString(undefined, options), time && value.toLocaleTimeString(undefined, options)];
+				return parts.filter(Boolean).join(", ");
 			}
 			formatToParts(date) {
 				return [{ type: "literal", value: this.format(date) }];
 			}
 			resolvedOptions() {
-				return { locale: "en-US", calendar: "gregory", numberingSystem: "latn", timeZone: globalThis.process?.env?.TZ || "UTC", ...this.#options };
+				return { locale: "en-US", calendar: "gregory", numberingSystem: "latn", timeZone: localZone, ...this.#options };
 			}
 			static supportedLocalesOf(locales) {
 				return [].concat(locales ?? []);
 			}
 		}
+		// Callable without `new`, as `Intl.DateTimeFormat().resolvedOptions()` is.
+		function DateTimeFormat(locales, options) {
+			return new DateTimeFormatClass(locales, options);
+		}
+		DateTimeFormat.prototype = DateTimeFormatClass.prototype;
+		DateTimeFormat.supportedLocalesOf = DateTimeFormatClass.supportedLocalesOf;
 		class Collator {
 			#options;
 			constructor(_locales, options = {}) {

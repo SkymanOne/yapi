@@ -198,6 +198,16 @@ impl Host {
             ),
             "models.envApiKey" => Ok(Value::Null),
             "platform" => Ok(Value::String(platform().into())),
+            // The local zone, which Node exposes without a grant, as pi's
+            // codemode does: its name, and its offset in seconds east of UTC
+            // at a Unix time or for a wall-clock time.
+            "timezone" => Ok(json!(yapi_core::zone::local().name())),
+            "timezone.offset" => Ok(json!(
+                yapi_core::zone::local().offset(payload.as_i64().unwrap_or_default())
+            )),
+            "timezone.localOffset" => Ok(json!(
+                yapi_core::zone::local().local_offset(payload.as_i64().unwrap_or_default())
+            )),
             "env" => Ok(Value::Object(
                 if let (true, Some(environment)) =
                     (self.options.grants.environment, &self.options.environment)

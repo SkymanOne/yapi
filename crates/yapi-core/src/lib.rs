@@ -24,3 +24,4 @@ pub mod system_prompt;
 pub use yapi_types::time;
 pub mod tools;
 pub mod trust;
+pub mod zone;

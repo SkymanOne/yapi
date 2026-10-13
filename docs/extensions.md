@@ -94,6 +94,7 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 - `@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui` and `typebox` resolve to copies bundled with yapi.
 - yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.
 - Shims provide Node's `fs`, `path`, `os`, `child_process`, `events`, `stream`, `util`, `crypto` hashes, `buffer`, timers, `fetch`, `dns.lookup` and `Intl`. Native addons, `net` and `tls` servers and `worker_threads` fail when used, and the rest of the extension keeps working.
+- Dates use the local time zone, from `TZ` or the system, as in Node.
 - Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.
 
 [Differences from Pi](compat.md#extensions) lists where the behavior differs.
