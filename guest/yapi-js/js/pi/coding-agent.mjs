@@ -208,13 +208,17 @@ export async function withFileMutationQueue(path, fn) {
 	}
 }
 
-const LANGUAGES = { ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript", py: "python", rs: "rust", go: "go", rb: "ruby", java: "java", c: "c", h: "c", cpp: "cpp", hpp: "cpp", cs: "csharp", sh: "bash", bash: "bash", zsh: "bash", json: "json", yaml: "yaml", yml: "yaml", toml: "toml", md: "markdown", html: "html", css: "css", sql: "sql", swift: "swift", kt: "kotlin", php: "php", lua: "lua" };
 export function getLanguageFromPath(path) {
-	const extension = String(path).split(".").pop()?.toLowerCase();
-	return LANGUAGES[extension] ?? undefined;
+	return yapi.request("highlight.language", { path: String(path) }) ?? undefined;
 }
-export function highlightCode(code) {
-	return String(code).split("\n");
+// pi's `highlightCode`, with yapi's highlighter: each token names the theme color pi's
+// highlight theme gives it.
+export function highlightCode(code, lang) {
+	const lines = lang ? yapi.request("highlight.code", { code: String(code), lang: String(lang) }) : null;
+	if (!lines) return String(code).split("\n").map((line) => theme.fg("mdCodeBlock", line));
+	const paint = ([style, text]) =>
+		style === null ? text : style === "bold" || style === "italic" || style === "underline" ? theme[style](text) : theme.fg(style, text);
+	return lines.map((tokens) => tokens.map(paint).join(""));
 }
 
 // ----- conversation helpers, run by yapi ------------------------------------------------------
@@ -251,7 +255,7 @@ export function getMarkdownTheme() {
 		italic: (text) => theme.italic(text),
 		underline: (text) => theme.underline(text),
 		strikethrough: (text) => theme.strikethrough(text),
-		highlightCode: (code) => String(code).split("\n").map((line) => theme.fg("mdCodeBlock", line)),
+		highlightCode,
 	};
 }
 export function getSelectListTheme() {

@@ -292,6 +292,13 @@ impl Host {
                     .abort(payload["id"].as_u64().unwrap_or_default());
                 Ok(Value::Null)
             }
+            "highlight.code" => Ok(json!(yapi_core::highlight::highlight(
+                text(payload, "code"),
+                text(payload, "lang"),
+            ))),
+            "highlight.language" => Ok(json!(yapi_core::highlight::language_from_path(text(
+                payload, "path"
+            )))),
             "frontmatter.parse" => {
                 let (frontmatter, body) =
                     yapi_core::resources::parse_frontmatter(text(payload, "content"))?;

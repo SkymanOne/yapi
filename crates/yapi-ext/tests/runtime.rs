@@ -710,6 +710,42 @@ export default function (pi) {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn highlights_code_through_the_host() {
+    let dir = scratch("highlight");
+    let (_instance, loaded) = load(
+        &dir,
+        &[(
+            "main.ts",
+            r#"
+import { getLanguageFromPath, getMarkdownTheme, highlightCode } from "@earendil-works/pi-coding-agent";
+
+export default function (pi) {
+	const probe = {
+		rust: getLanguageFromPath("src/main.rs"),
+		text: getLanguageFromPath("notes.txt") ?? null,
+		lines: highlightCode("fn main() {\n\tlet s = \"x\";\n}", "rust"),
+		plain: getMarkdownTheme().highlightCode("a\nb", "no-such-language"),
+	};
+	pi.registerCommand("probe", { description: JSON.stringify(probe), handler: async () => {} });
+}
+"#,
+        )],
+    )
+    .await;
+    let probe: Value =
+        serde_json::from_str(loaded["commands"][0]["description"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        probe,
+        json!({
+            "rust": "rust",
+            "text": null,
+            "lines": ["fn main() {", "\tlet s = \"x\";", "}"],
+            "plain": ["a", "b"],
+        })
+    );
+}
+
 /// A bridge that sets its flag when the instance's thread drops it.
 struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
 
