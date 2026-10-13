@@ -10,6 +10,7 @@ pub mod input;
 pub mod keybindings;
 pub mod keys;
 mod kill_ring;
+pub mod latex;
 pub mod lines;
 pub mod markdown;
 pub mod screen;
