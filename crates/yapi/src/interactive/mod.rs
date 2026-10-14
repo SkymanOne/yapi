@@ -200,9 +200,9 @@ enum Event {
     TerminalInput(Vec<String>),
     /// Lines of the extension component with this key, rendered at a width.
     Rendered(u64, (u64, u32), usize, Vec<String>),
-    /// The current session's extensions started, after a change `Reply`
-    /// waits on.
-    Bound(Reply),
+    /// The extensions of the session with this epoch started, after a
+    /// change `Reply` waits on.
+    Bound(u64, Reply),
     /// A newer yapi release, from the startup check.
     NewVersion(String),
     /// The packages with updates, from the startup check.
@@ -4440,7 +4440,7 @@ impl App {
             shared: self.ext.shared.clone(),
         };
         let session = self.session.clone();
-        let tx = self.tx.clone();
+        let (tx, epoch) = (self.tx.clone(), self.epoch);
         tokio::spawn(async move {
             let (replaced, reply) = match old {
                 Some(old) => (Some((old.reason, old.previous)), old.reply),
@@ -4449,7 +4449,7 @@ impl App {
             session
                 .bind_extensions(Arc::new(ui), Mode::Tui, Some(actions), replaced)
                 .await;
-            let _ = tx.send(Event::Bound(reply));
+            let _ = tx.send(Event::Bound(epoch, reply));
         });
     }
 
@@ -4597,7 +4597,10 @@ impl App {
                 self.extension_error(message, stack.as_deref());
             }
             Event::Ui(epoch, request) if epoch == self.epoch => self.on_ui_request(*request),
-            Event::Bound(reply) => {
+            // A replaced session's extensions started late: only the change
+            // waiting on them hears of it.
+            Event::Bound(epoch, reply) if epoch != self.epoch => answer(reply, Ok(false)),
+            Event::Bound(_, reply) => {
                 // A session change an extension command asked for is
                 // reported once the command's own work on the replacement
                 // is done; others at once.
@@ -5056,8 +5059,27 @@ mod tests {
         app.once_bound(|app| app.set_editor_text("forked"));
         app.new_session(None, None);
         replaced(&mut app, &mut events).await;
-        app.on_event(Event::Bound(None));
+        app.on_event(Event::Bound(app.epoch, None));
         assert_eq!(app.editor.text(), "");
+    }
+
+    /// Extensions of a replaced session that start late neither report the
+    /// replacement's changes nor send the text held for it.
+    #[tokio::test]
+    async fn a_replaced_sessions_late_start_leaves_held_text_waiting() {
+        let (mut app, mut events) = app();
+        let stale = app.epoch;
+        app.new_session(None, None);
+        replaced(&mut app, &mut events).await;
+        app.once_bound(|app| app.set_editor_text("bound"));
+        app.on_submit("hello".into());
+        app.on_event(Event::Bound(stale, None));
+        assert_eq!(app.editor.text(), "");
+        assert_eq!(app.held.len(), 1);
+        app.on_event(Event::Bound(app.epoch, None));
+        assert_eq!(app.editor.text(), "bound");
+        assert!(app.held.is_empty());
+        assert_eq!(app.prompts, 1);
     }
 
     #[tokio::test]
@@ -5071,7 +5093,7 @@ mod tests {
         app.on_action((tree, reply));
         app.new_session(None, None);
         replaced(&mut app, &mut events).await;
-        app.on_event(Event::Bound(None));
+        app.on_event(Event::Bound(app.epoch, None));
         let rows: Vec<String> = app.transcript(80).iter().map(text).collect();
         assert!(
             rows.iter().any(|row| row.contains("New session started")),
