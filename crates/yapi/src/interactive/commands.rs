@@ -9,7 +9,10 @@ use std::sync::Arc;
 
 use ratatui_core::style::Modifier;
 use ratatui_core::text::{Line, Span};
-use yapi_core::agent_session::{AgentSession, Replacement, SessionChange};
+use yapi_core::agent_session::{
+    AgentSession, Replacement, SessionChange, format_cache_warming_status,
+};
+use yapi_core::cache_stats::compute_cache_waste;
 use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::{CombinedProvider, SlashCommand};
 use yapi_tui::fuzzy::fuzzy_filter;
@@ -19,6 +22,7 @@ use yapi_tui::lines::{self, StyledLine, styled};
 use yapi_tui::markdown::{self, MarkdownOptions};
 use yapi_tui::theme::Theme;
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
+use yapi_types::js::to_fixed;
 
 use super::chat::group_thousands;
 use super::footer::format_tokens;
@@ -309,7 +313,6 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
             file.name(),
         )
     });
-    let settings = session.settings();
     let dim = theme.fg("dim");
     let mut info: Vec<StyledLine> = vec![bold("Session Info"), Line::default()];
     if let Some(name) = name {
@@ -374,22 +377,42 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
     ));
     info.push(Line::default());
     info.push(bold("Cache Warming"));
-    let mode = settings
-        .cache_warming
-        .as_ref()
-        .and_then(|mode| serde_json::to_value(mode).ok())
+    let mode = serde_json::to_value(session.cache_warming_mode())
+        .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "streaming".into());
+        .unwrap_or_default();
     info.push(dim_label(theme, "Mode:", mode));
+    let status = session.cache_warming_status();
     info.push(dim_label(
         theme,
         "Status:",
-        "Inactive (cache warming unavailable)".into(),
+        format_cache_warming_status(&status, std::time::SystemTime::now()),
     ));
-    if totals.cost > 0.0 {
+    if let Some(decision) = status
+        .decision
+        .filter(|decision| decision.economics_available)
+    {
+        info.push(dim_label(
+            theme,
+            "Cache miss penalty:",
+            format!("${}", to_fixed(decision.miss_cost, 3)),
+        ));
+        info.push(dim_label(
+            theme,
+            "Refresh cost:",
+            format!("${}", to_fixed(decision.warm_cost, 3)),
+        ));
+    }
+    let registry = session.registry();
+    let waste = session.with_session(|file| compute_cache_waste(file.entries(), &registry));
+    if totals.cost > 0.0 || waste.missed_tokens > 0 {
         info.push(Line::default());
         info.push(bold("Cost"));
-        info.push(dim_label(theme, "Total:", format!("${:.3}", totals.cost)));
+        info.push(dim_label(
+            theme,
+            "Total:",
+            format!("${}", to_fixed(totals.cost, 3)),
+        ));
         let selected = session.model().map(|model| model.reference());
         let single_selected =
             stats.breakdown.len() == 1 && Some(&stats.breakdown[0].0) == selected.as_ref();
@@ -398,10 +421,26 @@ pub fn session_info(session: &AgentSession, theme: &Theme) -> Vec<StyledLine> {
                 info.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(format!("{key}:"), dim),
-                    Span::raw(format!(" ${cost:.3} ")),
+                    Span::raw(format!(" ${} ", to_fixed(*cost, 3))),
                     Span::styled(format!("({} tokens)", format_tokens(*tokens)), dim),
                 ]));
             }
+        }
+        if waste.missed_tokens > 0 {
+            let misses = match waste.miss_count {
+                1 => "1 miss".to_owned(),
+                count => format!("{count} misses"),
+            };
+            let detail = format!("{} tokens, {misses}", group_thousands(waste.missed_tokens));
+            info.push(if waste.missed_cost >= 0.0001 {
+                Line::from(vec![
+                    Span::styled("Cache Re-billed:", dim),
+                    Span::raw(format!(" ${} ", to_fixed(waste.missed_cost, 3))),
+                    Span::styled(format!("({detail})"), dim),
+                ])
+            } else {
+                dim_label(theme, "Cache Re-billed:", detail)
+            });
         }
     }
     info

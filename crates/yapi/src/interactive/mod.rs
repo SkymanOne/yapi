@@ -5,6 +5,7 @@
 //! lines for a width, and a renderer writes the frame.
 
 mod bash_view;
+mod cache_notices;
 mod catalogs;
 mod changelog;
 mod chat;
@@ -1017,10 +1018,45 @@ impl App {
 
     /// Renders the current branch's messages, as when a session opens.
     fn render_history(&mut self) {
-        let messages = self.session.messages();
+        for text in self.render_entries(false) {
+            self.add_to_history(&text);
+        }
+        self.trust_notice();
+        let compactions = self.session.with_session(|session| {
+            session
+                .entries()
+                .filter(|entry| matches!(entry, yapi_types::session::FileEntry::Compaction(_)))
+                .count()
+        });
+        if compactions > 0 {
+            self.status(format!(
+                "Session compacted {compactions} time{}",
+                if compactions == 1 { "" } else { "s" }
+            ));
+        }
+    }
+
+    /// pi's `rebuildChatFromMessages`: the transcript drawn again from the
+    /// session.
+    fn rebuild_chat(&mut self) {
+        self.clear_chat();
+        self.render_entries(false);
+    }
+
+    /// Renders the current branch's context, with the latest compaction
+    /// where it happened when `in_place`; returns the user prompts for the
+    /// editor history.
+    fn render_entries(&mut self, in_place: bool) -> Vec<String> {
         let mut history: Vec<String> = Vec::new();
-        for message in &messages {
-            match message {
+        for shown in self.shown_history(in_place) {
+            let message = match shown {
+                cache_notices::Shown::Message(message) => *message,
+                cache_notices::Shown::Notice(text, style) => {
+                    self.note(text, style);
+                    continue;
+                }
+            };
+            match &message {
                 Message::User(user) => {
                     let text = user.content.text("");
                     history.push(text.clone());
@@ -1072,9 +1108,12 @@ impl App {
                 _ => {}
             }
         }
-        for text in history {
-            self.add_to_history(&text);
-        }
+        history
+    }
+
+    /// pi's warning that the project's resources are ignored until it is
+    /// trusted.
+    fn trust_notice(&mut self) {
         if !self.session.project_trusted()
             && yapi_core::trust::requires_trust(&self.session.project_dir())
         {
@@ -1087,18 +1126,6 @@ impl App {
                 self.theme.fg("warning"),
             );
             self.text_item(vec![notice], spacer, (1, 0));
-        }
-        let compactions = self.session.with_session(|session| {
-            session
-                .entries()
-                .filter(|entry| matches!(entry, yapi_types::session::FileEntry::Compaction(_)))
-                .count()
-        });
-        if compactions > 0 {
-            self.status(format!(
-                "Session compacted {compactions} time{}",
-                if compactions == 1 { "" } else { "s" }
-            ));
         }
     }
 
@@ -1918,6 +1945,7 @@ impl App {
                         _ => None,
                     })
                     .collect();
+                let finished = (!failed && self.cache_notices()).then(|| assistant.clone());
                 match self.streaming.take() {
                     Some(index) => {
                         self.chat[index] = Item::Assistant(assistant);
@@ -1937,6 +1965,31 @@ impl App {
                             view.is_error = true;
                         }
                     }
+                }
+                if let Some(finished) = finished {
+                    self.response_notices(&finished);
+                }
+            }
+            AgentEvent::EntryAppended {
+                entry: yapi_types::session::FileEntry::Usage(entry),
+            } if entry.kind == "cache_warm" => self.cache_warmed_notice(&entry),
+            // A compaction an extension staged at a turn boundary redraws the
+            // transcript, as one that just finished does.
+            AgentEvent::EntryAppended {
+                entry: yapi_types::session::FileEntry::Compaction(entry),
+            } => {
+                let starts_context = self.session.with_session(|session| {
+                    session
+                        .build_projection()
+                        .entries
+                        .first()
+                        .is_some_and(|first| {
+                            first.source.meta().map(|meta| &meta.id) == Some(&entry.meta.id)
+                        })
+                });
+                if starts_context {
+                    self.clear_chat();
+                    self.render_compacted();
                 }
             }
             // Calls a tool made, such as codemode's nested calls, get no row.
@@ -2079,13 +2132,9 @@ impl App {
                     } else {
                         self.status("Auto-compaction cancelled");
                     }
-                } else if let Some(result) = result {
+                } else if result.is_some() {
                     self.clear_chat();
-                    self.render_history_without_summary();
-                    self.push(Item::Compaction {
-                        tokens_before: result.tokens_before,
-                        summary: result.summary,
-                    });
+                    self.render_compacted();
                 } else if let Some(message) = error_message {
                     if manual {
                         self.error(message);
@@ -2127,18 +2176,13 @@ impl App {
         }
     }
 
-    fn render_history_without_summary(&mut self) {
-        self.render_history();
-        if let Some(position) = self
-            .chat
-            .iter()
-            .position(|item| matches!(item, Item::Compaction { .. }))
-        {
-            self.remove_item(position);
+    /// The transcript after a compaction: the entries it kept, its summary
+    /// and cost, then any later entries.
+    fn render_compacted(&mut self) {
+        for text in self.render_entries(true) {
+            self.add_to_history(&text);
         }
-        if let Some(Item::Status(_)) = self.chat.last() {
-            self.remove_item(self.chat.len() - 1);
-        }
+        self.trust_notice();
     }
 
     /// Sends the messages typed during a manual compaction.

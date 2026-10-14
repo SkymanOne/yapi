@@ -1,7 +1,6 @@
 //! `anthropic-messages`: the Anthropic Messages API and compatible endpoints.
 //!
-//! Port of `packages/ai/src/api/anthropic-messages.ts` in pi `v1.0.0`. Not yet
-//! ported: input-transformation diagnostics.
+//! Port of `packages/ai/src/api/anthropic-messages.ts` in pi `v1.0.0`.
 
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -335,12 +334,16 @@ pub(super) async fn run(request: Request, sender: EventSender) {
         usage_model: model.clone(),
         tools,
         oauth,
+        input_transformations: Vec::new(),
     };
     match state
         .consume(SseReader::fetch(response), &model, &sender, &options)
         .await
     {
-        Ok(()) => sender.send(StreamEvent::Done(state.output)),
+        Ok(()) => {
+            state.record_input_transformations();
+            sender.send(StreamEvent::Done(state.output))
+        }
         Err(message) => send_error(&sender, state.output, &options.cancel, message),
     }
 }
@@ -371,9 +374,41 @@ struct StreamState {
     usage_model: Model,
     tools: Vec<ToolDeclaration>,
     oauth: bool,
+    /// The latest `input_transformations` Anthropic reported, such as
+    /// thinking blocks it dropped from the request.
+    input_transformations: Vec<Value>,
 }
 
 impl StreamState {
+    /// pi's `anthropic_input_transformations` diagnostic, when Anthropic
+    /// changed the request.
+    fn record_input_transformations(&mut self) {
+        if self.input_transformations.is_empty() {
+            return;
+        }
+        let transformations: Vec<Value> = self
+            .input_transformations
+            .iter()
+            .map(|transformation| {
+                let mut kept = Map::new();
+                for key in ["type", "path", "reason"] {
+                    if !transformation[key].is_null() {
+                        kept.insert(key.to_owned(), transformation[key].clone());
+                    }
+                }
+                Value::Object(kept)
+            })
+            .collect();
+        self.output
+            .diagnostics
+            .get_or_insert_with(Vec::new)
+            .push(json!({
+                "type": "anthropic_input_transformations",
+                "timestamp": now_ms(),
+                "details": {"transformations": transformations},
+            }));
+    }
+
     fn position(&self, index: u64) -> Option<usize> {
         self.indices
             .iter()
@@ -442,6 +477,9 @@ impl StreamState {
                 let message = &event["message"];
                 if let Some(id) = message["id"].as_str() {
                     self.output.response_id = Some(id.to_owned());
+                }
+                if let Some(transformations) = message["input_transformations"].as_array() {
+                    self.input_transformations.clone_from(transformations);
                 }
                 let response_model = message["model"].as_str().unwrap_or(&model.id);
                 if response_model != model.id {
@@ -557,6 +595,9 @@ impl StreamState {
                 sender.end(&self.output, position);
             }
             "message_delta" => {
+                if let Some(transformations) = event["input_transformations"].as_array() {
+                    self.input_transformations.clone_from(transformations);
+                }
                 let delta = &event["delta"];
                 if let Some(reason) = delta["stop_reason"].as_str() {
                     self.output.raw_stop_reason = Some(reason.to_owned());

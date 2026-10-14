@@ -1182,12 +1182,12 @@
 				break;
 			}
 			case "cache_warming_decision": {
-				let actionValue = event.action;
+				// Only an action a handler returned overrides pi's, so the host can
+				// let the last extension that decided win.
 				for (const handler of handlers) {
 					const handlerResult = await guard(() => handler(event, ctx));
-					if (handlerResult?.action !== undefined) actionValue = handlerResult.action;
+					if (handlerResult?.action !== undefined) result = { action: handlerResult.action };
 				}
-				result = { action: actionValue };
 				break;
 			}
 			default: {

@@ -437,7 +437,7 @@
     "",
     " Cache Warming",
     " Mode: streaming",
-    " Status: Inactive (<reason>)",
+    " Status: Inactive (request cannot be replayed safely)",
     "",
     " Cost",
     " Total: $0.011",

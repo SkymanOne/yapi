@@ -232,6 +232,9 @@ static UUID: LazyLock<Regex> = LazyLock::new(|| {
 /// A codemode call row ending in its duration.
 static CALL_DURATION: LazyLock<Regex> =
     LazyLock::new(|| pattern(r"^(\s*[✓✗⊘…].*) (?:[0-9]+ms|[0-9]+\.[0-9]s)$"));
+/// A shell command's duration row.
+static SHELL_DURATION: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"^(\s*(?:Took|Elapsed)) [0-9hms. ]+$"));
 
 /// The length of every run's root directory path. Screens show paths under the
 /// root, and pi's goldens wrap them where a root of 36 to 54 characters does:
@@ -1007,21 +1010,19 @@ fn normalize_screen(rows: &[String], normalizer: &mut Normalizer<'_>) -> Vec<Str
         }
         // The logos' bottom rows precede the first key hint: yapi's first,
         // since it ends with pi's.
-        let mut row = normalizer
+        let row = normalizer
             .text(row.trim_end())
             .replacen(" █ █▄█▄ █▀ █ ", "", 1)
             .replacen("█▀ █ ", "", 1);
-        // yapi has no cache warming (docs/compat.md), so its status differs.
-        if row.starts_with(" Status: Inactive (") {
-            row = " Status: Inactive (<reason>)".to_owned();
-        }
         let row = row
             .split(' ')
             .map(|word| if UUID.is_match(word) { "<uuid>" } else { word })
             .collect::<Vec<_>>()
             .join(" ");
-        // A codemode call row (`✓ read {...} 12ms`) with its duration masked.
+        // A codemode call row (`✓ read {...} 12ms`) and a shell command's
+        // `Took 3.0s` with their durations masked.
         let row = CALL_DURATION.replace(&row, "$1 <duration>").into_owned();
+        let row = SHELL_DURATION.replace(&row, "$1 <duration>").into_owned();
         if row.trim().is_empty() && out.last().is_none_or(|last| last.trim().is_empty()) {
             continue;
         }

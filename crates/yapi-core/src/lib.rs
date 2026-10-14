@@ -4,6 +4,7 @@
 pub mod agent_session;
 pub mod auth_guidance;
 pub mod bash_executor;
+pub mod cache_stats;
 pub mod compaction;
 pub mod config;
 pub mod docs;

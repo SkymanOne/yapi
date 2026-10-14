@@ -6,9 +6,10 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize as _;
 use serde_json::{Map, Value};
 use yapi_types::config::ConfigFile;
-use yapi_types::settings::Settings;
+use yapi_types::settings::{CacheWarming, Settings};
 
 use crate::config::PROJECT_DIR;
 
@@ -235,6 +236,16 @@ impl SettingsManager {
             .map_or(300_000, |ms| ms.floor() as u64)
     }
 
+    /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
+    /// only, because each refresh costs money; `streaming` when unset or
+    /// invalid.
+    pub fn cache_warming_mode(&self) -> CacheWarming {
+        self.global
+            .get("cacheWarming")
+            .and_then(|mode| CacheWarming::deserialize(mode).ok())
+            .unwrap_or(CacheWarming::Streaming)
+    }
+
     /// The directory whose `.yapi` folder holds the project's files: the
     /// project's settings, resources and system prompt files.
     pub fn project_dir(&self) -> &Path {
@@ -358,5 +369,21 @@ mod tests {
             settings.steering_mode,
             Some(yapi_types::settings::QueueMode::All)
         );
+    }
+
+    #[test]
+    fn cache_warming_comes_from_the_global_settings_only() {
+        let mut manager = SettingsManager::in_memory();
+        assert_eq!(manager.cache_warming_mode(), CacheWarming::Streaming);
+        manager.project = json!({"cacheWarming": "off"}).as_object().unwrap().clone();
+        manager.remerge();
+        assert_eq!(manager.cache_warming_mode(), CacheWarming::Streaming);
+        manager.global = json!({"cacheWarming": "idle"}).as_object().unwrap().clone();
+        assert_eq!(manager.cache_warming_mode(), CacheWarming::Idle);
+        manager.global = json!({"cacheWarming": "often"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(manager.cache_warming_mode(), CacheWarming::Streaming);
     }
 }

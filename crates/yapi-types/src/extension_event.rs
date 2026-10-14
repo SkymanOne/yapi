@@ -120,6 +120,15 @@ pub enum ExtensionEvent<'a> {
         outcome: &'a str,
     },
     AgentSettled,
+    /// pi's decision before a cache warming refresh, which handlers may
+    /// override with `{ action }`.
+    CacheWarmingDecision {
+        warm_cost: f64,
+        miss_cost: f64,
+        continuation_probability: f64,
+        /// `warm` or `stop`.
+        action: &'a str,
+    },
     UiPromptStart(UiPrompt<'a>),
     UiPromptEnd(UiPrompt<'a>),
     TurnEnd {

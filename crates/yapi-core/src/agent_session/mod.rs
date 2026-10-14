@@ -48,12 +48,17 @@ use crate::tools::registry::ToolRegistry;
 use crate::tools::{BUILTIN_TOOLS, Described, Exposure, RegisteredTool, Runtime, ToolEnv, builtin};
 
 mod boundary;
+mod cache_warmer;
 mod extensions;
 mod models;
 mod recovery;
 mod stats;
 
 pub use boundary::Boundary;
+pub use cache_warmer::{
+    CacheWarmingDecision, CacheWarmingPhase, CacheWarmingState, CacheWarmingStatus,
+    format_cache_warming_status, format_cache_warming_usage,
+};
 use extensions::Hooks;
 pub use models::CatalogRefresh;
 pub use stats::{ContextUsage, SessionStats, UsageTotals};
@@ -307,6 +312,8 @@ struct Inner {
     /// Extensions that were not loaded for the session, by path, with pi's
     /// warning.
     extension_warnings: Mutex<Vec<(String, String)>>,
+    /// Keeps the latest request's prompt cache entry warm.
+    cache_warmer: Mutex<cache_warmer::CacheWarmer>,
 }
 
 /// A blocking extension dialog's kind and title.
@@ -504,6 +511,7 @@ impl AgentSession {
                 unhandled_mcp_servers: Mutex::default(),
                 extension_load_errors: Mutex::default(),
                 extension_warnings: Mutex::default(),
+                cache_warmer: Mutex::default(),
                 nested: crate::nested::NestedCalls::default(),
             }),
         }
@@ -1424,6 +1432,7 @@ impl AgentSession {
         self.flush_pending_bash();
         self.flush_pending_custom();
         *lock(&self.inner.cancel) = None;
+        self.cache_warming_settled();
         // Extensions hear it first, as in pi.
         self.emit_extension_event(
             &ExtensionEvent::AgentSettled.to_value(),
@@ -1581,11 +1590,17 @@ impl AgentSession {
             auto_resize_images: settings.image_auto_resize(),
         };
         let apis = self.inner.apis.clone();
+        let session = self.downgrade();
         let config = LoopConfig {
             options: self.stream_options(&model, session_id, cancel),
             model,
             thinking_level,
-            stream: Arc::new(move |request| apis.stream(request)),
+            stream: Arc::new(move |request| {
+                if let Some(session) = session.upgrade() {
+                    session.start_cache_warming(&request);
+                }
+                apis.stream(request)
+            }),
             tool_execution: ExecutionMode::Parallel,
         };
         let mut context = AgentContext {
