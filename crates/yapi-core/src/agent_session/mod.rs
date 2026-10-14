@@ -30,7 +30,7 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::{PromptDisposition, StreamingBehavior};
 use yapi_types::session::FileEntry;
-use yapi_types::settings::QueueMode;
+use yapi_types::settings::{QueueMode, Transport};
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
@@ -648,9 +648,12 @@ impl AgentSession {
         (auto_resize, limits)
     }
 
-    /// pi's `getHttpIdleTimeoutMs` for these settings.
+    /// pi's `getHttpIdleTimeoutMs` for these settings. Startup rejects an
+    /// invalid value, so it reads as the default here.
     pub fn http_idle_timeout_ms(&self) -> u64 {
-        lock(&self.inner.settings).http_idle_timeout_ms()
+        lock(&self.inner.settings)
+            .http_idle_timeout_ms()
+            .unwrap_or(yapi_ai::http::DEFAULT_IDLE_TIMEOUT_MS)
     }
 
     /// Settings files that failed to load, as pi's warnings word them.
@@ -1543,33 +1546,52 @@ impl AgentSession {
         !lock(&self.inner.steering).is_empty() || !lock(&self.inner.follow_up).is_empty()
     }
 
+    /// pi's `buildRequestOptions`: the settings every provider request
+    /// carries, compaction and summaries included, or the error an invalid
+    /// one raises.
+    pub(super) fn request_options(&self) -> Result<StreamOptions, String> {
+        let manager = lock(&self.inner.settings);
+        let idle = manager.http_idle_timeout_ms()?;
+        let provider = manager
+            .settings()
+            .retry
+            .as_ref()
+            .and_then(|retry| retry.provider.clone())
+            .unwrap_or_default();
+        // pi stands the longest timer it can set in for a disabled one.
+        let idle = if idle == 0 { 2_147_483_647 } else { idle };
+        Ok(StreamOptions {
+            timeout_ms: Some(manager.provider_timeout_ms().unwrap_or(idle as f64)),
+            websocket_connect_timeout_ms: manager.websocket_connect_timeout_ms()?,
+            max_retries: provider.max_retries.unwrap_or(0),
+            max_retry_delay_ms: provider.max_retry_delay_ms,
+            ..StreamOptions::default()
+        })
+    }
+
+    /// The options of the run's requests: `request`'s, with the session's
+    /// transport, thinking budgets and hooks.
     fn stream_options(
         &self,
         model: &Model,
         session_id: String,
         cancel: &CancellationToken,
+        request: StreamOptions,
     ) -> StreamOptions {
         let settings = lock(&self.inner.settings).settings().clone();
         let budgets = settings.thinking_budgets.as_ref();
-        let provider = settings
-            .retry
-            .as_ref()
-            .and_then(|retry| retry.provider.as_ref());
         StreamOptions {
             session_id: Some(session_id),
+            transport: Some(settings.transport.unwrap_or(Transport::Auto)),
             thinking_budgets: ThinkingBudgets {
                 minimal: budgets.and_then(|b| b.minimal),
                 low: budgets.and_then(|b| b.low),
                 medium: budgets.and_then(|b| b.medium),
                 high: budgets.and_then(|b| b.high),
             },
-            max_retry_delay_ms: provider.and_then(|provider| provider.max_retry_delay_ms),
-            max_retries: provider
-                .and_then(|provider| provider.max_retries)
-                .unwrap_or(0),
             cancel: cancel.clone(),
             hooks: self.request_hooks(model, cancel),
-            ..StreamOptions::default()
+            ..request
         }
     }
 
@@ -1687,15 +1709,21 @@ impl AgentSession {
         };
         let apis = self.inner.apis.clone();
         let session = self.downgrade();
+        let request = self.request_options();
+        // pi's stream function throws for an invalid setting, which ends the run.
+        let invalid = request.as_ref().err().cloned();
         let config = LoopConfig {
-            options: self.stream_options(&model, session_id, cancel),
+            options: self.stream_options(&model, session_id, cancel, request.unwrap_or_default()),
             model,
             thinking_level,
             stream: Arc::new(move |request| {
+                if let Some(error) = &invalid {
+                    return Err(error.clone());
+                }
                 if let Some(session) = session.upgrade() {
                     session.start_cache_warming(&request);
                 }
-                apis.stream(request)
+                Ok(apis.stream(request))
             }),
             tool_execution: ExecutionMode::Parallel,
         };

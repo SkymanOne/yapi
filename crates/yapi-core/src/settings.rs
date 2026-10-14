@@ -75,7 +75,10 @@ fn read_document(path: &Path) -> Result<Map<String, Value>, SettingsError> {
         return Ok(Map::new());
     }
     match serde_json::from_str::<Value>(text) {
-        Ok(Value::Object(map)) => Ok(map),
+        Ok(Value::Object(mut map)) => {
+            migrate(&mut map);
+            Ok(map)
+        }
         Ok(_) => Err(SettingsError::Parse {
             path: path.to_path_buf(),
             message: "expected an object".into(),
@@ -84,6 +87,71 @@ fn read_document(path: &Path) -> Result<Map<String, Value>, SettingsError> {
             path: path.to_path_buf(),
             message: err.to_string(),
         }),
+    }
+}
+
+/// pi's `migrateSettings`: settings in older forms take their current
+/// ones in the document, which is written back that way the next time its
+/// scope is saved. Keys move as JavaScript moves them: a new key goes last
+/// and a reassigned one keeps its place.
+fn migrate(document: &mut Map<String, Value>) {
+    if !document.contains_key("steeringMode")
+        && let Some(mode) = document.shift_remove("queueMode")
+    {
+        document.insert("steeringMode".into(), mode);
+    }
+    if let Some(&Value::Bool(websockets)) = document.get("websockets")
+        && !document.contains_key("transport")
+    {
+        let transport = if websockets { "websocket" } else { "sse" };
+        document.insert("transport".into(), Value::from(transport));
+        document.shift_remove("websockets");
+    }
+    if let Some(Value::Object(skills)) = document.get("skills").cloned() {
+        if let Some(enable) = skills.get("enableSkillCommands")
+            && !document.contains_key("enableSkillCommands")
+        {
+            document.insert("enableSkillCommands".into(), enable.clone());
+        }
+        match skills.get("customDirectories") {
+            Some(Value::Array(directories)) if !directories.is_empty() => {
+                document.insert("skills".into(), Value::Array(directories.clone()));
+            }
+            _ => {
+                document.shift_remove("skills");
+            }
+        }
+    }
+    if let Some(Value::Object(retry)) = document.get_mut("retry") {
+        let provider = retry.get("provider").and_then(Value::as_object).cloned();
+        let delay_unset = provider
+            .as_ref()
+            .is_none_or(|provider| provider.get("maxRetryDelayMs").is_none_or(Value::is_null));
+        if let Some(delay) = retry.get("maxDelayMs").filter(|delay| delay.is_number())
+            && delay_unset
+        {
+            let mut provider = provider.unwrap_or_default();
+            provider.insert("maxRetryDelayMs".into(), delay.clone());
+            retry.insert("provider".into(), Value::Object(provider));
+        }
+        retry.shift_remove("maxDelayMs");
+    }
+}
+
+/// JavaScript's `String(value)` for a JSON value.
+pub fn js_string(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Null => String::new(),
+                item => js_string(item),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Object(_) => "[object Object]".to_owned(),
+        other => yapi_types::json::stringify(other),
     }
 }
 
@@ -218,22 +286,48 @@ impl SettingsManager {
     }
 
     /// pi's `getHttpIdleTimeoutMs`: `httpIdleTimeoutMs` in milliseconds, as a
-    /// number, a numeric string or `"disabled"` (0); five minutes when unset
-    /// or invalid.
-    pub fn http_idle_timeout_ms(&self) -> u64 {
-        let value = self
-            .project
-            .get("httpIdleTimeoutMs")
-            .or_else(|| self.global.get("httpIdleTimeoutMs"));
+    /// number, a numeric string or `"disabled"` (0); five minutes when unset.
+    pub fn http_idle_timeout_ms(&self) -> Result<u64, String> {
+        Ok(self.timeout_ms("httpIdleTimeoutMs")?.unwrap_or(300_000))
+    }
+
+    /// pi's `getWebSocketConnectTimeoutMs`: `websocketConnectTimeoutMs`, read
+    /// as `httpIdleTimeoutMs` is; `None` when unset.
+    pub fn websocket_connect_timeout_ms(&self) -> Result<Option<u64>, String> {
+        self.timeout_ms("websocketConnectTimeoutMs")
+    }
+
+    /// `retry.provider.timeoutMs` when it is a number, unchecked, as pi
+    /// passes it on to providers.
+    pub fn provider_timeout_ms(&self) -> Option<f64> {
+        let read = |document: &Map<String, Value>| {
+            document
+                .get("retry")?
+                .get("provider")?
+                .get("timeoutMs")?
+                .as_f64()
+        };
+        read(&self.project).or_else(|| read(&self.global))
+    }
+
+    /// pi's `parseTimeoutSetting` of setting `key`: milliseconds as a
+    /// number, a numeric string or `"disabled"` (0); `None` when unset, and
+    /// pi's error for any other value.
+    fn timeout_ms(&self, key: &str) -> Result<Option<u64>, String> {
+        let Some(value) = self.project.get(key).or_else(|| self.global.get(key)) else {
+            return Ok(None);
+        };
         let number = match value {
-            Some(Value::String(text)) if text.trim().eq_ignore_ascii_case("disabled") => Some(0.0),
-            Some(Value::String(text)) => text.trim().parse::<f64>().ok(),
-            Some(Value::Number(number)) => number.as_f64(),
+            Value::String(text) if text.trim().eq_ignore_ascii_case("disabled") => Some(0.0),
+            Value::String(text) if text.trim().is_empty() => None,
+            Value::String(text) => text.trim().parse::<f64>().ok(),
+            Value::Number(number) => number.as_f64(),
             _ => None,
         };
         number
             .filter(|ms| ms.is_finite() && *ms >= 0.0)
-            .map_or(300_000, |ms| ms.floor() as u64)
+            .map(|ms| Some(ms.floor() as u64))
+            .ok_or_else(|| format!("Invalid {key} setting: {}", js_string(value)))
     }
 
     /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
@@ -352,6 +446,60 @@ mod tests {
             merge_default_tools(Some(&json!(["read"])), Some(&json!(["ls"]))),
             Some(json!(["ls"]))
         );
+    }
+
+    /// pi's legacy setting forms, migrated as pi writes them back.
+    #[test]
+    fn migrates_like_pi() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/pi/settings/migrations.json");
+        let cases: Vec<Value> =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("yapi-settings-migrate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("settings.json");
+        for case in cases {
+            std::fs::write(&file, case["input"].as_str().unwrap()).unwrap();
+            let mut manager = SettingsManager::load(&dir, &dir.join("cwd"), false);
+            manager
+                .set(Scope::Global, "lastChangelogVersion", Some(json!("1.0.0")))
+                .unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&file).unwrap(),
+                case["output"].as_str().unwrap(),
+                "{}",
+                case["name"]
+            );
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn invalid_timeouts_fail_as_in_pi() {
+        let mut manager = SettingsManager::in_memory();
+        manager.global =
+            json!({"httpIdleTimeoutMs": " 1500.7 ", "websocketConnectTimeoutMs": "soon"})
+                .as_object()
+                .unwrap()
+                .clone();
+        assert_eq!(manager.http_idle_timeout_ms(), Ok(1500));
+        assert_eq!(
+            manager.websocket_connect_timeout_ms(),
+            Err("Invalid websocketConnectTimeoutMs setting: soon".to_owned())
+        );
+        manager.global = json!({"httpIdleTimeoutMs": -1, "websocketConnectTimeoutMs": "disabled"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            manager.http_idle_timeout_ms(),
+            Err("Invalid httpIdleTimeoutMs setting: -1".to_owned())
+        );
+        assert_eq!(manager.websocket_connect_timeout_ms(), Ok(Some(0)));
+        manager.global = Map::new();
+        assert_eq!(manager.http_idle_timeout_ms(), Ok(300_000));
+        assert_eq!(manager.websocket_connect_timeout_ms(), Ok(None));
     }
 
     #[test]

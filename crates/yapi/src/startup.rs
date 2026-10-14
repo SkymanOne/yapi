@@ -507,7 +507,11 @@ fn build(
         )?,
     };
     let project = settings.project_dir().to_path_buf();
-    yapi_ai::http::set_idle_timeout_ms(settings.http_idle_timeout_ms());
+    // pi fails at startup when the setting is invalid.
+    let idle = settings
+        .http_idle_timeout_ms()
+        .map_err(|message| anyhow::anyhow!("Error: {message}"))?;
+    yapi_ai::http::set_idle_timeout_ms(idle);
     // A `models.json` error is shown by the interactive mode, as in pi.
     let (mut registry, apis) = models(args, &settings, extensions, warn);
     let builtin_settings = extension_settings(&settings);

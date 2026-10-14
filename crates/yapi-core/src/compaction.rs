@@ -705,6 +705,9 @@ pub struct Summarizer<'a> {
     pub thinking_level: ThinkingLevel,
     /// Retries for transient failures.
     pub retry: RetryPolicy,
+    /// The settings every request carries, as the session's requests carry
+    /// them, or the error an invalid one raises.
+    pub request: Result<StreamOptions, String>,
     /// Cancels the requests.
     pub cancel: CancellationToken,
     /// Hears about retries.
@@ -797,14 +800,15 @@ impl Summarizer<'_> {
             cache_retention: Some(CacheRetention::None),
             cancel: self.cancel.clone(),
             hooks: self.hooks.clone(),
-            ..StreamOptions::default()
+            ..self.request.clone().unwrap_or_default()
         };
         let mut request = Request {
             model: self.model.clone(),
             messages,
             options,
         };
-        let stream = match self.auth.clone().apply(&mut request) {
+        let checked = self.request.as_ref().map(|_| ()).map_err(Clone::clone);
+        let stream = match checked.and_then(|()| self.auth.clone().apply(&mut request)) {
             Ok(()) => {
                 yapi_ai::stream::RequestHooks::prepare(&mut request).await;
                 self.apis.stream(request)

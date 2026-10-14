@@ -18,6 +18,7 @@ node text.mjs
 node selection.mjs
 node autocomplete.mjs   # needs fd on PATH
 node models-api.mjs
+node settings-migration.mjs
 node mcp-auth.mjs       # needs python3 on PATH
 ```
 
@@ -47,6 +48,7 @@ The script runs pi offline in `/tmp/yapi-pi-fixtures` with faux providers. Ids a
 | `theme/theme.json` | pi's built-in themes in both color modes; `generateSystemThemeColors` | Every token's escape sequence; system themes for no report, black, white, mid-gray and palette terminals |
 | `text/text.json` | pi-tui `wrapTextWithAnsi`, `truncateToWidth` and `Markdown` with an identity theme | Wrapping, truncation and markdown blocks at three widths, with and without preserved list markers and escapes, and links as OSC 8 hyperlinks |
 | `editor/editor.json` | pi-tui `Editor` driven key by key | Text, cursor, rendered rows and submissions after every key: wrapping, word motion, kill ring, undo, history, pastes and markers, sticky columns, jumps, scrolling |
+| `settings/migrations.json` | `SettingsManager` loading legacy files and saving one setting | The `queueMode`, `websockets`, `skills` object and `retry.maxDelayMs` migrations, as written back; checked by `crates/yapi-core/src/settings.rs` |
 | `models-api/cases.json` | pi-ai's `pi-messages`, System One, llama.cpp classifier and OpenRouter image APIs, with `fetch` stubbed | Request URLs, headers and bodies, results and error messages; checked by `crates/yapi-ai/tests/models_api.rs` |
 | `selection/selection.json` | pi-tui `TuiAltScreen` in pi's chat viewport layout, fed SGR mouse reports and keys | The screen, the copied text, the opened links and what a docked list reports after every report: drags, word and line clicks, the dock, auto-scroll at the transcript's edge, wheel scrolling, graphemes, focus loss, flashes, `copyOnSelect` off, link clicks, the jump label, scrollbar drags and hover, clicks and the wheel on a docked `Editor` and its slash command completion, `SelectList`, searchable `SettingsList` and `Input`, and the presses and clicks, with click counts, that a component taking clicks gets |
 | `selection/expand.json` | pi's message components in the chat viewport, clicked on their rows | The chat after clicks that expand or collapse a skill, a thinking run, `read` output and compaction and branch summaries, and after clicks on padding, a pending call and plain text |

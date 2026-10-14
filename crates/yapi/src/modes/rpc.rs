@@ -355,23 +355,6 @@ impl Rpc {
     }
 }
 
-/// JavaScript's `String(value)` for a JSON value.
-fn js_string(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        Value::Array(items) => items
-            .iter()
-            .map(|item| match item {
-                Value::Null => String::new(),
-                item => js_string(item),
-            })
-            .collect::<Vec<_>>()
-            .join(","),
-        Value::Object(_) => "[object Object]".to_owned(),
-        other => other.to_string(),
-    }
-}
-
 /// The `type` of a command line, for its response; `None` without one.
 fn command_name(value: &Value) -> Option<String> {
     match value.get("type") {
@@ -423,7 +406,7 @@ async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
         line.insert("success".into(), false.into());
         line.insert(
             "error".into(),
-            format!("Unknown command: {}", js_string(kind)).into(),
+            format!("Unknown command: {}", yapi_core::settings::js_string(kind)).into(),
         );
         rpc.out.line(yapi_types::json::stringify(&line));
         return;

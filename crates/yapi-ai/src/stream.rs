@@ -9,6 +9,7 @@ use yapi_types::message::{
     AssistantMessage, ContentBlock, Message, StopReason, ThinkingLevel, Usage,
 };
 use yapi_types::model::Model;
+pub use yapi_types::settings::Transport;
 
 use crate::credentials::ProviderEnv;
 
@@ -84,6 +85,17 @@ pub struct StreamOptions {
     pub temperature: Option<f64>,
     /// Stable id for provider-side session affinity and caching.
     pub session_id: Option<String>,
+    /// Preferred transport for providers that offer more than one; the
+    /// provider's default when absent.
+    pub transport: Option<Transport>,
+    /// How long opening a WebSocket may take, in milliseconds; 0 waits
+    /// forever. The provider's default when absent.
+    pub websocket_connect_timeout_ms: Option<u64>,
+    /// pi's `timeoutMs`: how long a request may wait, in milliseconds, as
+    /// each provider applies it. The provider's default when absent. A
+    /// number, as the settings hold it, so a provider that validates it can
+    /// report an invalid one as pi does.
+    pub timeout_ms: Option<f64>,
     /// Prompt cache retention; `PI_CACHE_RETENTION=long` or short when absent.
     pub cache_retention: Option<CacheRetention>,
     /// Token budgets per level for budget-based thinking.

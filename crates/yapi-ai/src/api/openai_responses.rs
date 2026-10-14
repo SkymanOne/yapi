@@ -5,8 +5,7 @@
 //! Port of `packages/ai/src/api/openai-responses.ts`,
 //! `azure-openai-responses.ts`, `openai-codex-responses.ts` and
 //! `openai-responses-shared.ts` in pi `v1.0.0`. Not yet ported: service tier
-//! selection, and Codex's WebSocket transport and zstd request compression (Codex
-//! requests use pi's SSE fallback, uncompressed).
+//! selection. Codex's WebSocket transport is in `codex_websocket.rs`.
 
 use std::collections::HashMap;
 
@@ -18,14 +17,15 @@ use yapi_types::message::{
 };
 use yapi_types::model::{Model, OpenAiResponsesCompat};
 
+use super::codex_websocket::{self, Continuation, Failure};
 use crate::cost::calculate_cost;
 use crate::hash::short_hash;
-use crate::http::{self, Failure, Headers, SseReader, is_truthy};
+use crate::http::{self, Headers, SseReader, is_truthy};
 use crate::json_parse::parse_streaming_json;
 use crate::schema::{self, GrammarInput};
 use crate::stream::{
-    CacheRetention, EventSender, Request, StreamEvent, StreamOptions, check_complete, new_output,
-    now_ms, send_error,
+    CacheRetention, EventSender, Request, StreamEvent, StreamOptions, Transport, check_complete,
+    new_output, now_ms, send_error,
 };
 use crate::thinking::{effort, requested_max_tokens};
 use crate::transcript::{resolve_transcript, resolve_transcript_tools, transform_messages};
@@ -53,6 +53,15 @@ impl Flavor {
                 "azure-openai-responses",
             ],
             Flavor::OpenAi | Flavor::Codex => &["openai", "openai-codex", "opencode"],
+        }
+    }
+
+    /// The error when the stream ends without a stop reason.
+    fn pending_message(self) -> &'static str {
+        match self {
+            Flavor::OpenAi => "OpenAI Responses stream ended without a stop reason",
+            Flavor::Azure => "Azure OpenAI Responses stream ended without a stop reason",
+            Flavor::Codex => "Codex stream ended without a stop reason",
         }
     }
 }
@@ -877,8 +886,8 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
         messages,
         options,
     } = request;
-    let output = new_output(&model, now_ms());
     let compat = Compat::new(&model, flavor);
+    let output = new_output(&model, now_ms());
     let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
     // Calls are stored as ordinary tool calls. Each request decides from the
     // declared tools which ones travel as custom tool calls.
@@ -886,48 +895,61 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
         Ok(grammar) => grammar,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
-    let response = match connect(&model, &messages, &normalized, &options, &compat, &grammar).await
+    let mut state = State::new(flavor, output, grammar);
+    let prepared = match prepare(
+        &model,
+        &messages,
+        &normalized,
+        &options,
+        &compat,
+        &state.grammar,
+    )
+    .await
     {
+        Ok(prepared) => prepared,
+        Err(message) => return send_error(&sender, state.output, &options.cancel, message),
+    };
+    if let Some(account) = &prepared.account {
+        match codex_websocket(&prepared, account, &mut state, &model, &sender, &options).await {
+            Ok(true) => return sender.send(StreamEvent::Done(state.output)),
+            Ok(false) => {}
+            Err(message) => return send_error(&sender, state.output, &options.cancel, message),
+        }
+    }
+    let response = match send(&prepared, &model, &options, flavor).await {
         Ok(response) => response,
-        Err(message) => return send_error(&sender, output, &options.cancel, message),
+        Err(message) => return send_error(&sender, state.output, &options.cancel, message),
     };
     options.hooks.response(&response).await;
-
-    sender.send(StreamEvent::Start(output.clone()));
-    let mut state = State {
-        flavor,
-        output,
-        grammar,
-        slots: IndexMap::new(),
-        partial_args: IndexMap::new(),
-        custom_inputs: IndexMap::new(),
-        reasoning_by_id: IndexMap::new(),
-        terminal: false,
-    };
-    let pending = match flavor {
-        Flavor::OpenAi => "OpenAI Responses stream ended without a stop reason",
-        Flavor::Azure => "Azure OpenAI Responses stream ended without a stop reason",
-        Flavor::Codex => "Codex stream ended without a stop reason",
-    };
+    state.start(&sender);
     let result = state
         .consume(SseReader::new(response), &model, &sender, &options)
         .await
-        .and_then(|()| check_complete(&state.output, &options.cancel, pending));
+        .and_then(|()| check_complete(&state.output, &options.cancel, flavor.pending_message()));
     match result {
         Ok(()) => sender.send(StreamEvent::Done(state.output)),
         Err(message) => send_error(&sender, state.output, &options.cancel, message),
     }
 }
 
-/// Sends the request; the response once its status is a success.
-async fn connect(
+/// A request ready to send, after the payload hook.
+struct Prepared {
+    url: String,
+    headers: Headers,
+    body: Value,
+    /// The ChatGPT account of a Codex request.
+    account: Option<String>,
+}
+
+/// Builds the request.
+async fn prepare(
     model: &Model,
     messages: &[Message],
     normalized: &[Message],
     options: &StreamOptions,
     compat: &Compat,
     grammar: &HashMap<String, String>,
-) -> Result<reqwest::Response, String> {
+) -> Result<Prepared, String> {
     let flavor = compat.flavor;
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
@@ -943,6 +965,7 @@ async fn connect(
     let effort = effort(model, options);
 
     let mut headers = Headers::default();
+    let mut account = None;
     let session = options
         .session_id
         .as_deref()
@@ -985,13 +1008,14 @@ async fn connect(
             (params, url)
         }
         Flavor::Codex => {
-            let account = crate::auth::codex::account_id(&api_key)
+            let id = crate::auth::codex::account_id(&api_key)
                 .ok_or("Failed to extract accountId from token")?;
             let body = build_codex_body(model, normalized, options, compat, grammar, effort)?;
             headers.extend_model(model.headers.as_ref());
             headers.extend(&options.headers);
             headers.set("authorization", Some(format!("Bearer {api_key}")));
-            headers.set("chatgpt-account-id", Some(account));
+            headers.set("chatgpt-account-id", Some(id.as_str()));
+            account = Some(id);
             // The value the Codex backend expects from this client id.
             headers.set("originator", Some("pi"));
             headers.set("openai-beta", Some("responses=experimental"));
@@ -1005,14 +1029,48 @@ async fn connect(
             (body, codex_url(&model.base_url))
         }
     };
-    let params = options.hooks.payload(params).await;
-    let body = yapi_types::json::stringify(&params);
-    let build = || headers.apply(http::client().post(&url).body(body.clone()));
+    let body = options.hooks.payload(params).await;
+    if flavor == Flavor::Codex
+        && let Some(timeout) = options.timeout_ms.filter(|ms| !ms.is_finite() || *ms < 0.0)
+    {
+        return Err(format!(
+            "Invalid timeoutMs: {}",
+            yapi_types::json::stringify(&json!(timeout))
+        ));
+    }
+    Ok(Prepared {
+        url,
+        headers,
+        body,
+        account,
+    })
+}
+
+/// Sends `prepared` over HTTP; the response once its status is a success.
+async fn send(
+    prepared: &Prepared,
+    model: &Model,
+    options: &StreamOptions,
+    flavor: Flavor,
+) -> Result<reqwest::Response, String> {
+    let mut headers = prepared.headers.clone();
+    let mut body = yapi_types::json::stringify(&prepared.body).into_bytes();
+    if flavor == Flavor::Codex {
+        // ruzstd implements only its fastest level, near zstd's level 1, so the
+        // bytes differ from pi's level 3. The Codex backend decodes either.
+        body = ruzstd::encoding::compress_to_vec(
+            body.as_slice(),
+            ruzstd::encoding::CompressionLevel::Fastest,
+        );
+        headers.set("content-encoding", Some("zstd"));
+    }
+    let build = || headers.apply(http::client().post(&prepared.url).body(body.clone()));
+    if flavor == Flavor::Codex {
+        return send_codex(build, options).await;
+    }
     http::send(build, options)
         .await
         .map_err(|failure| match (flavor, failure) {
-            (Flavor::Codex, Failure::Status { status, body }) => codex_error_message(status, &body),
-            (Flavor::Codex, Failure::Aborted) => http::ABORTED_DURING_STREAM.to_owned(),
             (Flavor::Azure, failure) => failure_message(failure, "Azure OpenAI API error"),
             (_, failure) => {
                 let prefix = if model.provider == "openai" {
@@ -1025,9 +1083,352 @@ async fn connect(
         })
 }
 
-fn failure_message(failure: Failure, prefix: &str) -> String {
+/// pi's first delay between Codex attempts, doubled after each.
+const CODEX_RETRY_BASE_MS: u64 = 1000;
+
+/// What a Codex attempt that got no usable response leads to.
+enum CodexRetry {
+    /// Try again after this long.
+    Wait(std::time::Duration),
+    /// Fail with this message, or retry it as a failed request when `retry`.
+    Failed { message: String, retry: bool },
+}
+
+/// pi's own Codex request loop, not the SDKs': up to `max_retries` more
+/// attempts. A retryable status waits as the server asks, else one second
+/// doubling. Any other failure, except a usage limit or a retry delay over
+/// the limit, waits one second doubling. pi reports every failed response to
+/// the response hook, and `run` reports the successful one.
+async fn send_codex(
+    build: impl Fn() -> reqwest::RequestBuilder,
+    options: &StreamOptions,
+) -> Result<reqwest::Response, String> {
+    let aborted = || http::ABORTED_DURING_STREAM.to_owned();
+    let mut attempt = 0;
+    loop {
+        let outcome = options
+            .cancel
+            .run_until_cancelled(codex_attempt(build(), options, attempt))
+            .await
+            .ok_or_else(aborted)?;
+        let delay = match outcome {
+            Ok(response) => return Ok(response),
+            Err(CodexRetry::Wait(delay)) => delay,
+            Err(CodexRetry::Failed { message, retry }) => {
+                if !retry || attempt >= options.max_retries || message.contains("usage limit") {
+                    return Err(message);
+                }
+                codex_backoff(attempt)
+            }
+        };
+        options
+            .cancel
+            .run_until_cancelled(tokio::time::sleep(delay))
+            .await
+            .ok_or_else(aborted)?;
+        attempt += 1;
+    }
+}
+
+fn codex_backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(CODEX_RETRY_BASE_MS << attempt.min(32))
+}
+
+/// One Codex SSE request; its response headers must arrive within pi's
+/// `timeoutMs` and the HTTP idle timeout.
+async fn codex_attempt(
+    request: reqwest::RequestBuilder,
+    options: &StreamOptions,
+    attempt: u32,
+) -> Result<reqwest::Response, CodexRetry> {
+    let failed = |message: String| CodexRetry::Failed {
+        message,
+        retry: true,
+    };
+    // pi's own timer on `timeoutMs`; the HTTP idle timeout underneath fails
+    // the fetch itself.
+    let send = async {
+        match http::idle_timeout() {
+            Some(idle) => tokio::time::timeout(idle, request.send())
+                .await
+                .ok()
+                .and_then(Result::ok),
+            None => request.send().await.ok(),
+        }
+    };
+    let sent = match codex_idle_timeout(options) {
+        Some(limit) => tokio::time::timeout(limit, send).await.map_err(|_| {
+            failed(format!(
+                "Codex SSE response headers timed out after {}ms",
+                limit.as_millis()
+            ))
+        })?,
+        None => send.await,
+    };
+    let response = sent.ok_or_else(|| failed("fetch failed".to_owned()))?;
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    options.hooks.response(&response).await;
+    let status = response.status().as_u16();
+    let headers = response.headers().clone();
+    let body = response.text().await.unwrap_or_default();
+    if attempt < options.max_retries && codex_retryable(status, &body) {
+        let Some(requested) = codex_retry_after_ms(&headers) else {
+            return Err(CodexRetry::Wait(codex_backoff(attempt)));
+        };
+        let max = options.max_retry_delay_ms.unwrap_or(60_000);
+        if max > 0 && requested > max as f64 {
+            return Err(CodexRetry::Failed {
+                message: format!(
+                    "Server requested {}s retry delay (max: {}s)",
+                    (requested / 1000.0).ceil(),
+                    max.div_ceil(1000)
+                ),
+                retry: false,
+            });
+        }
+        return Err(CodexRetry::Wait(std::time::Duration::from_millis(
+            requested as u64,
+        )));
+    }
+    Err(failed(codex_error_message(status, &body)))
+}
+
+/// pi's `isRetryableError` for Codex: 429 and the 5xx gateway statuses, or
+/// a body that reads as transient, but no 429 for a spent quota.
+fn codex_retryable(status: u16, body: &str) -> bool {
+    static TERMINAL: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new("(?i)GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing")
+            .expect("constant pattern; `codex_retries_follow_pi`")
+    });
+    static TRANSIENT: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new(
+            "(?i)rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused",
+        )
+        .expect("constant pattern; `codex_retries_follow_pi`")
+    });
+    if status == 429 && TERMINAL.is_match(body) {
+        return false;
+    }
+    matches!(status, 429 | 500 | 502 | 503 | 504) || TRANSIENT.is_match(body)
+}
+
+/// pi's `getRetryAfterDelayMs`: `retry-after-ms`, else `retry-after` in
+/// seconds or as an HTTP date.
+fn codex_retry_after_ms(headers: &reqwest::header::HeaderMap) -> Option<f64> {
+    let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+    // JavaScript's `Number`: blank text is 0.
+    let number = |text: &str| match text.trim() {
+        "" => Some(0.0),
+        text => text.parse::<f64>().ok().filter(|value| value.is_finite()),
+    };
+    if let Some(ms) = header("retry-after-ms").and_then(number) {
+        return Some(ms.max(0.0));
+    }
+    let after = header("retry-after").filter(|text| !text.is_empty())?;
+    if let Some(seconds) = number(after) {
+        return Some((seconds * 1000.0).max(0.0));
+    }
+    let date = crate::model_catalog::http_date_ms(after)?;
+    Some((date as f64 - now_ms() as f64).max(0.0))
+}
+
+/// pi's WebSocket attempt for Codex, retried once when the backend's
+/// connection limit is reached before any event and once when it lost the
+/// continued response. `Ok(true)` once the response streamed, `Ok(false)` to
+/// fall back to SSE, or the error that ends the request.
+async fn codex_websocket(
+    prepared: &Prepared,
+    account: &str,
+    state: &mut State,
+    model: &Model,
+    sender: &EventSender,
+    options: &StreamOptions,
+) -> Result<bool, String> {
+    let transport = options.transport.unwrap_or(Transport::Auto);
+    let session = options
+        .session_id
+        .as_deref()
+        .filter(|_| options.resolved_cache_retention() != CacheRetention::None);
+    if transport == Transport::Sse {
+        return Ok(false);
+    }
+    if codex_websocket::fallback_active(session) {
+        codex_websocket::record_fallback(session);
+        return Ok(false);
+    }
+    let request_id = session.map_or_else(yapi_types::time::uuid_v7, prompt_cache_key);
+    let mut headers = prepared.headers.clone();
+    headers.set("accept", None::<String>);
+    headers.set("content-type", None::<String>);
+    headers.set("openai-beta", Some("responses_websockets=2026-02-06"));
+    headers.set("x-client-request-id", Some(request_id.as_str()));
+    headers.set("session-id", Some(request_id));
+    let socket = CodexSocket {
+        url: &prepared.url,
+        headers,
+        key: session.map(|session| (session.to_owned(), account.to_owned())),
+        // Continuing needs the transport set explicitly, as pi's agent sets it.
+        continues: matches!(
+            options.transport,
+            Some(Transport::Auto | Transport::WebsocketCached)
+        ),
+    };
+    let (mut retried_limit, mut retried_missing) = (false, false);
+    loop {
+        let result = codex_websocket_once(&socket, &prepared.body, state, model, sender, options)
+            .await
+            .and_then(|()| {
+                check_complete(
+                    &state.output,
+                    &options.cancel,
+                    Flavor::Codex.pending_message(),
+                )
+                .map_err(Failure::error)
+            });
+        let Err(failure) = result else {
+            return Ok(true);
+        };
+        let cancelled = options.cancel.is_cancelled();
+        if !cancelled
+            && !retried_missing
+            && failure.api_code() == Some("previous_response_not_found")
+        {
+            retried_missing = true;
+            continue;
+        }
+        let limit_before_start =
+            !state.events && failure.api_code() == Some("websocket_connection_limit_reached");
+        if !cancelled && limit_before_start && !retried_limit {
+            retried_limit = true;
+            continue;
+        }
+        if cancelled || (!failure.transport && !limit_before_start) {
+            return Err(failure.message);
+        }
+        let bytes = yapi_types::json::stringify(&prepared.body).len();
+        let diagnostic = failure.diagnostic(transport, state.events, bytes);
+        state
+            .output
+            .diagnostics
+            .get_or_insert_with(Vec::new)
+            .push(diagnostic);
+        codex_websocket::record_failure(session, &failure.message);
+        if state.events {
+            return Err(failure.message);
+        }
+        codex_websocket::record_fallback(session);
+        return Ok(false);
+    }
+}
+
+/// pi's `timeoutMs` as Codex applies it: to SSE response headers and to the
+/// wait between WebSocket messages; none without one. `prepare` has rejected
+/// an invalid value.
+fn codex_idle_timeout(options: &StreamOptions) -> Option<std::time::Duration> {
+    options
+        .timeout_ms
+        .filter(|ms| ms.is_finite() && *ms >= 1.0)
+        .map(|ms| std::time::Duration::from_millis(ms as u64))
+}
+
+/// Where and how a Codex request opens its WebSocket.
+struct CodexSocket<'a> {
+    url: &'a str,
+    headers: Headers,
+    /// The session and account whose cached socket the request uses.
+    key: Option<(String, String)>,
+    /// Whether a request on a reused socket sends only what follows the
+    /// response it last carried.
+    continues: bool,
+}
+
+/// One request over a WebSocket: pi's `processWebSocketStream`.
+async fn codex_websocket_once(
+    socket: &CodexSocket<'_>,
+    body: &Value,
+    state: &mut State,
+    model: &Model,
+    sender: &EventSender,
+    options: &StreamOptions,
+) -> Result<(), Failure> {
+    state.restart();
+    let mut lease = codex_websocket::acquire(
+        socket.url,
+        &socket.headers,
+        socket.key.clone(),
+        &options.cancel,
+        options.websocket_connect_timeout_ms,
+    )
+    .await?;
+    let continues = socket.continues && lease.cached();
+    let request = if continues {
+        codex_websocket::continued(body, &mut lease.continuation)
+    } else {
+        body.clone()
+    };
+    if let Some((session, _)) = &socket.key {
+        codex_websocket::count_request(session, lease.reused, socket.continues, &request);
+    }
+    let mut result = state
+        .consume_websocket(&mut lease, &request, model, sender, options)
+        .await;
+    if result.is_ok()
+        && continues
+        && !options.cancel.is_cancelled()
+        && let Some(response_id) = state.output.response_id.clone()
+    {
+        match response_items(model, &state.output, &state.grammar) {
+            Ok(items) => {
+                lease.continuation = Some(Continuation {
+                    body: body.clone(),
+                    response_id,
+                    items,
+                });
+            }
+            Err(message) => result = Err(Failure::error(message)),
+        }
+    }
+    if result.is_err() {
+        lease.continuation = None;
+    }
+    lease.release(result.is_ok() && !options.cancel.is_cancelled());
+    result
+}
+
+/// The input items that repeat `output` in a later request with the same
+/// grammar tools, without the tool results the conversion adds for its calls.
+fn response_items(
+    model: &Model,
+    output: &AssistantMessage,
+    grammar: &HashMap<String, String>,
+) -> Result<Vec<Value>, String> {
+    let message = Message::Assistant(Box::new(output.clone()));
+    let compat = Compat::new(model, Flavor::Codex);
+    let items = convert_messages(model, &[message], &compat, grammar)?;
+    Ok(items
+        .into_iter()
+        .filter(|item| {
+            item["type"] != "function_call_output" && item["type"] != "custom_tool_call_output"
+        })
+        .collect())
+}
+
+/// The code of a Codex `error` or `response.failed` event.
+fn codex_error_code(event: &Value) -> Option<&str> {
+    [
+        &event["code"],
+        &event["error"]["code"],
+        &event["response"]["error"]["code"],
+    ]
+    .into_iter()
+    .find_map(Value::as_str)
+}
+
+fn failure_message(failure: http::Failure, prefix: &str) -> String {
     let message = match failure {
-        Failure::Status { status, body } => {
+        http::Failure::Status { status, body } => {
             http::openai_status_message(status, &body, Some(prefix))
         }
         other => other.plain_message().unwrap_or_default(),
@@ -1059,6 +1460,10 @@ struct State {
     custom_inputs: IndexMap<usize, GrammarInput>,
     reasoning_by_id: IndexMap<String, usize>,
     terminal: bool,
+    /// Whether the start event was sent.
+    started: bool,
+    /// Whether this attempt has had an event other than an error.
+    events: bool,
 }
 
 /// A JS template-literal rendering of a JSON value.
@@ -1078,6 +1483,39 @@ fn string_or<'a>(value: &'a Value, fallback: &'a str) -> &'a str {
 }
 
 impl State {
+    fn new(flavor: Flavor, output: AssistantMessage, grammar: HashMap<String, String>) -> State {
+        State {
+            flavor,
+            output,
+            grammar,
+            slots: IndexMap::new(),
+            partial_args: IndexMap::new(),
+            custom_inputs: IndexMap::new(),
+            reasoning_by_id: IndexMap::new(),
+            terminal: false,
+            started: false,
+            events: false,
+        }
+    }
+
+    /// Forgets a failed attempt's stream before another, keeping the message.
+    fn restart(&mut self) {
+        self.slots.clear();
+        self.partial_args.clear();
+        self.custom_inputs.clear();
+        self.reasoning_by_id.clear();
+        self.terminal = false;
+        self.events = false;
+    }
+
+    /// Sends the start event, once.
+    fn start(&mut self, sender: &EventSender) {
+        if !self.started {
+            self.started = true;
+            sender.send(StreamEvent::Start(self.output.clone()));
+        }
+    }
+
     fn apply_phase(&mut self, item: &Value) {
         if item["type"] == "message" && item["phase"] == "final_answer" {
             self.output.stop_reason = StopReason::Stop;
@@ -1605,6 +2043,49 @@ impl State {
                 break;
             }
         }
+        self.finish()
+    }
+
+    /// pi's WebSocket event loop: sends `request`, then handles events up to
+    /// the terminal one. Error events fail as the backend's errors.
+    async fn consume_websocket(
+        &mut self,
+        lease: &mut codex_websocket::Lease,
+        request: &Value,
+        model: &Model,
+        sender: &EventSender,
+        options: &StreamOptions,
+    ) -> Result<(), Failure> {
+        lease.send(codex_websocket::frame(request)).await?;
+        while !self.terminal {
+            let text = lease
+                .next(&options.cancel, codex_idle_timeout(options))
+                .await?;
+            let event: Value = serde_json::from_str(&text)
+                .map_err(|err| Failure::protocol(format!("Invalid Codex WebSocket JSON: {err}")))?;
+            options.hooks.stream_event(&event).await;
+            let Some(kind) = event["type"].as_str() else {
+                continue;
+            };
+            let error = matches!(kind, "error" | "response.failed");
+            if !error {
+                self.events = true;
+                self.start(sender);
+            }
+            self.handle(&event, model, sender).map_err(|message| {
+                if error {
+                    Failure::api(message, codex_error_code(&event))
+                } else {
+                    Failure::error(message)
+                }
+            })?;
+        }
+        self.finish().map_err(Failure::error)
+    }
+
+    /// pi's checks once a stream ends: a terminal event arrived and every
+    /// tool call finished.
+    fn finish(&self) -> Result<(), String> {
         if !self.terminal {
             return Err("OpenAI Responses stream ended before a terminal response event".into());
         }
@@ -1679,6 +2160,46 @@ mod tests {
             Some(("legacy".into(), None))
         );
         assert_eq!(parse_text_signature(Some("")), None);
+    }
+
+    #[test]
+    fn codex_retries_follow_pi() {
+        assert!(codex_retryable(503, ""));
+        assert!(codex_retryable(400, "upstream connect error"));
+        assert!(codex_retryable(429, "Too many requests"));
+        assert!(!codex_retryable(429, "insufficient_quota"));
+        assert!(!codex_retryable(401, "Unauthorized"));
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            pairs
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        reqwest::header::HeaderName::from_static(name),
+                        reqwest::header::HeaderValue::from_static(value),
+                    )
+                })
+                .collect::<reqwest::header::HeaderMap>()
+        };
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after-ms", "250")])),
+            Some(250.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after", "2")])),
+            Some(2000.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[(
+                "retry-after",
+                "Thu, 01 Jan 1970 00:00:10 GMT"
+            )])),
+            Some(0.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after", "soon")])),
+            None
+        );
+        assert_eq!(codex_backoff(2), std::time::Duration::from_secs(4));
     }
 
     #[test]

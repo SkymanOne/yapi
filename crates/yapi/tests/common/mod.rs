@@ -129,6 +129,7 @@ pub fn reply(blocks: &[Value], stop: &str, delay_ms: u64) -> Interaction {
             chunks,
             body_base64: None,
             chunk_delay_ms: delay_ms,
+            close: None,
         },
     }
 }

@@ -157,6 +157,7 @@ impl Upstream {
                     chunks,
                     body_base64: None,
                     chunk_delay_ms: 0,
+                    close: None,
                 },
             };
             if let Mode::Record(recorder) = &mut lock(&state).mode {

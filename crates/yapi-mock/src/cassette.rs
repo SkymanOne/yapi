@@ -59,6 +59,7 @@ impl Interaction {
                 chunks: vec![body.to_string()],
                 body_base64: None,
                 chunk_delay_ms: 0,
+                close: None,
             },
         }
     }
@@ -78,7 +79,11 @@ pub struct RequestMatch {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Response {
-    /// HTTP status code; 200 when omitted.
+    /// HTTP status code; 200 when omitted. 101 makes the interaction a
+    /// WebSocket exchange: it answers one message from the client on a socket
+    /// upgraded at the request's method and path, the message is the recorded
+    /// request's body, and each chunk is a text message sent in reply. An
+    /// exchange ignores `headers` and `body_base64`.
     #[serde(default = "ok")]
     pub status: u16,
     /// Response headers in order. The server chooses the transfer encoding.
@@ -93,6 +98,21 @@ pub struct Response {
     /// Pause before each chunk in milliseconds, for streaming and abort tests.
     #[serde(default)]
     pub chunk_delay_ms: u64,
+    /// The close frame a WebSocket exchange sends after its chunks. Without
+    /// one, the socket closes with no status once the next interaction is
+    /// not an exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close: Option<Close>,
+}
+
+/// A WebSocket close frame.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Close {
+    /// The status code, such as 1009.
+    pub code: u16,
+    /// The reason, empty when omitted.
+    #[serde(default)]
+    pub reason: String,
 }
 
 fn ok() -> u16 {

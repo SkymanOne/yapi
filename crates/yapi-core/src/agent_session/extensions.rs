@@ -20,7 +20,7 @@ use yapi_types::model::Model;
 use yapi_types::rpc::SourceInfo;
 use yapi_types::rpc::StreamingBehavior;
 use yapi_types::settings::QueueMode;
-use yapi_types::sync::{lock, write};
+use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::extensions::{Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers};
@@ -1199,6 +1199,7 @@ impl AgentSession {
             target_session_file: None,
         })
         .await;
+        self.release_resources();
     }
 
     /// Stops extensions before a session replaces this one for `reason`;
@@ -1211,6 +1212,9 @@ impl AgentSession {
             target_session_file: target.as_deref(),
         })
         .await;
+        if reason != Replacement::Reload {
+            self.release_resources();
+        }
     }
 
     async fn stop_extensions(&self, event: ExtensionEvent<'_>) {
@@ -1220,6 +1224,14 @@ impl AgentSession {
         let ctx = self.extension_context(CancellationToken::new());
         for extension in &self.inner.extensions {
             extension.session_shutdown(&ctx).await;
+        }
+    }
+
+    /// pi's `cleanupSessionResources`, run when a session ends or another
+    /// replaces it, but not on reload: the session's cached sockets close.
+    fn release_resources(&self) {
+        if let Some(id) = read(&self.inner.runtime).session_id.clone() {
+            yapi_ai::api::close_codex_websockets(Some(&id));
         }
     }
 

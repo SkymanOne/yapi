@@ -53,6 +53,7 @@ fn json_response(body: &Value) -> Response {
         chunks: vec![body.to_string()],
         body_base64: None,
         chunk_delay_ms: 0,
+        close: None,
     }
 }
 
@@ -100,6 +101,7 @@ fn publish(
                 chunks: Vec::new(),
                 body_base64: Some(STANDARD.encode(tarball_bytes)),
                 chunk_delay_ms: 0,
+                close: None,
             },
         ),
     ]

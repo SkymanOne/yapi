@@ -3,6 +3,7 @@
 pub mod anthropic;
 pub mod bedrock;
 pub mod classify;
+mod codex_websocket;
 pub mod google;
 pub mod images;
 pub mod mistral;
@@ -11,6 +12,11 @@ pub mod openai_responses;
 pub mod pi_messages;
 
 use std::sync::Arc;
+
+pub use codex_websocket::{
+    DebugStats as CodexWebSocketStats, close_sessions as close_codex_websockets,
+    debug_stats as codex_websocket_stats, reset_debug_stats as reset_codex_websocket_stats,
+};
 
 use indexmap::IndexMap;
 use yapi_types::message::{Content, ContentBlock, Message};

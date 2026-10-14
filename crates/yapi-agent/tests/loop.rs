@@ -109,7 +109,7 @@ async fn runs_tools_and_declares_them() {
     let config = LoopConfig {
         model: model(),
         thinking_level: ThinkingLevel::Off,
-        stream: Arc::new(move |request| provider.stream(request)),
+        stream: Arc::new(move |request| Ok(provider.stream(request))),
         options: StreamOptions::default(),
         tool_execution: ExecutionMode::Parallel,
     };
@@ -191,7 +191,7 @@ async fn reports_unknown_tools_and_bad_arguments() {
     let config = LoopConfig {
         model: model(),
         thinking_level: ThinkingLevel::Off,
-        stream: Arc::new(move |request| provider.stream(request)),
+        stream: Arc::new(move |request| Ok(provider.stream(request))),
         options: StreamOptions::default(),
         tool_execution: ExecutionMode::Parallel,
     };

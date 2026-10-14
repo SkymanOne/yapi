@@ -310,7 +310,8 @@ fn parse_catalog(provider: &str, value: Value) -> Result<Vec<Value>, String> {
         .collect())
 }
 
-fn http_date_ms(text: &str) -> Option<u64> {
+/// Milliseconds since the epoch of an HTTP date.
+pub(crate) fn http_date_ms(text: &str) -> Option<u64> {
     // RFC 7231 IMF-fixdate: `Sun, 06 Nov 1994 08:49:37 GMT`.
     let mut parts = text.split_whitespace().skip(1);
     let day: i64 = parts.next()?.parse().ok()?;
