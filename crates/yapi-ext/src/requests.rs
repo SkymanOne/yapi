@@ -138,6 +138,27 @@ fn denied(what: &str) -> String {
     format!("{what} is not permitted for this extension")
 }
 
+/// The offset of the zone `payload` names, in seconds east of UTC: the local
+/// zone for a number, the zone of `{ zone, time }` otherwise, and `null` for a
+/// name no zone has. `kind` picks an instant or a wall-clock time.
+fn zone_offset(kind: &str, payload: &Value) -> Value {
+    let (zone, time) = match payload {
+        Value::Object(_) => (
+            payload["zone"].as_str().and_then(yapi_core::zone::named),
+            &payload["time"],
+        ),
+        _ => (Some(yapi_core::zone::local()), payload),
+    };
+    let time = time.as_i64().unwrap_or_default();
+    zone.map_or(Value::Null, |zone| {
+        json!(if kind == "timezone.offset" {
+            zone.offset(time)
+        } else {
+            zone.local_offset(time)
+        })
+    })
+}
+
 fn text<'a>(payload: &'a Value, key: &str) -> &'a str {
     payload[key].as_str().unwrap_or_default()
 }
@@ -202,12 +223,11 @@ impl Host {
             // codemode does: its name, and its offset in seconds east of UTC
             // at a Unix time or for a wall-clock time.
             "timezone" => Ok(json!(yapi_core::zone::local().name())),
-            "timezone.offset" => Ok(json!(
-                yapi_core::zone::local().offset(payload.as_i64().unwrap_or_default())
-            )),
-            "timezone.localOffset" => Ok(json!(
-                yapi_core::zone::local().local_offset(payload.as_i64().unwrap_or_default())
-            )),
+            "timezone.offset" | "timezone.localOffset" => Ok(zone_offset(kind, payload)),
+            "timezone.name" => Ok(payload
+                .as_str()
+                .and_then(yapi_core::zone::named)
+                .map_or(Value::Null, |zone| json!(zone.name()))),
             "env" => Ok(Value::Object(
                 if let (true, Some(environment)) =
                     (self.options.grants.environment, &self.options.environment)
@@ -452,4 +472,20 @@ fn hash(algorithm: &str, data: &str) -> Result<Value, String> {
         other => return Err(format!("Digest method not supported: {other}")),
     };
     Ok(Value::String(STANDARD.encode(digest)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zone_offsets_take_a_name_and_reject_unknown_ones() {
+        let summer = 1_784_116_800;
+        let tokyo = json!({ "zone": "asia/tokyo", "time": summer });
+        assert_eq!(zone_offset("timezone.offset", &tokyo), json!(9 * 3600));
+        assert_eq!(zone_offset("timezone.localOffset", &tokyo), json!(9 * 3600));
+        let unknown = json!({ "zone": "Foo/Bar", "time": summer });
+        assert_eq!(zone_offset("timezone.offset", &unknown), Value::Null);
+        assert!(zone_offset("timezone.offset", &json!(summer)).is_i64());
+    }
 }

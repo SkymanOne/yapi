@@ -672,9 +672,23 @@
 	// Wall-clock times become instants as in Node, and formats are Node's in
 	// en-US. Node names a zone by its long name, which yapi has only for UTC,
 	// so other zones are named by their offset, as Node names a zone it has
-	// no name for.
+	// no name for. An option's `timeZone` takes its offsets from the host.
 	const localZone = yapi.request("timezone") ?? undefined;
 	const isUtc = (zone) => /^(etc\/)?(utc|uct|gmt|universal|zulu)$/i.test(String(zone));
+	const knownZones = new Map();
+	/** The canonical name of a `timeZone` option, which is `undefined` for none; unknown names throw as in Node. */
+	const canonicalZone = (zone) => {
+		if (zone === undefined) return undefined;
+		if (isUtc(zone)) return "UTC";
+		const key = String(zone);
+		let name = knownZones.get(key);
+		if (name === undefined) {
+			name = yapi.request("timezone.name", key);
+			if (name == null) throw new RangeError(`Invalid time zone specified: ${key}`);
+			knownZones.set(key, name);
+		}
+		return name;
+	};
 	const pad2 = (number) => String(number).padStart(2, "0");
 	{
 		const NativeDate = Date;
@@ -729,11 +743,21 @@
 			};
 		proto.toString = named(proto.toString);
 		proto.toTimeString = named(proto.toTimeString);
-		// Year, month, day, hours, minutes and seconds, in UTC when the
-		// options' `timeZone` names it, else in local time.
+		// Year, month, day, hours, minutes and seconds, in the zone of the
+		// options' `timeZone`, else in local time.
 		const fields = (date, options) => {
-			const utc = isUtc(options?.timeZone) ? "UTC" : "";
-			return ["FullYear", "Month", "Date", "Hours", "Minutes", "Seconds"].map((field) => date[`get${utc}${field}`]());
+			const zone = canonicalZone(options?.timeZone);
+			let shown = date;
+			let utc = "";
+			if (zone !== undefined) {
+				utc = "UTC";
+				if (zone !== "UTC") {
+					const time = date.getTime();
+					const offset = yapi.request("timezone.offset", { zone, time: Math.floor(time / 1000) });
+					shown = new NativeDate(time + offset * 1000);
+				}
+			}
+			return ["FullYear", "Month", "Date", "Hours", "Minutes", "Seconds"].map((field) => shown[`get${utc}${field}`]());
 		};
 		const localeDate = ([year, month, day]) => `${month + 1}/${day}/${year}`;
 		const localeTime = ([, , , hours, minutes, seconds]) => `${hours % 12 || 12}:${pad2(minutes)}:${pad2(seconds)} ${hours < 12 ? "AM" : "PM"}`;
@@ -822,8 +846,10 @@
 		}
 		class DateTimeFormatClass {
 			#options;
+			#zone;
 			constructor(_locales, options = {}) {
 				this.#options = options;
+				this.#zone = canonicalZone(options.timeZone);
 			}
 			/** The date, the time or both, as the options ask; the date alone by default. */
 			format(date) {
@@ -838,7 +864,7 @@
 				return [{ type: "literal", value: this.format(date) }];
 			}
 			resolvedOptions() {
-				return { locale: "en-US", calendar: "gregory", numberingSystem: "latn", timeZone: localZone, ...this.#options };
+				return { locale: "en-US", calendar: "gregory", numberingSystem: "latn", timeZone: localZone, ...this.#options, ...(this.#zone && { timeZone: this.#zone }) };
 			}
 			static supportedLocalesOf(locales) {
 				return [].concat(locales ?? []);

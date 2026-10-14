@@ -1,8 +1,9 @@
 //! The local time zone, chosen as Node chooses it: the zone `TZ` names when
 //! it is set, else the system's zone.
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use tz::{TimeZone, TimeZoneSettings};
 
@@ -18,6 +19,56 @@ static LOCAL: LazyLock<Zone> = LazyLock::new(|| Zone::from_tz(std::env::var("TZ"
 /// The process's local zone, loaded on first use.
 pub fn local() -> &'static Zone {
     &LOCAL
+}
+
+/// Zones found by name, keyed by lowercased name. At most one entry per
+/// zone file, so it stays small.
+static NAMED: LazyLock<Mutex<HashMap<String, &'static Zone>>> = LazyLock::new(Mutex::default);
+
+/// The zone IANA name `name` spells, matched without regard to case as
+/// `Intl` does, or `None` when no zone file has that name. The zone is
+/// shared and lives for the process.
+pub fn named(name: &str) -> Option<&'static Zone> {
+    let key = name.to_ascii_lowercase();
+    let mut cache = NAMED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(zone) = cache.get(&key) {
+        return Some(zone);
+    }
+    let canonical = canonical_name(name)?;
+    let zone = Box::leak(Box::new(Zone::from_tz(Some(&canonical))));
+    // `from_tz` falls back to UTC for what it cannot read, which is no zone.
+    zone.name()?;
+    Some(*cache.entry(key).or_insert(zone))
+}
+
+/// The name of the zone file that `name` matches without regard to case,
+/// searched in the zoneinfo directories.
+fn canonical_name(name: &str) -> Option<String> {
+    if name.is_empty()
+        || name.starts_with('/')
+        || name.split('/').any(|part| part == ".." || part == ".")
+    {
+        return None;
+    }
+    TimeZoneSettings::DEFAULT_DIRECTORIES
+        .iter()
+        .find_map(|root| {
+            let mut path = Path::new(root).to_path_buf();
+            let mut found = Vec::new();
+            for part in name.split('/') {
+                let entry = std::fs::read_dir(&path).ok()?.flatten().find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(part)
+                })?;
+                found.push(entry.file_name().to_string_lossy().into_owned());
+                path = entry.path();
+            }
+            path.is_file().then(|| found.join("/"))
+        })
 }
 
 impl Zone {
@@ -106,6 +157,27 @@ mod tests {
     /// 2026-01-15 and 2026-07-15, at noon UTC.
     const WINTER: i64 = 1_768_478_400;
     const SUMMER: i64 = 1_784_116_800;
+
+    #[test]
+    fn named_zones_match_without_case_and_reject_unknown_names() {
+        let tokyo = named("asia/TOKYO").expect("Asia/Tokyo is in zoneinfo");
+        assert_eq!(tokyo.name(), Some("Asia/Tokyo"));
+        assert_eq!(tokyo.offset(WINTER), 9 * 3600);
+        assert_eq!(
+            named("America/New_York").map(|zone| zone.offset(SUMMER)),
+            Some(-4 * 3600)
+        );
+        for name in [
+            "Foo/Bar",
+            "",
+            "Asia",
+            "../Asia/Tokyo",
+            "/etc/localtime",
+            "EST5EDT,M3.2.0,M11.1.0",
+        ] {
+            assert!(named(name).is_none(), "{name:?}");
+        }
+    }
 
     #[test]
     fn invalid_or_empty_tz_means_utc() {
