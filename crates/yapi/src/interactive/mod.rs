@@ -200,9 +200,9 @@ enum Event {
     TerminalInput(Vec<String>),
     /// Lines of the extension component with this key, rendered at a width.
     Rendered(u64, (u64, u32), usize, Vec<String>),
-    /// The current session's extensions started, after a change `Reply`
-    /// waits on.
-    Bound(Reply),
+    /// The extensions of the session with this epoch started, after a
+    /// change `Reply` waits on.
+    Bound(u64, Reply),
     /// A newer yapi release, from the startup check.
     NewVersion(String),
     /// The packages with updates, from the startup check.
@@ -582,10 +582,16 @@ struct App {
     replacing: bool,
     /// What to show once the replacement session's extensions have started.
     on_bound: Vec<Then>,
-    /// Messages to send once extensions have started.
-    initial: Vec<String>,
-    /// Images attached to the first of `initial`.
-    initial_images: Vec<ImageContent>,
+    /// Messages waiting their turn, with their images: the initial messages,
+    /// then text submitted while nothing streams but extensions are starting,
+    /// the session is being replaced, or a prompt or command sent from here
+    /// has not returned. pi's interactive loop prompts with one input at a
+    /// time, and only a run takes queued messages.
+    held: std::collections::VecDeque<(String, Vec<ImageContent>)>,
+    /// Extension commands sent from `held` that have not returned.
+    commands: usize,
+    /// The session's extensions are starting.
+    starting: bool,
     /// pi's `OverlayOptions` when the open custom component is an overlay.
     overlay: Option<Value>,
     /// Overlays an open overlay covers, bottom first, with their options;
@@ -2193,10 +2199,11 @@ impl App {
             return;
         };
         let mut messages = Vec::new();
-        if self.running {
+        if self.session.is_streaming() {
             messages.push((first, StreamingBehavior::Steer));
         } else {
-            self.start_prompt(first, Vec::new());
+            self.held.push_back((first, Vec::new()));
+            self.send_held();
         }
         messages.extend(queue.map(|(text, follow_up)| {
             let behavior = if follow_up {
@@ -2277,32 +2284,66 @@ impl App {
                 return;
             }
         }
-        if self.session.is_extension_command(&text) {
-            // Extension commands run at once, even while a response streams.
-            self.add_to_history(&text);
-            let (session, notify) = (self.session.clone(), self.notifier());
-            tokio::spawn(async move {
-                if let Err(error) = session.prompt(&text, Vec::new()).await {
-                    notify(error, NotifyKind::Error);
-                }
-            });
+        self.add_to_history(&text);
+        let streaming = self.session.is_streaming();
+        // Extension commands run at once while a response streams or a
+        // compaction runs, and otherwise in turn.
+        if (streaming || self.manual_compaction) && self.session.is_extension_command(&text) {
+            self.run_command(text, false);
             return;
         }
         if self.manual_compaction {
-            self.add_to_history(&text);
             self.compaction_queue.push((text, false));
             self.status("Queued message for after compaction");
             return;
         }
-        self.add_to_history(&text);
-        if self.running {
+        if streaming {
             self.queue_messages(vec![(text, StreamingBehavior::Steer)]);
             return;
         }
         for view in std::mem::take(&mut self.pending_bash) {
             self.push(Item::Bash(Box::new(view)));
         }
-        self.start_prompt(text, Vec::new());
+        self.held.push_back((text, Vec::new()));
+        self.send_held();
+    }
+
+    /// Sends held messages in order while nothing they wait for remains, as
+    /// pi's interactive loop prompts with the next input once `prompt`
+    /// returns. Prompts steer a run an extension started meanwhile.
+    fn send_held(&mut self) {
+        while !(self.starting || self.replacing || self.prompts > 0 || self.commands > 0) {
+            let Some((text, images)) = self.held.pop_front() else {
+                return;
+            };
+            if self.session.is_extension_command(&text) {
+                self.run_command(text, true);
+            } else if self.session.is_streaming() {
+                self.queue_messages(vec![(text, StreamingBehavior::Steer)]);
+            } else {
+                self.start_prompt(text, images);
+            }
+        }
+    }
+
+    /// Runs extension command `text` beside the loop; held messages wait for
+    /// it when it takes its turn.
+    fn run_command(&mut self, text: String, in_turn: bool) {
+        self.commands += usize::from(in_turn);
+        let (session, notify) = (self.session.clone(), self.notifier());
+        let (tx, epoch) = (self.tx.clone(), self.epoch);
+        tokio::spawn(async move {
+            if let Err(error) = session.prompt(&text, Vec::new()).await {
+                notify(error, NotifyKind::Error);
+            }
+            if in_turn {
+                let done: Then = Box::new(|app| {
+                    app.commands = app.commands.saturating_sub(1);
+                    app.send_held();
+                });
+                let _ = tx.send(Event::Then(epoch, done));
+            }
+        });
     }
 
     /// pi's `!` command: `user_bash` handlers may run it or say how, and
@@ -2683,7 +2724,7 @@ impl App {
                     self.set_editor_text("");
                     self.compaction_queue.push((text, true));
                     self.status("Queued message for after compaction");
-                } else if self.running {
+                } else if self.session.is_streaming() {
                     self.add_to_history(&text);
                     self.set_editor_text("");
                     self.queue_messages(vec![(text, StreamingBehavior::FollowUp)]);
@@ -3450,7 +3491,9 @@ impl App {
             Ok(session) => session,
             Err(error) => {
                 answer(replaced.reply, Err(error.clone()));
-                return done(self, Err(error));
+                done(self, Err(error));
+                self.send_held();
+                return;
             }
         };
         // Reports a replacement left waiting, when an extension's
@@ -3461,6 +3504,8 @@ impl App {
         subscribe(&self.session, &self.tx, self.epoch);
         self.reset_extension_ui();
         self.binding = Some(Some(replaced));
+        self.starting = true;
+        self.commands = 0;
         self.cwd = self.session.cwd().to_path_buf();
         self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
         self.branch = footer::git_branch(&self.cwd);
@@ -4274,6 +4319,12 @@ impl App {
         let cwd = session.cwd().to_path_buf();
         let expand_key = keybindings::keys_text(&keys, "app.tools.expand");
         let cancel_key = keybindings::keys_text(&keys, "tui.select.cancel");
+        let mut images = Some(options.initial_images);
+        let held = options
+            .initial
+            .into_iter()
+            .map(|text| (text, images.take().unwrap_or_default()))
+            .collect();
         let mut app = App {
             markdown: markdown_theme(&theme),
             hyperlinks: false,
@@ -4335,8 +4386,9 @@ impl App {
             next_login: 0,
             anthropic_warning_shown: false,
             ext: extension_ui::ExtensionState::default(),
-            initial: options.initial,
-            initial_images: options.initial_images,
+            held,
+            commands: 0,
+            starting: true,
             provider_count: 0,
             model_network: options.model_network,
             next_refresh: 0,
@@ -4388,7 +4440,7 @@ impl App {
             shared: self.ext.shared.clone(),
         };
         let session = self.session.clone();
-        let tx = self.tx.clone();
+        let (tx, epoch) = (self.tx.clone(), self.epoch);
         tokio::spawn(async move {
             let (replaced, reply) = match old {
                 Some(old) => (Some((old.reason, old.previous)), old.reply),
@@ -4397,7 +4449,7 @@ impl App {
             session
                 .bind_extensions(Arc::new(ui), Mode::Tui, Some(actions), replaced)
                 .await;
-            let _ = tx.send(Event::Bound(reply));
+            let _ = tx.send(Event::Bound(epoch, reply));
         });
     }
 
@@ -4492,6 +4544,7 @@ impl App {
                         error
                     });
                 }
+                self.send_held();
             }
             Event::BashChunk(epoch, id, chunk) if epoch == self.epoch => {
                 if let Some(view) = self.bash_view(id) {
@@ -4544,7 +4597,10 @@ impl App {
                 self.extension_error(message, stack.as_deref());
             }
             Event::Ui(epoch, request) if epoch == self.epoch => self.on_ui_request(*request),
-            Event::Bound(reply) => {
+            // A replaced session's extensions started late: only the change
+            // waiting on them hears of it.
+            Event::Bound(epoch, reply) if epoch != self.epoch => answer(reply, Ok(false)),
+            Event::Bound(_, reply) => {
                 // A session change an extension command asked for is
                 // reported once the command's own work on the replacement
                 // is done; others at once.
@@ -4558,16 +4614,8 @@ impl App {
                 self.install_autocomplete();
                 // Items shown before the extensions started get their components.
                 self.redraw_transcript();
-                let mut initial = std::mem::take(&mut self.initial).into_iter();
-                if let Some(first) = initial.next() {
-                    let images = std::mem::take(&mut self.initial_images);
-                    self.start_prompt(first, images);
-                    self.queue_messages(
-                        initial
-                            .map(|message| (message, StreamingBehavior::FollowUp))
-                            .collect(),
-                    );
-                }
+                self.starting = false;
+                self.send_held();
             }
             Event::Rendered(epoch, key, width, lines) if epoch == self.epoch => {
                 self.on_rendered(key, width, &lines);
@@ -5011,8 +5059,27 @@ mod tests {
         app.once_bound(|app| app.set_editor_text("forked"));
         app.new_session(None, None);
         replaced(&mut app, &mut events).await;
-        app.on_event(Event::Bound(None));
+        app.on_event(Event::Bound(app.epoch, None));
         assert_eq!(app.editor.text(), "");
+    }
+
+    /// Extensions of a replaced session that start late neither report the
+    /// replacement's changes nor send the text held for it.
+    #[tokio::test]
+    async fn a_replaced_sessions_late_start_leaves_held_text_waiting() {
+        let (mut app, mut events) = app();
+        let stale = app.epoch;
+        app.new_session(None, None);
+        replaced(&mut app, &mut events).await;
+        app.once_bound(|app| app.set_editor_text("bound"));
+        app.on_submit("hello".into());
+        app.on_event(Event::Bound(stale, None));
+        assert_eq!(app.editor.text(), "");
+        assert_eq!(app.held.len(), 1);
+        app.on_event(Event::Bound(app.epoch, None));
+        assert_eq!(app.editor.text(), "bound");
+        assert!(app.held.is_empty());
+        assert_eq!(app.prompts, 1);
     }
 
     #[tokio::test]
@@ -5026,7 +5093,7 @@ mod tests {
         app.on_action((tree, reply));
         app.new_session(None, None);
         replaced(&mut app, &mut events).await;
-        app.on_event(Event::Bound(None));
+        app.on_event(Event::Bound(app.epoch, None));
         let rows: Vec<String> = app.transcript(80).iter().map(text).collect();
         assert!(
             rows.iter().any(|row| row.contains("New session started")),
