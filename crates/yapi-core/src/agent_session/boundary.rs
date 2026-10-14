@@ -221,10 +221,10 @@ impl AgentSession {
     }
 
     /// pi's `_commitBoundaryDrafts`: appends the staged entries and reports
-    /// each; whether any were appended.
-    fn commit_drafts(&self, drafts: &[Value]) -> bool {
+    /// each.
+    fn commit_drafts(&self, drafts: &[Value]) {
         if drafts.is_empty() {
-            return false;
+            return;
         }
         let appended = self
             .with_session(|session| apply_drafts(session, drafts))
@@ -234,7 +234,6 @@ impl AgentSession {
                 entry: entry.clone(),
             });
         }
-        !appended.is_empty()
     }
 
     fn invalid_continuation(&self, boundary: Boundary) {
@@ -249,8 +248,7 @@ impl AgentSession {
     }
 
     /// pi's `turn_end` boundary for the turn that produced `message` and
-    /// `tool_results`: whether to continue, and the transcript when
-    /// extensions appended entries.
+    /// `tool_results`: whether to continue.
     pub(super) async fn turn_end_boundary(
         &self,
         message: &AssistantMessage,
@@ -303,15 +301,12 @@ impl AgentSession {
         }
         .to_value();
         let (entries, proceed) = self.emit_boundary(base, Boundary::TurnEnd, cancel).await;
-        let messages = self.commit_drafts(&entries).then(|| self.messages());
+        self.commit_drafts(&entries);
         let continue_run = proceed && self.can_continue_now(Boundary::TurnEnd);
         if proceed && !continue_run {
             self.invalid_continuation(Boundary::TurnEnd);
         }
-        TurnDecision {
-            continue_run,
-            messages,
-        }
+        TurnDecision { continue_run }
     }
 
     /// pi's `agent_before_settle` boundary once a run would settle: whether

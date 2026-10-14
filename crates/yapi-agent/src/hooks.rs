@@ -72,8 +72,6 @@ pub struct ResultPatch {
 pub struct TurnDecision {
     /// Ensures one more provider request when nothing else would make one.
     pub continue_run: bool,
-    /// The transcript to continue from, when the session changed it.
-    pub messages: Option<Vec<Message>>,
 }
 
 /// Hooks into the agent loop. Every method has a no-op default.
@@ -135,6 +133,13 @@ pub trait AgentHooks: Send + Sync {
     /// Completes a tool result message before it is emitted, for example
     /// with the calls the tool made.
     fn complete_tool_result(&self, _message: &mut ToolResultMessage) {}
+
+    /// The transcript the next turn continues from, read before each turn
+    /// after the first; pi's `prepareNextTurn` context. `None` keeps the
+    /// loop's own.
+    fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
+        Box::pin(async { None })
+    }
 
     /// The tools for the next request, read before each turn; `None` keeps
     /// the current ones.
