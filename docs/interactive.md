@@ -18,6 +18,8 @@ A prompt or command sent while extensions are still starting, or while an extens
 
 yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.
 
+Messages show Markdown with LaTeX math and Mermaid diagrams. "Mermaid diagrams" in `/settings` draws diagrams while a message streams, only once it is complete, or never.
+
 ## Change direction
 
 Input sent while yapi works changes what it does next:

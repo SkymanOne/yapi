@@ -180,7 +180,12 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi never 
 | `session.appendEntry` | `{"customType", "data"}` | `null`, as Pi's `pi.appendEntry` |
 | `session.read` | `{"method", "args"}` | The result of Pi's `ctx.sessionManager.<method>(...args)` |
 
-`exec.sync` runs `command` with the strings in `args` and waits for it. Without `cwd` the process starts in yapi's working folder. `env` replaces the whole environment, as in Node, and `envAdd` sets variables on top of the environment the process inherits, or on top of `env`. `input` is written to standard input, and `timeout` kills the process after that many milliseconds. `code` is `null` when a signal ended the process, and `killed` is `true` when the timeout did. A process that cannot start answers `{"stdout": "", "stderr": "", "code": null, "error"}`, where `error` is Node's spawn error, such as `spawn git ENOENT`. The request fails when the extension may not run processes.
+`exec.sync` runs `command` with `args` and waits for it.
+
+- Without `cwd` the process starts in yapi's working folder. `env` replaces the whole environment, as in Node, and `envAdd` sets variables on top of the inherited environment or of `env`.
+- `input` is written to standard input. `timeout` kills the process after that many milliseconds.
+- `code` is `null` when a signal ended the process, and `killed` is `true` when the timeout did.
+- A process that cannot start answers `{"stdout": "", "stderr": "", "code": null, "error"}`, where `error` is Node's spawn error, such as `spawn git ENOENT`. The request fails when the extension may not run processes.
 
 `session.read` takes the method's arguments as the array `args`, such as `["<entry id>"]` for `getEntry`. The methods are `getCwd`, `getSessionDir`, `getSessionId`, `getSessionFile`, `getSessionName`, `isPersisted`, `getHeader`, `getEntries`, `getEntry`, `getChildren`, `getLabel`, `getLeafId`, `getLeafEntry`, `getBranch` and `buildSessionContext`. Entries have the shapes of Pi's session files.
 
@@ -202,7 +207,11 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi never 
 
 ### Processes
 
-`Process::spawn` starts a process that runs while the extension does other work. It takes `{"command", "args", "cwd", "env", "envAdd", "stdin"}`, all optional except `command`. Without `cwd` the process starts in yapi's working folder, `env` replaces the whole environment, `envAdd` adds variables to the inherited environment or to `env`, and `"stdin": "ignore"` gives it empty standard input instead of a pipe. `Process::next` waits for the next `ProcessEvent`: output on standard output or standard error, then the exit. A `next` future dropped before it finishes loses no output. `write` waits while the process has not taken the previous write, and `close_stdin` and `kill` act at once.
+`Process::spawn` starts a process that runs while the extension does other work. It takes `{"command", "args", "cwd", "env", "envAdd", "stdin"}`, all optional except `command`.
+
+- `cwd`, `env` and `envAdd` work as in `exec.sync`. `"stdin": "ignore"` gives the process empty standard input instead of a pipe.
+- `Process::next` waits for the next `ProcessEvent`: output on standard output or standard error, then the exit. A dropped `next` future loses no output.
+- `write` waits while the process has not taken the previous write. `close_stdin` and `kill` act at once.
 
 Dropping a `Process` kills it, and so does stopping the extension. Starting one needs the process grant, which every extension has by default.
 
@@ -313,7 +322,13 @@ Only the interactive mode shows components. In RPC, print and JSON modes, `custo
 
 ### Tool and message renderers
 
-`Tool::render_call` and `Tool::render_result` draw a tool's call and result in the transcript, as Pi's `renderCall` and `renderResult` do, and `Tool::render_shell("self")` says they draw the tool's whole box. `Api::register_message_renderer` draws custom messages of one type, as Pi's `registerMessageRenderer` does. `Api::register_entry_renderer` draws custom entries of one type, as Pi's `registerEntryRenderer` does. A renderer returns a component, or `None` to keep yapi's own rendering. An entry without a component shows nothing. The [`entry-renderer`](native-examples.md#entry-renderer) example draws status cards.
+Renderers draw tool calls, custom messages and custom entries in the transcript.
+
+- `Tool::render_call` and `Tool::render_result` draw a tool's call and result, as Pi's `renderCall` and `renderResult` do. `Tool::render_shell("self")` says they draw the tool's whole box.
+- `Api::register_message_renderer` and `Api::register_entry_renderer` draw custom messages and entries of one type, as Pi's `registerMessageRenderer` and `registerEntryRenderer` do.
+- A renderer returns a component, or `None` to keep yapi's own rendering. An entry without a component shows nothing.
+
+The [`entry-renderer`](native-examples.md#entry-renderer) example draws status cards.
 
 `Api::register_markdown_transformer` is Pi's `registerMarkdownTransformer`. It gets a message's Markdown and Pi's context, and returns new Markdown or `None`. A message shows as written until the transformer returns.
 
@@ -332,13 +347,23 @@ The `widgets` feature adds yapi's ports of pi-tui's widgets, which match pi-tui'
 yapi-extension-api = { version = "0.1.0", features = ["widgets"] }
 ```
 
-`widgets::tui` holds them, such as `select_list::SelectList`, `editor::Editor`, `text_input::TextInput`, `settings_list::SettingsList`, and the `Text`, `Box` and border layouts in `lines`. They render styled lines, and `widgets::to_ansi` turns those into a component's lines, with pi-tui's cursor marker where a cursor belongs. `widgets::style` and `widgets::bg_style` give a theme token's style for the widgets' themes, and `widgets::keybindings` the key bindings their `handle_input` takes. The module also has `Text`, a component with pi-tui's `Text` layout, and pi-tui's `visible_width`, `truncate_to_width` and `wrap_text_with_ansi` for text with escape sequences.
+`widgets::tui` holds the widgets.
+
+- `select_list::SelectList`, `editor::Editor`, `text_input::TextInput` and `settings_list::SettingsList`, plus the `Text`, `Box` and border layouts in `lines`, render styled lines.
+- `widgets::to_ansi` turns those lines into a component's lines, with pi-tui's cursor marker where a cursor belongs.
+- `widgets::style` and `widgets::bg_style` give a theme token's style. `widgets::keybindings` gives the key bindings that `handle_input` takes.
+- The module also has `Text`, a component with pi-tui's `Text` layout, and pi-tui's `visible_width`, `truncate_to_width` and `wrap_text_with_ansi` for text with escape sequences.
 
 A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.
 
 ### Terminal input and completion
 
-`Context::on_terminal_input` adds a listener for raw terminal input, as Pi's `ctx.ui.onTerminalInput` does. It sees each key before the editor and everything else, in the order listeners were added, and returns `TerminalInput::Pass` to let the key through, `Consume` to stop it, or `Replace(data)` to hand on `data` in its place, as Pi's `undefined`, `{consume: true}` and `{data}`. The listener stops when the returned `Subscription` is dropped or `unsubscribe` is called, so keep it for as long as the listener should run. `editor_text()` returns the editor's text, as Pi's `ctx.ui.getEditorText` does, so a listener can take keys only while the editor is empty:
+`Context::on_terminal_input` adds a listener for raw terminal input, as Pi's `ctx.ui.onTerminalInput` does.
+
+- A listener sees each key before the editor, in the order listeners were added.
+- It returns `TerminalInput::Pass` to let the key through, `Consume` to stop it, or `Replace(data)` to hand on `data` instead, as Pi's `undefined`, `{consume: true}` and `{data}`.
+- It stops when the returned `Subscription` is dropped or `unsubscribe` is called, so keep the `Subscription` as long as the listener should run.
+- `editor_text()` returns the editor's text, as Pi's `ctx.ui.getEditorText` does, so a listener can take keys only while the editor is empty:
 
 ```rust
 use std::cell::RefCell;
@@ -361,7 +386,12 @@ api.on("session_start", |_event, ctx| async move {
 });
 ```
 
-`Context::add_autocomplete_provider` adds an `AutocompleteProvider` over the editor's completion, as Pi's `ctx.ui.addAutocompleteProvider` does. `suggestions` answers the `Suggestions` for an `EditorState`, with Pi's `AutocompleteItem` shapes as items, and `apply` answers the editor after an item is chosen. Each gets a `Current`, Pi's `current`, which answers for the providers added before, over the built-in completion of commands and paths. `apply` defaults to `Current::apply`, and `trigger_characters` names characters that open completion as `@` does. The cursor's column in `EditorState` counts bytes, so it slices the line directly.
+`Context::add_autocomplete_provider` adds an `AutocompleteProvider` over the editor's completion, as Pi's `ctx.ui.addAutocompleteProvider` does.
+
+- `suggestions` answers the `Suggestions` for an `EditorState`, with Pi's `AutocompleteItem` shapes as items. `apply` answers the editor after an item is chosen and defaults to `Current::apply`.
+- Each gets a `Current`, Pi's `current`, which answers for the providers added before, over the built-in completion of commands and paths.
+- `trigger_characters` names characters that open completion, as `@` does.
+- The cursor's column in `EditorState` counts bytes, so it slices the line directly.
 
 ```rust
 use yapi_extension_api::{AutocompleteProvider, Current, EditorState, Suggestions, json};

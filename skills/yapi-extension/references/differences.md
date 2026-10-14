@@ -8,7 +8,7 @@ yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in 
 - Node's built-in modules are shims. These import but throw when called: `http` requests, `net` sockets and servers, `tls`, `worker_threads` workers, `node:sqlite`, `zlib` compression, `vm`, `v8`, `dns`, `http2`, `dgram`, `cluster`, `inspector`, `child_process.fork`, `util.parseArgs`, `stream.pipeline`, `stream.finished`, `events.on` and `process.chdir`. `fetch` and `child_process` work.
 - `require()` of an ES module fails. Use `import`.
 - Native addons are installed unbuilt and fail when loaded. Load them lazily, so the rest of the extension still works.
-- `Intl` covers Unicode segmentation and number and plural formatting in `en-US`. `Intl.DateTimeFormat` ignores its options.
+- `Intl` covers Unicode segmentation and number and plural formatting in `en-US`. `Intl.DateTimeFormat` formats in the local time zone, or in UTC when `timeZone` names it, and ignores its other options.
 - `process.arch` is `wasm32`. Console output goes to stderr in print, JSON and RPC modes. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines to `~/.yapi/agent/yapi-debug.log`.
 - Error stacks show only frames in the extension's own files.
 

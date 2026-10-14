@@ -49,7 +49,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-types` | Serde types for every pi JSON shape: messages, events, session entries, settings, models, extension payloads. | Types across packages |
 | `crates/yapi-ai` | Wire APIs, model catalog and registry, cost, credentials, OAuth. | `pi-ai` |
 | `crates/yapi-agent` | Agent loop, tool execution, queues, events. | `pi-agent-core` |
-| `crates/yapi-tui` | Widgets, editor, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
+| `crates/yapi-tui` | Widgets, editor, Markdown with LaTeX and Mermaid, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
 | `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner, MCP. | `pi-coding-agent` core, `pi-mcp` |
 | `crates/yapi-ext` | wasmtime host, WIT bindings, capability grants, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
@@ -65,7 +65,7 @@ Dependency direction:
 - `yapi-types` ← `yapi-ai` ← `yapi-agent` ← `yapi-core` ← `yapi-ext` ← `yapi`.
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
-- `yapi-mock` is only ever a dev-dependency.
+- `yapi-mock` is never a dependency of a shipped crate.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
 - `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
@@ -92,6 +92,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Serialization | `serde`, `serde_json` |
 | TUI | `ratatui-core` text and buffer types, `rustix` termios for raw mode |
 | Markdown, diffs, images | `pulldown-cmark`, `similar`, `image` |
+| Time zones, compression | `tz-rs` for the system's time zone database, `ruzstd` for zstd request bodies |
 | Syntax highlighting | None built in; extensions render code blocks through `pi.yapi.registerCodeRenderer` |
 | Wasm host | `wasmtime` with the component model |
 | Guest JS engine | `rquickjs` (QuickJS-NG) |

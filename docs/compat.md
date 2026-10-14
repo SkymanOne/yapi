@@ -2,7 +2,7 @@
 
 yapi follows Pi `v1.0.0` and behaves like Pi except as listed here. Any other difference is a bug. Please [report it](https://github.com/SkymanOne/yapi/issues).
 
-yapi is tested against Pi itself. 369 end-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
+yapi is tested against Pi itself. End-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and RPC sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
 
 ## Extensions
 
@@ -24,7 +24,6 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
 | Codemode scripts | May compute without limit | Stop after 60 seconds of computing without awaiting a call. |
-| Zone names in dates | `Date`'s `toString` and `toTimeString` end with the zone's name, such as `(Eastern Daylight Time)` | They end with the zone's offset, such as `(GMT-04:00)`, as in Node for a zone without a name. UTC keeps its name. |
 | Native extensions | None | WebAssembly components written in Rust. See [Native extensions](native-extensions.md). Unstable until 1.0. |
 
 ## Packages and installation
@@ -62,3 +61,5 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 | Images in the terminal | Inline images, with the "Show images" and "Image width" settings | Not shown. | [#34](https://github.com/SkymanOne/yapi/issues/34) |
 | Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
 | `newSession` setup | `setup` gets the new session's writable session manager before its extensions start | `setup` runs after the new session's `session_start` and gets the read-only session manager. | [#67](https://github.com/SkymanOne/yapi/issues/67) |
+| Provider credentials in extensions | `ctx.modelRegistry.getProviderAuth` returns a provider's API key and headers | Rejects. | [#176](https://github.com/SkymanOne/yapi/issues/176) |
+| Named time zones in extensions | `Intl.DateTimeFormat` and `toLocaleString` format in the zone that `timeZone` names | Only UTC is honored. Other zones format in local time. | [#177](https://github.com/SkymanOne/yapi/issues/177) |
