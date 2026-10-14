@@ -362,12 +362,25 @@ pub struct MarkdownSettings {
     pub mermaid: Option<MermaidMode>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MermaidMode {
     Off,
     Final,
     Streaming,
+}
+
+/// Any value other than `"off"` or `"final"` reads as `Streaming`, as in pi.
+impl<'de> Deserialize<'de> for MermaidMode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(
+            match serde_json::Value::deserialize(deserializer)?.as_str() {
+                Some("off") => Self::Off,
+                Some("final") => Self::Final,
+                _ => Self::Streaming,
+            },
+        )
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
