@@ -77,6 +77,8 @@ pub(super) enum Request {
     /// The providers ask for the built-in provider's suggestions.
     Suggest(Value, oneshot::Sender<Value>),
     Render,
+    /// An extension registered renderers after its session started.
+    Renderers,
     ToolsExpanded(bool),
     /// Switch to the named theme, which loads; `None` falls back to the
     /// system theme, as pi does when a theme fails to load.
@@ -344,6 +346,10 @@ impl ExtensionUi for InteractiveUi {
 
     fn drop_components(&self, runtime: u64) {
         self.send(Request::DropComponents(runtime));
+    }
+
+    fn renderers_changed(&self) {
+        self.send(Request::Renderers);
     }
 
     fn request_render(&self) {
@@ -1031,6 +1037,7 @@ impl super::App {
                 self.flat_key = None;
                 self.redraw_runtime(runtime);
             }
+            Request::Renderers => self.take_drawers(),
             Request::Render => {
                 for view in self.ext.views() {
                     view.invalidate();
@@ -1274,10 +1281,10 @@ impl super::App {
         }
     }
 
-    /// Asks the extension that draws custom message item `index` for its
-    /// component.
+    /// Asks the extension that draws custom message or entry item `index`
+    /// for its component.
     pub(super) fn draw_custom(&mut self, index: usize) {
-        use super::chat::Item;
+        use super::chat::{Custom, Item};
         let expanded = self.expanded;
         let output_pad = self.output_pad;
         let Some(Item::Custom(custom)) = self.chat.get_mut(index) else {
@@ -1286,13 +1293,26 @@ impl super::App {
         let Some(extension) = custom.renderer.clone() else {
             return;
         };
+        // Extensions draw once they start, which asks again.
+        if !self.bound {
+            return;
+        }
         custom.requests += 1;
-        let request = json!({
-            "kind": "message",
-            "key": custom.key,
-            "message": custom.message,
-            "options": {"expanded": expanded, "outputPad": output_pad},
-        });
+        let request = match &custom.custom {
+            Custom::Message(message) => json!({
+                "kind": "message",
+                "key": custom.key,
+                "message": message,
+                "options": {"expanded": expanded, "outputPad": output_pad},
+            }),
+            // pi's renderers get the whole `SessionEntry`, with its type.
+            Custom::Entry(entry) => json!({
+                "kind": "entry",
+                "key": custom.key,
+                "entry": yapi_types::session::FileEntry::Custom(entry.clone()),
+                "options": {"expanded": expanded},
+            }),
+        };
         let (slot, sequence) = (Slot::Message(custom.key.clone()), custom.requests);
         self.request_component(extension, request, slot, sequence);
     }
@@ -1306,13 +1326,38 @@ impl super::App {
         let key = format!("{}:{}", message.timestamp, self.chat.len());
         let index = self.push(super::chat::Item::Custom(Box::new(
             super::chat::CustomView {
-                message,
+                custom: super::chat::Custom::Message(message),
                 key,
                 renderer,
                 view: None,
                 requests: 0,
             },
         )));
+        self.draw_custom(index);
+    }
+
+    /// pi's `addCustomEntryToChat`: adds custom entry `entry` when an
+    /// extension draws its type, before the response that is streaming.
+    /// It shows once the renderer has built a component.
+    pub(super) fn push_entry(&mut self, entry: yapi_types::session::CustomEntry) {
+        let Some(renderer) = self.session.entry_renderer(&entry.custom_type) else {
+            return;
+        };
+        let key = entry.meta.id.clone();
+        let item = super::chat::Item::Custom(Box::new(super::chat::CustomView {
+            custom: super::chat::Custom::Entry(entry),
+            key,
+            renderer: Some(renderer),
+            view: None,
+            requests: 0,
+        }));
+        let index = match self.streaming {
+            Some(streaming) => {
+                self.insert_item(streaming, item);
+                streaming
+            }
+            None => self.push(item),
+        };
         self.draw_custom(index);
     }
 
@@ -1323,8 +1368,9 @@ impl super::App {
         sequence: u64,
         component: Option<RemoteComponent>,
     ) {
-        use super::chat::Item;
+        use super::chat::{Custom, Item};
         let (tx, epoch) = (self.tx.clone(), self.epoch);
+        let drew = component.is_some();
         let place = |current: &mut Option<RemoteView>| match component {
             Some(component) => match current {
                 // The renderer returned its last component.
@@ -1368,6 +1414,12 @@ impl super::App {
                 }
             }
             (Slot::Message(_), Some(Item::Custom(custom))) if custom.requests == sequence => {
+                // pi leaves out an entry its renderer draws nothing for
+                // when it comes.
+                if !drew && sequence == 1 && matches!(custom.custom, Custom::Entry(_)) {
+                    self.remove_item(index);
+                    return;
+                }
                 place(&mut custom.view);
             }
             _ => return,
@@ -1406,6 +1458,17 @@ impl super::App {
         }
     }
 
+    /// Asks again for the components of custom messages and entries, as
+    /// pi rebuilds them when the theme changes.
+    pub(super) fn redraw_custom(&mut self) {
+        use super::chat::Item;
+        for index in 0..self.chat.len() {
+            if matches!(&self.chat[index], Item::Custom(custom) if custom.renderer.is_some()) {
+                self.draw_custom(index);
+            }
+        }
+    }
+
     fn redraw_item(&mut self, index: usize) {
         use super::chat::Item;
         match &self.chat[index] {
@@ -1421,6 +1484,8 @@ impl super::App {
     /// for again, so a renderer that panics as it draws cannot restart its
     /// runtime over and over.
     fn redraw_runtime(&mut self, runtime: u64) {
+        // What the runtime drew while it stopped fell back to yapi's own.
+        self.forget_answers();
         let mut items = Vec::new();
         for (index, view) in self.transcript_views() {
             if view.key().0 == runtime && view.retire() {

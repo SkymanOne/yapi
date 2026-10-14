@@ -238,6 +238,24 @@ pub(super) fn shorten_home(path: &str, home: Option<&str>) -> String {
     }
 }
 
+/// The lines an extension's code renderer draws for `code`, without
+/// trailing blank ones, once it has drawn them.
+fn rendered_code(
+    ctx: &RenderContext<'_>,
+    code: &str,
+    lang: Option<&str>,
+    width: usize,
+) -> Option<Vec<StyledLine>> {
+    let mut lines = ctx.markdown.highlight_code.as_ref()?(code, lang, width)?;
+    while lines
+        .last()
+        .is_some_and(|line| lines::plain(line).is_empty())
+    {
+        lines.pop();
+    }
+    Some(lines)
+}
+
 /// The first `limit` of `rows` in `style`, or all of them when expanded, and
 /// pi's hint for the rest: `... (N more lines,`, with the row count when
 /// `total`.
@@ -248,13 +266,23 @@ fn head_lines(
     total: bool,
     ctx: &RenderContext<'_>,
 ) -> (Vec<StyledLine>, Option<StyledLine>) {
-    let count = rows.len();
-    let max = if ctx.expanded { count } else { limit };
-    let shown = rows
+    let rows = rows
         .into_iter()
-        .take(max)
         .map(|row| lines::styled(row, style))
         .collect();
+    head_rows(rows, limit, total, ctx)
+}
+
+/// [`head_lines`] for rows already styled.
+fn head_rows(
+    rows: Vec<StyledLine>,
+    limit: usize,
+    total: bool,
+    ctx: &RenderContext<'_>,
+) -> (Vec<StyledLine>, Option<StyledLine>) {
+    let count = rows.len();
+    let max = if ctx.expanded { count } else { limit };
+    let shown = rows.into_iter().take(max).collect();
     let total = if total {
         format!(" {count} total,")
     } else {
@@ -658,9 +686,24 @@ impl ToolView {
                     }
                     Some(Some(content)) if !content.is_empty() => {
                         let content = content.replace('\r', "");
-                        let all =
-                            trim_trailing_empty(content.split('\n').map(replace_tabs).collect());
-                        let (shown, hint) = head_lines(all, 10, theme.fg("toolOutput"), true, ctx);
+                        let lang = string_arg(args, &["file_path", "path"])
+                            .flatten()
+                            .and_then(yapi_core::language::from_path);
+                        let rendered = lang.and_then(|lang| {
+                            rendered_code(ctx, &replace_tabs(&content), Some(lang), width)
+                        });
+                        let (shown, hint) = match rendered {
+                            Some(rows) => head_rows(rows, 10, true, ctx),
+                            None => head_lines(
+                                trim_trailing_empty(
+                                    content.split('\n').map(replace_tabs).collect(),
+                                ),
+                                10,
+                                theme.fg("toolOutput"),
+                                true,
+                                ctx,
+                            ),
+                        };
                         lines.push(Line::default());
                         lines.extend(shown);
                         lines.extend(hint);
@@ -756,10 +799,12 @@ impl ToolView {
         if code.is_empty() {
             return out;
         }
-        let code: Vec<StyledLine> = replace_tabs(code.replace('\r', "").trim_end())
-            .split('\n')
-            .map(|line| Line::from(line.to_owned()))
-            .collect();
+        let code = replace_tabs(code.replace('\r', "").trim_end());
+        let code = rendered_code(ctx, &code, Some("javascript"), width).unwrap_or_else(|| {
+            code.split('\n')
+                .map(|line| Line::from(line.to_owned()))
+                .collect()
+        });
         if ctx.expanded {
             out.extend(code);
         } else {
@@ -857,8 +902,22 @@ impl ToolView {
                     return Vec::new();
                 }
                 let output = text_output(result);
-                let all = trim_trailing_empty(output.split('\n').map(replace_tabs).collect());
-                let (shown, hint) = head_lines(all, 10, output_style, false, ctx);
+                let lang = (!self.is_error)
+                    .then(|| string_arg(&self.args, &["file_path", "path"]).flatten())
+                    .flatten()
+                    .and_then(yapi_core::language::from_path);
+                let rendered = lang
+                    .and_then(|lang| rendered_code(ctx, &replace_tabs(&output), Some(lang), width));
+                let (shown, hint) = match rendered {
+                    Some(rows) => head_rows(rows, 10, false, ctx),
+                    None => head_lines(
+                        trim_trailing_empty(output.split('\n').map(replace_tabs).collect()),
+                        10,
+                        output_style,
+                        false,
+                        ctx,
+                    ),
+                };
                 let mut out = vec![Line::default()];
                 out.extend(shown);
                 out.extend(hint);
@@ -1476,6 +1535,96 @@ mod tests {
         );
     }
 
+    /// `read`, `write` and codemode rows draw their code through the code
+    /// renderer, with the language of the file or `javascript`, and cut and
+    /// count what it draws as pi does with its highlighted lines.
+    #[test]
+    fn code_rows_draw_through_the_code_renderer() {
+        use std::sync::{Arc, Mutex};
+        let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let markdown = yapi_tui::markdown::MarkdownTheme {
+            highlight_code: Some(Arc::new({
+                let asked = asked.clone();
+                move |code: &str, lang: Option<&str>, _width: usize| {
+                    asked
+                        .lock()
+                        .unwrap()
+                        .push((code.to_owned(), lang.map(str::to_owned)));
+                    Some(
+                        code.split('\n')
+                            .map(|line| match line {
+                                "" => Line::default(),
+                                line => Line::from(format!("#{line}")),
+                            })
+                            .collect(),
+                    )
+                }
+            })),
+            ..yapi_tui::markdown::MarkdownTheme::default()
+        };
+        let mut ctx = RenderContext {
+            theme: &theme,
+            markdown: &markdown,
+            expanded: true,
+            hide_thinking: false,
+            thinking: &[],
+            output_pad: 1,
+            expand_key: "ctrl+o",
+            cancel_key: "esc",
+            home: None,
+            cwd: Path::new("/work"),
+            agent_dir: Path::new("/agent"),
+            thinking_label: "Thinking...",
+            hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
+            transforms: None,
+        };
+        let plain = |rows: Vec<StyledLine>| -> Vec<String> {
+            rows.iter()
+                .map(|line| lines::plain(line).trim_end().to_owned())
+                .collect()
+        };
+        let asked = || std::mem::take(&mut *asked.lock().unwrap());
+
+        // `read` draws the whole output, less its trailing blank lines.
+        let mut read = ToolView::new("read", serde_json::json!({"path": "src/main.rs"}));
+        read.result = Some(ToolResult {
+            content: vec![ContentBlock::text("fn a()\n\tb\n\n")],
+            ..ToolResult::default()
+        });
+        assert_eq!(plain(read.result_lines(&ctx, 40)), ["", "#fn a()", "#   b"]);
+        assert_eq!(
+            asked(),
+            [("fn a()\n   b\n\n".to_owned(), Some("rust".to_owned()))]
+        );
+
+        // `write` shows ten drawn lines and counts them all.
+        ctx.expanded = false;
+        let content: Vec<String> = (1..=12).map(|n| format!("x = {n}")).collect();
+        let write = ToolView::new(
+            "write",
+            serde_json::json!({"path": "a.py", "content": content.join("\n")}),
+        );
+        let rows = plain(write.call_lines(&ctx, 80));
+        assert_eq!(rows.len(), 13, "{rows:?}");
+        assert_eq!((rows[2].as_str(), rows[11].as_str()), ("#x = 1", "#x = 10"));
+        assert!(
+            rows[12].starts_with("... (2 more lines, 12 total,"),
+            "{rows:?}"
+        );
+        assert_eq!(asked()[0].1.as_deref(), Some("python"));
+
+        // Codemode scripts are JavaScript.
+        let codemode = ToolView::new("codemode", serde_json::json!({"code": "await read()\n"}));
+        assert_eq!(plain(codemode.call_lines(&ctx, 80))[1], "#await read()");
+        assert_eq!(
+            asked(),
+            [("await read()".to_owned(), Some("javascript".to_owned()))]
+        );
+    }
+
     #[test]
     fn previews_mcp_output_as_pi() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
@@ -1494,6 +1643,9 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
+            transforms: None,
         };
         let mut view = ToolView::new("mcp__demo__big", Value::Null);
         view.mcp_label = Some("demo/big".to_owned());
@@ -1565,6 +1717,9 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
+            transforms: None,
         };
         let call = |args: Value, ctx: &RenderContext<'_>| {
             lines::plain(&ToolView::new("read", args).call_lines(ctx, 120)[0])

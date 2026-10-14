@@ -13,6 +13,7 @@ mod clipboard;
 mod commands;
 mod completions;
 pub mod config_selector;
+mod deferred;
 mod extension_ui;
 mod footer;
 mod header;
@@ -503,6 +504,11 @@ struct App {
     epoch: u64,
     theme: Theme,
     markdown: MarkdownTheme,
+    /// The extensions that draw parts of the transcript.
+    drawers: deferred::Drawers,
+    /// The extensions whose errors drawing the transcript were shown, by
+    /// path.
+    drawer_errors: std::collections::HashSet<String>,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     hyperlinks: bool,
     keys: Keybindings,
@@ -524,6 +530,11 @@ struct App {
     cache: Vec<Option<Rendered>>,
     /// What clicks toggled on each chat item.
     toggles: Vec<Toggles>,
+    /// What the extensions drew for each chat item.
+    answers: Vec<deferred::ItemAnswers>,
+    /// Items rendered with questions for the extensions, asked after the
+    /// frame.
+    asking: Vec<deferred::ItemAnswers>,
     flat: Vec<StyledLine>,
     flat_header: Vec<StyledLine>,
     flat_key: Option<(usize, usize)>,
@@ -543,6 +554,8 @@ struct App {
     expanded: bool,
     hide_thinking: bool,
     output_pad: usize,
+    /// The `markdown.mermaid` setting.
+    mermaid: yapi_types::settings::MermaidMode,
     show_details: bool,
     fullscreen: bool,
     alt: AltScreen,
@@ -578,6 +591,8 @@ struct App {
     /// The current session's extensions wait to start, with why it replaced
     /// another session, if it did.
     binding: Option<Option<Replaced>>,
+    /// The session's extensions have started, so they draw.
+    bound: bool,
     /// Whether the session is shutting down for a replacement being built.
     replacing: bool,
     /// What to show once the replacement session's extensions have started.
@@ -626,8 +641,19 @@ fn emit(data: &str) {
     let _ = out.flush();
 }
 
+/// pi's `getMermaidRenderingMode`: streaming unless set otherwise.
+fn mermaid_mode(settings: &yapi_types::settings::Settings) -> yapi_types::settings::MermaidMode {
+    settings
+        .markdown
+        .as_ref()
+        .and_then(|markdown| markdown.mermaid)
+        .unwrap_or(yapi_types::settings::MermaidMode::Streaming)
+}
+
+/// The theme's Markdown styles.
 fn markdown_theme(theme: &Theme) -> MarkdownTheme {
     MarkdownTheme {
+        highlight_code: None,
         heading: theme.fg("mdHeading"),
         link: theme.fg("mdLink"),
         link_url: theme.fg("mdLinkUrl"),
@@ -764,6 +790,9 @@ impl App {
             agent_dir: &self.agent_dir,
             thinking_label: self.ext.thinking_label.as_deref().unwrap_or("Thinking..."),
             hyperlinks: self.hyperlinks,
+            mermaid: self.mermaid,
+            streaming: false,
+            transforms: None,
         }
     }
 
@@ -771,6 +800,7 @@ impl App {
         self.chat.push(item);
         self.cache.push(None);
         self.toggles.push(Toggles::default());
+        self.answers.push(deferred::ItemAnswers::default());
         self.chat.len() - 1
     }
 
@@ -856,8 +886,24 @@ impl App {
         self.chat.clear();
         self.cache.clear();
         self.toggles.clear();
+        self.answers.clear();
         self.streaming = None;
         self.tool_items.clear();
+    }
+
+    /// Inserts `item` at `index`; the indices of later items shift up.
+    fn insert_item(&mut self, index: usize, item: Item) {
+        self.chat.insert(index, item);
+        self.cache.insert(index, None);
+        self.toggles.insert(index, Toggles::default());
+        self.answers.insert(index, deferred::ItemAnswers::default());
+        let shift = |item: usize| if item >= index { item + 1 } else { item };
+        for item in self.tool_items.values_mut() {
+            *item = shift(*item);
+        }
+        self.streaming = self.streaming.map(shift);
+        // The flattened rows lack the new item.
+        self.flat_key = None;
     }
 
     /// Removes the item at `index`; the indices of later items shift down.
@@ -865,6 +911,7 @@ impl App {
         self.chat.remove(index);
         self.cache.remove(index);
         self.toggles.remove(index);
+        self.answers.remove(index);
         self.tool_items.retain(|_, item| *item != index);
         let shift = |item: usize| if item > index { item - 1 } else { item };
         for item in self.tool_items.values_mut() {
@@ -1057,6 +1104,10 @@ impl App {
         for shown in self.shown_history(in_place) {
             let message = match shown {
                 cache_notices::Shown::Message(message) => *message,
+                cache_notices::Shown::Entry(entry) => {
+                    self.push_entry(*entry);
+                    continue;
+                }
                 cache_notices::Shown::Notice(text, style) => {
                     self.note(text, style);
                     continue;
@@ -1326,6 +1377,7 @@ impl App {
             Some((_, items)) if reusable => items,
             _ => 0,
         };
+        let mut asking = Vec::new();
         for index in 0..self.chat.len() {
             let fresh =
                 matches!(&self.cache[index], Some((w, g, ..)) if *w == width && *g == generation);
@@ -1334,12 +1386,31 @@ impl App {
                 let mut ctx = self.ctx();
                 ctx.expanded ^= toggles.expanded;
                 ctx.thinking = &toggles.thinking;
+                ctx.streaming = self.streaming == Some(index);
+                // Without drawers, nothing is asked.
+                let answers = self.drawers.any().then(|| &self.answers[index]);
+                let markdown = answers
+                    .filter(|_| !self.drawers.code.is_empty())
+                    .map(|answers| self.item_markdown(answers));
+                if let Some(markdown) = &markdown {
+                    ctx.markdown = markdown;
+                }
+                ctx.transforms = answers.filter(|_| !self.drawers.markdown.is_empty());
+                if let Some(answers) = answers {
+                    answers.begin();
+                }
                 let mut hits = Vec::new();
                 let lines = self.chat[index].render(width, index == 0, &ctx, &mut hits);
+                if let Some(answers) = answers
+                    && answers.end()
+                {
+                    asking.push(answers.clone());
+                }
                 self.cache[index] = Some((width, generation, lines, hits));
                 first_changed = first_changed.min(index);
             }
         }
+        self.asking.extend(asking);
         if reusable && first_changed == self.chat.len() && self.flat_offsets.len() == first_changed
         {
             return;
@@ -1656,6 +1727,7 @@ impl App {
             )
         };
         emit(&frame);
+        self.ask_drawers();
     }
 
     /// pi's `setWorkingVisible`: hides the working indicator, or shows it
@@ -1908,6 +1980,9 @@ impl App {
     fn on_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::AgentStart => self.running = true,
+            AgentEvent::EntryAppended {
+                entry: yapi_types::session::FileEntry::Custom(entry),
+            } => self.push_entry(entry),
             // pi replaces any other indicator, such as a retry countdown.
             AgentEvent::TurnStart => {
                 self.show_progress(true);
@@ -3500,6 +3575,7 @@ impl App {
         // `withSession` failed, are not this one's.
         self.on_bound.clear();
         self.epoch += 1;
+        self.bound = false;
         self.session = session;
         subscribe(&self.session, &self.tx, self.epoch);
         self.reset_extension_ui();
@@ -4327,6 +4403,8 @@ impl App {
             .collect();
         let mut app = App {
             markdown: markdown_theme(&theme),
+            drawers: deferred::Drawers::default(),
+            drawer_errors: std::collections::HashSet::new(),
             hyperlinks: false,
             theme,
             keys,
@@ -4339,6 +4417,8 @@ impl App {
             chat: Vec::new(),
             cache: Vec::new(),
             toggles: Vec::new(),
+            answers: Vec::new(),
+            asking: Vec::new(),
             flat: Vec::new(),
             flat_header: Vec::new(),
             flat_key: None,
@@ -4357,6 +4437,7 @@ impl App {
             expanded: options.verbose,
             hide_thinking: settings.hide_thinking_block.unwrap_or(false),
             output_pad: usize::from(settings.output_pad.unwrap_or(1).min(1)),
+            mermaid: mermaid_mode(&settings),
             show_details,
             fullscreen,
             alt: AltScreen::new(),
@@ -4393,6 +4474,7 @@ impl App {
             model_network: options.model_network,
             next_refresh: 0,
             binding: None,
+            bound: false,
             replacing: false,
             on_bound: Vec::new(),
             overlay: None,
@@ -4601,6 +4683,7 @@ impl App {
             // waiting on them hears of it.
             Event::Bound(epoch, reply) if epoch != self.epoch => answer(reply, Ok(false)),
             Event::Bound(_, reply) => {
+                self.bound = true;
                 // A session change an extension command asked for is
                 // reported once the command's own work on the replacement
                 // is done; others at once.
@@ -4610,6 +4693,8 @@ impl App {
                 }
                 // Extensions may have added skills, prompt templates and themes.
                 self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
+                self.drawer_errors.clear();
+                self.take_drawers();
                 self.share_themes();
                 self.install_autocomplete();
                 // Items shown before the extensions started get their components.
@@ -5132,6 +5217,256 @@ mod tests {
             .collect()
     }
 
+    /// A code renderer that answers each block with `answer`.
+    struct CodeRenderer {
+        path: &'static str,
+        answer: fn(&str) -> Result<Option<Vec<String>>, String>,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CodeRenderer {
+        fn new(
+            path: &'static str,
+            answer: fn(&str) -> Result<Option<Vec<String>>, String>,
+        ) -> Arc<Self> {
+            Arc::new(CodeRenderer {
+                path,
+                answer,
+                calls: Default::default(),
+            })
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl yapi_core::extensions::Extension for CodeRenderer {
+        fn source(&self) -> yapi_types::rpc::SourceInfo {
+            yapi_types::rpc::SourceInfo {
+                path: self.path.into(),
+                source: "cli".into(),
+                scope: "temporary".into(),
+                origin: "top-level".into(),
+                base_dir: None,
+            }
+        }
+
+        fn renderers(&self) -> yapi_core::extensions::Renderers {
+            yapi_core::extensions::Renderers {
+                code: true,
+                ..Default::default()
+            }
+        }
+
+        fn render_code<'a>(
+            &'a self,
+            request: &'a Value,
+        ) -> futures_util::future::BoxFuture<'a, Result<Option<Vec<String>>, String>> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let answer = (self.answer)(request["code"].as_str().unwrap_or_default());
+            Box::pin(async move { answer })
+        }
+    }
+
+    /// An app whose session has `extensions`, started.
+    fn app_drawn_by(
+        extensions: Vec<Arc<dyn yapi_core::extensions::Extension>>,
+    ) -> (App, UnboundedReceiver<Event>) {
+        let mut config = config(SessionManager::in_memory(Path::new("/work")));
+        config.extensions = extensions;
+        let (mut app, events) = app_with(AgentSession::new(config));
+        app.on_event(Event::Bound(app.epoch, None));
+        (app, events)
+    }
+
+    /// Renders, asks what the render left and takes the answers, until no
+    /// question is left.
+    async fn answer_all(app: &mut App, events: &mut UnboundedReceiver<Event>) {
+        loop {
+            app.transcript(40);
+            app.ask_drawers();
+            match tokio::time::timeout(Duration::from_millis(300), events.recv()).await {
+                Ok(Some(event)) => app.on_event(event),
+                _ => return,
+            }
+        }
+    }
+
+    fn trimmed_rows(app: &mut App) -> Vec<String> {
+        app.transcript(40)
+            .iter()
+            .map(|row| text(row).trim().to_owned())
+            .filter(|row| !row.is_empty())
+            .collect()
+    }
+
+    /// Each line upper-cased, in magenta.
+    fn upper(code: &str) -> Result<Option<Vec<String>>, String> {
+        Ok(Some(
+            code.split('\n')
+                .map(|line| format!("\x1b[35m{}\x1b[39m", line.to_uppercase()))
+                .collect(),
+        ))
+    }
+
+    /// Code blocks show plain until the extensions answer, then as the
+    /// first renderer in load order that draws them; a renderer that fails
+    /// is reported once and passed over.
+    #[tokio::test]
+    async fn code_renderers_draw_code_blocks_after_the_frame() {
+        let declines = CodeRenderer::new("declines", |_| Ok(None));
+        let fails = CodeRenderer::new("fails", |_| Err("boom".into()));
+        let draws = CodeRenderer::new("draws", |_| {
+            Ok(Some(vec!["\x1b[35mreplaced\x1b[39m".into()]))
+        });
+        let later = CodeRenderer::new("later", |_| Ok(Some(vec!["never".into()])));
+        let (mut app, mut events) = app_drawn_by(vec![
+            declines.clone(),
+            fails.clone(),
+            draws.clone(),
+            later.clone(),
+        ]);
+        app.push(Item::User("```rust\nfn main() {}\n```".into()));
+        assert!(trimmed_rows(&mut app).contains(&"fn main() {}".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        app.push(Item::User("```sh\nls\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        let rows = trimmed_rows(&mut app);
+        assert_eq!(
+            rows.iter().filter(|row| *row == "replaced").count(),
+            2,
+            "{rows:?}"
+        );
+        // The renderer's colors come through.
+        let magenta = app
+            .transcript(40)
+            .iter()
+            .flat_map(|row| row.spans.clone())
+            .any(|span| {
+                span.content == "replaced"
+                    && span.style.fg == Some(ratatui_core::style::Color::Magenta)
+            });
+        assert!(magenta);
+        let errors: Vec<&String> = rows.iter().filter(|row| row.contains("boom")).collect();
+        assert_eq!(errors, [&"Extension \"fails\" error: boom".to_owned()]);
+        // Each block is asked once.
+        assert_eq!(
+            (
+                declines.calls(),
+                fails.calls(),
+                draws.calls(),
+                later.calls()
+            ),
+            (2, 2, 2, 0)
+        );
+    }
+
+    /// While a code block grows, it keeps the colors of the lines it had and
+    /// shows the new ones plain until the renderer answers; nothing is
+    /// asked for a block that did not change.
+    #[tokio::test]
+    async fn a_growing_code_block_keeps_its_colors_until_answered() {
+        let renderer = CodeRenderer::new("upper", upper);
+        let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
+        app.push(Item::User("```rust\nfn a\n```".into()));
+        app.push(Item::User("```rust\nlet x\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        assert_eq!(renderer.calls(), 2);
+        let grow = |app: &mut App, code: &str| {
+            app.chat[1] = Item::User(format!("```rust\n{code}\n```"));
+            app.touch(1);
+            trimmed_rows(app)
+        };
+        let rows = grow(&mut app, "let x\nlet y");
+        assert!(rows.contains(&"FN A".to_owned()), "{rows:?}");
+        let grown = rows.iter().position(|row| row == "LET X").expect("kept");
+        assert_eq!(rows[grown + 1], "let y", "{rows:?}");
+        // A line that grew shows plain.
+        let rows = grow(&mut app, "let xy");
+        assert!(rows.contains(&"let xy".to_owned()), "{rows:?}");
+        answer_all(&mut app, &mut events).await;
+        let rows = grow(&mut app, "let xy");
+        assert!(rows.contains(&"LET XY".to_owned()), "{rows:?}");
+        // Only the block that changed was asked again, for its newest code.
+        assert_eq!(renderer.calls(), 3);
+    }
+
+    /// A Markdown transformer that upper-cases the text.
+    struct Upper;
+
+    impl yapi_core::extensions::Extension for Upper {
+        fn source(&self) -> yapi_types::rpc::SourceInfo {
+            yapi_types::rpc::SourceInfo {
+                path: "upper".into(),
+                source: "cli".into(),
+                scope: "temporary".into(),
+                origin: "top-level".into(),
+                base_dir: None,
+            }
+        }
+
+        fn renderers(&self) -> yapi_core::extensions::Renderers {
+            yapi_core::extensions::Renderers {
+                markdown: true,
+                ..Default::default()
+            }
+        }
+
+        fn transform_markdown<'a>(
+            &'a self,
+            request: &'a Value,
+        ) -> futures_util::future::BoxFuture<'a, Result<Option<String>, String>> {
+            let markdown = request["markdown"]
+                .as_str()
+                .unwrap_or_default()
+                .to_uppercase();
+            Box::pin(async move { Ok(Some(markdown)) })
+        }
+    }
+
+    /// Message text that grows keeps what the transformers made of it until
+    /// they answer for the new text, and so does text that stops streaming.
+    #[tokio::test]
+    async fn growing_text_keeps_its_transformed_markdown_until_answered() {
+        let (mut app, mut events) = app_drawn_by(vec![Arc::new(Upper)]);
+        app.push(Item::User("hello".into()));
+        assert!(trimmed_rows(&mut app).contains(&"hello".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"HELLO".to_owned()));
+        app.chat[0] = Item::User("hello world".into());
+        app.touch(0);
+        assert!(trimmed_rows(&mut app).contains(&"HELLO".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"HELLO WORLD".to_owned()));
+        // Text that does not continue the answered text shows as written.
+        app.chat[0] = Item::User("bye".into());
+        app.touch(0);
+        assert!(trimmed_rows(&mut app).contains(&"bye".to_owned()));
+    }
+
+    /// A theme change and a restarted extension runtime forget what the
+    /// renderers drew, and the code is asked again.
+    #[tokio::test]
+    async fn theme_changes_and_restarts_ask_the_code_renderers_again() {
+        let renderer = CodeRenderer::new("upper", upper);
+        let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
+        app.push(Item::User("```rust\nfn a\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        let theme = app.theme.clone();
+        app.apply_theme(theme);
+        assert!(trimmed_rows(&mut app).contains(&"fn a".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        assert_eq!(renderer.calls(), 2);
+        app.on_ui_request(extension_ui::Request::DropComponents(7));
+        assert!(trimmed_rows(&mut app).contains(&"fn a".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        assert_eq!(renderer.calls(), 3);
+    }
+
     fn border(status: &str, hidden: usize, width: usize) -> String {
         let style = ratatui_core::style::Style::default();
         let status = yapi_tui::ansi::parse_line(status).0;
@@ -5353,6 +5688,8 @@ mod tests {
         session
             .bind_extensions(Arc::new(ui), Mode::Tui, None, None)
             .await;
+        // As `Event::Bound` marks the extensions started.
+        app.bound = true;
         let note = |text: &str| {
             serde_json::from_value(json!({
                 "customType": "fragile-note", "content": text, "display": true, "timestamp": 1,

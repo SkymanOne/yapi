@@ -84,6 +84,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "code-renderer"
+version = "0.1.0"
+dependencies = [
+ "yapi-extension-api",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -132,6 +139,13 @@ name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
+
+[[package]]
+name = "entry-renderer"
+version = "0.1.0"
+dependencies = [
+ "yapi-extension-api",
+]
 
 [[package]]
 name = "equivalent"

@@ -55,6 +55,28 @@ const docs = {
 	nestedEmphasis: "***both*** and **bold _inner italic_ end**",
 	numbers: "3. three\n4. four",
 	trailing: "ends with blank lines\n\n\n",
+	refEnd: "text\n\n[a]: http://x\n",
+	refEndBlank: "text\n\n[a]: http://x\n\n\n",
+	refOnly: "[a]: http://x\n\n",
+	refBefore: "[a]: http://x\n\npara after",
+	refBetween: "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+	refTight: "one\n[a]: http://x\ntwo",
+	refQuote: "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+	refList: "- item\n\n  [a]: http://x\n\n- next\n",
+	listWs: "- a\n  \n",
+	listWs3: "- a\n   ",
+	listWsNext: "- a\n  \n\npara",
+	listWsTight: "- a\n  \n- b\n  \n",
+	listWsNested: "- a\n  - b\n    \n",
+	listWsOrdered: "1. a\n   \n2. b\n   ",
+	listWsQuote: "> - a\n>   \n>\nafter",
+	paraWs: "text\n   ",
+	paraWsSame: "text   ",
+	quoteEnd: "> a\n\n\n",
+	quoteEndOne: "> a\n\n",
+	quoteGt: "> a\n>\n>",
+	codeWs: "```\nx\n```\n  ",
+	listWsQuoteEnd: "> - a\n>   \n",
 };
 // Bare URLs and email addresses, with links underlined so the lines show where each starts and ends.
 const underlined = { ...theme, underline: (text) => `\x1b[4m${text}\x1b[24m` };
@@ -66,9 +88,52 @@ const autolinks = {
 	urlContext: "Midword xhttps://example.com and awww.example.com, `https://code.example.com`, [link https://in.link](https://target.com), **https://bold.example.com** and <https://auto.example.com>.",
 	urlEdges: "HTTPS://EXAMPLE.COM, Www.example.com, http:// and www.-x. https://example.com/?a=1&amp; x!foo@bar.com a*b@c.com a@b.com.c@d.com",
 	urlBlocks: "## See www.heading.com\n\n- item https://example.com/list\n- mail list@example.com\n\n| Site | Mail |\n|---|---|\n| www.cell.com | cell@example.com |",
+	urlLatex: "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+};
+// LaTeX, which pi-tui's tokenizers find before marked's own.
+const latex = {
+	latexInline: String.raw`A map $\mathbb{C}^3 \to \mathbb{C}^3$, $xy$, $x-y$, $\frac{1}{2}$, and \(s \to \infty\).`,
+	latexDisplay: String.raw`Before
+
+$$\{3x+2y,\; x \in \{0, \pm 1\}\}$$
+
+\[
+E \approx \frac{0.1\ \text{lux}}{100\ \text{lm/W}}
+\]
+
+after`,
+	latexCut: "Intro line\n$$\nx^2 + y^2\n$$\nafter text\nmore\n$$ not math\nlast",
+	latexContainers: "- Formula: $F_1 = u^2$\n- block:\n  $$\n  \\frac{1}{2}\n  $$\n- end $x$\n\n> quote $a^2$\n> $$\n> x_1\n> $$\n> after",
+	latexTable: "| Value | Math |\n|---|---|\n| a | $\\mathbb{C}^3$ |\n| b | $x|y$ |",
+	latexNotMath: "Costs $5 and $10 or $8k–$12k; use `$x$`, $HOME, and $" + "{PATH}. Paths: $HOME/$USER and $XDG_CONFIG_HOME/$APP_CONFIG",
+	latexPending: String.raw`Streaming $\mathbb{C}^3 and *more*
+next line
+
+Text
+\[
+x^2
+*not italic*`,
+	latexEscapes: String.raw`Escaped \$x-y\$ and \\$x$ end, and \$$y$$.`,
+	latexEmphasis: "*a $b$ c* and $x*y*z$ and *a $b* c$ and **$\\alpha$**",
+	latexLinks: "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
+	latexHeading: "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
+	latexBlank: "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+	latexEmphasisPairs:
+		"$a*b$ and $c*d$, $2*3$ and $4*5$ and $6*7$.\n\nLet $f(x)=2*x$ and $g(x)=3*x$, $a _b$ and $c_ d$, $a~~b$ and $c~~d$.\n\n" +
+		"- $a*b$ and $c*d$\n- $a _b$ and $c_ d$\n\n> $a~~b$ and $c~~d$\n\n## $2*3$ and $4*5$\n\n*a $x-2* b, $a*b$ $c*$d$",
+	latexLinkText: "See [\\[x](u) and [\\(y\\)](u)",
+	latexTrailing: "$$x^2$$\n\n",
+	latexTrailingSpace: "Text\n\n\\[y\\]\n \n",
+	latexTablePipe: "| $a|b$ |\n|---|\n| c |",
+	latexTableEscape: "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+	latexTableStart: "$$a|b$$\n|---|---|\nafter",
+	latexSetext: "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+	latexSetextUnderline: "$- \n*\n- ",
+	latexHeadingClose: "# $x- #",
+	latexItems: "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
 };
 const markdown = [];
-for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks)]) {
+for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {
 	const underline = name in autolinks || undefined;
 	for (const [width, paddingX, paddingY] of [[40, 0, 0], [24, 1, 0], [80, 1, 1]]) {
 		for (const preserve of [false, true]) {

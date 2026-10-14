@@ -1,6 +1,6 @@
 # Native extension examples
 
-The repository has seventeen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Eleven are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
+The repository has nineteen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Twelve are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
 
 | Example | Shows | Pi counterpart |
 |---|---|---|
@@ -17,12 +17,14 @@ The repository has seventeen native extensions in [`guest/examples`](https://git
 | [`question`](#question) | A tool that asks in a component with an `Editor` widget, and draws its own call and result | `question.ts` |
 | [`overlay-test`](#overlay-test) | An overlay with inline inputs, the cursor marker and wide characters | `overlay-test.ts` |
 | [`message-renderer`](#message-renderer) | Custom messages drawn in a box by a message renderer | `message-renderer.ts` |
+| [`entry-renderer`](#entry-renderer) | Session entries the model never sees, drawn by an entry renderer | `entry-renderer.ts` |
 | [`select-menu`](#select-menu) | A `SelectList` widget in a custom component | None |
 | [`input-hooks`](#input-hooks) | A terminal input listener that reads the editor, an autocomplete provider and a shortcut | None |
 | [`crash-recovery`](#crash-recovery) | What yapi does when an extension panics | None |
 | [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
+| [`code-renderer`](#code-renderer) | Colors Rust keywords with yapi's code renderer API, and bolds `TODO` with a Markdown transformer | None |
 
-Five of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
+Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
 
 ## Build and try them
 
@@ -279,6 +281,10 @@ A `question` tool for the model: the user picks one of its options in a componen
 
 `/status [warn|error] message` adds a custom message that a message renderer draws in a box, colored by level. The box uses the `boxed` and `text` layouts of `widgets::tui::lines` over the theme's custom message background.
 
+## entry-renderer
+
+`/status-card message` stores a status card that the model never sees, and an entry renderer draws it in a box. Expanded, it shows the time in UTC, where Pi shows local time.
+
 ## select-menu
 
 `/menu` opens a drinks menu: a `SelectList` between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi's own terminal scenarios use.
@@ -347,3 +353,7 @@ for left in (1..=seconds).rev() {
 ```
 
 `race` polls two futures until one finishes, so the tool needs no other crate. `futures::select!` does the same.
+
+## code-renderer
+
+Colors Rust keywords in code blocks and tool rows with yapi's code renderer API. A Markdown transformer makes each `TODO` in messages bold.

@@ -156,12 +156,15 @@
 			},
 			registerMessageRenderer(customType, renderer) {
 				extension.messageRenderers.set(customType, renderer);
+				refreshRenderers(extension);
 			},
 			registerMarkdownTransformer(transformer) {
 				extension.markdownTransformer = transformer;
+				refreshRenderers(extension);
 			},
 			registerEntryRenderer(customType, renderer) {
 				extension.entryRenderers.set(customType, renderer);
+				refreshRenderers(extension);
 			},
 			getFlag(name) {
 				if (!extension.flags.has(name)) return undefined;
@@ -273,6 +276,13 @@
 					return eventBus.on(channel, handler);
 				},
 			}),
+			// yapi's own API, which pi lacks: packages call it as `pi.yapi?.…`.
+			yapi: active({
+				registerCodeRenderer(render) {
+					extension.codeRenderer = render;
+					refreshRenderers(extension);
+				},
+			}),
 		});
 		return {
 			api,
@@ -360,6 +370,19 @@
 		}
 		return found;
 	}
+	/** What `extension` draws in the transcript. */
+	function describeRenderers(extension) {
+		return {
+			messageRenderers: [...extension.messageRenderers.keys()],
+			entryRenderers: [...extension.entryRenderers.keys()],
+			markdownTransformer: typeof extension.markdownTransformer === "function",
+			codeRenderer: typeof extension.codeRenderer === "function",
+		};
+	}
+	/** Reports renderers registered once the session started: pi looks them up as it draws. */
+	function refreshRenderers(extension) {
+		if (bound) yapi.request("renderers.refresh", { extension: extension.id, ...describeRenderers(extension) });
+	}
 	function describe(extension) {
 		return {
 			id: extension.id,
@@ -378,9 +401,7 @@
 			})),
 			shortcuts: [...extension.shortcuts.values()].map((shortcut) => ({ shortcut: shortcut.shortcut, description: shortcut.description ?? null })),
 			events: [...extension.handlers.keys()].sort(),
-			messageRenderers: [...extension.messageRenderers.keys()],
-			entryRenderers: [...extension.entryRenderers.keys()],
-			markdownTransformer: typeof extension.markdownTransformer === "function",
+			...describeRenderers(extension),
 			providers: extension.providers,
 			mcpServers: [...extension.mcpServers].map(([name, { config }]) => ({ name, config })),
 		};
@@ -422,6 +443,7 @@
 			messageRenderers: new Map(),
 			entryRenderers: new Map(),
 			markdownTransformer: undefined,
+			codeRenderer: undefined,
 			providers: [],
 			mcpServers: new Map(),
 			virtualModels: [],
@@ -1598,21 +1620,57 @@
 			return result;
 		},
 		/**
+		 * What extension `payload.extension`'s Markdown transformer makes of
+		 * `payload.markdown`, or `null` to keep it, as pi keeps the text when
+		 * a transformer throws or returns no string.
+		 */
+		markdown(payload) {
+			const transformer = extensionOf(payload.extension).markdownTransformer;
+			try {
+				const markdown = transformer?.(payload.markdown, plain(payload.context ?? {}));
+				return typeof markdown === "string" ? markdown : null;
+			} catch {
+				return null;
+			}
+		},
+		/**
+		 * The lines extension `payload.extension`'s code renderer draws for
+		 * `{ code, lang, width }`, or `null` to leave the code to yapi. An
+		 * error is the renderer's.
+		 */
+		code(payload) {
+			const render = extensionOf(payload.extension).codeRenderer;
+			const lines = render?.(payload.code, payload.lang ?? undefined, { width: payload.width }, theme);
+			return Array.isArray(lines) ? lines.map(String) : null;
+		},
+		/**
 		 * Builds the component a tool's `renderCall`/`renderResult` or a
 		 * message renderer returns; `{ handle }`, or `null` for the built-in
 		 * rendering. A renderer that returns its last component keeps its
 		 * handle.
 		 */
-		component(payload) {
+		async component(payload) {
 			const extension = extensionOf(payload.extension);
-			const key = payload.kind === "message" ? `message:${payload.key}` : `tool:${payload.toolCallId}`;
+			const key = payload.kind === "message" || payload.kind === "entry" ? `${payload.kind}:${payload.key}` : `tool:${payload.toolCallId}`;
 			const views = transcriptViews.get(key) ?? { state: {}, call: undefined, result: undefined, message: undefined };
 			transcriptViews.set(key, views);
 			const slot = payload.kind === "toolCall" ? "call" : payload.kind === "toolResult" ? "result" : "message";
+			// pi's `CustomEntryComponent` shows a renderer's error in a box.
+			if (payload.kind === "entry") tuiModule ??= await import("@earendil-works/pi-tui");
 			const previous = views[slot];
 			let component;
 			try {
-				if (slot === "message") {
+				if (payload.kind === "entry") {
+					const renderer = extension.entryRenderers.get(payload.entry?.customType);
+					try {
+						component = renderer?.(payload.entry, plain(payload.options ?? {}), theme);
+					} catch (error) {
+						component = new tuiModule.Box(1, 1, (text) => theme.bg("customMessageBg", text));
+						component.addChild(
+							new tuiModule.Text(theme.fg("error", `[${payload.entry.customType}] renderer failed: ${errorMessage(error)}`), 0, 0),
+						);
+					}
+				} else if (slot === "message") {
 					const renderer = extension.messageRenderers.get(payload.message?.customType);
 					component = renderer?.(payload.message, plain(payload.options ?? {}), theme);
 				} else {

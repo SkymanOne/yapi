@@ -14,10 +14,11 @@ use yapi_types::session::{FileEntry, UsageEntry};
 use super::App;
 use super::footer::format_tokens;
 
-/// A message of the branch's context, or a notice to show after the
-/// messages before it, with its theme color.
+/// A message of the branch's context, a custom entry among them, or a
+/// notice to show after the messages before it, with its theme color.
 pub(super) enum Shown {
     Message(Box<Message>),
+    Entry(Box<yapi_types::session::CustomEntry>),
     Notice(String, &'static str),
 }
 
@@ -177,6 +178,12 @@ impl App {
             }
             let mut shown = Vec::new();
             for entry in entries {
+                // Custom entries show among the messages, as pi's
+                // `renderSessionEntries` draws them.
+                if let FileEntry::Custom(custom) = entry.source {
+                    shown.push(Shown::Entry(Box::new(custom.clone())));
+                    continue;
+                }
                 if let FileEntry::Usage(usage) = entry.source
                     && usage.kind == "cache_warm"
                 {

@@ -756,6 +756,15 @@ fn context_data(ctx: &Context) -> Value {
     )
 }
 
+/// The description fields that say what an extension draws in the
+/// transcript.
+const RENDERER_KEYS: [&str; 4] = [
+    "messageRenderers",
+    "entryRenderers",
+    "markdownTransformer",
+    "codeRenderer",
+];
+
 /// One loaded extension file, for one session.
 struct JsExtension {
     shared: Arc<ExtensionHost>,
@@ -959,7 +968,16 @@ impl Extension for JsExtension {
         })
     }
 
+    /// What the guest last reported: renderers registered once the session
+    /// started draw too, as pi looks them up as it draws.
     fn renderers(&self) -> Renderers {
+        let loaded = lock(&self.shared.loaded);
+        let latest = loaded
+            .iter()
+            .find(|description| description["id"].as_u64() == Some(self.id))
+            // A later run of the factories reported for a later session.
+            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
+            .unwrap_or(&self.description);
         Renderers {
             tools: list(&self.description["tools"])
                 .iter()
@@ -973,11 +991,54 @@ impl Extension for JsExtension {
                     (text(&tool["name"]), renderers)
                 })
                 .collect(),
-            messages: list(&self.description["messageRenderers"])
-                .iter()
-                .map(text)
-                .collect(),
+            messages: list(&latest["messageRenderers"]).iter().map(text).collect(),
+            entries: list(&latest["entryRenderers"]).iter().map(text).collect(),
+            markdown: latest["markdownTransformer"] == true,
+            code: latest["codeRenderer"] == true,
         }
+    }
+
+    fn transform_markdown<'a>(
+        &'a self,
+        request: &'a Value,
+    ) -> BoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async move {
+            if *self.shared.bound.lock().await != self.generation + 1 {
+                return Ok(None);
+            }
+            let mut payload = request.clone();
+            payload["extension"] = json!(self.id);
+            let markdown = self
+                .shared
+                .instance
+                .call("markdown", &payload)
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok(markdown.as_str().map(str::to_owned))
+        })
+    }
+
+    fn render_code<'a>(
+        &'a self,
+        request: &'a Value,
+    ) -> BoxFuture<'a, Result<Option<Vec<String>>, String>> {
+        Box::pin(async move {
+            // Only the bound session's extensions draw.
+            if *self.shared.bound.lock().await != self.generation + 1 {
+                return Ok(None);
+            }
+            let mut payload = request.clone();
+            payload["extension"] = json!(self.id);
+            let lines = self
+                .shared
+                .instance
+                .call("code", &payload)
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok(lines
+                .as_array()
+                .map(|lines| lines.iter().map(text).collect()))
+        })
     }
 
     fn component<'a>(&'a self, request: &'a Value) -> BoxFuture<'a, Option<RemoteComponent>> {
@@ -1989,6 +2050,20 @@ impl Bridge for SessionBridge {
             "tools.setActive" => {
                 let names = list(&payload["names"]).iter().map(text).collect();
                 session.set_active_tools(names);
+                Ok(Value::Null)
+            }
+            "renderers.refresh" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let extension = payload["extension"].as_u64();
+                if let Some(description) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == extension)
+                {
+                    for key in RENDERER_KEYS {
+                        description[key] = payload[key].clone();
+                    }
+                }
+                session.extension_binding().0.renderers_changed();
                 Ok(Value::Null)
             }
             "tools.refresh" => {

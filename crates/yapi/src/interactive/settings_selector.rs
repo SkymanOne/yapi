@@ -1416,7 +1416,9 @@ impl super::App {
         self.editor.set_theme(super::editor_theme(&theme));
         self.theme = theme;
         self.style_alt_screen();
-        self.invalidate_all();
+        // What extensions drew is in the old theme's colors.
+        self.forget_answers();
+        self.redraw_custom();
     }
 
     /// Applies a `/settings` change and saves it, as pi's callbacks do.
@@ -1501,6 +1503,9 @@ impl super::App {
             }
             "mermaid-rendering" => {
                 nested("markdown", "mermaid", text());
+                // The settings file's own reading of the mode, streaming by default.
+                self.mermaid = serde_json::from_value(text())
+                    .unwrap_or(yapi_types::settings::MermaidMode::Streaming);
                 self.invalidate_all();
             }
             "cache-miss-notices" => {

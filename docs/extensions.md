@@ -87,6 +87,28 @@ yapi runs extensions written for `@earendil-works/pi-coding-agent` 1.0, includin
 
 A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. [dev/status.md](https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless) lists each one.
 
+## yapi-only APIs
+
+`pi.yapi` holds APIs that Pi does not have. Call them as `pi.yapi?.method()` so the package still loads in Pi.
+
+### Code renderers
+
+yapi shows code in one color. `pi.yapi.registerCodeRenderer(render)` lets an extension color it, or draw it differently, in Markdown code blocks, `read` and `write` tool rows and codemode scripts.
+
+```typescript
+pi.yapi?.registerCodeRenderer((code, lang, { width }, theme) => {
+  if (lang !== "sql") return undefined;
+  return code
+    .split("\n")
+    .map((line) => line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) => theme.fg("syntaxKeyword", word)));
+});
+```
+
+- `lang` is the code block's language or the file's language, and may be `undefined`.
+- Return the styled lines, or `undefined` to keep the plain code.
+- When several extensions register a renderer, the first one that returns lines is used.
+- Code shows plain until the renderer returns.
+
 ## How Pi extensions run
 
 Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.

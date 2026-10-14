@@ -710,6 +710,111 @@ export default function (pi) {
     );
 }
 
+/// A host whose theme colors keywords magenta and code blocks green.
+struct Themed;
+
+impl yapi_ext::Bridge for Themed {
+    fn request(&self, kind: &str, _payload: &Value) -> Result<Value, String> {
+        match kind {
+            "ui.theme" => Ok(json!({
+                "fg": {"syntaxKeyword": "\x1b[35m", "mdCodeBlock": "\x1b[32m"},
+                "bg": {},
+                "dim": [],
+            })),
+            _ => Err(format!("{kind} is not available here")),
+        }
+    }
+}
+
+/// `pi.yapi.registerCodeRenderer`, yapi's own: the host asks a renderer by
+/// call, and the facade's `highlightCode` uses the runtime's renderers.
+#[tokio::test(flavor = "multi_thread")]
+async fn renders_code_through_registered_renderers() {
+    let dir = scratch("code-renderer");
+    std::fs::write(
+        dir.join("main.ts"),
+        r#"
+import { getLanguageFromPath, getMarkdownTheme, highlightCode } from "@earendil-works/pi-coding-agent";
+
+export default function (pi) {
+	pi.yapi?.registerCodeRenderer((code, lang, options, theme) => {
+		if (lang === "boom") throw new Error("boom");
+		if (lang === "replace") return [`${options.width} columns`];
+		if (lang !== "rust") return undefined;
+		return code.split("\n").map((line) => line.replace(/\bfn\b/g, theme.fg("syntaxKeyword", "fn")));
+	});
+	pi.registerTool({
+		name: "probe",
+		label: "Probe",
+		description: "",
+		parameters: { type: "object", properties: {} },
+		async execute() {
+			const probe = {
+				language: getLanguageFromPath("src/main.rs"),
+				plain: getLanguageFromPath("notes.txt") ?? null,
+				facade: highlightCode("fn a() {}", "rust"),
+				replaced: highlightCode("x", "replace"),
+				markdown: getMarkdownTheme().highlightCode("x\ny", "python"),
+				fallback: highlightCode("x", "python"),
+			};
+			return { content: [{ type: "text", text: JSON.stringify(probe) }], details: {} };
+		},
+	});
+}
+"#,
+    )
+    .unwrap();
+    let instance = Instance::start(&engine(), Options::new(dir.clone()), Arc::new(Themed))
+        .await
+        .unwrap();
+    let loaded = instance
+        .call(
+            "load",
+            &json!({"cwd": dir, "extensions": [{"id": 1, "path": dir.join("main.ts")}]}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(loaded["extensions"][0]["codeRenderer"], true, "{loaded}");
+
+    instance.call("bind", &Value::Null).await.unwrap();
+    let code = |lang: &str| {
+        instance.call(
+            "code",
+            &json!({"extension": 1, "code": "fn main() {}\nlet x = 1;", "lang": lang, "width": 40}),
+        )
+    };
+    assert_eq!(
+        code("rust").await.unwrap(),
+        json!(["\x1b[35mfn\x1b[39m main() {}", "let x = 1;"])
+    );
+    assert_eq!(code("replace").await.unwrap(), json!(["40 columns"]));
+    assert_eq!(code("python").await.unwrap(), Value::Null);
+    assert!(code("boom").await.unwrap_err().to_string().contains("boom"));
+
+    // The facade's helpers use the runtime's renderers.
+    let result = instance
+        .call(
+            "tool",
+            &json!({"extension": 1, "name": "probe", "toolCallId": "t1", "params": {}, "ctx": {}}),
+        )
+        .await
+        .unwrap();
+    let probe: Value =
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        probe,
+        json!({
+            "language": "rust",
+            "plain": null,
+            "facade": ["\x1b[35mfn\x1b[39m a() {}"],
+            "replaced": ["80 columns"],
+            "markdown": ["\x1b[32mx\x1b[39m", "\x1b[32my\x1b[39m"],
+            // Without a renderer, pi's code block color.
+            "fallback": ["\x1b[32mx\x1b[39m"],
+        })
+    );
+}
+
 /// A bridge that sets its flag when the instance's thread drops it.
 struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
 
