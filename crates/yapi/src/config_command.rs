@@ -159,6 +159,7 @@ mod tests {
                 chunks: body.into_iter().collect(),
                 body_base64: bytes.map(|bytes| STANDARD.encode(bytes)),
                 chunk_delay_ms: 0,
+                close: None,
             },
         }
     }

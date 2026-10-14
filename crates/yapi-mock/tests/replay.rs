@@ -35,6 +35,7 @@ fn reply(status: u16, chunks: &[&str]) -> Response {
         chunks: chunks.iter().map(|chunk| chunk.to_string()).collect(),
         body_base64: None,
         chunk_delay_ms: 0,
+        close: None,
     }
 }
 
@@ -209,7 +210,7 @@ async fn replays_websocket_exchanges() {
     use futures_util::{SinkExt as _, StreamExt as _};
     use tokio_tungstenite::tungstenite::Message;
     let exchange = |chunks: &[&str]| interaction("GET", "/ws", reply(101, chunks));
-    let server = start(Cassette {
+    let first = start(Cassette {
         interactions: vec![
             exchange(&["a", "b"]),
             exchange(&["c"]),
@@ -218,7 +219,7 @@ async fn replays_websocket_exchanges() {
     })
     .await;
 
-    let mut socket = websocket(&server, "/ws").await;
+    let mut socket = websocket(&first, "/ws").await;
     let mut received = Vec::new();
     socket.send(Message::text("one")).await.unwrap();
     received.push(socket.next().await.unwrap().unwrap());
@@ -232,13 +233,37 @@ async fn replays_websocket_exchanges() {
         Message::Close(_)
     ));
     let response = reqwest::Client::new()
-        .post(format!("{}/ws", server.url()))
+        .post(format!("{}/ws", first.url()))
         .send()
         .await
         .unwrap();
     assert_eq!(response.text().await.unwrap(), "done");
 
-    let requests = server.finish().unwrap();
+    let mut closing = exchange(&["d"]);
+    closing.response.chunk_delay_ms = 20;
+    closing.response.close = Some(yapi_mock::Close {
+        code: 1009,
+        reason: "big".into(),
+    });
+    let server = start(Cassette {
+        interactions: vec![closing],
+    })
+    .await;
+    let mut socket = websocket(&server, "/ws").await;
+    socket.send(Message::text("three")).await.unwrap();
+    let started = Instant::now();
+    assert_eq!(socket.next().await.unwrap().unwrap(), Message::text("d"));
+    assert!(started.elapsed() >= Duration::from_millis(20));
+    let Message::Close(Some(frame)) = socket.next().await.unwrap().unwrap() else {
+        panic!("no close frame");
+    };
+    assert_eq!(
+        (u16::from(frame.code), frame.reason.as_str()),
+        (1009, "big")
+    );
+    server.finish().unwrap();
+
+    let requests = first.finish().unwrap();
     let seen: Vec<(&str, &str)> = requests
         .iter()
         .map(|request| (request.method.as_str(), request.body.as_str()))

@@ -31,6 +31,7 @@ fn provider_cassette() -> Cassette {
                 ],
                 body_base64: None,
                 chunk_delay_ms: 0,
+                close: None,
             },
         }],
     }

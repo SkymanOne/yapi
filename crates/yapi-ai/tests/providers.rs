@@ -442,6 +442,7 @@ fn binary_exchange(path: &str, status: u16, headers: &[(&str, &str)], body: &[u8
             chunks: Vec::new(),
             body_base64: Some(base64::engine::general_purpose::STANDARD.encode(body)),
             chunk_delay_ms: 0,
+            close: None,
         },
     }
 }

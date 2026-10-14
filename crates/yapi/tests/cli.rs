@@ -709,6 +709,7 @@ fn streamed_text(text: &str) -> yapi_mock::Interaction {
             chunks,
             body_base64: None,
             chunk_delay_ms: 0,
+            close: None,
         },
     }
 }
@@ -1137,6 +1138,7 @@ async fn startup_shows_update_notices() {
             chunks: vec![body.to_owned()],
             body_base64: None,
             chunk_delay_ms: 0,
+            close: None,
         },
     };
     // The checks run at once, so releases and packages each have a server.

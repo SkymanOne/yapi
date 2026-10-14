@@ -4,8 +4,8 @@
 //! [`MockServer::start`] serves them on a local port, one per request. An
 //! interaction with status 101 is a WebSocket exchange instead: the server accepts
 //! an upgrade at its path when it is next, answers each message on the socket with
-//! the next such exchange, and closes the socket once the next interaction is not
-//! one.
+//! the next such exchange, and closes the socket after an exchange's scripted
+//! close, or once the next interaction is not an exchange.
 //! [`MockServer::record`] instead forwards every request to a real provider and
 //! records the responses as a cassette. Either way, every request is recorded with
 //! credentials redacted. Point a provider's base URL at [`MockServer::url`]: yapi's tests
@@ -38,9 +38,11 @@ use tokio::net::TcpListener;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::protocol::Role;
+use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Role};
 
-pub use cassette::{Cassette, Interaction, RequestMatch, Response};
+pub use cassette::{Cassette, Close, Interaction, RequestMatch, Response};
 
 /// Errors from loading a cassette or running the server.
 #[derive(Debug, thiserror::Error)]
@@ -338,7 +340,7 @@ fn accept_websocket(
     let accept = request
         .headers()
         .get("sec-websocket-key")
-        .map(|key| accept_key(key.as_bytes()))
+        .map(|key| derive_accept_key(key.as_bytes()))
         .unwrap_or_default();
     let upgrade = hyper::upgrade::on(&mut request);
     let (parts, _) = request.into_parts();
@@ -402,27 +404,28 @@ async fn serve_websocket(
             (reply, more)
         };
         let Some(reply) = reply else { return };
+        let delay = Duration::from_millis(reply.response.chunk_delay_ms);
         for chunk in reply.response.chunks {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
             if socket.send(Message::text(chunk)).await.is_err() {
                 return;
             }
+        }
+        if let Some(close) = reply.response.close {
+            let frame = CloseFrame {
+                code: CloseCode::from(close.code),
+                reason: close.reason.into(),
+            };
+            let _ = socket.close(Some(frame)).await;
+            return;
         }
         if !more {
             let _ = socket.close(None).await;
             return;
         }
     }
-}
-
-/// RFC 6455's `Sec-WebSocket-Accept` for `key`.
-fn accept_key(key: &[u8]) -> String {
-    use base64::Engine as _;
-    use sha1::Digest as _;
-    let digest = sha1::Sha1::new()
-        .chain_update(key)
-        .chain_update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-        .finalize();
-    base64::engine::general_purpose::STANDARD.encode(digest)
 }
 
 fn recorded_request(parts: &hyper::http::request::Parts, body: &Bytes) -> RecordedRequest {

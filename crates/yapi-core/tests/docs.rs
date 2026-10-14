@@ -58,6 +58,7 @@ fn file(path: &str, bytes: &[u8]) -> Interaction {
             chunks: Vec::new(),
             body_base64: Some(STANDARD.encode(bytes)),
             chunk_delay_ms: 0,
+            close: None,
         },
     }
 }

@@ -14,7 +14,9 @@ The proxy forwards each request with its credentials and stores the response chu
 
 ## WebSocket exchanges
 
-An interaction with status 101 is a WebSocket exchange, such as a Codex request over a WebSocket. The server accepts an upgrade at the interaction's path when it is next, records each message the client sends as a request whose body is the message, and answers it with the next exchange, one text message per chunk. It closes the socket once the next interaction is not an exchange. Recording does not capture WebSocket traffic, so these cassettes are hand-written.
+An interaction with status 101 is a WebSocket exchange, such as a Codex request over a WebSocket. The server accepts an upgrade at the interaction's path when it is next, records each message the client sends as a request whose body is the message, and answers it with the next exchange, one text message per chunk after `chunkDelayMs`. An exchange's `close`, such as `{"code": 1009, "reason": ""}`, closes the socket after its chunks. Without one, the socket closes once the next interaction is not an exchange. Exchanges ignore `headers` and `bodyBase64`.
+
+Recording does not capture WebSocket traffic, so these cassettes are hand-written. To record Codex responses, run the client with the `transport` setting `"sse"`.
 
 ## Serve a cassette to pi
 
