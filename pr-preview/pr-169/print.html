@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-86901d12.js";
+            window.path_to_searchindex_js = "searchindex-1be79820.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -381,6 +381,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.</li>
 <li>Up recalls earlier prompts.</li>
 </ul>
+<p>A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.</p>
 <h2 id="follow-the-work"><a class="header" href="#follow-the-work">Follow the work</a></h2>
 <p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
 <h2 id="change-direction"><a class="header" href="#change-direction">Change direction</a></h2>
@@ -550,6 +551,8 @@ yapi --no-session            # do not save this run
 </ul>
 <h2 id="compact-context"><a class="header" href="#compact-context">Compact context</a></h2>
 <p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
+<h2 id="keep-the-prompt-cache-warm"><a class="header" href="#keep-the-prompt-cache-warm">Keep the prompt cache warm</a></h2>
+<p>Providers such as Anthropic cache a request’s prompt for a few minutes. While the agent works, yapi sends the latest request again with a one-token reply shortly before its cache entry expires, when that is expected to save at least $0.05. Each refresh and its cost are recorded in the session. The <code>cacheWarming</code> setting is <code>streaming</code> by default. <code>idle</code> also keeps the cache warm between runs, and <code>off</code> stops warming. Only the global settings set it, because each refresh costs money. <code>/session</code> shows the next decision and its costs, and the prompt tokens billed again after cache misses. Turn on “Cache miss notices” in <code>/settings</code> to see refreshes, costly cache misses, summary costs and the thinking blocks Anthropic dropped from a request in the transcript.</p>
 <h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
 <p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
 <p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
@@ -863,16 +866,22 @@ export default function (pi: ExtensionAPI) {
 </div>
 <p>A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless">dev/status.md</a> lists each one.</p>
 <h2 id="yapi-only-apis"><a class="header" href="#yapi-only-apis">yapi-only APIs</a></h2>
-<p><code>pi.yapi</code> holds what yapi adds to Pi’s API. Pi lacks it, so call it as <code>pi.yapi?.method(...)</code> and the package still runs in Pi.</p>
-<p><code>pi.yapi.registerCodeRenderer(render)</code> draws code. yapi shows code in one color, and calls <code>render(code, lang, { width }, theme)</code> for code blocks in messages, expanded <code>read</code> results, <code>write</code> previews and codemode scripts. <code>lang</code> names the language as Pi’s <code>getLanguageFromPath</code> does for files, or is the code block’s language, and may be <code>undefined</code>. <code>render</code> returns lines of text with escape sequences, which may color the code or replace it, or <code>undefined</code> to leave it to yapi. Lines wider than <code>width</code> wrap.</p>
-<pre><code class="language-typescript">export default function (pi) {
-  pi.yapi?.registerCodeRenderer((code, lang, _options, theme) =&gt; {
-    if (lang !== "sql") return undefined;
-    return code.split("\n").map((line) =&gt; line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) =&gt; theme.fg("syntaxKeyword", word)));
-  });
-}
+<p><code>pi.yapi</code> holds APIs that Pi does not have. Call them as <code>pi.yapi?.method()</code> so the package still loads in Pi.</p>
+<h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
+<p>yapi shows code in one color. <code>pi.yapi.registerCodeRenderer(render)</code> lets an extension color it, or draw it differently, in Markdown code blocks, <code>read</code> and <code>write</code> tool rows and codemode scripts.</p>
+<pre><code class="language-typescript">pi.yapi?.registerCodeRenderer((code, lang, { width }, theme) =&gt; {
+  if (lang !== "sql") return undefined;
+  return code
+    .split("\n")
+    .map((line) =&gt; line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) =&gt; theme.fg("syntaxKeyword", word)));
+});
 </code></pre>
-<p>yapi draws the code in one color first and asks the renderers without waiting, so a slow renderer never holds up the screen. The first renderer, in load order, that returns lines draws the code. A renderer that throws leaves the code in one color, and yapi reports its first error. Pi’s <code>highlightCode</code> and <code>getMarkdownTheme().highlightCode</code> use the renderers in the same runtime. Mermaid diagrams are drawn before the renderers see the code.</p>
+<ul>
+<li><code>lang</code> is the code block’s language or the file’s language, and may be <code>undefined</code>.</li>
+<li>Return the styled lines, or <code>undefined</code> to keep the plain code.</li>
+<li>When several extensions register a renderer, the first one that returns lines is used.</li>
+<li>Code shows plain until the renderer returns.</li>
+</ul>
 <h2 id="how-pi-extensions-run"><a class="header" href="#how-pi-extensions-run">How Pi extensions run</a></h2>
 <p>Pi extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.</p>
 <ul>
@@ -1011,7 +1020,7 @@ yapi install . -l    # for this project only
 <tr><td><code>Component</code></td><td>A piece of interface that renders lines for a width and handles keys and mouse events. See <a href="#interface-components">Interface components</a>.</td></tr>
 <tr><td><code>Context::custom</code>, <code>Context::set_widget</code>, <code>Context::set_footer</code>, <code>Context::set_header</code>, <code>Context::set_editor_component</code></td><td>Show components, as Pi’s <code>ctx.ui</code> does</td></tr>
 <tr><td><code>Tool::render_call</code>, <code>Tool::render_result</code>, <code>Api::register_message_renderer</code></td><td>Draw tool calls, tool results and custom messages in the transcript</td></tr>
-<tr><td><code>Api::register_code_renderer</code></td><td>Draw code in messages and tool rows, yapi’s <code>pi.yapi.registerCodeRenderer</code>. See <a href="#code-renderers">Code renderers</a>.</td></tr>
+<tr><td><code>Api::register_code_renderer</code></td><td>Draw code in messages and tool rows. See <a href="#code-renderers-1">Code renderers</a>.</td></tr>
 <tr><td><code>Context::on_terminal_input</code>, <code>Context::add_autocomplete_provider</code>, <code>editor_text</code></td><td>See raw keys before the editor does, complete text in the editor, and read the editor’s text. See <a href="#terminal-input-and-completion">Terminal input and completion</a>.</td></tr>
 <tr><td><code>theme</code>, <code>request_render</code>, <code>parse_key</code>, <code>terminal_size</code>, <code>editor_focused</code></td><td>Style text in the session’s theme, render components again, name keys, read the terminal’s size, and tell whether the prompt editor has the keyboard</td></tr>
 <tr><td><code>widgets</code></td><td>pi-tui’s widgets, such as <code>SelectList</code> and <code>Editor</code>, with the <code>widgets</code> feature</td></tr>
@@ -1152,8 +1161,8 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <h3 id="tool-and-message-renderers"><a class="header" href="#tool-and-message-renderers">Tool and message renderers</a></h3>
 <p><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result in the transcript, as Pi’s <code>renderCall</code> and <code>renderResult</code> do, and <code>Tool::render_shell("self")</code> says they draw the tool’s whole box. <code>Api::register_message_renderer</code> draws custom messages of one type, as Pi’s <code>registerMessageRenderer</code> does. A renderer returns a component, or <code>None</code> to keep yapi’s own rendering.</p>
 <p>A tool renderer gets a <code>RenderContext</code>, with Pi’s context fields such as <code>toolCallId</code>, <code>expanded</code> and <code>isPartial</code> in <code>data</code>, and a <code>state</code> value that the call’s and the result’s renderers share for one tool call. Pi’s <code>lastComponent</code> has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one’s place, and yapi shows the old one’s lines until the new one has rendered.</p>
-<h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
-<p><code>Api::register_code_renderer</code> draws code, as <a href="#yapi-only-apis"><code>pi.yapi.registerCodeRenderer</code></a> does for Pi extensions. It gets the code, its language when known and the columns it has, and returns lines of text with escape sequences colored with <code>theme</code>, or <code>None</code> to leave the code in one color. The <a href="#code-renderer"><code>code-renderer</code></a> example colors Rust keywords.</p>
+<h3 id="code-renderers-1"><a class="header" href="#code-renderers-1">Code renderers</a></h3>
+<p><code>Api::register_code_renderer</code> is the Rust form of <a href="#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>. It gets the code, its language and the width, and returns styled lines or <code>None</code>. The <a href="#code-renderer"><code>code-renderer</code></a> example colors Rust keywords.</p>
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
@@ -1256,7 +1265,7 @@ Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <tr><td><a href="#input-hooks"><code>input-hooks</code></a></td><td>A terminal input listener that reads the editor, an autocomplete provider and a shortcut</td><td>None</td></tr>
 <tr><td><a href="#crash-recovery"><code>crash-recovery</code></a></td><td>What yapi does when an extension panics</td><td>None</td></tr>
 <tr><td><a href="#countdown"><code>countdown</code></a></td><td>A tool that stops with its own result when the run is aborted, and one that ignores aborts</td><td>None</td></tr>
-<tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>A code renderer, yapi’s own API, that colors Rust keywords</td><td>None</td></tr>
+<tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>Colors Rust keywords with yapi’s code renderer API</td><td>None</td></tr>
 </tbody>
 </table>
 </div>
@@ -1541,7 +1550,7 @@ api.on("session_start", |_event, ctx| async move {
 <span class="boring">}</span></code></pre>
 <p><code>race</code> polls two futures until one finishes, so the tool needs no other crate. <code>futures::select!</code> does the same.</p>
 <h2 id="code-renderer"><a class="header" href="#code-renderer">code-renderer</a></h2>
-<p>A code renderer, yapi’s own API: it colors the keywords of Rust code with the theme’s keyword color, in code blocks and in <code>read</code>, <code>write</code> and codemode rows, and leaves other languages in one color.</p>
+<p>Colors Rust keywords in code blocks and tool rows with yapi’s code renderer API.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="agent-skills"><a class="header" href="#agent-skills">Agent skills</a></h1>
 <p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. yapi and Pi load them, and so do other agents that read Agent Skills, such as Claude Code.</p>
@@ -1629,9 +1638,8 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
-<tr><td>Codex transport</td><td>WebSocket, then compressed SSE</td><td>Uncompressed SSE, the same requests and events as Pi’s fallback.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
-<tr><td>Syntax highlighting</td><td>Code in messages and tool rows is highlighted</td><td>Code shows in one color, to keep memory and install size low. Extensions can color it with <a href="#yapi-only-apis"><code>pi.yapi.registerCodeRenderer</code></a>.</td></tr>
+<tr><td>Syntax highlighting</td><td>Highlights code in messages and tool rows</td><td>Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with <a href="#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>.</td></tr>
 <tr><td>Mouse in fullscreen mode</td><td>Extension editors and components get mouse events.</td><td>Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus.</td></tr>
 </tbody>
 </table>
@@ -1645,7 +1653,6 @@ api.on("session_start", |_event, ctx| async move {
 </thead>
 <tbody>
 <tr><td>Entry renderers and markdown transformers</td><td><code>registerEntryRenderer</code> and <code>registerMarkdownTransformer</code> change how entries and markdown render</td><td>Recorded but unused.</td><td><a href="https://github.com/SkymanOne/yapi/issues/30">#30</a></td></tr>
-<tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
@@ -1656,7 +1663,7 @@ api.on("session_start", |_event, ctx| async move {
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
 <h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
-<p>Some Pi features are missing or incomplete, including inline images, prompt cache warming and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
+<p>Some Pi features are missing or incomplete, including inline images and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
