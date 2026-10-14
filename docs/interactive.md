@@ -12,6 +12,8 @@ Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G o
 - Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.
 - Up recalls earlier prompts.
 
+A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.
+
 ## Follow the work
 
 yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.
