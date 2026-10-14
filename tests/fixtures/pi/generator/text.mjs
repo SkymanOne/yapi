@@ -95,6 +95,9 @@ x^2
 	latexLinks: "[cost $x^2$](http://a.com/$y$) and <http://a.com/$z$> and ![alt $q$](i.png)",
 	latexHeading: "## Area $\\pi r^2$\n\nUnknown $x + \\unknown{y}$ after\n\n$$\n\\unknown{x}\n$$",
 	latexBlank: "$$\na\n\nb\n$$\nafter\n\n$$a$$ inline and $$\nb\n$$",
+	latexEmphasisPairs:
+		"$a*b$ and $c*d$, $2*3$ and $4*5$ and $6*7$.\n\nLet $f(x)=2*x$ and $g(x)=3*x$, $a _b$ and $c_ d$, $a~~b$ and $c~~d$.\n\n" +
+		"- $a*b$ and $c*d$\n- $a _b$ and $c_ d$\n\n> $a~~b$ and $c~~d$\n\n## $2*3$ and $4*5$\n\n*a $x-2* b, $a*b$ $c*$d$",
 };
 const markdown = [];
 for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {

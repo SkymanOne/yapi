@@ -3,10 +3,15 @@
 //! marked runs them before its own tokenizers at every block and inline
 //! position, so an expression hides any Markdown inside it, and a display
 //! block ends the paragraph before it. pulldown-cmark has no such hook: the
-//! expressions are found on a first parse, each is replaced with a
-//! placeholder that Markdown leaves alone, and the source is parsed again.
-//! The replacements keep every line and container prefix, so the second parse
-//! has the same blocks and blank lines.
+//! expressions are found on a parse, each is replaced with a placeholder that
+//! Markdown leaves alone, and the source is parsed again. The replacements
+//! keep every line and container prefix, so the second parse has the same
+//! blocks and blank lines.
+//!
+//! An expression found hides the emphasis and link delimiters in it, which
+//! the first parse may have paired with others around a later expression. So
+//! the expressions are found again on a parse with the ones found masked,
+//! until they no longer change.
 
 use std::ops::Range;
 
@@ -28,21 +33,26 @@ pub(super) struct Math {
 }
 
 /// Starts a placeholder: `$`, this, the expression's index in private use
-/// digits, [`END`] and `$`. The dollar signs make it punctuation at both
-/// ends, as the delimiters are, for the emphasis rules around it.
+/// digits, [`END`] and `$`, or [`WORD_END`] when the expression's first line
+/// ends in a letter or digit, as a pending expression's may. The ends of a
+/// placeholder are thus of the same kind as the ends of its expression, for
+/// the emphasis rules around it.
 const START: char = '\u{e000}';
 const END: char = '\u{e001}';
 /// Replaces each further line of a multi-line expression; the line is dropped.
 const CONTINUATION: char = '\u{e002}';
+/// Ends a placeholder in place of `$`; neither punctuation nor whitespace.
+const WORD_END: char = '\u{e003}';
 const DIGIT_ZERO: u32 = 0xe010;
 
-fn placeholder(index: usize) -> String {
+fn placeholder(index: usize, word_end: bool) -> String {
     let digits: String = index
         .to_string()
         .chars()
         .filter_map(|digit| char::from_u32(DIGIT_ZERO + digit.to_digit(10)?))
         .collect();
-    format!("${START}{digits}{END}$")
+    let end = if word_end { WORD_END } else { '$' };
+    format!("${START}{digits}{END}{end}")
 }
 
 /// A piece of text from the source [`extract`] returns.
@@ -74,7 +84,7 @@ pub(super) fn segments(text: &str) -> Vec<Segment<'_>> {
                 &rest[at + CONTINUATION.len_utf8()..],
             ),
             _ => {
-                // `$`, START, digits, END, `$`.
+                // `$`, START, digits, END, and `$` or WORD_END.
                 let digits_start = at + START.len_utf8();
                 let Some(digits_len) = rest[digits_start..].find(END) else {
                     break;
@@ -91,7 +101,7 @@ pub(super) fn segments(text: &str) -> Vec<Segment<'_>> {
                 match (
                     index,
                     rest[..at].strip_suffix('$'),
-                    rest[end..].strip_prefix('$'),
+                    rest[end..].strip_prefix(['$', WORD_END]),
                 ) {
                     (Some(index), Some(before), Some(after)) => {
                         (before, Segment::Math(index), after)
@@ -125,7 +135,7 @@ pub(super) fn restore(text: &str, maths: &[Math]) -> String {
 }
 
 /// What contains a line, outermost first, for its prefix.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Container {
     Quote,
     /// A list item whose content starts this many columns in.
@@ -160,10 +170,10 @@ fn prefix_len(line: &str, containers: &[Container]) -> usize {
 
 /// pi's `isEscaped`: an odd number of backslashes precedes `index`.
 fn is_escaped(source: &str, index: usize) -> bool {
-    source[..index]
-        .bytes()
+    source.as_bytes()[..index.min(source.len())]
+        .iter()
         .rev()
-        .take_while(|byte| *byte == b'\\')
+        .take_while(|byte| **byte == b'\\')
         .count()
         % 2
         == 1
@@ -366,15 +376,39 @@ fn item_indent(source: &str, at: usize, containers: &[Container]) -> usize {
         }
 }
 
-/// The source with each LaTeX expression replaced by a placeholder, and the
-/// expressions; `None` when it has none.
-pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Math>)> {
-    if !(source.contains('$') || source.contains("\\(") || source.contains("\\["))
-        || source.contains([START, END, CONTINUATION])
-    {
-        return None;
+/// An expression [`find`] found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Hit {
+    /// Its source, with its delimiters.
+    raw: Range<usize>,
+    /// Its text inside the delimiters.
+    text: Range<usize>,
+    display: bool,
+    pending: bool,
+    /// The containers of its first line.
+    containers: Vec<Container>,
+}
+
+/// Where the children of the container that `events[index]` starts end.
+fn children_end(events: &[(Event<'_>, Range<usize>)], index: usize) -> usize {
+    let mut depth = 0usize;
+    let mut end = events[index].1.start;
+    for (event, child) in &events[index + 1..] {
+        match event {
+            Event::Start(_) => depth += 1,
+            Event::End(_) if depth == 0 => break,
+            Event::End(_) => depth -= 1,
+            _ => {}
+        }
+        end = child.end;
     }
-    let events: Vec<(Event<'_>, Range<usize>)> = Parser::new_ext(source, options)
+    end
+}
+
+/// The expressions in `source`, found where `parsed` has text. `parsed` is
+/// the source with the expressions found before masked by [`mask`].
+fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
+    let events: Vec<(Event<'_>, Range<usize>)> = Parser::new_ext(parsed, options)
         .into_offset_iter()
         .collect();
     let trimmed_end = |end: usize| source[..end].trim_end_matches(['\n', '\r']).len();
@@ -428,8 +462,8 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
             Event::Start(Tag::Emphasis) => limits.push(range.end - 1),
             Event::Start(Tag::Strong) => limits.push(range.end - 2),
             Event::Start(Tag::Strikethrough) => {
-                let tildes = source[range.clone()].len()
-                    - source[range.clone()].trim_start_matches('~').len();
+                let tildes = parsed[range.clone()].len()
+                    - parsed[range.clone()].trim_start_matches('~').len();
                 limits.push(range.end - tildes);
             }
             Event::Start(Tag::Link {
@@ -441,19 +475,7 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
             }
             Event::Start(Tag::Image { .. } | Tag::CodeBlock(_)) => opaque += 1,
             Event::Start(Tag::Link { .. }) => {
-                // The link text ends where its last child does.
-                let mut depth = 0usize;
-                let mut end = range.start;
-                for (event, child) in &events[index + 1..] {
-                    match event {
-                        Event::Start(_) => depth += 1,
-                        Event::End(TagEnd::Link) if depth == 0 => break,
-                        Event::End(_) => depth -= 1,
-                        _ => {}
-                    }
-                    end = child.end;
-                }
-                limits.push(end);
+                limits.push(children_end(&events, index));
                 links.push(false);
             }
             Event::End(TagEnd::Link) => {
@@ -484,9 +506,14 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
                 // `\(` and `\[`, whose backslash pulldown-cmark reads as an
                 // escape.
                 let bracket = text.starts_with(['(', '['])
-                    && source[..range.start].ends_with('\\')
+                    && range.start > 0
+                    && source.as_bytes()[range.start - 1] == b'\\'
                     && !is_escaped(source, range.start - 1);
-                let display_start = (text.starts_with("$$") && !is_escaped(source, range.start))
+                // A `$` in the source, not one that a mask put there.
+                let dollar = |at: usize| source.as_bytes().get(at) == Some(&b'$');
+                let display_start = (text.starts_with("$$")
+                    && dollar(range.start)
+                    && !is_escaped(source, range.start))
                     || (bracket && text.starts_with('['));
                 if starts_line && display_start {
                     // A display block on a paragraph's line. A continuation
@@ -511,7 +538,7 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
                         });
                     }
                 }
-                if source.get(range.clone()) != Some(&**text) {
+                if parsed.get(range.clone()) != Some(&**text) {
                     continue;
                 }
                 if bracket {
@@ -524,7 +551,7 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
                 }
                 for (offset, _) in text.match_indices('$') {
                     let at = range.start + offset;
-                    if !is_escaped(source, at) {
+                    if dollar(at) && !is_escaped(source, at) {
                         candidates.push(Candidate {
                             at,
                             limit,
@@ -541,10 +568,9 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
     // Display blocks first, as marked splits blocks before it lexes their
     // text, then inline math, each where no earlier expression covers it.
     candidates.sort_by_key(|candidate| (!candidate.display, candidate.at));
-    let mut maths = Vec::new();
-    let mut found: Vec<(Range<usize>, usize, Vec<Container>)> = Vec::new();
+    let mut hits: Vec<Hit> = Vec::new();
     for candidate in &candidates {
-        let covered = |at: usize| found.iter().any(|(raw, ..)| raw.contains(&at));
+        let covered = |at: usize| hits.iter().any(|hit| hit.raw.contains(&at));
         if covered(candidate.at) {
             continue;
         }
@@ -552,9 +578,8 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
             candidate.limit
         } else {
             // A paragraph ends at the line break before a display block.
-            found
-                .iter()
-                .map(|(raw, ..)| raw.start)
+            hits.iter()
+                .map(|hit| hit.raw.start)
                 .filter(|start| *start > candidate.at)
                 .map(|start| source[..start].rfind('\n').unwrap_or(start))
                 .fold(candidate.limit, usize::min)
@@ -568,56 +593,47 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
             continue;
         };
         let raw = candidate.at..candidate.at + len;
-        let text = strip_prefixes(
-            source,
-            candidate.at + text.start..candidate.at + text.end,
-            &candidate.containers,
-        );
-        maths.push(Math {
-            raw: strip_prefixes(source, raw.clone(), &candidate.containers),
-            // pi trims a complete display block's text.
-            text: if candidate.display && !pending {
-                text.trim().to_owned()
-            } else {
-                text
-            },
+        hits.push(Hit {
+            raw,
+            text: candidate.at + text.start..candidate.at + text.end,
             display: candidate.display,
             pending,
+            containers: candidate.containers.clone(),
         });
-        found.push((raw, maths.len() - 1, candidate.containers.clone()));
     }
-    if maths.is_empty() {
-        return None;
-    }
+    hits
+}
 
-    // Each expression's first line becomes its placeholder and its other
-    // lines a continuation mark, after their container prefixes.
-    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
-    for (raw, index, containers) in &found {
-        let mut line_start = raw.start;
-        let mut first = true;
-        while line_start < raw.end || first {
-            let line_end = source[line_start..]
-                .find('\n')
-                .map_or(source.len(), |newline| line_start + newline);
-            let content = if first {
-                line_start
-            } else {
-                line_start + prefix_len(&source[line_start..line_end], containers)
-            };
-            let end = line_end.min(raw.end);
-            edits.push((
-                content..end.max(content),
-                if first {
-                    placeholder(*index)
-                } else {
-                    CONTINUATION.to_string()
-                },
-            ));
-            first = false;
-            line_start = line_end + 1;
+/// The pieces of the source that stand for `hit`: from its start to the end
+/// of its first line, then each further line after its container prefixes.
+fn spans(source: &str, hit: &Hit) -> Vec<Range<usize>> {
+    let mut spans = Vec::new();
+    let mut line_start = hit.raw.start;
+    loop {
+        let line_end = source[line_start..]
+            .find('\n')
+            .map_or(source.len(), |newline| line_start + newline);
+        let content = if spans.is_empty() {
+            line_start
+        } else {
+            line_start + prefix_len(&source[line_start..line_end], &hit.containers)
+        };
+        spans.push(content..line_end.min(hit.raw.end).max(content));
+        line_start = line_end + 1;
+        if line_start >= hit.raw.end {
+            return spans;
         }
     }
+}
+
+/// Whether the first line of an expression ends in a letter or digit, for
+/// the emphasis rules after it.
+fn ends_in_word(first_line: &str) -> bool {
+    first_line.chars().last().is_some_and(char::is_alphanumeric)
+}
+
+/// `source` with `edits`, which do not overlap, applied.
+fn apply(source: &str, mut edits: Vec<(Range<usize>, String)>) -> String {
     edits.sort_by_key(|(range, _)| range.start);
     let mut out = String::with_capacity(source.len());
     let mut at = 0;
@@ -627,5 +643,99 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
         at = range.end;
     }
     out.push_str(&source[at..]);
-    Some((out, maths))
+    out
+}
+
+/// `source` with each expression of `hits` masked as its placeholder will
+/// be, at the same length: the first line keeps its opening delimiter and
+/// ends in a `$` or a letter, as the placeholder, and the other characters
+/// become letters.
+fn mask(source: &str, hits: &[Hit]) -> String {
+    let mut edits = Vec::new();
+    for hit in hits {
+        for (line, span) in spans(source, hit).into_iter().enumerate() {
+            let text = &source[span.clone()];
+            let first = line == 0;
+            let opening = if text.starts_with("$$") || text.starts_with('\\') {
+                2
+            } else {
+                1
+            };
+            let mut masked = String::with_capacity(text.len());
+            for (offset, c) in text.char_indices() {
+                if first && offset < opening {
+                    masked.push(c);
+                } else {
+                    masked.extend(std::iter::repeat_n('x', c.len_utf8()));
+                }
+            }
+            if first && !ends_in_word(text) && masked.ends_with('x') {
+                masked.pop();
+                masked.push('$');
+            }
+            edits.push((span, masked));
+        }
+    }
+    apply(source, edits)
+}
+
+/// How many times the expressions are found again with the ones found
+/// before masked. They settle after one more parse unless an expression
+/// found hides the delimiters of another.
+const ROUNDS: usize = 4;
+
+/// The source with each LaTeX expression replaced by a placeholder, and the
+/// expressions; `None` when it has none.
+pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Math>)> {
+    if !(source.contains('$') || source.contains("\\(") || source.contains("\\["))
+        || source.contains([START, END, CONTINUATION])
+    {
+        return None;
+    }
+    let mut hits = find(source, source, options);
+    for _ in 0..ROUNDS {
+        if hits.is_empty() {
+            return None;
+        }
+        let next = find(source, &mask(source, &hits), options);
+        if next == hits {
+            break;
+        }
+        hits = next;
+    }
+    if hits.is_empty() {
+        return None;
+    }
+
+    let maths = hits
+        .iter()
+        .map(|hit| {
+            let text = strip_prefixes(source, hit.text.clone(), &hit.containers);
+            Math {
+                raw: strip_prefixes(source, hit.raw.clone(), &hit.containers),
+                // pi trims a complete display block's text.
+                text: if hit.display && !hit.pending {
+                    text.trim_matches(is_js_whitespace).to_owned()
+                } else {
+                    text
+                },
+                display: hit.display,
+                pending: hit.pending,
+            }
+        })
+        .collect();
+    // Each expression's first line becomes its placeholder and its other
+    // lines a continuation mark.
+    let mut edits = Vec::new();
+    for (index, hit) in hits.iter().enumerate() {
+        for (line, span) in spans(source, hit).into_iter().enumerate() {
+            let replacement = if line == 0 {
+                placeholder(index, ends_in_word(&source[span.clone()]))
+            } else {
+                CONTINUATION.to_string()
+            };
+            edits.push((span, replacement));
+        }
+    }
+    Some((apply(source, edits), maths))
 }
