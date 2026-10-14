@@ -21,7 +21,7 @@ use yapi_types::sync::lock;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tokio::io::AsyncBufReadExt;
-use yapi_core::agent_session::{AgentSession, InputSource, UserBash};
+use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, UserBash};
 use yapi_types::message::Message;
 use yapi_types::rpc::{
     self, CommandSource, ContextUsage, ExtensionUiResponse, ForkMessage, RpcCommand, SessionState,
@@ -458,9 +458,12 @@ async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
         let result = session
             .prompt_with(
                 &message,
-                images,
-                streaming_behavior,
-                InputSource::Rpc,
+                PromptOptions {
+                    streaming_behavior,
+                    images,
+                    source: InputSource::Rpc,
+                    ..PromptOptions::default()
+                },
                 |disposition| {
                     started.set(true);
                     let reply =
