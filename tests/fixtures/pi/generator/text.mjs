@@ -105,6 +105,10 @@ x^2
 	latexTablePipe: "| $a|b$ |\n|---|\n| c |",
 	latexTableEscape: "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
 	latexTableStart: "$$a|b$$\n|---|---|\nafter",
+	latexSetext: "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+	latexSetextUnderline: "$- \n*\n- ",
+	latexHeadingClose: "# $x- #",
+	latexItems: "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
 };
 const markdown = [];
 for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {

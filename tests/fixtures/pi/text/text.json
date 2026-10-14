@@ -4836,6 +4836,418 @@
 			]
 		},
 		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"x²                                      ",
+				"                                        ",
+				"────────────────────────────────────────",
+				"                                        ",
+				"after                                   ",
+				"                                        ",
+				"y                                       ",
+				"                                        ",
+				"Head $z-                                ",
+				"                                        ",
+				"\\[x                                     ",
+				"---                                     "
+			]
+		},
+		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"x²                                      ",
+				"                                        ",
+				"────────────────────────────────────────",
+				"                                        ",
+				"after                                   ",
+				"                                        ",
+				"y                                       ",
+				"                                        ",
+				"Head $z-                                ",
+				"                                        ",
+				"\\[x                                     ",
+				"---                                     "
+			]
+		},
+		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" x²                     ",
+				"                        ",
+				" ────────────────────── ",
+				"                        ",
+				" after                  ",
+				"                        ",
+				" y                      ",
+				"                        ",
+				" Head $z-               ",
+				"                        ",
+				" \\[x                    ",
+				" ---                    "
+			]
+		},
+		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" x²                     ",
+				"                        ",
+				" ────────────────────── ",
+				"                        ",
+				" after                  ",
+				"                        ",
+				" y                      ",
+				"                        ",
+				" Head $z-               ",
+				"                        ",
+				" \\[x                    ",
+				" ---                    "
+			]
+		},
+		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" x²                                                                             ",
+				"                                                                                ",
+				" ────────────────────────────────────────────────────────────────────────────── ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                ",
+				" y                                                                              ",
+				"                                                                                ",
+				" Head $z-                                                                       ",
+				"                                                                                ",
+				" \\[x                                                                            ",
+				" ---                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexSetext",
+			"text": "$$\nx^2\n$$\n---\nafter\n\n$$y$$\nHead $z-\n===\n\n\\[x\n---",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" x²                                                                             ",
+				"                                                                                ",
+				" ────────────────────────────────────────────────────────────────────────────── ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                ",
+				" y                                                                              ",
+				"                                                                                ",
+				" Head $z-                                                                       ",
+				"                                                                                ",
+				" \\[x                                                                            ",
+				" ---                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"$-                                      ",
+				"*                                       "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"$-                                      ",
+				"*                                       "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" $-                     ",
+				" *                      "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" $-                     ",
+				" *                      "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" $-                                                                             ",
+				" *                                                                              ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexSetextUnderline",
+			"text": "$- \n*\n- ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" $-                                                                             ",
+				" *                                                                              ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"$x-                                     "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"$x-                                     "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" $x-                    "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" $x-                    "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" $x-                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexHeadingClose",
+			"text": "# $x- #",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" $x-                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- h                                     ",
+				"  b x c                                 ",
+				"- e                                     ",
+				"                                        ",
+				"1. \\[HOME                               ",
+				"                                        ",
+				"\\alpha1.                                ",
+				"                                        ",
+				"- \\[y                                   ",
+				"                                        ",
+				"- d                                     "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- h                                     ",
+				"  b x c                                 ",
+				"- e                                     ",
+				"                                        ",
+				"1. \\[HOME                               ",
+				"                                        ",
+				"\\alpha1.                                ",
+				"                                        ",
+				"- \\[y                                   ",
+				"                                        ",
+				"- d                                     "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - h                    ",
+				"   b x c                ",
+				" - e                    ",
+				"                        ",
+				" 1. \\[HOME              ",
+				"                        ",
+				" \\alpha1.               ",
+				"                        ",
+				" - \\[y                  ",
+				"                        ",
+				" - d                    "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - h                    ",
+				"   b x c                ",
+				" - e                    ",
+				"                        ",
+				" 1. \\[HOME              ",
+				"                        ",
+				" \\alpha1.               ",
+				"                        ",
+				" - \\[y                  ",
+				"                        ",
+				" - d                    "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - h                                                                            ",
+				"   b x c                                                                        ",
+				" - e                                                                            ",
+				"                                                                                ",
+				" 1. \\[HOME                                                                      ",
+				"                                                                                ",
+				" \\alpha1.                                                                       ",
+				"                                                                                ",
+				" - \\[y                                                                          ",
+				"                                                                                ",
+				" - d                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexItems",
+			"text": "- # h\n  b $x$ c\n- e\n\n1. \\[HOME\n\n\\alpha1.\n\n- \\[y\n\n- d",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - h                                                                            ",
+				"   b x c                                                                        ",
+				" - e                                                                            ",
+				"                                                                                ",
+				" 1. \\[HOME                                                                      ",
+				"                                                                                ",
+				" \\alpha1.                                                                       ",
+				"                                                                                ",
+				" - \\[y                                                                          ",
+				"                                                                                ",
+				" - d                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "links",
 			"text": "See [the docs](https://example.com/docs) and <https://example.com> or mail <me@example.com>.",
 			"width": 40,

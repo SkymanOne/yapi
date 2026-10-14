@@ -424,6 +424,23 @@ fn children_end(events: &[(Event<'_>, Range<usize>)], index: usize) -> usize {
     end
 }
 
+/// The end of the run of inline events from `events[index]`, which is a
+/// tight list item's text, and the index of its last event.
+fn run_end(events: &[(Event<'_>, Range<usize>)], index: usize) -> (usize, usize) {
+    let mut depth = 0usize;
+    let mut last = index;
+    for (offset, (event, _)) in events[index..].iter().enumerate() {
+        match event {
+            Event::Start(_) if super::is_inline(event) => depth += 1,
+            Event::End(_) if depth > 0 => depth -= 1,
+            _ if super::is_inline(event) => {}
+            _ => break,
+        }
+        last = index + offset;
+    }
+    (events[last].1.end, last)
+}
+
 /// The expressions in `source`, found where `parsed` has text. `parsed` is
 /// the source with the expressions found before masked by [`mask`].
 fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
@@ -433,10 +450,13 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
     let trimmed_end = |end: usize| source[..end].trim_end_matches(['\n', '\r']).len();
 
     let mut candidates = Vec::new();
-    // Block containers with the end of each, and inline containers' ends,
-    // innermost last.
+    // Block containers with the end of their content, and inline containers'
+    // ends, innermost last.
     let mut containers: Vec<(Container, usize)> = Vec::new();
-    let mut limits: Vec<usize> = Vec::new();
+    // `None` for a tight list item, whose text is each run of inline events
+    // in it.
+    let mut limits: Vec<Option<usize>> = Vec::new();
+    let mut run: Option<(usize, usize)> = None;
     // Inside an image or an autolink, whose text marked does not lex.
     let mut opaque = 0usize;
     // Whether each open link is an autolink.
@@ -445,28 +465,26 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
     // them.
     let mut urls: Vec<Range<usize>> = Vec::new();
     let mut line_start = false;
+    // Only the first line of a setext heading can be a display block, as
+    // marked lexes the heading's lines together.
+    let mut in_heading = false;
     let mut in_cell = false;
     for (index, (event, range)) in events.iter().enumerate() {
         let starts_line = std::mem::take(&mut line_start);
         match event {
-            Event::Start(Tag::BlockQuote(_)) => containers.push((Container::Quote, range.end)),
+            Event::Start(Tag::BlockQuote(_)) => {
+                containers.push((Container::Quote, source[..range.end].trim_end().len()));
+            }
             Event::Start(Tag::Item) => {
                 let outer: Vec<Container> =
                     containers.iter().map(|(container, _)| *container).collect();
                 let indent = item_indent(source, range.start, &outer);
-                containers.push((Container::Item(indent), range.end));
+                containers.push((
+                    Container::Item(indent),
+                    source[..range.end].trim_end().len(),
+                ));
                 line_start = true;
-                // A tight item's text is one inline run.
-                let end = events[index + 1..]
-                    .iter()
-                    .take_while(|(event, _)| {
-                        super::is_inline(event) || matches!(event, Event::End(_))
-                    })
-                    .map(|(_, range)| range.end)
-                    .filter(|end| *end <= range.end)
-                    .last()
-                    .unwrap_or(range.start);
-                limits.push(trimmed_end(end));
+                limits.push(None);
             }
             Event::End(TagEnd::BlockQuote(_)) => {
                 containers.pop();
@@ -477,23 +495,29 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
             }
             Event::Start(Tag::Paragraph) => {
                 line_start = true;
-                limits.push(trimmed_end(range.end));
+                limits.push(Some(trimmed_end(range.end)));
             }
-            Event::Start(Tag::Heading { .. }) => limits.push(trimmed_end(range.end)),
+            Event::Start(Tag::Heading { .. }) => {
+                in_heading = true;
+                line_start = !parsed[range.clone()].trim_start().starts_with('#');
+                // Not a setext heading's underline, or an ATX heading's
+                // closing sequence.
+                limits.push(Some(children_end(&events, index)));
+            }
             // A display block at the start of a table preempts it.
             Event::Start(Tag::TableHead) => line_start = true,
             Event::Start(Tag::TableCell) => {
                 // The header's first cell starts the table's line.
                 line_start = starts_line;
                 in_cell = true;
-                limits.push(source[..range.end].trim_end().len());
+                limits.push(Some(source[..range.end].trim_end().len()));
             }
-            Event::Start(Tag::Emphasis) => limits.push(range.end - 1),
-            Event::Start(Tag::Strong) => limits.push(range.end - 2),
+            Event::Start(Tag::Emphasis) => limits.push(Some(range.end - 1)),
+            Event::Start(Tag::Strong) => limits.push(Some(range.end - 2)),
             Event::Start(Tag::Strikethrough) => {
                 let tildes = parsed[range.clone()].len()
                     - parsed[range.clone()].trim_start_matches('~').len();
-                limits.push(range.end - tildes);
+                limits.push(Some(range.end - tildes));
             }
             Event::Start(Tag::Link {
                 link_type: LinkType::Autolink | LinkType::Email,
@@ -504,7 +528,7 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
             }
             Event::Start(Tag::Image { .. } | Tag::CodeBlock(_)) => opaque += 1,
             Event::Start(Tag::Link { .. }) => {
-                limits.push(children_end(&events, index));
+                limits.push(Some(children_end(&events, index)));
                 links.push(false);
             }
             Event::End(TagEnd::Link) => {
@@ -515,23 +539,31 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                 }
             }
             Event::End(TagEnd::Image | TagEnd::CodeBlock) => opaque -= 1,
+            Event::End(TagEnd::Heading(_)) => {
+                in_heading = false;
+                limits.pop();
+            }
             Event::End(TagEnd::TableCell) => {
                 in_cell = false;
                 limits.pop();
             }
             Event::End(
-                TagEnd::Paragraph
-                | TagEnd::Heading(_)
-                | TagEnd::Emphasis
-                | TagEnd::Strong
-                | TagEnd::Strikethrough,
+                TagEnd::Paragraph | TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough,
             ) => {
                 limits.pop();
             }
-            Event::SoftBreak | Event::HardBreak => line_start = true,
+            Event::SoftBreak | Event::HardBreak => line_start = !in_heading,
             Event::Text(text) if opaque == 0 => {
-                let Some(&limit) = limits.last() else {
-                    continue;
+                let limit = match limits.last() {
+                    Some(&Some(limit)) => limit,
+                    Some(None) => {
+                        if run.is_none_or(|(_, last)| index > last) {
+                            let (end, last) = run_end(&events, index);
+                            run = Some((trimmed_end(end), last));
+                        }
+                        run.map_or(range.end, |(end, _)| end)
+                    }
+                    None => continue,
                 };
                 let block_containers: Vec<Container> =
                     containers.iter().map(|(container, _)| *container).collect();
@@ -562,7 +594,10 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                         &source[line..at][prefix_len(&source[line..at], &block_containers)..];
                     let first = matches!(
                         events.get(index.wrapping_sub(1)),
-                        Some((Event::Start(Tag::Paragraph | Tag::Item), _))
+                        Some((
+                            Event::Start(Tag::Paragraph | Tag::Item | Tag::Heading { .. }),
+                            _
+                        ))
                     );
                     if first || (lead.len() <= 3 && lead.bytes().all(|byte| byte == b' ')) {
                         candidates.push(Candidate {

@@ -431,6 +431,7 @@ impl<'a> Builder<'a> {
                 break;
             }
             let mut block_end = range.end;
+            let mut underline = "";
             let block = if is_inline(&event) {
                 let mut inlines = Vec::new();
                 self.inline(event, range, &mut inlines);
@@ -451,6 +452,12 @@ impl<'a> Builder<'a> {
                     }
                     Event::Start(Tag::Heading { level, .. }) => {
                         let depth = level as u8;
+                        underline = self.source[range.clone()]
+                            .trim_end()
+                            .rsplit('\n')
+                            .next()
+                            .unwrap_or_default()
+                            .trim();
                         Some(Block::Heading(depth, self.inlines(TagEnd::Heading(level))))
                     }
                     Event::Start(Tag::CodeBlock(kind)) => {
@@ -496,7 +503,14 @@ impl<'a> Builder<'a> {
                 }
             };
             if let Some(block) = block {
-                let blocks = split_paragraph(block);
+                let blocks = match block {
+                    Block::Heading(depth, inlines)
+                        if matches!(inlines.first(), Some(Inline::Split(_))) =>
+                    {
+                        split_heading(depth, inlines, underline)
+                    }
+                    block => split_paragraph(block),
+                };
                 let count = blocks.len();
                 out.extend(blocks.into_iter().enumerate().map(|(index, block)| Spaced {
                     block,
@@ -580,6 +594,26 @@ fn split_paragraph(block: Block) -> Vec<Block> {
     }
     if !current.is_empty() {
         blocks.push(paragraph(current));
+    }
+    blocks
+}
+
+/// marked's blocks for a setext heading whose first line is a display block,
+/// which marked lexes before the heading: the block, then the rest of the
+/// heading, or else its underline, as a rule or as text.
+fn split_heading(depth: u8, inlines: Vec<Inline>, underline: &str) -> Vec<Block> {
+    let mut blocks = split_paragraph(Block::Paragraph(inlines));
+    match blocks.pop() {
+        Some(Block::Paragraph(rest)) => blocks.push(Block::Heading(depth, rest)),
+        Some(block) => {
+            blocks.push(block);
+            blocks.push(if underline.starts_with('-') && underline.len() >= 3 {
+                Block::Rule
+            } else {
+                Block::Paragraph(vec![Inline::Text(underline.to_owned())])
+            });
+        }
+        None => {}
     }
     blocks
 }
