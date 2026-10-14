@@ -1101,6 +1101,11 @@ enum LowerStyle {
     Script,
 }
 
+/// How deep groups, arguments and environments may nest. pi recurses until
+/// the JavaScript stack overflows, and then shows the source as written. The
+/// bound keeps model text from overflowing the thread's stack.
+const MAX_DEPTH: usize = 128;
+
 struct LatexParser<'a> {
     source: Vec<char>,
     layout_nodes: &'a mut Vec<LayoutNode>,
@@ -1109,6 +1114,8 @@ struct LatexParser<'a> {
     supported: bool,
     stack_fractions: bool,
     script_depth: usize,
+    /// Nesting depth, shared with the parsers of nested sources.
+    depth: usize,
 }
 
 impl<'a> LatexParser<'a> {
@@ -1121,7 +1128,22 @@ impl<'a> LatexParser<'a> {
             supported: true,
             stack_fractions: true,
             script_depth: 0,
+            depth: 0,
         }
+    }
+
+    /// Runs `parse` one level deeper. Past [`MAX_DEPTH`] the source is
+    /// unsupported and the rest of it is skipped.
+    fn deeper<T: Default>(&mut self, parse: impl FnOnce(&mut Self) -> T) -> T {
+        if self.depth >= MAX_DEPTH {
+            self.supported = false;
+            self.position = self.source.len();
+            return T::default();
+        }
+        self.depth += 1;
+        let value = parse(self);
+        self.depth -= 1;
+        value
     }
 
     /// `this.source[index]`.
@@ -1159,7 +1181,7 @@ impl<'a> LatexParser<'a> {
 
             if character == '{' {
                 self.position += 1;
-                result.push_str(&self.parse_sequence(Some('}')));
+                result.push_str(&self.deeper(|parser| parser.parse_sequence(Some('}'))));
                 continue;
             }
 
@@ -1608,6 +1630,10 @@ impl<'a> LatexParser<'a> {
     }
 
     fn parse_required_argument_value(&mut self) -> String {
+        self.deeper(Self::parse_argument)
+    }
+
+    fn parse_argument(&mut self) -> String {
         self.skip_while(is_space);
         if self.position >= self.source.len() {
             self.supported = false;
@@ -1948,7 +1974,11 @@ impl<'a> LatexParser<'a> {
 
     fn render_nested(&mut self, source: &str, stack_fractions: bool) -> String {
         let display = self.display && stack_fractions;
-        let rendered = LatexParser::new(source, &mut *self.layout_nodes, display).render();
+        let rendered = self.deeper(|parser| {
+            let mut nested = LatexParser::new(source, &mut *parser.layout_nodes, display);
+            nested.depth = parser.depth;
+            nested.render()
+        });
         match rendered {
             Some(rendered) => rendered,
             None => {
@@ -2002,6 +2032,10 @@ fn starts_with_condition_word(condition: &str) -> bool {
 /// result may span several lines. Returns `None` when the expression contains
 /// unsupported or malformed syntax.
 pub fn render_latex(source: &str, display: bool) -> Option<String> {
+    // pi's own markers, which in the source could point a layout at itself.
+    if source.contains(|c| ('\u{f0000}'..='\u{f0005}').contains(&c)) {
+        return None;
+    }
     let mut layout_nodes: Vec<LayoutNode> = Vec::new();
     let rendered = LatexParser::new(source, &mut layout_nodes, display).render()?;
     if layout_nodes.is_empty() {
@@ -2667,5 +2701,44 @@ R\left(\frac{\pi}{4}\right)
         check_none("x}", false);
         check_none(r#"\begin{matrix}1 & 2"#, false);
         check_none(r#"x\"#, false);
+    }
+
+    #[test]
+    fn deep_nesting_is_unsupported_without_overflowing_the_stack() {
+        check(
+            &format!("{}x{}", "{".repeat(100), "}".repeat(100)),
+            false,
+            "x",
+        );
+        let fractions = format!("{}x{}", r"\frac{".repeat(60), "}{y}".repeat(60));
+        assert!(render_latex(&fractions, true).is_some());
+        for display in [false, true] {
+            check_none(
+                &format!("{}x{}", "{".repeat(5000), "}".repeat(5000)),
+                display,
+            );
+            check_none(&"{".repeat(100_000), display);
+            check_none(
+                &format!("{}x{}", r"\frac{".repeat(2000), "}{y}".repeat(2000)),
+                display,
+            );
+            check_none(&format!("{}x", r"\sqrt".repeat(5000)), display);
+            check_none(&format!("{}x", r"\not".repeat(5000)), display);
+            check_none(
+                &format!("x{}y{}", "^{".repeat(5000), "}".repeat(5000)),
+                display,
+            );
+            check_none(
+                &format!("{}x{}", r"\sum_{".repeat(5000), "}".repeat(5000)),
+                display,
+            );
+        }
+    }
+
+    #[test]
+    fn layout_markers_in_the_source_are_unsupported() {
+        check_none("\\frac{\u{f0000}0\u{f0001}}{2}", true);
+        check_none("\\frac{\u{f0000}1\u{f0001}}{2}\\frac{a}{b}", true);
+        check_none("x\u{f0002}y", false);
     }
 }
