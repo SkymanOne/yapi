@@ -214,6 +214,7 @@ pub(crate) fn transcript(
 ) -> Value {
     let (kind, key) = match payload["kind"].as_str() {
         Some("message") => ("message", &payload["key"]),
+        Some("entry") => ("entry", &payload["key"]),
         Some("toolCall") => ("toolCall", &payload["toolCallId"]),
         _ => ("toolResult", &payload["toolCallId"]),
     };

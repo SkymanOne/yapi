@@ -1418,6 +1418,7 @@ impl super::App {
         self.style_alt_screen();
         // What extensions drew is in the old theme's colors.
         self.forget_answers();
+        self.redraw_custom();
     }
 
     /// Applies a `/settings` change and saves it, as pi's callbacks do.

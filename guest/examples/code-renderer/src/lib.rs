@@ -1,6 +1,7 @@
 //! An example native extension: a code renderer, yapi's own API, that colors
 //! Rust keywords in code blocks and code tool rows with the theme's keyword
-//! color, and leaves other languages to yapi.
+//! color, and leaves other languages to yapi. A Markdown transformer makes
+//! each `TODO` in messages bold.
 
 use yapi_extension_api::{Api, theme};
 
@@ -33,6 +34,11 @@ fn color_keywords(line: &str, paint: impl Fn(&str) -> String) -> String {
 }
 
 fn init(api: &mut Api) {
+    api.register_markdown_transformer(|markdown, _context| {
+        markdown
+            .contains("TODO")
+            .then(|| markdown.replace("TODO", "**TODO**"))
+    });
     api.register_code_renderer(|code, lang, _width| {
         if lang != Some("rust") {
             return None;

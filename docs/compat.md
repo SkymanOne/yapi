@@ -50,6 +50,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Time zones | Node's own time zone data | The system's time zone database. With `TZ` set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless `TZ` holds a POSIX rule such as `EST5EDT`. |
 | Links | A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written. | A click opens only `http`, `https` and `mailto` links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command. |
 | Syntax highlighting | Highlights code in messages and tool rows | Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with [`pi.yapi.registerCodeRenderer`](extensions.md#code-renderers). |
+| Markdown transformers | Change a message's Markdown before it shows | A message shows as written in its first frame, and each change while it streams shows transformed one frame late. |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |
 
 ## Open gaps
@@ -58,7 +59,6 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
-| Entry renderers and markdown transformers | `registerEntryRenderer` and `registerMarkdownTransformer` change how entries and markdown render | Recorded but unused. | [#30](https://github.com/SkymanOne/yapi/issues/30) |
 | Images in the terminal | Inline images, with the "Show images" and "Image width" settings | Not shown. | [#34](https://github.com/SkymanOne/yapi/issues/34) |
 | Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
 | `newSession` setup | `setup` gets the new session's writable session manager before its extensions start | `setup` runs after the new session's `session_start` and gets the read-only session manager. | [#67](https://github.com/SkymanOne/yapi/issues/67) |

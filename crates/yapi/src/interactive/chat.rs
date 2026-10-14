@@ -51,19 +51,35 @@ pub struct RenderContext<'a> {
     pub mermaid: MermaidMode,
     /// The item is the message that is streaming.
     pub streaming: bool,
+    /// What the extensions' Markdown transformers made of the item's
+    /// text, when some extension transforms Markdown.
+    pub transforms: Option<&'a super::deferred::ItemAnswers>,
 }
 
 /// Who wrote a message's Markdown, for pi's transformers.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MessageKind {
     User,
     Assistant,
     Thinking,
 }
 
+impl MessageKind {
+    /// pi's `messageType`.
+    pub fn name(self) -> &'static str {
+        match self {
+            MessageKind::User => "user",
+            MessageKind::Assistant => "assistant",
+            MessageKind::Thinking => "assistant-thinking",
+        }
+    }
+}
+
 /// pi's `createMarkdownTransform`: `text` as the Markdown transformers leave
-/// it, for content `width` columns wide. The Mermaid transformer draws
-/// diagrams when the setting allows, never in thinking.
+/// it, for content `width` columns wide. The Mermaid transformer comes
+/// first, drawing diagrams when the setting allows and never in thinking,
+/// then the extensions' transformers, whose result shows once they answer.
+/// Until then, text that grew shows what they made of it before.
 pub fn transform<'t>(
     text: &'t str,
     kind: MessageKind,
@@ -75,10 +91,17 @@ pub fn transform<'t>(
         MermaidMode::Final => !ctx.streaming,
         MermaidMode::Streaming => true,
     };
-    if !draws || kind == MessageKind::Thinking {
-        return text.into();
+    let text: std::borrow::Cow<'t, str> = if draws && kind != MessageKind::Thinking {
+        yapi_tui::mermaid::transform(text, width, ctx.streaming, Some(ctx.theme)).into()
+    } else {
+        text.into()
+    };
+    match ctx.transforms {
+        Some(answers) => answers
+            .transformed(&text, width, kind, ctx.streaming)
+            .map_or(text, std::borrow::Cow::Owned),
+        None => text,
     }
-    yapi_tui::mermaid::transform(text, width, ctx.streaming, Some(ctx.theme)).into()
 }
 
 /// What a left click on part of an item toggles, as pi's `MouseRegion`s do.
@@ -154,11 +177,20 @@ pub enum Item {
     Custom(Box<CustomView>),
 }
 
+/// What an extension adds to the transcript.
+pub enum Custom {
+    /// A custom message.
+    Message(yapi_types::message::CustomMessage),
+    /// A custom entry, which shows only what its renderer draws.
+    Entry(yapi_types::session::CustomEntry),
+}
+
 /// pi's `CustomMessageComponent`: the message in a labelled box, or the
-/// component an extension's message renderer built.
+/// component an extension's message renderer built; and pi's
+/// `CustomEntryComponent`, the component an entry renderer built.
 pub struct CustomView {
-    /// The message.
-    pub message: yapi_types::message::CustomMessage,
+    /// The message or entry.
+    pub custom: Custom,
     /// What identifies it to the extension.
     pub key: String,
     /// The extension that draws it, when one does.
@@ -177,9 +209,12 @@ impl CustomView {
             out.extend(view.render(width).0);
             return out;
         }
+        let Custom::Message(message) = &self.custom else {
+            return Vec::new();
+        };
         out.extend(labelled_box(
-            format!("[{}]", self.message.custom_type),
-            custom_markdown(&self.message.content.text("\n"), width, ctx),
+            format!("[{}]", message.custom_type),
+            custom_markdown(&message.content.text("\n"), width, ctx),
             width,
             theme,
         ));
@@ -571,6 +606,7 @@ mod tests {
             hyperlinks: false,
             mermaid: MermaidMode::Streaming,
             streaming: true,
+            transforms: None,
         };
         let source = "```mermaid\nflowchart LR\n  A --> B\n```";
         let drawn = |ctx: &RenderContext<'_>, kind| transform(source, kind, 80, ctx) != source;

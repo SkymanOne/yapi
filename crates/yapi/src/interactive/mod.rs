@@ -591,6 +591,8 @@ struct App {
     /// The current session's extensions wait to start, with why it replaced
     /// another session, if it did.
     binding: Option<Option<Replaced>>,
+    /// The session's extensions have started, so they draw.
+    bound: bool,
     /// Whether the session is shutting down for a replacement being built.
     replacing: bool,
     /// What to show once the replacement session's extensions have started.
@@ -790,6 +792,7 @@ impl App {
             hyperlinks: self.hyperlinks,
             mermaid: self.mermaid,
             streaming: false,
+            transforms: None,
         }
     }
 
@@ -886,6 +889,21 @@ impl App {
         self.answers.clear();
         self.streaming = None;
         self.tool_items.clear();
+    }
+
+    /// Inserts `item` at `index`; the indices of later items shift up.
+    fn insert_item(&mut self, index: usize, item: Item) {
+        self.chat.insert(index, item);
+        self.cache.insert(index, None);
+        self.toggles.insert(index, Toggles::default());
+        self.answers.insert(index, deferred::ItemAnswers::default());
+        let shift = |item: usize| if item >= index { item + 1 } else { item };
+        for item in self.tool_items.values_mut() {
+            *item = shift(*item);
+        }
+        self.streaming = self.streaming.map(shift);
+        // The flattened rows lack the new item.
+        self.flat_key = None;
     }
 
     /// Removes the item at `index`; the indices of later items shift down.
@@ -1086,6 +1104,10 @@ impl App {
         for shown in self.shown_history(in_place) {
             let message = match shown {
                 cache_notices::Shown::Message(message) => *message,
+                cache_notices::Shown::Entry(entry) => {
+                    self.push_entry(*entry);
+                    continue;
+                }
                 cache_notices::Shown::Notice(text, style) => {
                     self.note(text, style);
                     continue;
@@ -1367,9 +1389,14 @@ impl App {
                 ctx.streaming = self.streaming == Some(index);
                 // Without drawers, nothing is asked.
                 let answers = self.drawers.any().then(|| &self.answers[index]);
-                let markdown = answers.map(|answers| self.item_markdown(answers));
-                if let (Some(answers), Some(markdown)) = (answers, &markdown) {
+                let markdown = answers
+                    .filter(|_| !self.drawers.code.is_empty())
+                    .map(|answers| self.item_markdown(answers));
+                if let Some(markdown) = &markdown {
                     ctx.markdown = markdown;
+                }
+                ctx.transforms = answers.filter(|_| !self.drawers.markdown.is_empty());
+                if let Some(answers) = answers {
                     answers.begin();
                 }
                 let mut hits = Vec::new();
@@ -1953,6 +1980,9 @@ impl App {
     fn on_agent_event(&mut self, event: AgentEvent) {
         match event {
             AgentEvent::AgentStart => self.running = true,
+            AgentEvent::EntryAppended {
+                entry: yapi_types::session::FileEntry::Custom(entry),
+            } => self.push_entry(entry),
             // pi replaces any other indicator, such as a retry countdown.
             AgentEvent::TurnStart => {
                 self.show_progress(true);
@@ -3545,6 +3575,7 @@ impl App {
         // `withSession` failed, are not this one's.
         self.on_bound.clear();
         self.epoch += 1;
+        self.bound = false;
         self.session = session;
         subscribe(&self.session, &self.tx, self.epoch);
         self.reset_extension_ui();
@@ -4443,6 +4474,7 @@ impl App {
             model_network: options.model_network,
             next_refresh: 0,
             binding: None,
+            bound: false,
             replacing: false,
             on_bound: Vec::new(),
             overlay: None,
@@ -4651,6 +4683,7 @@ impl App {
             // waiting on them hears of it.
             Event::Bound(epoch, reply) if epoch != self.epoch => answer(reply, Ok(false)),
             Event::Bound(_, reply) => {
+                self.bound = true;
                 // A session change an extension command asked for is
                 // reported once the command's own work on the replacement
                 // is done; others at once.
@@ -4661,10 +4694,7 @@ impl App {
                 // Extensions may have added skills, prompt templates and themes.
                 self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
                 self.drawer_errors.clear();
-                self.drawers = deferred::Drawers {
-                    code: self.session.code_renderers(),
-                };
-                self.forget_answers();
+                self.take_drawers();
                 self.share_themes();
                 self.install_autocomplete();
                 // Items shown before the extensions started get their components.
@@ -5362,6 +5392,59 @@ mod tests {
         assert_eq!(renderer.calls(), 3);
     }
 
+    /// A Markdown transformer that upper-cases the text.
+    struct Upper;
+
+    impl yapi_core::extensions::Extension for Upper {
+        fn source(&self) -> yapi_types::rpc::SourceInfo {
+            yapi_types::rpc::SourceInfo {
+                path: "upper".into(),
+                source: "cli".into(),
+                scope: "temporary".into(),
+                origin: "top-level".into(),
+                base_dir: None,
+            }
+        }
+
+        fn renderers(&self) -> yapi_core::extensions::Renderers {
+            yapi_core::extensions::Renderers {
+                markdown: true,
+                ..Default::default()
+            }
+        }
+
+        fn transform_markdown<'a>(
+            &'a self,
+            request: &'a Value,
+        ) -> futures_util::future::BoxFuture<'a, Result<Option<String>, String>> {
+            let markdown = request["markdown"]
+                .as_str()
+                .unwrap_or_default()
+                .to_uppercase();
+            Box::pin(async move { Ok(Some(markdown)) })
+        }
+    }
+
+    /// Message text that grows keeps what the transformers made of it until
+    /// they answer for the new text, and so does text that stops streaming.
+    #[tokio::test]
+    async fn growing_text_keeps_its_transformed_markdown_until_answered() {
+        let (mut app, mut events) = app_drawn_by(vec![Arc::new(Upper)]);
+        app.push(Item::User("hello".into()));
+        assert!(trimmed_rows(&mut app).contains(&"hello".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"HELLO".to_owned()));
+        app.chat[0] = Item::User("hello world".into());
+        app.touch(0);
+        assert!(trimmed_rows(&mut app).contains(&"HELLO".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"HELLO WORLD".to_owned()));
+        // Text that does not continue the answered text shows as written.
+        app.chat[0] = Item::User("bye".into());
+        app.touch(0);
+        assert!(trimmed_rows(&mut app).contains(&"bye".to_owned()));
+    }
+
     /// A theme change and a restarted extension runtime forget what the
     /// renderers drew, and the code is asked again.
     #[tokio::test]
@@ -5605,6 +5688,8 @@ mod tests {
         session
             .bind_extensions(Arc::new(ui), Mode::Tui, None, None)
             .await;
+        // As `Event::Bound` marks the extensions started.
+        app.bound = true;
         let note = |text: &str| {
             serde_json::from_value(json!({
                 "customType": "fragile-note", "content": text, "display": true, "timestamp": 1,

@@ -1248,6 +1248,31 @@ impl AgentSession {
         })
     }
 
+    /// The extension that draws custom entries of type `custom_type`.
+    pub fn entry_renderer(&self, custom_type: &str) -> Option<Arc<dyn Extension>> {
+        self.inner
+            .extensions
+            .iter()
+            .find(|extension| {
+                extension
+                    .renderers()
+                    .entries
+                    .iter()
+                    .any(|kind| kind == custom_type)
+            })
+            .cloned()
+    }
+
+    /// The extensions that transform Markdown, in load order.
+    pub fn markdown_transformers(&self) -> Vec<Arc<dyn Extension>> {
+        self.inner
+            .extensions
+            .iter()
+            .filter(|extension| extension.renderers().markdown)
+            .cloned()
+            .collect()
+    }
+
     /// The extensions that render code blocks, in load order.
     pub fn code_renderers(&self) -> Vec<Arc<dyn Extension>> {
         self.inner

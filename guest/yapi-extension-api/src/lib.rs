@@ -216,6 +216,7 @@ type CallRenderer = dyn Fn(&Value, &mut RenderContext) -> Option<Box<dyn Compone
 type ResultRenderer = dyn Fn(&Value, &Value, &mut RenderContext) -> Option<Box<dyn Component>>;
 type MessageRenderer = dyn Fn(&Value, &Value) -> Option<Box<dyn Component>>;
 type CodeRenderer = dyn Fn(&str, Option<&str>, usize) -> Option<Vec<String>>;
+type MarkdownTransformer = dyn Fn(&str, &Value) -> Option<String>;
 
 /// What a tool's renderer draws for; pi's `ToolRenderContext`.
 pub struct RenderContext<'a> {
@@ -358,6 +359,8 @@ pub struct Api {
     flags: Vec<Flag>,
     handlers: Vec<(String, Handler<Value, Option<Value>>)>,
     message_renderers: Vec<(String, Rc<MessageRenderer>)>,
+    entry_renderers: Vec<(String, Rc<MessageRenderer>)>,
+    markdown_transformer: Option<Rc<MarkdownTransformer>>,
     code_renderer: Option<Rc<CodeRenderer>>,
 }
 
@@ -444,6 +447,32 @@ impl Api {
         draws();
     }
 
+    /// pi's `registerEntryRenderer`: the component the transcript shows
+    /// for custom entries of type `custom_type`, from the entry and the
+    /// options `{"expanded"}`, or `None` to show nothing.
+    pub fn register_entry_renderer(
+        &mut self,
+        custom_type: impl Into<String>,
+        render: impl Fn(&Value, &Value) -> Option<Box<dyn Component>> + 'static,
+    ) {
+        self.entry_renderers
+            .push((custom_type.into(), Rc::new(render)));
+        draws();
+    }
+
+    /// pi's `registerMarkdownTransformer`: the Markdown of a user message,
+    /// a response or thinking made into other Markdown before it renders,
+    /// from the text and pi's context `{"messageType", "isStreaming",
+    /// "availableWidth"}`. `None` keeps the text. yapi shows the text as it
+    /// is until the transformer answers.
+    pub fn register_markdown_transformer(
+        &mut self,
+        transform: impl Fn(&str, &Value) -> Option<String> + 'static,
+    ) {
+        self.markdown_transformer = Some(Rc::new(transform));
+        TRANSFORM_MARKDOWN.set(Some(transform_markdown));
+    }
+
     /// yapi's `pi.yapi.registerCodeRenderer`, which pi lacks: the lines
     /// the transcript shows for a code block, from its code, its language
     /// and the width it has, as text with escape sequences, colored with
@@ -496,8 +525,8 @@ impl Api {
             })).collect::<Vec<_>>(),
             "events": events,
             "messageRenderers": self.message_renderers.iter().map(|(name, _)| name).collect::<Vec<_>>(),
-            "entryRenderers": [],
-            "markdownTransformer": false,
+            "entryRenderers": self.entry_renderers.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+            "markdownTransformer": self.markdown_transformer.is_some(),
             "codeRenderer": self.code_renderer.is_some(),
             "providers": [],
             "mcpServers": [],
@@ -737,6 +766,9 @@ fn call(
         "code" => answer(Ok(RENDER_CODE
             .get()
             .map_or(Value::Null, |render| render(&payload)))),
+        "markdown" => answer(Ok(TRANSFORM_MARKDOWN
+            .get()
+            .map_or(Value::Null, |transform| transform(&payload)))),
         "terminalInput" => answer(Ok(input::TERMINAL_INPUT
             .get()
             .map_or(Value::Null, |run| run(&payload)))),
@@ -870,6 +902,24 @@ thread_local! {
     static RENDER_CODE: std::cell::Cell<Option<Draw>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// Answers the `markdown` call once a transformer is registered.
+    static TRANSFORM_MARKDOWN: std::cell::Cell<Option<Draw>> = const { std::cell::Cell::new(None) };
+}
+
+/// The `markdown` call: what the transformer makes of the Markdown, or
+/// `null` to keep it.
+fn transform_markdown(payload: &Value) -> Value {
+    registered(|api| api.markdown_transformer.clone())
+        .and_then(|transform| {
+            transform(
+                payload["markdown"].as_str().unwrap_or_default(),
+                &payload["context"],
+            )
+        })
+        .map_or(Value::Null, Value::String)
+}
+
 /// The `code` call: the lines the code renderer draws, or `null`.
 fn render_code(payload: &Value) -> Value {
     let lines = registered(|api| api.code_renderer.clone()).and_then(|render| {
@@ -884,18 +934,24 @@ fn render_code(payload: &Value) -> Value {
 
 /// The `component` call: what a registered renderer draws.
 fn component(payload: &Value) -> Value {
-    if payload["kind"] == "message" {
-        let custom_type = &payload["message"]["customType"];
+    if payload["kind"] == "message" || payload["kind"] == "entry" {
+        let entry = payload["kind"] == "entry";
+        let item = if entry {
+            &payload["entry"]
+        } else {
+            &payload["message"]
+        };
+        let custom_type = &item["customType"];
         let renderer = registered(|api| {
-            let (_, renderer) = api
-                .message_renderers
-                .iter()
-                .find(|(name, _)| custom_type == name)?;
+            let renderers = if entry {
+                &api.entry_renderers
+            } else {
+                &api.message_renderers
+            };
+            let (_, renderer) = renderers.iter().find(|(name, _)| custom_type == name)?;
             Some(renderer.clone())
         });
-        return ui::transcript(payload, |_| {
-            renderer?(&payload["message"], &payload["options"])
-        });
+        return ui::transcript(payload, |_| renderer?(item, &payload["options"]));
     }
     let call = payload["kind"] == "toolCall";
     let name = &payload["name"];

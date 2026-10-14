@@ -359,6 +359,10 @@ pub trait ExtensionUi: Send + Sync {
     /// Components changed and need rendering.
     fn request_render(&self) {}
 
+    /// An extension registered transcript renderers or a Markdown
+    /// transformer after its session started; what draws next uses them.
+    fn renderers_changed(&self) {}
+
     /// Whether tool output is expanded.
     fn tools_expanded(&self) -> bool {
         false

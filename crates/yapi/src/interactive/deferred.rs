@@ -19,6 +19,8 @@ use yapi_core::extensions::Extension;
 use yapi_tui::lines::StyledLine;
 use yapi_tui::markdown::MarkdownTheme;
 
+use super::chat::MessageKind;
+
 /// A question for the extensions.
 pub trait Question: Clone + PartialEq + Send + 'static {
     /// Whether the answer to `earlier`, the slot's previous question, may
@@ -178,21 +180,62 @@ impl Question for CodeQuestion {
     }
 }
 
+/// Message text, the width it renders at, the kind of message and whether
+/// it streams: what pi's Markdown transformers get.
+#[derive(Clone, PartialEq)]
+pub(super) struct MarkdownQuestion {
+    text: String,
+    width: usize,
+    kind: MessageKind,
+    streaming: bool,
+}
+
+impl Question for MarkdownQuestion {
+    /// Text that grows, as a streaming message's does, and the same text
+    /// once it stops streaming or at another width keep what the
+    /// transformers made of it meanwhile.
+    fn continues(&self, earlier: &Self) -> bool {
+        self.kind == earlier.kind && self.text.starts_with(&earlier.text)
+    }
+}
+
 /// What the extensions drew for one transcript item.
 #[derive(Clone, Default)]
 pub(super) struct ItemAnswers {
     code: Deferred<CodeQuestion, Vec<String>>,
+    markdown: Deferred<MarkdownQuestion, String>,
 }
 
 impl ItemAnswers {
     /// Starts a render of the item.
     pub fn begin(&self) {
         self.code.begin();
+        self.markdown.begin();
     }
 
     /// Ends the render. Returns whether questions wait to be asked.
     pub fn end(&self) -> bool {
-        self.code.end()
+        // Both kinds end.
+        let code = self.code.end();
+        self.markdown.end() || code
+    }
+
+    /// What the Markdown transformers made of `text`, a `kind` message's
+    /// text `width` columns wide, or what they made of it before it grew.
+    pub fn transformed(
+        &self,
+        text: &str,
+        width: usize,
+        kind: MessageKind,
+        streaming: bool,
+    ) -> Option<String> {
+        let question = MarkdownQuestion {
+            text: text.to_owned(),
+            width,
+            kind,
+            streaming,
+        };
+        self.markdown.get(&question, |_, markdown| markdown.clone())
     }
 }
 
@@ -201,12 +244,13 @@ impl ItemAnswers {
 #[derive(Clone, Default)]
 pub(super) struct Drawers {
     pub code: Vec<Arc<dyn Extension>>,
+    pub markdown: Vec<Arc<dyn Extension>>,
 }
 
 impl Drawers {
     /// Whether any extension draws part of the transcript.
     pub fn any(&self) -> bool {
-        !self.code.is_empty()
+        !self.code.is_empty() || !self.markdown.is_empty()
     }
 }
 
@@ -215,6 +259,10 @@ type Kind<Q, A> = fn(&ItemAnswers) -> &Deferred<Q, A>;
 
 fn code_answers(answers: &ItemAnswers) -> &Deferred<CodeQuestion, Vec<String>> {
     &answers.code
+}
+
+fn markdown_answers(answers: &ItemAnswers) -> &Deferred<MarkdownQuestion, String> {
+    &answers.markdown
 }
 
 /// An extension's answer, and the errors of those asked before it, by
@@ -299,6 +347,32 @@ impl super::App {
                     (None, errors)
                 })
             });
+            let transformers = self.drawers.markdown.clone();
+            self.ask(&answers.markdown, markdown_answers, move |question| {
+                let transformers = transformers.clone();
+                Box::pin(async move {
+                    let context = json!({
+                        "messageType": question.kind.name(),
+                        "isStreaming": question.streaming,
+                        "availableWidth": question.width,
+                    });
+                    // Each transformer gets what the one before it made, in
+                    // load order, as pi chains them. One that fails or
+                    // returns no string is passed over.
+                    let mut markdown = question.text.clone();
+                    let mut changed = false;
+                    for transformer in transformers {
+                        let request = json!({"markdown": markdown, "context": context});
+                        if let Ok(Some(transformed)) =
+                            transformer.transform_markdown(&request).await
+                        {
+                            changed |= transformed != markdown;
+                            markdown = transformed;
+                        }
+                    }
+                    (changed.then_some(markdown), Vec::new())
+                })
+            });
         }
     }
 
@@ -350,6 +424,16 @@ impl super::App {
             self.touch(index);
         }
         self.asking.push(self.answers[index].clone());
+    }
+
+    /// Takes the session's code renderers and Markdown transformers, which
+    /// draw what comes next, and forgets what the earlier ones drew.
+    pub(super) fn take_drawers(&mut self) {
+        self.drawers = Drawers {
+            code: self.session.code_renderers(),
+            markdown: self.session.markdown_transformers(),
+        };
+        self.forget_answers();
     }
 
     /// Forgets every answer, as when the theme, the extensions or an

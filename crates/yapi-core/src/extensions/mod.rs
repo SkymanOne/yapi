@@ -322,6 +322,10 @@ pub struct Renderers {
     pub tools: std::collections::HashMap<String, ToolRenderers>,
     /// Custom message types it draws (`registerMessageRenderer`).
     pub messages: Vec<String>,
+    /// Custom entry types it draws (`registerEntryRenderer`).
+    pub entries: Vec<String>,
+    /// It transforms Markdown before it renders (`registerMarkdownTransformer`).
+    pub markdown: bool,
     /// It renders code blocks (`pi.yapi.registerCodeRenderer`, yapi's own).
     pub code: bool,
 }
@@ -425,10 +429,22 @@ pub trait Extension: Send + Sync {
 
     /// Builds the component for a transcript item it draws. `request` is
     /// `{"kind": "toolCall" | "toolResult", "name", "toolCallId", "args",
-    /// "result", "options", "context"}` or `{"kind": "message", "key",
-    /// "message", "options"}`. `None` keeps the built-in rendering.
+    /// "result", "options", "context"}`, `{"kind": "message", "key",
+    /// "message", "options"}` or `{"kind": "entry", "key", "entry",
+    /// "options"}`. `None` keeps the built-in rendering, which shows nothing
+    /// for an entry.
     fn component<'a>(&'a self, _request: &'a Value) -> BoxFuture<'a, Option<RemoteComponent>> {
         Box::pin(async { None })
+    }
+
+    /// The Markdown its transformer makes of `request`, `{"markdown",
+    /// "context"}` with pi's `MarkdownTransformContext`. `Ok(None)` keeps
+    /// the Markdown, as when the transformer fails or returns no string.
+    fn transform_markdown<'a>(
+        &'a self,
+        _request: &'a Value,
+    ) -> BoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// The lines its code renderer draws for `request`, `{"code", "lang",

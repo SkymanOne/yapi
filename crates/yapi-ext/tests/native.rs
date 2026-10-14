@@ -114,6 +114,64 @@ async fn code_renderers_color_code() {
         renderers[0].render_code(&request("python")).await.unwrap(),
         None
     );
+    // Its Markdown transformer makes each TODO bold.
+    let transformers = session.markdown_transformers();
+    assert_eq!(transformers.len(), 1);
+    let request =
+        |markdown: &str| json!({"markdown": markdown, "context": {"messageType": "assistant"}});
+    assert_eq!(
+        transformers[0]
+            .transform_markdown(&request("TODO: ship"))
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("**TODO**: ship")
+    );
+    assert_eq!(
+        transformers[0]
+            .transform_markdown(&request("done"))
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+/// The `entry-renderer` example stores a status card with a command and
+/// draws it in a box.
+#[tokio::test(flavor = "multi_thread")]
+async fn entry_renderer_draws_status_cards() {
+    let dir = scratch("entry-renderer");
+    let host = load(&dir, "entry-renderer").await;
+    let session = session(&Faux::new([]), &dir, host.for_session());
+    session
+        .bind_extensions(Arc::new(Terminal::default()), Mode::Tui, None, None)
+        .await;
+    session
+        .prompt("/status-card Disk full", Vec::new())
+        .await
+        .unwrap();
+    let entry = session.with_session(|file| {
+        file.entries()
+            .find_map(|entry| match entry {
+                FileEntry::Custom(entry) => Some(json!(entry)),
+                _ => None,
+            })
+            .unwrap()
+    });
+    assert_eq!(entry["customType"], "status-card");
+    assert_eq!(entry["data"]["message"], "Disk full");
+    let renderer = session.entry_renderer("status-card").unwrap();
+    let request =
+        json!({"kind": "entry", "key": "1", "entry": entry, "options": {"expanded": false}});
+    let drawn = renderer.component(&request).await.unwrap();
+    assert_eq!(
+        plain(&drawn, 22).await,
+        [
+            "                      ",
+            " [status] Disk full   ",
+            "                      "
+        ]
+    );
 }
 
 fn fixture(name: &str) -> std::path::PathBuf {
