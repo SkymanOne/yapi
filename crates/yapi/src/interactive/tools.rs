@@ -1535,6 +1535,93 @@ mod tests {
         );
     }
 
+    /// `read`, `write` and codemode rows draw their code through the code
+    /// renderer, with the language of the file or `javascript`, and cut and
+    /// count what it draws as pi does with its highlighted lines.
+    #[test]
+    fn code_rows_draw_through_the_code_renderer() {
+        use std::sync::{Arc, Mutex};
+        let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let markdown = yapi_tui::markdown::MarkdownTheme {
+            highlight_code: Some(Arc::new({
+                let asked = asked.clone();
+                move |code: &str, lang: Option<&str>, _width: usize| {
+                    asked
+                        .lock()
+                        .unwrap()
+                        .push((code.to_owned(), lang.map(str::to_owned)));
+                    Some(
+                        code.split('\n')
+                            .map(|line| match line {
+                                "" => Line::default(),
+                                line => Line::from(format!("#{line}")),
+                            })
+                            .collect(),
+                    )
+                }
+            })),
+            ..yapi_tui::markdown::MarkdownTheme::default()
+        };
+        let mut ctx = RenderContext {
+            theme: &theme,
+            markdown: &markdown,
+            expanded: true,
+            hide_thinking: false,
+            thinking: &[],
+            output_pad: 1,
+            expand_key: "ctrl+o",
+            cancel_key: "esc",
+            home: None,
+            cwd: Path::new("/work"),
+            agent_dir: Path::new("/agent"),
+            thinking_label: "Thinking...",
+            hyperlinks: false,
+        };
+        let plain = |rows: Vec<StyledLine>| -> Vec<String> {
+            rows.iter()
+                .map(|line| lines::plain(line).trim_end().to_owned())
+                .collect()
+        };
+        let asked = || std::mem::take(&mut *asked.lock().unwrap());
+
+        // `read` draws the whole output, less its trailing blank lines.
+        let mut read = ToolView::new("read", serde_json::json!({"path": "src/main.rs"}));
+        read.result = Some(ToolResult {
+            content: vec![ContentBlock::text("fn a()\n\tb\n\n")],
+            ..ToolResult::default()
+        });
+        assert_eq!(plain(read.result_lines(&ctx, 40)), ["", "#fn a()", "#   b"]);
+        assert_eq!(
+            asked(),
+            [("fn a()\n   b\n\n".to_owned(), Some("rust".to_owned()))]
+        );
+
+        // `write` shows ten drawn lines and counts them all.
+        ctx.expanded = false;
+        let content: Vec<String> = (1..=12).map(|n| format!("x = {n}")).collect();
+        let write = ToolView::new(
+            "write",
+            serde_json::json!({"path": "a.py", "content": content.join("\n")}),
+        );
+        let rows = plain(write.call_lines(&ctx, 80));
+        assert_eq!(rows.len(), 13, "{rows:?}");
+        assert_eq!((rows[2].as_str(), rows[11].as_str()), ("#x = 1", "#x = 10"));
+        assert!(
+            rows[12].starts_with("... (2 more lines, 12 total,"),
+            "{rows:?}"
+        );
+        assert_eq!(asked()[0].1.as_deref(), Some("python"));
+
+        // Codemode scripts are JavaScript.
+        let codemode = ToolView::new("codemode", serde_json::json!({"code": "await read()\n"}));
+        assert_eq!(plain(codemode.call_lines(&ctx, 80))[1], "#await read()");
+        assert_eq!(
+            asked(),
+            [("await read()".to_owned(), Some("javascript".to_owned()))]
+        );
+    }
+
     #[test]
     fn previews_mcp_output_as_pi() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();

@@ -755,6 +755,7 @@ export default function (pi) {
 				facade: highlightCode("fn a() {}", "rust"),
 				replaced: highlightCode("x", "replace"),
 				markdown: getMarkdownTheme().highlightCode("x\ny", "python"),
+				fallback: highlightCode("x", "python"),
 			};
 			return { content: [{ type: "text", text: JSON.stringify(probe) }], details: {} };
 		},
@@ -808,6 +809,8 @@ export default function (pi) {
             "facade": ["\x1b[35mfn\x1b[39m a() {}"],
             "replaced": ["80 columns"],
             "markdown": ["\x1b[32mx\x1b[39m", "\x1b[32my\x1b[39m"],
+            // Without a renderer, pi's code block color.
+            "fallback": ["\x1b[32mx\x1b[39m"],
         })
     );
 }

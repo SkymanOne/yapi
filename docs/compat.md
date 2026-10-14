@@ -49,7 +49,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Word motions in Chinese, Japanese and Thai | By dictionary word | By character, to keep ICU's dictionaries out of the binary. |
 | Time zones | Node's own time zone data | The system's time zone database. With `TZ` set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless `TZ` holds a POSIX rule such as `EST5EDT`. |
 | Links | A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written. | A click opens only `http`, `https` and `mailto` links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command. |
-| Syntax highlighting | Code in messages and tool rows is highlighted | Code shows in one color, to keep memory and install size low. Extensions can color it with [`pi.yapi.registerCodeRenderer`](extensions.md#yapi-only-apis). |
+| Syntax highlighting | Highlights code in messages and tool rows | Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with [`pi.yapi.registerCodeRenderer`](extensions.md#code-renderers). |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |
 
 ## Open gaps

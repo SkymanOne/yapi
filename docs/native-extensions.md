@@ -157,7 +157,7 @@ Commit or publish the built `.wasm` file, not only the Rust sources. yapi never 
 | `Component` | A piece of interface that renders lines for a width and handles keys and mouse events. See [Interface components](#interface-components). |
 | `Context::custom`, `Context::set_widget`, `Context::set_footer`, `Context::set_header`, `Context::set_editor_component` | Show components, as Pi's `ctx.ui` does |
 | `Tool::render_call`, `Tool::render_result`, `Api::register_message_renderer` | Draw tool calls, tool results and custom messages in the transcript |
-| `Api::register_code_renderer` | Draw code in messages and tool rows, yapi's `pi.yapi.registerCodeRenderer`. See [Code renderers](#code-renderers). |
+| `Api::register_code_renderer` | Draw code in messages and tool rows. See [Code renderers](#code-renderers). |
 | `Context::on_terminal_input`, `Context::add_autocomplete_provider`, `editor_text` | See raw keys before the editor does, complete text in the editor, and read the editor's text. See [Terminal input and completion](#terminal-input-and-completion). |
 | `theme`, `request_render`, `parse_key`, `terminal_size`, `editor_focused` | Style text in the session's theme, render components again, name keys, read the terminal's size, and tell whether the prompt editor has the keyboard |
 | `widgets` | pi-tui's widgets, such as `SelectList` and `Editor`, with the `widgets` feature |
@@ -318,7 +318,7 @@ A tool renderer gets a `RenderContext`, with Pi's context fields such as `toolCa
 
 ### Code renderers
 
-`Api::register_code_renderer` draws code, as [`pi.yapi.registerCodeRenderer`](extensions.md#yapi-only-apis) does for Pi extensions. It gets the code, its language when known and the columns it has, and returns lines of text with escape sequences colored with `theme`, or `None` to leave the code in one color. The [`code-renderer`](native-examples.md#code-renderer) example colors Rust keywords.
+`Api::register_code_renderer` is the Rust form of [`pi.yapi.registerCodeRenderer`](extensions.md#code-renderers). It gets the code, its language and the width, and returns styled lines or `None`. The [`code-renderer`](native-examples.md#code-renderer) example colors Rust keywords.
 
 ### Widgets
 

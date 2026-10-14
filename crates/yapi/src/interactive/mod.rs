@@ -201,13 +201,6 @@ enum Event {
     TerminalInput(Vec<String>),
     /// Lines of the extension component with this key, rendered at a width.
     Rendered(u64, (u64, u32), usize, Vec<String>),
-    /// What the code renderers drew for a code block, and the renderers'
-    /// errors by extension path.
-    Code(
-        u64,
-        Box<(CodeQuestion, Option<Vec<String>>)>,
-        Vec<(String, String)>,
-    ),
     /// The extensions of the session with this epoch started, after a
     /// change `Reply` waits on.
     Bound(u64, Reply),
@@ -511,12 +504,11 @@ struct App {
     epoch: u64,
     theme: Theme,
     markdown: MarkdownTheme,
-    /// What the extensions' code renderers drew, by code block.
-    code: deferred::Deferred<CodeQuestion, Option<Vec<String>>>,
-    /// Some extension of the session renders code.
-    code_renderers: bool,
-    /// The code renderers whose errors were shown, by extension path.
-    code_errors: std::collections::HashSet<String>,
+    /// The extensions that draw parts of the transcript.
+    drawers: deferred::Drawers,
+    /// The extensions whose errors drawing the transcript were shown, by
+    /// path.
+    drawer_errors: std::collections::HashSet<String>,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     hyperlinks: bool,
     keys: Keybindings,
@@ -538,6 +530,11 @@ struct App {
     cache: Vec<Option<Rendered>>,
     /// What clicks toggled on each chat item.
     toggles: Vec<Toggles>,
+    /// What the extensions drew for each chat item.
+    answers: Vec<deferred::ItemAnswers>,
+    /// Items rendered with questions for the extensions, asked after the
+    /// frame.
+    asking: Vec<deferred::ItemAnswers>,
     flat: Vec<StyledLine>,
     flat_header: Vec<StyledLine>,
     flat_key: Option<(usize, usize)>,
@@ -640,29 +637,10 @@ fn emit(data: &str) {
     let _ = out.flush();
 }
 
-/// A code block's code, language and width, for the extensions' code
-/// renderers.
-type CodeQuestion = (String, Option<String>, usize);
-
-/// The theme's Markdown styles, with the extensions' code renderers when
-/// `code` holds their answers.
-fn markdown_theme(
-    theme: &Theme,
-    code: Option<&deferred::Deferred<CodeQuestion, Option<Vec<String>>>>,
-) -> MarkdownTheme {
-    let highlight_code = code.cloned().map(|code| {
-        std::sync::Arc::new(move |text: &str, lang: Option<&str>, width: usize| {
-            let lines = code.get(&(text.to_owned(), lang.map(str::to_owned), width))??;
-            Some(
-                lines
-                    .iter()
-                    .map(|line| yapi_tui::ansi::parse_line(line).0)
-                    .collect(),
-            )
-        }) as yapi_tui::markdown::HighlightCode
-    });
+/// The theme's Markdown styles.
+fn markdown_theme(theme: &Theme) -> MarkdownTheme {
     MarkdownTheme {
-        highlight_code,
+        highlight_code: None,
         heading: theme.fg("mdHeading"),
         link: theme.fg("mdLink"),
         link_url: theme.fg("mdLinkUrl"),
@@ -806,6 +784,7 @@ impl App {
         self.chat.push(item);
         self.cache.push(None);
         self.toggles.push(Toggles::default());
+        self.answers.push(deferred::ItemAnswers::default());
         self.chat.len() - 1
     }
 
@@ -891,6 +870,7 @@ impl App {
         self.chat.clear();
         self.cache.clear();
         self.toggles.clear();
+        self.answers.clear();
         self.streaming = None;
         self.tool_items.clear();
     }
@@ -900,6 +880,7 @@ impl App {
         self.chat.remove(index);
         self.cache.remove(index);
         self.toggles.remove(index);
+        self.answers.remove(index);
         self.tool_items.retain(|_, item| *item != index);
         let shift = |item: usize| if item > index { item - 1 } else { item };
         for item in self.tool_items.values_mut() {
@@ -1361,6 +1342,7 @@ impl App {
             Some((_, items)) if reusable => items,
             _ => 0,
         };
+        let mut asking = Vec::new();
         for index in 0..self.chat.len() {
             let fresh =
                 matches!(&self.cache[index], Some((w, g, ..)) if *w == width && *g == generation);
@@ -1369,12 +1351,25 @@ impl App {
                 let mut ctx = self.ctx();
                 ctx.expanded ^= toggles.expanded;
                 ctx.thinking = &toggles.thinking;
+                // Without drawers, nothing is asked.
+                let answers = self.drawers.any().then(|| &self.answers[index]);
+                let markdown = answers.map(|answers| self.item_markdown(answers));
+                if let (Some(answers), Some(markdown)) = (answers, &markdown) {
+                    ctx.markdown = markdown;
+                    answers.begin();
+                }
                 let mut hits = Vec::new();
                 let lines = self.chat[index].render(width, index == 0, &ctx, &mut hits);
+                if let Some(answers) = answers
+                    && answers.end()
+                {
+                    asking.push(answers.clone());
+                }
                 self.cache[index] = Some((width, generation, lines, hits));
                 first_changed = first_changed.min(index);
             }
         }
+        self.asking.extend(asking);
         if reusable && first_changed == self.chat.len() && self.flat_offsets.len() == first_changed
         {
             return;
@@ -1648,43 +1643,6 @@ impl App {
         (lines, providers.len())
     }
 
-    /// The code renderers' answers, when the session's extensions render
-    /// code.
-    fn code_answers(&self) -> Option<&deferred::Deferred<CodeQuestion, Option<Vec<String>>>> {
-        self.code_renderers.then_some(&self.code)
-    }
-
-    /// Asks the extensions' code renderers to draw the code blocks the
-    /// last frame showed without them; the first in load order that draws
-    /// one wins.
-    fn ask_code_renderers(&self) {
-        let questions = self.code.questions();
-        if questions.is_empty() {
-            return;
-        }
-        let renderers = self.session.code_renderers();
-        for question in questions {
-            let (renderers, tx, epoch) = (renderers.clone(), self.tx.clone(), self.epoch);
-            tokio::spawn(async move {
-                let (code, lang, width) = &question;
-                let request = json!({"code": code, "lang": lang, "width": width});
-                let mut errors = Vec::new();
-                let mut lines = None;
-                for renderer in renderers {
-                    match renderer.render_code(&request).await {
-                        Ok(Some(drawn)) => {
-                            lines = Some(drawn);
-                            break;
-                        }
-                        Ok(None) => {}
-                        Err(error) => errors.push((renderer.source().path, error)),
-                    }
-                }
-                let _ = tx.send(Event::Code(epoch, Box::new((question, lines)), errors));
-            });
-        }
-    }
-
     fn draw(&mut self) {
         self.expire_dialog();
         if !matches!(self.selector, Some(Selector::Remote(_))) {
@@ -1728,7 +1686,7 @@ impl App {
             )
         };
         emit(&frame);
-        self.ask_code_renderers();
+        self.ask_drawers();
     }
 
     /// pi's `setWorkingVisible`: hides the working indicator, or shows it
@@ -4399,10 +4357,9 @@ impl App {
             .map(|text| (text, images.take().unwrap_or_default()))
             .collect();
         let mut app = App {
-            markdown: markdown_theme(&theme, None),
-            code: deferred::Deferred::new(),
-            code_renderers: false,
-            code_errors: std::collections::HashSet::new(),
+            markdown: markdown_theme(&theme),
+            drawers: deferred::Drawers::default(),
+            drawer_errors: std::collections::HashSet::new(),
             hyperlinks: false,
             theme,
             keys,
@@ -4415,6 +4372,8 @@ impl App {
             chat: Vec::new(),
             cache: Vec::new(),
             toggles: Vec::new(),
+            answers: Vec::new(),
+            asking: Vec::new(),
             flat: Vec::new(),
             flat_header: Vec::new(),
             flat_key: None,
@@ -4686,10 +4645,11 @@ impl App {
                 }
                 // Extensions may have added skills, prompt templates and themes.
                 self.theme_files = themes::ThemeFiles::load(&self.session.resources().themes);
-                self.code.clear();
-                self.code_errors.clear();
-                self.code_renderers = !self.session.code_renderers().is_empty();
-                self.markdown = markdown_theme(&self.theme, self.code_answers());
+                self.drawer_errors.clear();
+                self.drawers = deferred::Drawers {
+                    code: self.session.code_renderers(),
+                };
+                self.forget_answers();
                 self.share_themes();
                 self.install_autocomplete();
                 // Items shown before the extensions started get their components.
@@ -4699,17 +4659,6 @@ impl App {
             }
             Event::Rendered(epoch, key, width, lines) if epoch == self.epoch => {
                 self.on_rendered(key, width, &lines);
-            }
-            Event::Code(epoch, answer, errors) if epoch == self.epoch => {
-                let (question, lines) = *answer;
-                self.code.answer(question, lines);
-                for (path, error) in errors {
-                    // Once per renderer, as its blocks fall back to plain.
-                    if self.code_errors.insert(path.clone()) {
-                        self.extension_error(format!("Extension \"{path}\" error: {error}"), None);
-                    }
-                }
-                self.invalidate_all();
             }
             Event::Component(epoch, slot, sequence, component) if epoch == self.epoch => {
                 self.on_component(*slot, sequence, component);
@@ -5223,11 +5172,28 @@ mod tests {
             .collect()
     }
 
-    /// A code renderer that gives `answer` for every block.
+    /// A code renderer that answers each block with `answer`.
     struct CodeRenderer {
         path: &'static str,
-        answer: Result<Option<Vec<String>>, String>,
+        answer: fn(&str) -> Result<Option<Vec<String>>, String>,
         calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CodeRenderer {
+        fn new(
+            path: &'static str,
+            answer: fn(&str) -> Result<Option<Vec<String>>, String>,
+        ) -> Arc<Self> {
+            Arc::new(CodeRenderer {
+                path,
+                answer,
+                calls: Default::default(),
+            })
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
     }
 
     impl yapi_core::extensions::Extension for CodeRenderer {
@@ -5250,12 +5216,53 @@ mod tests {
 
         fn render_code<'a>(
             &'a self,
-            _request: &'a Value,
+            request: &'a Value,
         ) -> futures_util::future::BoxFuture<'a, Result<Option<Vec<String>>, String>> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let answer = self.answer.clone();
+            let answer = (self.answer)(request["code"].as_str().unwrap_or_default());
             Box::pin(async move { answer })
         }
+    }
+
+    /// An app whose session has `extensions`, started.
+    fn app_drawn_by(
+        extensions: Vec<Arc<dyn yapi_core::extensions::Extension>>,
+    ) -> (App, UnboundedReceiver<Event>) {
+        let mut config = config(SessionManager::in_memory(Path::new("/work")));
+        config.extensions = extensions;
+        let (mut app, events) = app_with(AgentSession::new(config));
+        app.on_event(Event::Bound(app.epoch, None));
+        (app, events)
+    }
+
+    /// Renders, asks what the render left and takes the answers, until no
+    /// question is left.
+    async fn answer_all(app: &mut App, events: &mut UnboundedReceiver<Event>) {
+        loop {
+            app.transcript(40);
+            app.ask_drawers();
+            match tokio::time::timeout(Duration::from_millis(300), events.recv()).await {
+                Ok(Some(event)) => app.on_event(event),
+                _ => return,
+            }
+        }
+    }
+
+    fn trimmed_rows(app: &mut App) -> Vec<String> {
+        app.transcript(40)
+            .iter()
+            .map(|row| text(row).trim().to_owned())
+            .filter(|row| !row.is_empty())
+            .collect()
+    }
+
+    /// Each line upper-cased, in magenta.
+    fn upper(code: &str) -> Result<Option<Vec<String>>, String> {
+        Ok(Some(
+            code.split('\n')
+                .map(|line| format!("\x1b[35m{}\x1b[39m", line.to_uppercase()))
+                .collect(),
+        ))
     }
 
     /// Code blocks show plain until the extensions answer, then as the
@@ -5263,54 +5270,24 @@ mod tests {
     /// is reported once and passed over.
     #[tokio::test]
     async fn code_renderers_draw_code_blocks_after_the_frame() {
-        let renderer = |path, answer| {
-            Arc::new(CodeRenderer {
-                path,
-                answer,
-                calls: Default::default(),
-            })
-        };
-        let declines = renderer("declines", Ok(None));
-        let fails = renderer("fails", Err("boom".into()));
-        let draws = renderer("draws", Ok(Some(vec!["\x1b[35mreplaced\x1b[39m".into()])));
-        let later = renderer("later", Ok(Some(vec!["never".into()])));
-        let mut config = config(SessionManager::in_memory(Path::new("/work")));
-        config.extensions = vec![
+        let declines = CodeRenderer::new("declines", |_| Ok(None));
+        let fails = CodeRenderer::new("fails", |_| Err("boom".into()));
+        let draws = CodeRenderer::new("draws", |_| {
+            Ok(Some(vec!["\x1b[35mreplaced\x1b[39m".into()]))
+        });
+        let later = CodeRenderer::new("later", |_| Ok(Some(vec!["never".into()])));
+        let (mut app, mut events) = app_drawn_by(vec![
             declines.clone(),
             fails.clone(),
             draws.clone(),
             later.clone(),
-        ];
-        let (mut app, mut events) = app_with(AgentSession::new(config));
-        app.on_event(Event::Bound(app.epoch, None));
+        ]);
         app.push(Item::User("```rust\nfn main() {}\n```".into()));
-        let rows = |app: &mut App| -> Vec<String> {
-            app.transcript(40)
-                .iter()
-                .map(|row| text(row).trim().to_owned())
-                .collect()
-        };
-        assert!(rows(&mut app).contains(&"fn main() {}".to_owned()));
-
-        for block in ["```rust\nfn main() {}\n```", "```sh\nls\n```"] {
-            if block.contains("sh") {
-                app.push(Item::User(block.into()));
-                app.transcript(40);
-            }
-            app.ask_code_renderers();
-            while let Some(event) = tokio::time::timeout(Duration::from_secs(5), events.recv())
-                .await
-                .ok()
-                .flatten()
-            {
-                let done = matches!(event, Event::Code(..));
-                app.on_event(event);
-                if done {
-                    break;
-                }
-            }
-        }
-        let rows = rows(&mut app);
+        assert!(trimmed_rows(&mut app).contains(&"fn main() {}".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        app.push(Item::User("```sh\nls\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        let rows = trimmed_rows(&mut app);
         assert_eq!(
             rows.iter().filter(|row| *row == "replaced").count(),
             2,
@@ -5328,17 +5305,68 @@ mod tests {
         assert!(magenta);
         let errors: Vec<&String> = rows.iter().filter(|row| row.contains("boom")).collect();
         assert_eq!(errors, [&"Extension \"fails\" error: boom".to_owned()]);
-        let calls =
-            |renderer: &CodeRenderer| renderer.calls.load(std::sync::atomic::Ordering::SeqCst);
+        // Each block is asked once.
         assert_eq!(
             (
-                calls(&declines),
-                calls(&fails),
-                calls(&draws),
-                calls(&later)
+                declines.calls(),
+                fails.calls(),
+                draws.calls(),
+                later.calls()
             ),
             (2, 2, 2, 0)
         );
+    }
+
+    /// While a code block grows, it keeps the colors of the lines it had and
+    /// shows the new ones plain until the renderer answers; nothing is
+    /// asked for a block that did not change.
+    #[tokio::test]
+    async fn a_growing_code_block_keeps_its_colors_until_answered() {
+        let renderer = CodeRenderer::new("upper", upper);
+        let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
+        app.push(Item::User("```rust\nfn a\n```".into()));
+        app.push(Item::User("```rust\nlet x\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        assert_eq!(renderer.calls(), 2);
+        let grow = |app: &mut App, code: &str| {
+            app.chat[1] = Item::User(format!("```rust\n{code}\n```"));
+            app.touch(1);
+            trimmed_rows(app)
+        };
+        let rows = grow(&mut app, "let x\nlet y");
+        assert!(rows.contains(&"FN A".to_owned()), "{rows:?}");
+        let grown = rows.iter().position(|row| row == "LET X").expect("kept");
+        assert_eq!(rows[grown + 1], "let y", "{rows:?}");
+        // A line that grew shows plain.
+        let rows = grow(&mut app, "let xy");
+        assert!(rows.contains(&"let xy".to_owned()), "{rows:?}");
+        answer_all(&mut app, &mut events).await;
+        let rows = grow(&mut app, "let xy");
+        assert!(rows.contains(&"LET XY".to_owned()), "{rows:?}");
+        // Only the block that changed was asked again, for its newest code.
+        assert_eq!(renderer.calls(), 3);
+    }
+
+    /// A theme change and a restarted extension runtime forget what the
+    /// renderers drew, and the code is asked again.
+    #[tokio::test]
+    async fn theme_changes_and_restarts_ask_the_code_renderers_again() {
+        let renderer = CodeRenderer::new("upper", upper);
+        let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
+        app.push(Item::User("```rust\nfn a\n```".into()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        let theme = app.theme.clone();
+        app.apply_theme(theme);
+        assert!(trimmed_rows(&mut app).contains(&"fn a".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        assert_eq!(renderer.calls(), 2);
+        app.on_ui_request(extension_ui::Request::DropComponents(7));
+        assert!(trimmed_rows(&mut app).contains(&"fn a".to_owned()));
+        answer_all(&mut app, &mut events).await;
+        assert!(trimmed_rows(&mut app).contains(&"FN A".to_owned()));
+        assert_eq!(renderer.calls(), 3);
     }
 
     fn border(status: &str, hidden: usize, width: usize) -> String {

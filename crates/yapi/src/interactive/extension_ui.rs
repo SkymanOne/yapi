@@ -1421,6 +1421,8 @@ impl super::App {
     /// for again, so a renderer that panics as it draws cannot restart its
     /// runtime over and over.
     fn redraw_runtime(&mut self, runtime: u64) {
+        // What the runtime drew while it stopped fell back to yapi's own.
+        self.forget_answers();
         let mut items = Vec::new();
         for (index, view) in self.transcript_views() {
             if view.key().0 == runtime && view.retire() {

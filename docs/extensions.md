@@ -89,20 +89,25 @@ A package works without errors when its extensions load without errors and regis
 
 ## yapi-only APIs
 
-`pi.yapi` holds what yapi adds to Pi's API. Pi lacks it, so call it as `pi.yapi?.method(...)` and the package still runs in Pi.
+`pi.yapi` holds APIs that Pi does not have. Call them as `pi.yapi?.method()` so the package still loads in Pi.
 
-`pi.yapi.registerCodeRenderer(render)` draws code. yapi shows code in one color, and calls `render(code, lang, { width }, theme)` for code blocks in messages, expanded `read` results, `write` previews and codemode scripts. `lang` names the language as Pi's `getLanguageFromPath` does for files, or is the code block's language, and may be `undefined`. `render` returns lines of text with escape sequences, which may color the code or replace it, or `undefined` to leave it to yapi. Lines wider than `width` wrap.
+### Code renderers
+
+yapi shows code in one color. `pi.yapi.registerCodeRenderer(render)` lets an extension color it, or draw it differently, in Markdown code blocks, `read` and `write` tool rows and codemode scripts.
 
 ```typescript
-export default function (pi) {
-  pi.yapi?.registerCodeRenderer((code, lang, _options, theme) => {
-    if (lang !== "sql") return undefined;
-    return code.split("\n").map((line) => line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) => theme.fg("syntaxKeyword", word)));
-  });
-}
+pi.yapi?.registerCodeRenderer((code, lang, { width }, theme) => {
+  if (lang !== "sql") return undefined;
+  return code
+    .split("\n")
+    .map((line) => line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) => theme.fg("syntaxKeyword", word)));
+});
 ```
 
-yapi draws the code in one color first and asks the renderers without waiting, so a slow renderer never holds up the screen. The first renderer, in load order, that returns lines draws the code. A renderer that throws leaves the code in one color, and yapi reports its first error. Pi's `highlightCode` and `getMarkdownTheme().highlightCode` use the renderers in the same runtime. Mermaid diagrams are drawn before the renderers see the code.
+- `lang` is the code block's language or the file's language, and may be `undefined`.
+- Return the styled lines, or `undefined` to keep the plain code.
+- When several extensions register a renderer, the first one that returns lines is used.
+- Code shows plain until the renderer returns.
 
 ## How Pi extensions run
 

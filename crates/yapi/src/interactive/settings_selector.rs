@@ -1412,11 +1412,12 @@ impl super::App {
 
     /// Redraws with `theme`.
     pub(super) fn apply_theme(&mut self, theme: yapi_tui::theme::Theme) {
-        self.markdown = super::markdown_theme(&theme, self.code_answers());
+        self.markdown = super::markdown_theme(&theme);
         self.editor.set_theme(super::editor_theme(&theme));
         self.theme = theme;
         self.style_alt_screen();
-        self.invalidate_all();
+        // What extensions drew is in the old theme's colors.
+        self.forget_answers();
     }
 
     /// Applies a `/settings` change and saves it, as pi's callbacks do.

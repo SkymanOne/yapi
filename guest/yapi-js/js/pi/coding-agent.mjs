@@ -225,8 +225,9 @@ function renderCode(code, lang) {
 	}
 	return undefined;
 }
+/** pi's `highlightCode`: the code renderers' lines, else the code in the code block color. */
 export function highlightCode(code, lang) {
-	return renderCode(String(code), lang) ?? String(code).split("\n");
+	return renderCode(String(code), lang) ?? String(code).split("\n").map((line) => theme.fg("mdCodeBlock", line));
 }
 
 // ----- conversation helpers, run by yapi ------------------------------------------------------
@@ -263,8 +264,7 @@ export function getMarkdownTheme() {
 		italic: (text) => theme.italic(text),
 		underline: (text) => theme.underline(text),
 		strikethrough: (text) => theme.strikethrough(text),
-		highlightCode: (code, lang) =>
-			renderCode(String(code), lang) ?? String(code).split("\n").map((line) => theme.fg("mdCodeBlock", line)),
+		highlightCode,
 	};
 }
 export function getSelectListTheme() {

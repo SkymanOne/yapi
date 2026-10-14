@@ -21,7 +21,7 @@ The repository has eighteen native extensions in [`guest/examples`](https://gith
 | [`input-hooks`](#input-hooks) | A terminal input listener that reads the editor, an autocomplete provider and a shortcut | None |
 | [`crash-recovery`](#crash-recovery) | What yapi does when an extension panics | None |
 | [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
-| [`code-renderer`](#code-renderer) | A code renderer, yapi's own API, that colors Rust keywords | None |
+| [`code-renderer`](#code-renderer) | Colors Rust keywords with yapi's code renderer API | None |
 
 Five of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
 
@@ -351,4 +351,4 @@ for left in (1..=seconds).rev() {
 
 ## code-renderer
 
-A code renderer, yapi's own API: it colors the keywords of Rust code with the theme's keyword color, in code blocks and in `read`, `write` and codemode rows, and leaves other languages in one color.
+Colors Rust keywords in code blocks and tool rows with yapi's code renderer API.
