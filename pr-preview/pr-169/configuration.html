@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7e90898e.js";
+            window.path_to_searchindex_js = "searchindex-86901d12.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -221,9 +221,10 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 <h2 id="images"><a class="header" href="#images">Images</a></h2>
 <p>yapi prepares images in prompts, <code>@path</code> arguments and tool results before they reach the model:</p>
 <ul>
-<li>BMP images are converted to PNG.</li>
+<li>Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld. This applies to images that arrive with a MIME type: RPC and SDK prompts, tool results and the clipboard. <code>@path</code> arguments and the <code>read</code> tool only recognize PNG, JPEG, GIF, WebP and BMP files, so other formats are read as text.</li>
 <li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.</li>
-<li>An image that cannot be converted or made to fit is left out, with a note that says so.</li>
+<li>A prompt or <code>read</code> image that cannot be converted or made to fit is left out, with a note that says so. A tool result keeps its original image unchanged.</li>
+<li>A pasted clipboard image that is not PNG, JPEG, WebP or GIF is converted to PNG when pasted, ignoring its EXIF orientation.</li>
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>
 <p>Both settings are also in <code>/settings</code>.</p>
