@@ -159,6 +159,30 @@ async fn a_full_connection_limit_retries_once() {
     assert_eq!(server.finish().unwrap().len(), 2);
 }
 
+/// Empty messages are skipped and values other than objects passed over, as
+/// in pi; `null` fails as pi's read of its `type` does.
+#[tokio::test]
+async fn empty_and_non_object_messages_are_handled_as_pi_does() {
+    let mut odd = text();
+    odd.response
+        .chunks
+        .splice(0..0, ["".into(), "42".into(), "[]".into()]);
+    let server = MockServer::local(Cassette {
+        interactions: vec![odd, exchange(vec!["null".into()])],
+    })
+    .await
+    .unwrap();
+    let message = ask(&server, session("ws-odd", Some(Transport::Auto))).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    assert_eq!(message.diagnostics, None);
+    let message = ask(&server, session("ws-null", Some(Transport::Auto))).await;
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Invalid Codex WebSocket JSON: Cannot read properties of null (reading 'type')")
+    );
+    server.finish().unwrap();
+}
+
 #[tokio::test]
 async fn continuations_send_the_new_input_and_recover_a_lost_response() {
     let missing = json!({"type": "error", "status": 400, "error": {"code": "previous_response_not_found", "message": "Previous response not found."}});

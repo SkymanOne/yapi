@@ -2063,6 +2063,13 @@ impl State {
                 .await?;
             let event: Value = serde_json::from_str(&text)
                 .map_err(|err| Failure::protocol(format!("Invalid Codex WebSocket JSON: {err}")))?;
+            // pi reads `type` from any parsed value, which only `null` rejects.
+            if event.is_null() {
+                return Err(Failure::protocol(
+                    "Invalid Codex WebSocket JSON: Cannot read properties of null (reading 'type')"
+                        .into(),
+                ));
+            }
             options.hooks.stream_event(&event).await;
             let Some(kind) = event["type"].as_str() else {
                 continue;

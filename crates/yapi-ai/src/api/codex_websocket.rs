@@ -480,9 +480,10 @@ impl Lease {
             };
             let frame =
                 frame.unwrap_or_else(|| Err(Failure::error(http::ABORTED_DURING_STREAM)))?;
+            // pi ignores empty messages, and they do not restart its idle timer.
             match frame {
-                Some(Ok(Frame::Text(text))) => return Ok(text.to_string()),
-                Some(Ok(Frame::Binary(bytes))) => {
+                Some(Ok(Frame::Text(text))) if !text.is_empty() => return Ok(text.to_string()),
+                Some(Ok(Frame::Binary(bytes))) if !bytes.is_empty() => {
                     return Ok(String::from_utf8_lossy(&bytes).into_owned());
                 }
                 Some(Ok(Frame::Close(frame))) => return Err(Failure::closed(frame)),
