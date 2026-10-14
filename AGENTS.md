@@ -110,8 +110,6 @@ Two tiers share one host, one WIT world and one package format.
   - vendored JS packages, listed with their licenses in `guest/yapi-js/js/vendor/LICENSES.md`;
   - a facade for `@earendil-works/pi-coding-agent`, `pi-ai` and `pi-agent-core`, including the legacy `@mariozechner/*` names.
 
-Feasibility study, prior art and rejected alternatives: [dev/research/extension-compat.md](dev/research/extension-compat.md).
-
 ### Packages
 
 - Manifests use the `package.json` `pi` key. An optional `yapi` key with the same shape takes precedence in yapi.
@@ -192,7 +190,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `cargo deny check`
-- CI runs the same checks on Linux and macOS. It skips them when a change touches only docs, `dev/`, skills, root Markdown files other than `CHANGELOG.md`, or other workflows.
+- CI runs the same checks on Linux and macOS. It skips them when a change touches only docs, skills, root Markdown files other than `CHANGELOG.md`, or other workflows.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
 - Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
 - `cargo xtask mock-sse --cassette <file>` serves a cassette to pi or another out-of-process client and reports unmatched requests on exit. `--record <upstream-url> --out <file>` records a new cassette through a proxy to a real provider, without credentials.
@@ -245,7 +243,7 @@ Module loading runs on the host, in `yapi-ext`:
 
 - Concise, professional prose. Describe contracts and decisions; do not paraphrase code or diffs.
 - Public documentation lives in `docs/` and builds with mdBook. User-facing prose avoids em dashes and semicolons.
-- Internal notes live in `dev/`: progress, deferred work and pending live checks in `dev/status.md`, research in `dev/research/`. Planned work is in [docs/roadmap.md](docs/roadmap.md).
+- Planned work is in [docs/roadmap.md](docs/roadmap.md).
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.
 - A meaningful feature or bug fix adds one line under `## [Unreleased]` in `CHANGELOG.md`, in the same pull request. The line starts with an action word such as Add, Fix, Change or Refactor, says what users notice and ends with links to its pull requests. A stack of pull requests gets one line. Internal, test-only and docs-only changes, and fixes to features not yet released, get none. A release turns the Unreleased lines into its own section.

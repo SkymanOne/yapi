@@ -22,7 +22,7 @@ env:
 
 jobs:
   # Whether the change can affect the Rust build or tests. Changes only to
-  # docs, internal notes, skills and other workflows skip the jobs below,
+  # docs, skills and other workflows skip the jobs below,
   # which then report as skipped. Any other file, or no base to compare with,
   # runs everything.
   changes:
@@ -42,7 +42,7 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             # CHANGELOG.md is embedded in the binary, so it counts as Rust.
             if ! git diff --name-only "$BASE" HEAD \
-              | grep -vxE '(docs|dev|skills|assets)/.*|book\.toml|LICENSE-.*|\.gitignore|\.github/workflows/(docs|bench|release)\.yml|(README|AGENTS|CONTRIBUTING|SECURITY)\.md' \
+              | grep -vxE '(docs|skills|assets)/.*|book\.toml|LICENSE-.*|\.gitignore|\.github/workflows/(docs|bench|release)\.yml|(README|AGENTS|CONTRIBUTING|SECURITY)\.md' \
               | grep -q .; then
               rust=false
             fi

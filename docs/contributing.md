@@ -1,6 +1,6 @@
 # Contributing
 
-yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes. [dev/status.md](https://github.com/SkymanOne/yapi/blob/main/dev/status.md) tracks progress and deferred work.
+yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ cargo run -p yapi --
 
 ## Checks
 
-Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, internal notes, skills or other workflows.
+Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, skills or other workflows.
 
 ```sh
 cargo fmt --all

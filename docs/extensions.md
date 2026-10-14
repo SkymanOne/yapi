@@ -85,7 +85,7 @@ yapi runs extensions written for `@earendil-works/pi-coding-agent` 1.0, includin
 | The 500 most-downloaded Pi packages on npm | 418 of 500 work without errors |
 | Extension UI | Dialogs, widgets, footers, overlays, custom components and tool renderers match Pi's screens row for row at 80×24 and 120×40 in the recorded scenarios, except for the [listed differences](compat.md#extensions) |
 
-A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. [dev/status.md](https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless) lists each one.
+A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks.
 
 ## yapi-only APIs
 
