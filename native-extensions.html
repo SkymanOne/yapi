@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-61738ec7.js";
+            window.path_to_searchindex_js = "searchindex-0ca07d71.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -323,7 +323,13 @@ yapi install . -l    # for this project only
 </tbody>
 </table>
 </div>
-<p><code>exec.sync</code> runs <code>command</code> with the strings in <code>args</code> and waits for it. Without <code>cwd</code> the process starts in yapi’s working folder. <code>env</code> replaces the whole environment, as in Node, and <code>envAdd</code> sets variables on top of the environment the process inherits, or on top of <code>env</code>. <code>input</code> is written to standard input, and <code>timeout</code> kills the process after that many milliseconds. <code>code</code> is <code>null</code> when a signal ended the process, and <code>killed</code> is <code>true</code> when the timeout did. A process that cannot start answers <code>{"stdout": "", "stderr": "", "code": null, "error"}</code>, where <code>error</code> is Node’s spawn error, such as <code>spawn git ENOENT</code>. The request fails when the extension may not run processes.</p>
+<p><code>exec.sync</code> runs <code>command</code> with <code>args</code> and waits for it.</p>
+<ul>
+<li>Without <code>cwd</code> the process starts in yapi’s working folder. <code>env</code> replaces the whole environment, as in Node, and <code>envAdd</code> sets variables on top of the inherited environment or of <code>env</code>.</li>
+<li><code>input</code> is written to standard input. <code>timeout</code> kills the process after that many milliseconds.</li>
+<li><code>code</code> is <code>null</code> when a signal ended the process, and <code>killed</code> is <code>true</code> when the timeout did.</li>
+<li>A process that cannot start answers <code>{"stdout": "", "stderr": "", "code": null, "error"}</code>, where <code>error</code> is Node’s spawn error, such as <code>spawn git ENOENT</code>. The request fails when the extension may not run processes.</li>
+</ul>
 <p><code>session.read</code> takes the method’s arguments as the array <code>args</code>, such as <code>["&lt;entry id&gt;"]</code> for <code>getEntry</code>. The methods are <code>getCwd</code>, <code>getSessionDir</code>, <code>getSessionId</code>, <code>getSessionFile</code>, <code>getSessionName</code>, <code>isPersisted</code>, <code>getHeader</code>, <code>getEntries</code>, <code>getEntry</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getLeafId</code>, <code>getLeafEntry</code>, <code>getBranch</code> and <code>buildSessionContext</code>. Entries have the shapes of Pi’s session files.</p>
 <p><code>ui.notify</code> and the <code>session</code> requests fail while the init function runs, before yapi binds the extension to a session. Every other kind is internal to yapi and may change or disappear in any release.</p>
 <h3 id="host-operations"><a class="header" href="#host-operations">Host operations</a></h3>
@@ -344,7 +350,12 @@ yapi install . -l    # for this project only
 </div>
 <p><code>fetch</code> fails when the extension may not use the network. The dialogs answer <code>null</code> or <code>false</code> at once in print and JSON modes, which have no interface, so check <code>Context::has_ui</code> first. Every other kind is internal to yapi and may change or disappear in any release.</p>
 <h3 id="processes"><a class="header" href="#processes">Processes</a></h3>
-<p><code>Process::spawn</code> starts a process that runs while the extension does other work. It takes <code>{"command", "args", "cwd", "env", "envAdd", "stdin"}</code>, all optional except <code>command</code>. Without <code>cwd</code> the process starts in yapi’s working folder, <code>env</code> replaces the whole environment, <code>envAdd</code> adds variables to the inherited environment or to <code>env</code>, and <code>"stdin": "ignore"</code> gives it empty standard input instead of a pipe. <code>Process::next</code> waits for the next <code>ProcessEvent</code>: output on standard output or standard error, then the exit. A <code>next</code> future dropped before it finishes loses no output. <code>write</code> waits while the process has not taken the previous write, and <code>close_stdin</code> and <code>kill</code> act at once.</p>
+<p><code>Process::spawn</code> starts a process that runs while the extension does other work. It takes <code>{"command", "args", "cwd", "env", "envAdd", "stdin"}</code>, all optional except <code>command</code>.</p>
+<ul>
+<li><code>cwd</code>, <code>env</code> and <code>envAdd</code> work as in <code>exec.sync</code>. <code>"stdin": "ignore"</code> gives the process empty standard input instead of a pipe.</li>
+<li><code>Process::next</code> waits for the next <code>ProcessEvent</code>: output on standard output or standard error, then the exit. A dropped <code>next</code> future loses no output.</li>
+<li><code>write</code> waits while the process has not taken the previous write. <code>close_stdin</code> and <code>kill</code> act at once.</li>
+</ul>
 <p>Dropping a <code>Process</code> kills it, and so does stopping the extension. Starting one needs the process grant, which every extension has by default.</p>
 <p>A process inherits yapi’s environment, so <code>envAdd</code> is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -435,7 +446,13 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <p><code>Context::set_editor_component</code> puts an <code>EditorComponent</code> in place of the built-in editor, as Pi’s <code>setEditorComponent</code> does, or restores the built-in one with <code>None</code>. The editor starts with the built-in editor’s text. yapi calls its <code>set_text</code>, <code>add_to_history</code>, <code>insert_text_at_cursor</code> and <code>configure</code> methods, and the editor reports back with <code>editor_changed</code> when its text changes, <code>editor_submit</code> when the user submits, <code>editor_action</code> for app keys such as <code>app.interrupt</code>, and <code>editor_shortcut</code> for extension shortcuts.</p>
 <p><code>widgets::CustomEditor</code> is Pi’s <code>CustomEditor</code>: the built-in editor’s keys, history, completions and app keys. Wrap it to change how it handles keys or renders, as Pi’s examples extend it. The <a href="native-examples.html#modal-editor"><code>modal-editor</code></a> example adds vim-like modes this way.</p>
 <h3 id="tool-and-message-renderers"><a class="header" href="#tool-and-message-renderers">Tool and message renderers</a></h3>
-<p><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result in the transcript, as Pi’s <code>renderCall</code> and <code>renderResult</code> do, and <code>Tool::render_shell("self")</code> says they draw the tool’s whole box. <code>Api::register_message_renderer</code> draws custom messages of one type, as Pi’s <code>registerMessageRenderer</code> does. <code>Api::register_entry_renderer</code> draws custom entries of one type, as Pi’s <code>registerEntryRenderer</code> does. A renderer returns a component, or <code>None</code> to keep yapi’s own rendering. An entry without a component shows nothing. The <a href="native-examples.html#entry-renderer"><code>entry-renderer</code></a> example draws status cards.</p>
+<p>Renderers draw tool calls, custom messages and custom entries in the transcript.</p>
+<ul>
+<li><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result, as Pi’s <code>renderCall</code> and <code>renderResult</code> do. <code>Tool::render_shell("self")</code> says they draw the tool’s whole box.</li>
+<li><code>Api::register_message_renderer</code> and <code>Api::register_entry_renderer</code> draw custom messages and entries of one type, as Pi’s <code>registerMessageRenderer</code> and <code>registerEntryRenderer</code> do.</li>
+<li>A renderer returns a component, or <code>None</code> to keep yapi’s own rendering. An entry without a component shows nothing.</li>
+</ul>
+<p>The <a href="native-examples.html#entry-renderer"><code>entry-renderer</code></a> example draws status cards.</p>
 <p><code>Api::register_markdown_transformer</code> is Pi’s <code>registerMarkdownTransformer</code>. It gets a message’s Markdown and Pi’s context, and returns new Markdown or <code>None</code>. A message shows as written until the transformer returns.</p>
 <p>A tool renderer gets a <code>RenderContext</code>, with Pi’s context fields such as <code>toolCallId</code>, <code>expanded</code> and <code>isPartial</code> in <code>data</code>, and a <code>state</code> value that the call’s and the result’s renderers share for one tool call. Pi’s <code>lastComponent</code> has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one’s place, and yapi shows the old one’s lines until the new one has rendered.</p>
 <h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
@@ -445,10 +462,22 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <pre><code class="language-toml">[dependencies]
 yapi-extension-api = { version = "0.1.0", features = ["widgets"] }
 </code></pre>
-<p><code>widgets::tui</code> holds them, such as <code>select_list::SelectList</code>, <code>editor::Editor</code>, <code>text_input::TextInput</code>, <code>settings_list::SettingsList</code>, and the <code>Text</code>, <code>Box</code> and border layouts in <code>lines</code>. They render styled lines, and <code>widgets::to_ansi</code> turns those into a component’s lines, with pi-tui’s cursor marker where a cursor belongs. <code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style for the widgets’ themes, and <code>widgets::keybindings</code> the key bindings their <code>handle_input</code> takes. The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</p>
+<p><code>widgets::tui</code> holds the widgets.</p>
+<ul>
+<li><code>select_list::SelectList</code>, <code>editor::Editor</code>, <code>text_input::TextInput</code> and <code>settings_list::SettingsList</code>, plus the <code>Text</code>, <code>Box</code> and border layouts in <code>lines</code>, render styled lines.</li>
+<li><code>widgets::to_ansi</code> turns those lines into a component’s lines, with pi-tui’s cursor marker where a cursor belongs.</li>
+<li><code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style. <code>widgets::keybindings</code> gives the key bindings that <code>handle_input</code> takes.</li>
+<li>The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</li>
+</ul>
 <p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
-<p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does. It sees each key before the editor and everything else, in the order listeners were added, and returns <code>TerminalInput::Pass</code> to let the key through, <code>Consume</code> to stop it, or <code>Replace(data)</code> to hand on <code>data</code> in its place, as Pi’s <code>undefined</code>, <code>{consume: true}</code> and <code>{data}</code>. The listener stops when the returned <code>Subscription</code> is dropped or <code>unsubscribe</code> is called, so keep it for as long as the listener should run. <code>editor_text()</code> returns the editor’s text, as Pi’s <code>ctx.ui.getEditorText</code> does, so a listener can take keys only while the editor is empty:</p>
+<p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does.</p>
+<ul>
+<li>A listener sees each key before the editor, in the order listeners were added.</li>
+<li>It returns <code>TerminalInput::Pass</code> to let the key through, <code>Consume</code> to stop it, or <code>Replace(data)</code> to hand on <code>data</code> instead, as Pi’s <code>undefined</code>, <code>{consume: true}</code> and <code>{data}</code>.</li>
+<li>It stops when the returned <code>Subscription</code> is dropped or <code>unsubscribe</code> is called, so keep the <code>Subscription</code> as long as the listener should run.</li>
+<li><code>editor_text()</code> returns the editor’s text, as Pi’s <code>ctx.ui.getEditorText</code> does, so a listener can take keys only while the editor is empty:</li>
+</ul>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use std::cell::RefCell;
@@ -470,7 +499,13 @@ api.on("session_start", |_event, ctx| async move {
     Ok(None)
 });
 <span class="boring">}</span></code></pre>
-<p><code>Context::add_autocomplete_provider</code> adds an <code>AutocompleteProvider</code> over the editor’s completion, as Pi’s <code>ctx.ui.addAutocompleteProvider</code> does. <code>suggestions</code> answers the <code>Suggestions</code> for an <code>EditorState</code>, with Pi’s <code>AutocompleteItem</code> shapes as items, and <code>apply</code> answers the editor after an item is chosen. Each gets a <code>Current</code>, Pi’s <code>current</code>, which answers for the providers added before, over the built-in completion of commands and paths. <code>apply</code> defaults to <code>Current::apply</code>, and <code>trigger_characters</code> names characters that open completion as <code>@</code> does. The cursor’s column in <code>EditorState</code> counts bytes, so it slices the line directly.</p>
+<p><code>Context::add_autocomplete_provider</code> adds an <code>AutocompleteProvider</code> over the editor’s completion, as Pi’s <code>ctx.ui.addAutocompleteProvider</code> does.</p>
+<ul>
+<li><code>suggestions</code> answers the <code>Suggestions</code> for an <code>EditorState</code>, with Pi’s <code>AutocompleteItem</code> shapes as items. <code>apply</code> answers the editor after an item is chosen and defaults to <code>Current::apply</code>.</li>
+<li>Each gets a <code>Current</code>, Pi’s <code>current</code>, which answers for the providers added before, over the built-in completion of commands and paths.</li>
+<li><code>trigger_characters</code> names characters that open completion, as <code>@</code> does.</li>
+<li>The cursor’s column in <code>EditorState</code> counts bytes, so it slices the line directly.</li>
+</ul>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use yapi_extension_api::{AutocompleteProvider, Current, EditorState, Suggestions, json};

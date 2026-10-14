@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-61738ec7.js";
+            window.path_to_searchindex_js = "searchindex-0ca07d71.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -199,7 +199,13 @@ yapi --no-session            # do not save this run
 <h2 id="compact-context"><a class="header" href="#compact-context">Compact context</a></h2>
 <p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
 <h2 id="keep-the-prompt-cache-warm"><a class="header" href="#keep-the-prompt-cache-warm">Keep the prompt cache warm</a></h2>
-<p>Providers such as Anthropic cache a request’s prompt for a few minutes. While the agent works, yapi sends the latest request again with a one-token reply shortly before its cache entry expires, when that is expected to save at least $0.05. Each refresh and its cost are recorded in the session. The <code>cacheWarming</code> setting is <code>streaming</code> by default. <code>idle</code> also keeps the cache warm between runs, and <code>off</code> stops warming. Only the global settings set it, because each refresh costs money. <code>/session</code> shows the next decision and its costs, and the prompt tokens billed again after cache misses. Turn on “Cache miss notices” in <code>/settings</code> to see refreshes, costly cache misses, summary costs and the thinking blocks Anthropic dropped from a request in the transcript.</p>
+<p>Providers such as Anthropic cache a prompt for a few minutes. yapi can resend the latest request shortly before the cache expires, when that is expected to save money. The <code>cacheWarming</code> setting, read from global settings only, picks when:</p>
+<ul>
+<li><code>streaming</code>, the default, warms while the agent works.</li>
+<li><code>idle</code> also warms between runs.</li>
+<li><code>off</code> never warms.</li>
+</ul>
+<p><code>/session</code> shows the next decision and the tokens billed again after cache misses. “Cache miss notices” in <code>/settings</code> shows refreshes and costly misses in the transcript.</p>
 <h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
 <p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
 <p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
