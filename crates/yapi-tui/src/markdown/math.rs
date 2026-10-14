@@ -422,6 +422,9 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
     let mut opaque = 0usize;
     // Whether each open link is an autolink.
     let mut links: Vec<bool> = Vec::new();
+    // The bare URLs, which marked's GFM `url` rule takes before the math in
+    // them.
+    let mut urls: Vec<Range<usize>> = Vec::new();
     let mut line_start = false;
     for (index, (event, range)) in events.iter().enumerate() {
         let starts_line = std::mem::take(&mut line_start);
@@ -505,20 +508,22 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                     containers.iter().map(|(container, _)| *container).collect();
                 // `\(` and `\[`, whose backslash pulldown-cmark reads as an
                 // escape.
-                let bracket = text.starts_with(['(', '['])
+                let escaped_bracket = text.starts_with(['(', '['])
                     && range.start > 0
                     && source.as_bytes()[range.start - 1] == b'\\'
                     && !is_escaped(source, range.start - 1);
+                // marked reads `\[` in a link's text as `[`.
+                let bracket = escaped_bracket && (text.starts_with('(') || links.is_empty());
                 // A `$` in the source, not one that a mask put there.
                 let dollar = |at: usize| source.as_bytes().get(at) == Some(&b'$');
                 let display_start = (text.starts_with("$$")
                     && dollar(range.start)
                     && !is_escaped(source, range.start))
-                    || (bracket && text.starts_with('['));
+                    || (escaped_bracket && text.starts_with('['));
                 if starts_line && display_start {
                     // A display block on a paragraph's line. A continuation
                     // line may be indented by at most three columns.
-                    let at = if bracket {
+                    let at = if escaped_bracket {
                         range.start - 1
                     } else {
                         range.start
@@ -540,6 +545,16 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                 }
                 if parsed.get(range.clone()) != Some(&**text) {
                     continue;
+                }
+                let mut at = range.start;
+                while links.is_empty() && at < range.end {
+                    match source.get(at..).and_then(super::web_link) {
+                        Some((len, _)) => {
+                            urls.push(at..at + len);
+                            at += len;
+                        }
+                        None => at += 1,
+                    }
                 }
                 if bracket {
                     candidates.push(Candidate {
@@ -577,6 +592,12 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
         let limit = if candidate.display {
             candidate.limit
         } else {
+            let in_url = urls.iter().any(|url| {
+                url.start < candidate.at && candidate.at < url.end && !covered(url.start)
+            });
+            if in_url {
+                continue;
+            }
             // A paragraph ends at the line break before a display block.
             hits.iter()
                 .map(|hit| hit.raw.start)

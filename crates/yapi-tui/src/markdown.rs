@@ -231,11 +231,13 @@ impl<'a> Builder<'a> {
             }
             Event::Text(text) => {
                 // pulldown-cmark starts an escaped character's text just after
-                // its backslash.
+                // its backslash. marked reads `\[` and `\]` in a link's text
+                // as `[` and `]`.
                 let escaped = self.preserve_escapes
                     && range.start > 0
                     && self.source.as_bytes()[range.start - 1] == b'\\'
-                    && text.starts_with(|c: char| c.is_ascii_punctuation());
+                    && text.starts_with(|c: char| c.is_ascii_punctuation())
+                    && !(self.in_link && text.starts_with(['[', ']']));
                 if escaped {
                     push_text(out, "\\".to_owned());
                 }

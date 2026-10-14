@@ -66,6 +66,7 @@ const autolinks = {
 	urlContext: "Midword xhttps://example.com and awww.example.com, `https://code.example.com`, [link https://in.link](https://target.com), **https://bold.example.com** and <https://auto.example.com>.",
 	urlEdges: "HTTPS://EXAMPLE.COM, Www.example.com, http:// and www.-x. https://example.com/?a=1&amp; x!foo@bar.com a*b@c.com a@b.com.c@d.com",
 	urlBlocks: "## See www.heading.com\n\n- item https://example.com/list\n- mail list@example.com\n\n| Site | Mail |\n|---|---|\n| www.cell.com | cell@example.com |",
+	urlLatex: "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
 };
 // LaTeX, which pi-tui's tokenizers find before marked's own.
 const latex = {
@@ -98,6 +99,7 @@ x^2
 	latexEmphasisPairs:
 		"$a*b$ and $c*d$, $2*3$ and $4*5$ and $6*7$.\n\nLet $f(x)=2*x$ and $g(x)=3*x$, $a _b$ and $c_ d$, $a~~b$ and $c~~d$.\n\n" +
 		"- $a*b$ and $c*d$\n- $a _b$ and $c_ d$\n\n> $a~~b$ and $c~~d$\n\n## $2*3$ and $4*5$\n\n*a $x-2* b, $a*b$ $c*$d$",
+	latexLinkText: "See [\\[x](u) and [\\(y\\)](u)",
 };
 const markdown = [];
 for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {

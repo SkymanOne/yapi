@@ -2906,6 +2906,112 @@
 			]
 		},
 		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"underline": true,
+			"lines": [
+				"See \u001b[4mhttps://example.com/$x$\u001b[24m now,        ",
+				"\u001b[4mwww.a.com/$y$\u001b[24m (http://www.a.com/$y$) and",
+				"z.                                      ",
+				"                                        ",
+				"\u001b[4mhttps://api.example.com/odata?$filter=Pr\u001b[24m",
+				"\u001b[4mice\u001b[24m gt 5&$top=10                        "
+			]
+		},
+		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"underline": true,
+			"lines": [
+				"See \u001b[4mhttps://example.com/$x$\u001b[24m now,        ",
+				"\u001b[4mwww.a.com/$y$\u001b[24m (http://www.a.com/$y$) and",
+				"z.                                      ",
+				"                                        ",
+				"\u001b[4mhttps://api.example.com/odata?$filter=Pr\u001b[24m",
+				"\u001b[4mice\u001b[24m gt 5&$top=10                        "
+			]
+		},
+		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"underline": true,
+			"lines": [
+				" See                    ",
+				" \u001b[4mhttps://example.com/$x\u001b[24m ",
+				" \u001b[4m$\u001b[24m now, \u001b[4mwww.a.com/$y$\u001b[24m   ",
+				" (http://www.a.com/$y$) ",
+				" and z.                 ",
+				"                        ",
+				" \u001b[4mhttps://api.example.co\u001b[24m ",
+				" \u001b[4mm/odata?$filter=Price\u001b[24m  ",
+				" gt 5&$top=10           "
+			]
+		},
+		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"underline": true,
+			"lines": [
+				" See                    ",
+				" \u001b[4mhttps://example.com/$x\u001b[24m ",
+				" \u001b[4m$\u001b[24m now, \u001b[4mwww.a.com/$y$\u001b[24m   ",
+				" (http://www.a.com/$y$) ",
+				" and z.                 ",
+				"                        ",
+				" \u001b[4mhttps://api.example.co\u001b[24m ",
+				" \u001b[4mm/odata?$filter=Price\u001b[24m  ",
+				" gt 5&$top=10           "
+			]
+		},
+		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"underline": true,
+			"lines": [
+				"                                                                                ",
+				" See \u001b[4mhttps://example.com/$x$\u001b[24m now, \u001b[4mwww.a.com/$y$\u001b[24m (http://www.a.com/$y$) and z.   ",
+				"                                                                                ",
+				" \u001b[4mhttps://api.example.com/odata?$filter=Price\u001b[24m gt 5&$top=10                       ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "urlLatex",
+			"text": "See https://example.com/$x$ now, www.a.com/$y$ and $z$.\n\nhttps://api.example.com/odata?$filter=Price gt 5&$top=10",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"underline": true,
+			"lines": [
+				"                                                                                ",
+				" See \u001b[4mhttps://example.com/$x$\u001b[24m now, \u001b[4mwww.a.com/$y$\u001b[24m (http://www.a.com/$y$) and z.   ",
+				"                                                                                ",
+				" \u001b[4mhttps://api.example.com/odata?$filter=Price\u001b[24m gt 5&$top=10                       ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "latexInline",
 			"text": "A map $\\mathbb{C}^3 \\to \\mathbb{C}^3$, $xy$, $x-y$, $\\frac{1}{2}$, and \\(s \\to \\infty\\).",
 			"width": 40,
@@ -4234,6 +4340,76 @@
 				" 2*3 and 4*5                                                                    ",
 				"                                                                                ",
 				" a $x-2 b, a*b c*d$                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"See [x (u) and y (u)                    "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"See [x (u) and y (u)                    "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" See [x (u) and y (u)   "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" See [x (u) and y (u)   "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" See [x (u) and y (u)                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexLinkText",
+			"text": "See [\\[x](u) and [\\(y\\)](u)",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" See [x (u) and y (u)                                                           ",
 				"                                                                                "
 			]
 		},
