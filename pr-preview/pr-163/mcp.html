@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-576f8119.js";
+            window.path_to_searchindex_js = "searchindex-dca840b6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -212,6 +212,7 @@ yapi mcp remove docs
 <li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
 <li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
 </ul>
+<p>The first prompt does not wait for servers whose tools only codemode reaches. A script that names a server’s tools, such as <code>tools.mcp__docs__search</code>, waits until that server has connected or failed to connect. A script that searches, lists or describes tools waits for every server that is still connecting. Aborting the turn ends the wait.</p>
 <p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
 <p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 
