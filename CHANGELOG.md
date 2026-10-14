@@ -2,6 +2,39 @@
 
 Notable changes to yapi, in the format of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). yapi follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.2.0] - 2026-10-14
+
+- Add Mermaid diagrams and LaTeX math to messages. Extensions get Pi's entry renderers and Markdown transformers, and code renderers (`pi.yapi.registerCodeRenderer`, `Api::register_code_renderer`) that can highlight code ([#167](https://github.com/SkymanOne/yapi/pull/167), [#168](https://github.com/SkymanOne/yapi/pull/168), [#169](https://github.com/SkymanOne/yapi/pull/169), [#170](https://github.com/SkymanOne/yapi/pull/170)).
+- Add Codex streaming over a WebSocket, as Pi does, which continues from the previous response and falls back to SSE ([#163](https://github.com/SkymanOne/yapi/pull/163), [#165](https://github.com/SkymanOne/yapi/pull/165)).
+- Add prompt cache warming with the `cacheWarming` setting, cache statistics in `/session` and the "Cache miss notices" setting ([#150](https://github.com/SkymanOne/yapi/pull/150), [#158](https://github.com/SkymanOne/yapi/pull/158)).
+- Add startup notices for new yapi releases and package updates. `--offline`, `PI_OFFLINE` and `PI_SKIP_VERSION_CHECK` turn them off ([#151](https://github.com/SkymanOne/yapi/pull/151)).
+- Add grammar-constrained custom tools for the OpenAI APIs, which codemode uses ([#152](https://github.com/SkymanOne/yapi/pull/152)).
+- Add TIFF, ICO, PNM, HDR, DDS and farbfeld images, converted to PNG before they reach the model ([#162](https://github.com/SkymanOne/yapi/pull/162)).
+- Show local times in `/tree` labels, extensions and codemode, and honor `timeZone` in extensions' date formatting ([#161](https://github.com/SkymanOne/yapi/pull/161), [#179](https://github.com/SkymanOne/yapi/pull/179)).
+- Let codemode scripts wait for the MCP servers they call to finish connecting ([#153](https://github.com/SkymanOne/yapi/pull/153)).
+- Change `yapi-tui`'s `MarkdownTheme`, which gains a `highlight_code` field. Code that builds it field by field must set it ([#167](https://github.com/SkymanOne/yapi/pull/167)).
+- Fix `yapi config` not installing configured packages that are missing ([#156](https://github.com/SkymanOne/yapi/pull/156)).
+- Fix `sendUserMessage` expanding prompt templates. As in Pi, it expands them only with `expandPromptTemplates` ([#157](https://github.com/SkymanOne/yapi/pull/157)).
+- Fix custom messages sent with `triggerTurn: false` missing from the next turn's context ([#171](https://github.com/SkymanOne/yapi/pull/171)).
+- Fix a prompt typed while an extension command runs being dropped ([#172](https://github.com/SkymanOne/yapi/pull/172)).
+- Fix `PI_CACHE_RETENTION` in a provider's environment being ignored ([#180](https://github.com/SkymanOne/yapi/pull/180)).
+- Fix yapi aborting on macOS with "mach_msg failed" when a signal reached the extension runtime's exception thread ([#183](https://github.com/SkymanOne/yapi/pull/183)).
+- Update wasmtime to 49.0.3, which fixes host panics in five security advisories, and rustls to 0.23.46 for RUSTSEC-2026-0346 ([#183](https://github.com/SkymanOne/yapi/pull/183), [#175](https://github.com/SkymanOne/yapi/pull/175)).
+
+### Known issues
+
+- Sign in with ChatGPT can fail with `invalid_grant` after the browser step, as it does in Pi ([#181](https://github.com/SkymanOne/yapi/issues/181)). The OpenAI Codex login works.
+
+### Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+```
+
+[Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
+
 ## [0.1.0] - 2026-10-07
 
 Yet Another Pi (in Rust) - Fast, Portable, Compatible.
@@ -38,4 +71,6 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 
 [Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
 
+[Unreleased]: https://github.com/SkymanOne/yapi/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.1.0

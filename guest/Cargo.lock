@@ -85,7 +85,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "code-renderer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -115,21 +115,21 @@ dependencies = [
 
 [[package]]
 name = "countdown"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
 
 [[package]]
 name = "crash-recovery"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
 
 [[package]]
 name = "custom-footer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -142,7 +142,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "entry-renderer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "event-bus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -242,7 +242,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "input-hooks"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-at-load"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -363,14 +363,14 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "message-renderer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
 
 [[package]]
 name = "modal-editor"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -386,14 +386,14 @@ dependencies = [
 
 [[package]]
 name = "overlay-test"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
 
 [[package]]
 name = "package-scripts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "permission-gate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -480,14 +480,14 @@ dependencies = [
 
 [[package]]
 name = "project-dir"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
 
 [[package]]
 name = "protected-paths"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "question"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "repo-status"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -647,7 +647,7 @@ checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
 
 [[package]]
 name = "select-menu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "subagent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "yapi-extension-api",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "todo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "yapi-extension-api",
 ]
@@ -1008,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-extension-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "serde_json",
@@ -1018,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-js"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "rquickjs",
@@ -1029,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "indexmap",
  "pulldown-cmark",
@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "getrandom",
  "indexmap",
