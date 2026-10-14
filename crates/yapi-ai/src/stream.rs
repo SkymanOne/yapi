@@ -11,7 +11,7 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 pub use yapi_types::settings::Transport;
 
-use crate::credentials::ProviderEnv;
+use crate::credentials::{ProviderEnv, provider_env_value};
 
 /// A wire API: turns a model, a transcript and options into a streamed message.
 ///
@@ -200,15 +200,19 @@ impl std::fmt::Debug for RequestHooks {
 }
 
 impl StreamOptions {
-    /// The cache retention to use: the option, else `long` when
-    /// `PI_CACHE_RETENTION=long`, else `short`.
+    /// The cache retention to use: [`Self::requested_cache_retention`], else
+    /// `short`.
     pub fn resolved_cache_retention(&self) -> CacheRetention {
-        self.cache_retention.unwrap_or_else(|| {
-            if std::env::var("PI_CACHE_RETENTION").as_deref() == Ok("long") {
-                CacheRetention::Long
-            } else {
-                CacheRetention::Short
-            }
+        self.requested_cache_retention()
+            .unwrap_or(CacheRetention::Short)
+    }
+
+    /// The option, else `long` when `PI_CACHE_RETENTION=long` in `env` or the
+    /// process environment.
+    pub fn requested_cache_retention(&self) -> Option<CacheRetention> {
+        self.cache_retention.or_else(|| {
+            (provider_env_value("PI_CACHE_RETENTION", self.env.as_ref()).as_deref() == Some("long"))
+                .then_some(CacheRetention::Long)
         })
     }
 

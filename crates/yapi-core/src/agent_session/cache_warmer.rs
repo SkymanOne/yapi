@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
-use yapi_ai::stream::{CacheRetention, Request};
+use yapi_ai::stream::{CacheRetention, Request, RequestHooks};
 use yapi_types::event::AgentEvent;
 use yapi_types::extension_event::ExtensionEvent;
 use yapi_types::js;
@@ -322,6 +322,8 @@ impl AgentSession {
         request.options.api_key = None;
         request.options.headers.clear();
         request.options.env = None;
+        // Each refresh gets its own, which do not see this run's cancellation.
+        request.options.hooks = RequestHooks::default();
         warmer.runs += 1;
         let now = now();
         warmer.run = Some(Run {
@@ -617,6 +619,9 @@ impl AgentSession {
         request.options.max_tokens = Some(1);
         request.options.max_retries = 0;
         request.options.cancel = cancel;
+        // Extensions see the current run's signal, as pi's live `ctx.signal`.
+        let current = lock(&self.inner.cancel).clone().unwrap_or_default();
+        request.options.hooks = self.request_hooks(&request.model, &current);
         let auth = self.registry().auth(&request.model).await;
         auth.apply(&mut request).ok()?;
         yapi_ai::stream::RequestHooks::prepare(&mut request).await;
@@ -1231,6 +1236,26 @@ mod tests {
         assert!(replayable(&request("openai-responses", none, medium)));
     }
 
+    /// The lifetime follows `PI_CACHE_RETENTION` in the provider env too.
+    #[test]
+    fn the_provider_env_selects_the_cache_lifetime() {
+        let request = Request {
+            model: Model {
+                prompt_cache: Some(yapi_types::models::PromptCache {
+                    short: Some(300.0),
+                    long: Some(3600.0),
+                }),
+                ..cached_model()
+            },
+            messages: Vec::new(),
+            options: StreamOptions {
+                env: Some([("PI_CACHE_RETENTION".to_owned(), "long".to_owned())].into()),
+                ..StreamOptions::default()
+            },
+        };
+        assert_eq!(ttl_ms(&request), Some(3_600_000.0));
+    }
+
     #[test]
     fn refreshes_at_ninety_percent_with_ten_seconds_of_margin() {
         assert_eq!(delay_ms(10_000.0), None);
@@ -1312,6 +1337,86 @@ mod tests {
         assert_eq!(
             format_cache_warming_usage(&entry),
             "Cache warmed (extension override): $0.010"
+        );
+    }
+
+    /// Never finishes its `agent_settled` handler.
+    struct HangSettled;
+
+    impl Extension for HangSettled {
+        fn source(&self) -> SourceInfo {
+            builtin_source("hang")
+        }
+
+        fn handles(&self, kind: &str) -> bool {
+            kind == "agent_settled"
+        }
+
+        fn handle<'a>(
+            &'a self,
+            _ctx: &'a Context,
+            _event: &'a Value,
+        ) -> BoxFuture<'a, Option<Value>> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dropped_run_clears_settling() {
+        let provider = Cached::default();
+        let ext: Arc<dyn Extension> = Arc::new(HangSettled);
+        let session = warming_session(cached_model(), &provider, vec![ext], CacheWarming::Off);
+        let run = tokio::time::timeout(Duration::from_secs(5), session.prompt("hi", Vec::new()));
+        assert!(run.await.is_err());
+        assert!(session.settled_turn().is_none(), "settling stayed true");
+    }
+
+    /// Records whether the context of each `before_provider_headers` is cancelled.
+    struct SeesCancel(Arc<Mutex<Vec<bool>>>);
+
+    impl Extension for SeesCancel {
+        fn source(&self) -> SourceInfo {
+            builtin_source("sees-cancel")
+        }
+
+        fn handles(&self, kind: &str) -> bool {
+            kind == "before_provider_headers"
+        }
+
+        fn handle<'a>(
+            &'a self,
+            ctx: &'a Context,
+            _event: &'a Value,
+        ) -> BoxFuture<'a, Option<Value>> {
+            self.0.lock().unwrap().push(ctx.cancel.is_cancelled());
+            Box::pin(async { None })
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_hooks_do_not_see_the_aborted_run() {
+        let provider = Cached::default();
+        provider
+            .delays
+            .lock()
+            .unwrap()
+            .push_back(Duration::from_secs(10));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let ext: Arc<dyn Extension> = Arc::new(SeesCancel(seen.clone()));
+        let session = warming_session(cached_model(), &provider, vec![ext], CacheWarming::Idle);
+        let run = tokio::spawn({
+            let session = session.clone();
+            async move { session.prompt("hi", Vec::new()).await }
+        });
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        session.abort();
+        run.await.unwrap().unwrap();
+        tokio::time::sleep(REFRESH * 2).await;
+        // The first entry is the run's own request, before the abort.
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.len() > 1 && !seen[1..].contains(&true),
+            "refresh hooks saw the aborted run: {seen:?}"
         );
     }
 }

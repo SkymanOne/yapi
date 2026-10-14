@@ -17,6 +17,7 @@
 set -eu
 
 releases="${YAPI_RELEASES_URL:-https://github.com/SkymanOne/yapi/releases}"
+releases="${releases%/}"
 version="${YAPI_VERSION:-latest}"
 dir="${YAPI_INSTALL_DIR:-}"
 case "${YAPI_NO_DOCS:-}" in

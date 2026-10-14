@@ -1235,3 +1235,73 @@ export default function (pi: ExtensionAPI) {
     session.prompt("/own", Vec::new()).await.unwrap();
     shows("editor true own true").await;
 }
+
+/// A UI that counts how often a runtime restarted.
+#[derive(Default)]
+struct Restarts(std::sync::atomic::AtomicUsize);
+
+impl ExtensionUi for Restarts {
+    fn has_ui(&self) -> bool {
+        true
+    }
+
+    fn notify(&self, _message: &str, _kind: NotifyKind) {}
+
+    fn drop_components(&self, _runtime: u64) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// A drawing request that stops the runtime is not sent to it again, so
+/// redrawing the transcript after the restart cannot stop it over and over.
+/// The restarted runtime draws everything else.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_drawing_that_stops_the_runtime_is_not_asked_again() {
+    let dir = scratch("drawing-crash");
+    let path = dir.join("draw.ts");
+    std::fs::write(
+        &path,
+        r#"
+const overflow = () => overflow();
+export default function (pi) {
+	pi.yapi.registerCodeRenderer((code) => (code === "crash" ? overflow() : [code.toUpperCase()]));
+	pi.registerMarkdownTransformer((text) => (text === "crash" ? overflow() : text.toUpperCase()));
+}
+"#,
+    )
+    .unwrap();
+    let host = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
+    let session = session(&Faux::new([]), &dir, host.for_session());
+    let ui = Arc::new(Restarts::default());
+    session
+        .bind_extensions(ui.clone(), Mode::Tui, None, None)
+        .await;
+    let renderer = &session.code_renderers()[0];
+    let transformer = &session.markdown_transformers()[0];
+    let code = |code: &str| json!({"code": code, "lang": null, "width": 40});
+    let markdown = |text: &str| json!({"markdown": text, "context": {"messageType": "assistant"}});
+    for _ in 0..2 {
+        let error = renderer.render_code(&code("crash")).await.unwrap_err();
+        assert!(error.starts_with("extension runtime stopped: "), "{error}");
+        let error = transformer
+            .transform_markdown(&markdown("crash"))
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("extension runtime stopped: "), "{error}");
+    }
+    assert_eq!(
+        renderer.render_code(&code("fine")).await.unwrap(),
+        Some(vec!["FINE".to_owned()])
+    );
+    assert_eq!(
+        transformer
+            .transform_markdown(&markdown("fine"))
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("FINE")
+    );
+    assert_eq!(ui.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}

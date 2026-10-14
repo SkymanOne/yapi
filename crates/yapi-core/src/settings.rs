@@ -505,10 +505,15 @@ mod tests {
     #[test]
     fn invalid_fields_leave_the_valid_ones() {
         let mut manager = SettingsManager::in_memory();
-        manager.global = json!({"theme": "dark", "retry": "often", "steeringMode": "all"})
-            .as_object()
-            .unwrap()
-            .clone();
+        manager.global = json!({
+            "theme": "dark",
+            "retry": "often",
+            "steeringMode": "all",
+            "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
+        })
+        .as_object()
+        .unwrap()
+        .clone();
         manager.remerge();
         let settings = manager.settings();
         assert_eq!(settings.theme.as_deref(), Some("dark"));
@@ -516,6 +521,14 @@ mod tests {
         assert_eq!(
             settings.steering_mode,
             Some(yapi_types::settings::QueueMode::All)
+        );
+        // pi reads a mermaid mode it does not know as streaming.
+        assert_eq!(
+            settings.markdown,
+            Some(yapi_types::settings::MarkdownSettings {
+                code_block_indent: Some("    ".into()),
+                mermaid: Some(yapi_types::settings::MermaidMode::Streaming),
+            })
         );
     }
 

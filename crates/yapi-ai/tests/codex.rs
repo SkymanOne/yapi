@@ -159,6 +159,30 @@ async fn a_full_connection_limit_retries_once() {
     assert_eq!(server.finish().unwrap().len(), 2);
 }
 
+/// Empty messages are skipped and values other than objects passed over, as
+/// in pi; `null` fails as pi's read of its `type` does.
+#[tokio::test]
+async fn empty_and_non_object_messages_are_handled_as_pi_does() {
+    let mut odd = text();
+    odd.response
+        .chunks
+        .splice(0..0, ["".into(), "42".into(), "[]".into()]);
+    let server = MockServer::local(Cassette {
+        interactions: vec![odd, exchange(vec!["null".into()])],
+    })
+    .await
+    .unwrap();
+    let message = ask(&server, session("ws-odd", Some(Transport::Auto))).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    assert_eq!(message.diagnostics, None);
+    let message = ask(&server, session("ws-null", Some(Transport::Auto))).await;
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Invalid Codex WebSocket JSON: Cannot read properties of null (reading 'type')")
+    );
+    server.finish().unwrap();
+}
+
 #[tokio::test]
 async fn continuations_send_the_new_input_and_recover_a_lost_response() {
     let missing = json!({"type": "error", "status": 400, "error": {"code": "previous_response_not_found", "message": "Previous response not found."}});
@@ -628,4 +652,104 @@ async fn sse_requests_do_not_retry_usage_limits_or_long_delays() {
         Some("Server requested 120s retry delay (max: 60s)")
     );
     assert_eq!(server.finish().unwrap().len(), 2);
+}
+
+/// Dropping the request task mid-request must not strand the session's slot.
+#[test]
+fn a_dropped_request_frees_the_session_slot() {
+    let server_rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut slow = text();
+    slow.response.chunk_delay_ms = 200;
+    let server = server_rt
+        .block_on(MockServer::local(Cassette {
+            interactions: vec![slow, text(), text(), text()],
+        }))
+        .unwrap();
+    let options = || session("ws-dropped", Some(Transport::Auto));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // The first request starts, then its task is dropped with the runtime.
+    let _ = rt.block_on(async {
+        tokio::time::timeout(Duration::from_millis(100), ask(&server, options())).await
+    });
+    drop(rt);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        ask(&server, options()).await;
+        ask(&server, options()).await;
+    });
+    assert_eq!(stats("ws-dropped")["connectionsReused"], 1);
+}
+
+/// A misconfigured grammar tool and no key: pi reports the missing key first.
+#[tokio::test]
+async fn the_api_key_is_checked_before_grammar_tools() {
+    let system: Message = serde_json::from_value(json!({
+        "role": "system", "content": "Use tools.", "timestamp": 0,
+        "toolsAdded": [{
+            "name": "bad", "description": "x",
+            "parameters": {"type": "object", "properties": {}},
+            "constrainedSampling": {"type": "grammar", "variants": {}},
+        }],
+    }))
+    .unwrap();
+    let mut errors = Vec::new();
+    for (provider, api) in [
+        ("openai", "openai-responses"),
+        ("openai", "openai-completions"),
+    ] {
+        let mut model = builtin_models(provider)
+            .into_iter()
+            .find(|model| model.api == api)
+            .or_else(|| {
+                builtin_models("openai")
+                    .into_iter()
+                    .next()
+                    .map(|mut model| {
+                        model.api = api.into();
+                        model
+                    })
+            })
+            .unwrap();
+        model
+            .compat
+            .get_or_insert_with(Default::default)
+            .insert("supportsOpenAIGrammarTools".into(), json!(true));
+        let request = Request {
+            model,
+            messages: vec![system.clone(), user("hi")],
+            options: StreamOptions::default(),
+        };
+        let message = Apis::default().stream(request).result().await.unwrap();
+        errors.push((api, message.error_message.unwrap_or_default()));
+    }
+    let key = "No API key for provider: openai";
+    assert!(errors.iter().all(|(_, error)| error == key), "{errors:#?}");
+    // Codex reads its account from the key before the tools.
+    let mut model = builtin_models("openai-codex").into_iter().next().unwrap();
+    model
+        .compat
+        .get_or_insert_with(Default::default)
+        .insert("supportsOpenAIGrammarTools".into(), json!(true));
+    let request = Request {
+        model,
+        messages: vec![system, user("hi")],
+        options: StreamOptions {
+            api_key: Some("not-a-token".into()),
+            ..StreamOptions::default()
+        },
+    };
+    let message = Apis::default().stream(request).result().await.unwrap();
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Failed to extract accountId from token")
+    );
 }

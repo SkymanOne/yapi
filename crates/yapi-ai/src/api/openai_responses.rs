@@ -889,26 +889,12 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
     let compat = Compat::new(&model, flavor);
     let output = new_output(&model, now_ms());
     let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
-    // Calls are stored as ordinary tool calls. Each request decides from the
-    // declared tools which ones travel as custom tool calls.
-    let grammar = match schema::grammar_properties(&normalized, compat.supports_grammar_tools) {
-        Ok(grammar) => grammar,
+    let (prepared, grammar) = match prepare(&model, &messages, &normalized, &options, &compat).await
+    {
+        Ok(prepared) => prepared,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
     };
     let mut state = State::new(flavor, output, grammar);
-    let prepared = match prepare(
-        &model,
-        &messages,
-        &normalized,
-        &options,
-        &compat,
-        &state.grammar,
-    )
-    .await
-    {
-        Ok(prepared) => prepared,
-        Err(message) => return send_error(&sender, state.output, &options.cancel, message),
-    };
     if let Some(account) = &prepared.account {
         match codex_websocket(&prepared, account, &mut state, &model, &sender, &options).await {
             Ok(true) => return sender.send(StreamEvent::Done(state.output)),
@@ -941,15 +927,15 @@ struct Prepared {
     account: Option<String>,
 }
 
-/// Builds the request.
+/// Builds the request, and the input argument of each tool sent with a
+/// grammar, by name.
 async fn prepare(
     model: &Model,
     messages: &[Message],
     normalized: &[Message],
     options: &StreamOptions,
     compat: &Compat,
-    grammar: &HashMap<String, String>,
-) -> Result<Prepared, String> {
+) -> Result<(Prepared, HashMap<String, String>), String> {
     let flavor = compat.flavor;
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
@@ -970,10 +956,15 @@ async fn prepare(
         .session_id
         .as_deref()
         .filter(|_| options.resolved_cache_retention() != CacheRetention::None);
-    let (params, url) = match flavor {
+    // Calls are stored as ordinary tool calls. Each request decides from the
+    // declared tools which ones travel as custom tool calls, once the
+    // credentials and endpoint check out, as in pi.
+    let grammar = || schema::grammar_properties(normalized, compat.supports_grammar_tools);
+    let (params, url, grammar) = match flavor {
         Flavor::OpenAi => {
+            let grammar = grammar()?;
             let params = build_params(
-                model, normalized, options, compat, grammar, max_tokens, effort,
+                model, normalized, options, compat, &grammar, max_tokens, effort,
             )?;
             headers = super::openai_headers(&api_key, model.headers.as_ref());
             if model.provider == "github-copilot" {
@@ -993,24 +984,26 @@ async fn prepare(
             }
             headers.extend(&options.headers);
             let url = format!("{}/responses", model.base_url.trim_end_matches('/'));
-            (params, url)
+            (params, url, grammar)
         }
         Flavor::Azure => {
             let url = azure_endpoint(model)?;
+            let grammar = grammar()?;
             let params = build_azure_params(
-                model, normalized, options, compat, grammar, max_tokens, effort,
+                model, normalized, options, compat, &grammar, max_tokens, effort,
             )?;
             headers.set("api-key", Some(api_key.as_str()));
             headers.set("content-type", Some("application/json"));
             headers.set("accept", Some("application/json"));
             headers.extend_model(model.headers.as_ref());
             headers.extend(&options.headers);
-            (params, url)
+            (params, url, grammar)
         }
         Flavor::Codex => {
             let id = crate::auth::codex::account_id(&api_key)
                 .ok_or("Failed to extract accountId from token")?;
-            let body = build_codex_body(model, normalized, options, compat, grammar, effort)?;
+            let grammar = grammar()?;
+            let body = build_codex_body(model, normalized, options, compat, &grammar, effort)?;
             headers.extend_model(model.headers.as_ref());
             headers.extend(&options.headers);
             headers.set("authorization", Some(format!("Bearer {api_key}")));
@@ -1026,7 +1019,7 @@ async fn prepare(
                 headers.set("session-id", Some(session.as_str()));
                 headers.set("x-client-request-id", Some(session));
             }
-            (body, codex_url(&model.base_url))
+            (body, codex_url(&model.base_url), grammar)
         }
     };
     let body = options.hooks.payload(params).await;
@@ -1038,12 +1031,15 @@ async fn prepare(
             yapi_types::json::stringify(&json!(timeout))
         ));
     }
-    Ok(Prepared {
-        url,
-        headers,
-        body,
-        account,
-    })
+    Ok((
+        Prepared {
+            url,
+            headers,
+            body,
+            account,
+        },
+        grammar,
+    ))
 }
 
 /// Sends `prepared` over HTTP; the response once its status is a success.
@@ -2063,6 +2059,13 @@ impl State {
                 .await?;
             let event: Value = serde_json::from_str(&text)
                 .map_err(|err| Failure::protocol(format!("Invalid Codex WebSocket JSON: {err}")))?;
+            // pi reads `type` from any parsed value, which only `null` rejects.
+            if event.is_null() {
+                return Err(Failure::protocol(
+                    "Invalid Codex WebSocket JSON: Cannot read properties of null (reading 'type')"
+                        .into(),
+                ));
+            }
             options.hooks.stream_event(&event).await;
             let Some(kind) = event["type"].as_str() else {
                 continue;

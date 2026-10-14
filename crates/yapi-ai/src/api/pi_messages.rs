@@ -9,26 +9,9 @@ use yapi_types::event::AssistantMessageEvent;
 use yapi_types::message::{AssistantMessage, ContentBlock, StopReason, Usage};
 use yapi_types::model::Model;
 
-use crate::credentials::provider_env_value;
 use crate::http;
 use crate::json_parse::parse_streaming_json;
-use crate::stream::{
-    CacheRetention, EventSender, Request, StreamEvent, StreamOptions, new_output, now_ms,
-    send_error,
-};
-
-/// The request's cache retention: the option, else the legacy
-/// `PI_CACHE_RETENTION=long`; the backend's default otherwise.
-fn cache_retention(options: &StreamOptions) -> Option<&'static str> {
-    options
-        .cache_retention
-        .map(CacheRetention::as_str)
-        .or_else(|| {
-            (provider_env_value("PI_CACHE_RETENTION", options.env.as_ref()).as_deref()
-                == Some("long"))
-            .then_some("long")
-        })
-}
+use crate::stream::{EventSender, Request, StreamEvent, new_output, now_ms, send_error};
 
 fn payload(model: &Model, request: &Request) -> Value {
     let options = &request.options;
@@ -42,8 +25,9 @@ fn payload(model: &Model, request: &Request) -> Value {
     if let Some(reasoning) = options.reasoning {
         fields.insert("reasoning".into(), json!(reasoning.as_str()));
     }
-    if let Some(retention) = cache_retention(options) {
-        fields.insert("cacheRetention".into(), json!(retention));
+    // Unset, the backend's default applies.
+    if let Some(retention) = options.requested_cache_retention() {
+        fields.insert("cacheRetention".into(), json!(retention.as_str()));
     }
     if let Some(session) = &options.session_id {
         fields.insert("sessionId".into(), json!(session));

@@ -366,7 +366,7 @@ pub(super) fn frame(body: &Value) -> String {
 pub(super) struct Lease {
     socket: Socket,
     /// The cache slot the socket returns to; `None` for a one-off socket.
-    key: Option<Key>,
+    key: Held,
     created: Instant,
     /// Whether the socket served an earlier request.
     pub(super) reused: bool,
@@ -387,7 +387,7 @@ pub(super) async fn acquire(
     let open = || connect(url, headers, cancel, connect_timeout_ms);
     let lease = |socket, key, created| Lease {
         socket,
-        key,
+        key: Held(key),
         created,
         reused: false,
         continuation: None,
@@ -431,6 +431,19 @@ pub(super) async fn acquire(
     Ok(lease(socket, Some(key), Instant::now()))
 }
 
+/// The slot a request holds. Dropped before the request releases it, as
+/// when its task is cancelled, it frees the slot for the session's next
+/// request.
+struct Held(Option<Key>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        if let Some(key) = &self.0 {
+            remove_busy(key);
+        }
+    }
+}
+
 /// Forgets `key`'s slot when a request holds it.
 fn remove_busy(key: &Key) {
     let mut sockets = lock(&SOCKETS);
@@ -442,7 +455,7 @@ fn remove_busy(key: &Key) {
 impl Lease {
     /// Whether the socket returns to the session's cache.
     pub(super) fn cached(&self) -> bool {
-        self.key.is_some()
+        self.key.0.is_some()
     }
 
     /// Sends `text` as one message.
@@ -480,9 +493,10 @@ impl Lease {
             };
             let frame =
                 frame.unwrap_or_else(|| Err(Failure::error(http::ABORTED_DURING_STREAM)))?;
+            // pi ignores empty messages, and they do not restart its idle timer.
             match frame {
-                Some(Ok(Frame::Text(text))) => return Ok(text.to_string()),
-                Some(Ok(Frame::Binary(bytes))) => {
+                Some(Ok(Frame::Text(text))) if !text.is_empty() => return Ok(text.to_string()),
+                Some(Ok(Frame::Binary(bytes))) if !bytes.is_empty() => {
                     return Ok(String::from_utf8_lossy(&bytes).into_owned());
                 }
                 Some(Ok(Frame::Close(frame))) => return Err(Failure::closed(frame)),
@@ -495,8 +509,8 @@ impl Lease {
     /// Returns a cached socket to its session when `keep` and its slot is
     /// still the request's, to close after five idle minutes; closes it
     /// otherwise.
-    pub(super) fn release(self, keep: bool) {
-        let Some(key) = self.key else {
+    pub(super) fn release(mut self, keep: bool) {
+        let Some(key) = self.key.0.take() else {
             return close(self.socket, "done");
         };
         let mut sockets = lock(&SOCKETS);

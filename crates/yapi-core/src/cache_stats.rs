@@ -45,7 +45,9 @@ pub struct CacheWaste {
 struct Previous {
     prompt_tokens: u64,
     model: String,
-    timestamp: u64,
+    /// `None` for a time that does not parse, which counts no idle time,
+    /// as pi's `NaN` does.
+    timestamp: Option<u64>,
     /// Some request of this scan segment reported cache activity, which
     /// tells a total miss on a provider that reports only cache reads from a
     /// provider that never reports caching.
@@ -97,7 +99,9 @@ fn detect(
     Some(CacheMiss {
         missed_tokens,
         missed_cost: missed_tokens as f64 * (paid_per_token - read_per_token).max(0.0),
-        idle_ms: message.timestamp.saturating_sub(previous.timestamp),
+        idle_ms: previous
+            .timestamp
+            .map_or(0, |at| message.timestamp.saturating_sub(at)),
         model_changed: format!("{}/{}", message.provider, message.model) != previous.model,
     })
 }
@@ -121,7 +125,7 @@ fn scan<'a>(
                     previous = Some(Previous {
                         prompt_tokens: tokens,
                         model: format!("{}/{}", usage.provider, usage.model),
-                        timestamp: crate::time::parse_iso(&usage.meta.timestamp).unwrap_or(0),
+                        timestamp: crate::time::parse_iso(&usage.meta.timestamp),
                         reported_cache: true,
                     });
                 }
@@ -138,7 +142,7 @@ fn scan<'a>(
                     previous = Some(Previous {
                         prompt_tokens: prompt_tokens(message),
                         model: format!("{}/{}", message.provider, message.model),
-                        timestamp: message.timestamp,
+                        timestamp: Some(message.timestamp),
                         reported_cache: previous.as_ref().is_some_and(|p| p.reported_cache)
                             || usage.cache_read + usage.cache_write > 0,
                     });
