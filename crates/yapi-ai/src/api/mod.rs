@@ -13,7 +13,10 @@ pub mod pi_messages;
 
 use std::sync::Arc;
 
-pub use codex_websocket::close_session as close_codex_websockets;
+pub use codex_websocket::{
+    DebugStats as CodexWebSocketStats, close_sessions as close_codex_websockets,
+    debug_stats as codex_websocket_stats, reset_debug_stats as reset_codex_websocket_stats,
+};
 
 use indexmap::IndexMap;
 use yapi_types::message::{Content, ContentBlock, Message};

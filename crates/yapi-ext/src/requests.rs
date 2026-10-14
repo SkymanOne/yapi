@@ -264,6 +264,20 @@ impl Host {
                 text(payload, "text"),
             ))),
             "codemode.definition" => Ok(crate::codemode::definition()),
+            // pi-ai's Codex WebSocket cache, which is process-wide as in pi.
+            "codex.closeSessions" => {
+                yapi_ai::api::close_codex_websockets(payload["sessionId"].as_str());
+                Ok(Value::Null)
+            }
+            "codex.stats" => Ok(payload["sessionId"]
+                .as_str()
+                .and_then(yapi_ai::api::codex_websocket_stats)
+                .and_then(|stats| serde_json::to_value(stats).ok())
+                .unwrap_or_default()),
+            "codex.resetStats" => {
+                yapi_ai::api::reset_codex_websocket_stats(payload["sessionId"].as_str());
+                Ok(Value::Null)
+            }
             // pi checks a registration as it happens, while extensions load
             // too, so the name must not be another runtime's.
             "mcp.validate" => {

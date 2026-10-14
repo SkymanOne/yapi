@@ -700,6 +700,15 @@ export function sleep(ms, signal) {
 		signal.addEventListener("abort", onAbort, { once: true });
 	});
 }
+// pi-ai's Codex WebSocket cache lives in the host.
+export const closeOpenAICodexWebSocketSessions = (sessionId) => {
+	yapi.request("codex.closeSessions", { sessionId });
+};
+export const getOpenAICodexWebSocketDebugStats = (sessionId) =>
+	yapi.request("codex.stats", { sessionId }) ?? undefined;
+export const resetOpenAICodexWebSocketDebugStats = (sessionId) => {
+	yapi.request("codex.resetStats", { sessionId });
+};
 // Generated from pi-ai 1.0.0's subpath modules: constants as published, the
 // rest stubs that throw when called.
 export const { builtinModels, builtinProviders, radiusProvider, amazonBedrockProvider, antLingProvider, anthropicProvider,
@@ -716,8 +725,7 @@ export const { builtinModels, builtinProviders, radiusProvider, amazonBedrockPro
 	getDisabledGoogleThinkingConfig, isThinkingPart, mapStopReason, mapStopReasonString, mapToolChoice, requiresToolCallId,
 	resolveGoogleFunctionCallingMode, resolveGoogleThinkingLevel, retainThoughtSignature, retryGoogleRequest, supportsGoogleStrictToolSampling,
 	toGoogleSdkThinkingLevel, toGoogleThinkingLevel, usesGoogleThinkingLevel, answerFromProbabilities, labelProbabilities, llamaServerRoot,
-	peakConfidence, renderQuestion, llamaCppClassifyApi, closeOpenAICodexWebSocketSessions, getOpenAICodexWebSocketDebugStats,
-	resetOpenAICodexWebSocketDebugStats, clampOpenAIPromptCacheKey, convertResponsesMessages, convertResponsesTools, processResponsesStream,
+	peakConfidence, renderQuestion, llamaCppClassifyApi, clampOpenAIPromptCacheKey, convertResponsesMessages, convertResponsesTools, processResponsesStream,
 	openrouterImagesApi, PiMessagesResponseError, adjustMaxTokensForThinking, buildBaseOptions, clampMaxTokensToContext, clampReasoning,
 	clampThinkingBudgetToAnswerRoom, thinkingBudgetForLevel, classifySystemOne, isRecord, transformMessages, typesafeSystemOneApi, combineAbortSignals,
 	operationSignal, raceWithAbortSignal, formatProviderError, normalizeProviderError, safeJsonStringify, truncateErrorText, calculateContextTokens,

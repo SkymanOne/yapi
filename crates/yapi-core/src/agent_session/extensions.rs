@@ -1199,6 +1199,7 @@ impl AgentSession {
             target_session_file: None,
         })
         .await;
+        self.release_resources();
     }
 
     /// Stops extensions before a session replaces this one for `reason`;
@@ -1211,6 +1212,9 @@ impl AgentSession {
             target_session_file: target.as_deref(),
         })
         .await;
+        if reason != Replacement::Reload {
+            self.release_resources();
+        }
     }
 
     async fn stop_extensions(&self, event: ExtensionEvent<'_>) {
@@ -1221,9 +1225,13 @@ impl AgentSession {
         for extension in &self.inner.extensions {
             extension.session_shutdown(&ctx).await;
         }
-        // pi's `cleanupSessionResources`: the session's cached sockets close.
+    }
+
+    /// pi's `cleanupSessionResources`, run when a session ends or another
+    /// replaces it, but not on reload: the session's cached sockets close.
+    fn release_resources(&self) {
         if let Some(id) = read(&self.inner.runtime).session_id.clone() {
-            yapi_ai::api::close_codex_websockets(&id);
+            yapi_ai::api::close_codex_websockets(Some(&id));
         }
     }
 

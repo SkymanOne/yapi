@@ -3,19 +3,25 @@
 //!
 //! Port of the WebSocket half of `packages/ai/src/api/openai-codex-responses.ts`
 //! in pi `v1.0.0`. A session keeps one socket per account between requests,
-//! closed after five idle minutes or once it is 55 minutes old.
+//! closed after five idle minutes or once it is 55 minutes old. While idle, a
+//! task reads the socket, as Node does: it answers pings, drops stray
+//! messages and notices a close.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use base64::Engine as _;
-use futures_util::{FutureExt as _, SinkExt as _, StreamExt as _};
+use futures_util::{SinkExt as _, StreamExt as _};
+use serde::Serialize;
 use serde_json::{Map, Value, json};
-use sha1::Digest as _;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message as Frame;
+use tokio_tungstenite::tungstenite::handshake::client::generate_key;
+use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Role};
 use tokio_util::sync::CancellationToken;
@@ -38,44 +44,148 @@ const WEBSOCKET_ERROR: &str = "WebSocket error";
 enum Slot {
     /// A request is using the socket.
     Busy,
-    /// Idle, with the generation that its idle timer expires.
-    Idle(Box<Cached>, u64),
+    Idle(Idle),
 }
 
-struct Cached {
-    socket: Socket,
+/// A cached socket between requests, held by its reader task.
+struct Idle {
+    /// Stops the reader: `None` hands the socket back, a reason closes it.
+    stop: oneshot::Sender<Option<&'static str>>,
+    /// The socket, unless it closed or was closed.
+    reader: JoinHandle<Option<Socket>>,
     created: Instant,
     continuation: Option<Continuation>,
+    generation: u64,
 }
 
 static SOCKETS: LazyLock<Mutex<HashMap<Key, Slot>>> = LazyLock::new(Default::default);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 /// Sessions whose WebSocket failed; they use SSE for the rest of the process.
 static FALLBACK: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+static STATS: LazyLock<Mutex<HashMap<String, DebugStats>>> = LazyLock::new(Default::default);
+
+/// pi's `OpenAICodexWebSocketDebugStats` for one session.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugStats {
+    requests: u64,
+    connections_created: u64,
+    connections_reused: u64,
+    cached_context_requests: u64,
+    store_true_requests: u64,
+    full_context_requests: u64,
+    delta_requests: u64,
+    last_input_items: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_delta_input_items: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_previous_response_id: Option<String>,
+    websocket_failures: u64,
+    sse_fallbacks: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    websocket_fallback_active: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_web_socket_error: Option<String>,
+}
+
+fn with_stats(session: &str, update: impl FnOnce(&mut DebugStats)) {
+    update(lock(&STATS).entry(session.to_owned()).or_default());
+}
+
+/// pi's `getOpenAICodexWebSocketDebugStats`: what `session_id`'s WebSocket
+/// requests did in this process.
+pub fn debug_stats(session_id: &str) -> Option<DebugStats> {
+    lock(&STATS).get(session_id).cloned()
+}
+
+/// pi's `resetOpenAICodexWebSocketDebugStats`: forgets the statistics and
+/// the SSE fallback of `session_id`, or of every session.
+pub fn reset_debug_stats(session_id: Option<&str>) {
+    match session_id {
+        Some(session) => {
+            lock(&STATS).remove(session);
+            lock(&FALLBACK).remove(session);
+        }
+        None => {
+            lock(&STATS).clear();
+            lock(&FALLBACK).clear();
+        }
+    }
+}
 
 /// Whether `session`'s WebSocket failed earlier in this process.
 pub(super) fn fallback_active(session: Option<&str>) -> bool {
     session.is_some_and(|session| lock(&FALLBACK).contains(session))
 }
 
-/// Sends `session`'s later requests over SSE.
-pub(super) fn record_failure(session: Option<&str>) {
+/// Counts a request of `session` as pi's `processWebSocketStream` does.
+pub(super) fn count_request(session: &str, reused: bool, continues: bool, request: &Value) {
+    with_stats(session, |stats| {
+        stats.requests += 1;
+        if reused {
+            stats.connections_reused += 1;
+        } else {
+            stats.connections_created += 1;
+        }
+        if continues {
+            stats.cached_context_requests += 1;
+        }
+        if request["store"] == true {
+            stats.store_true_requests += 1;
+        }
+        let items = request["input"].as_array().map_or(0, Vec::len);
+        stats.last_input_items = items;
+        match request["previous_response_id"].as_str() {
+            Some(previous) => {
+                stats.delta_requests += 1;
+                stats.last_delta_input_items = Some(items);
+                stats.last_previous_response_id = Some(previous.to_owned());
+            }
+            None => {
+                stats.full_context_requests += 1;
+                stats.last_delta_input_items = None;
+                stats.last_previous_response_id = None;
+            }
+        }
+    });
+}
+
+/// pi's `recordWebSocketSseFallback`: a request of `session` goes over SSE.
+pub(super) fn record_fallback(session: Option<&str>) {
     if let Some(session) = session {
-        lock(&FALLBACK).insert(session.to_owned());
+        let active = fallback_active(Some(session));
+        with_stats(session, |stats| {
+            stats.sse_fallbacks += 1;
+            stats.websocket_fallback_active = Some(active);
+        });
     }
 }
 
-/// Closes the idle sockets `session_id` keeps, as pi does when a session ends.
-pub fn close_session(session_id: &str) {
+/// pi's `recordWebSocketFailure`: `session`'s later requests use SSE.
+pub(super) fn record_failure(session: Option<&str>, message: &str) {
+    if let Some(session) = session {
+        lock(&FALLBACK).insert(session.to_owned());
+        with_stats(session, |stats| {
+            stats.websocket_failures += 1;
+            stats.last_web_socket_error = Some(message.to_owned());
+            stats.websocket_fallback_active = Some(true);
+        });
+    }
+}
+
+/// pi's `closeOpenAICodexWebSocketSessions`: closes the sockets
+/// `session_id` keeps, or every session's. A socket in use closes when its
+/// request ends.
+pub fn close_sessions(session_id: Option<&str>) {
     let mut sockets = lock(&SOCKETS);
     let keys: Vec<Key> = sockets
         .keys()
-        .filter(|(session, _)| session == session_id)
+        .filter(|(session, _)| session_id.is_none_or(|id| session == id))
         .cloned()
         .collect();
     for key in keys {
-        if let Some(Slot::Idle(cached, _)) = sockets.remove(&key) {
-            close(cached.socket, "debug_close");
+        if let Some(Slot::Idle(idle)) = sockets.remove(&key) {
+            let _ = idle.stop.send(Some("debug_close"));
         }
     }
 }
@@ -258,6 +368,8 @@ pub(super) struct Lease {
     /// The cache slot the socket returns to; `None` for a one-off socket.
     key: Option<Key>,
     created: Instant,
+    /// Whether the socket served an earlier request.
+    pub(super) reused: bool,
     /// The exchange the socket last carried.
     pub(super) continuation: Option<Continuation>,
 }
@@ -273,57 +385,58 @@ pub(super) async fn acquire(
     connect_timeout_ms: Option<u64>,
 ) -> Result<Lease, Failure> {
     let open = || connect(url, headers, cancel, connect_timeout_ms);
-    let one_off = |socket| Lease {
+    let lease = |socket, key, created| Lease {
         socket,
-        key: None,
-        created: Instant::now(),
+        key,
+        created,
+        reused: false,
         continuation: None,
     };
     let Some(key) = key else {
-        return Ok(one_off(open().await?));
+        return Ok(lease(open().await?, None, Instant::now()));
     };
-    let busy = {
+    let found = {
         let mut sockets = lock(&SOCKETS);
-        match sockets.remove(&key) {
-            Some(Slot::Busy) => {
-                sockets.insert(key.clone(), Slot::Busy);
-                true
-            }
-            Some(Slot::Idle(mut cached, _)) => {
-                let fresh = cached.created.elapsed() < MAX_AGE;
-                if fresh && is_open(&mut cached.socket) {
-                    sockets.insert(key.clone(), Slot::Busy);
+        let found = sockets.remove(&key);
+        if found.is_some() {
+            sockets.insert(key.clone(), Slot::Busy);
+        }
+        found
+    };
+    match found {
+        Some(Slot::Busy) => return Ok(lease(open().await?, None, Instant::now())),
+        Some(Slot::Idle(idle)) => {
+            let _ = idle.stop.send(None);
+            if let Ok(Some(socket)) = idle.reader.await {
+                if idle.created.elapsed() < MAX_AGE {
                     return Ok(Lease {
-                        socket: cached.socket,
-                        key: Some(key),
-                        created: cached.created,
-                        continuation: cached.continuation,
+                        reused: true,
+                        continuation: idle.continuation,
+                        ..lease(socket, Some(key), idle.created)
                     });
                 }
-                close(
-                    cached.socket,
-                    if fresh {
-                        "done"
-                    } else {
-                        "connection_age_limit"
-                    },
-                );
-                false
+                close(socket, "connection_age_limit");
             }
-            None => false,
+        }
+        None => {}
+    }
+    let socket = match open().await {
+        Ok(socket) => socket,
+        Err(failure) => {
+            remove_busy(&key);
+            return Err(failure);
         }
     };
-    if busy {
-        return Ok(one_off(open().await?));
-    }
-    let socket = open().await?;
     lock(&SOCKETS).insert(key.clone(), Slot::Busy);
-    Ok(Lease {
-        socket,
-        key: Some(key),
-        created: Instant::now(),
-        continuation: None,
-    })
+    Ok(lease(socket, Some(key), Instant::now()))
+}
+
+/// Forgets `key`'s slot when a request holds it.
+fn remove_busy(key: &Key) {
+    let mut sockets = lock(&SOCKETS);
+    if matches!(sockets.get(key), Some(Slot::Busy)) {
+        sockets.remove(key);
+    }
 }
 
 impl Lease {
@@ -341,20 +454,25 @@ impl Lease {
     }
 
     /// The next text or binary message, as text. Fails when the socket
-    /// closes or errs, when `cancel` fires, and after the HTTP idle timeout
-    /// without a message.
-    pub(super) async fn next(&mut self, cancel: &CancellationToken) -> Result<String, Failure> {
+    /// closes or errs, when `cancel` fires, and once `idle` passes without a
+    /// message; pings and pongs do not count.
+    pub(super) async fn next(
+        &mut self,
+        cancel: &CancellationToken,
+        idle: Option<Duration>,
+    ) -> Result<String, Failure> {
+        let deadline = idle.map(|idle| (idle, tokio::time::Instant::now() + idle));
         loop {
             let read = self.socket.next();
-            let frame = match http::idle_timeout() {
-                Some(limit) => cancel
-                    .run_until_cancelled(tokio::time::timeout(limit, read))
+            let frame = match deadline {
+                Some((idle, at)) => cancel
+                    .run_until_cancelled(tokio::time::timeout_at(at, read))
                     .await
                     .map(|frame| {
                         frame.map_err(|_| {
                             Failure::error(format!(
                                 "WebSocket idle timeout after {}ms",
-                                limit.as_millis()
+                                idle.as_millis()
                             ))
                         })
                     }),
@@ -374,48 +492,73 @@ impl Lease {
         }
     }
 
-    /// Returns a cached socket to its session when `keep` and it is still
-    /// open, to close after five idle minutes; closes it otherwise.
-    pub(super) fn release(mut self, keep: bool) {
-        let Some(key) = self.key.take() else {
+    /// Returns a cached socket to its session when `keep` and its slot is
+    /// still the request's, to close after five idle minutes; closes it
+    /// otherwise.
+    pub(super) fn release(self, keep: bool) {
+        let Some(key) = self.key else {
             return close(self.socket, "done");
         };
         let mut sockets = lock(&SOCKETS);
-        if !keep || !is_open(&mut self.socket) {
-            if matches!(sockets.get(&key), Some(Slot::Busy)) {
-                sockets.remove(&key);
-            }
+        if !matches!(sockets.get(&key), Some(Slot::Busy)) {
+            return close(self.socket, "done");
+        }
+        if !keep {
+            sockets.remove(&key);
             return close(self.socket, "done");
         }
         let generation = GENERATION.fetch_add(1, Ordering::Relaxed);
-        let cached = Cached {
-            socket: self.socket,
-            created: self.created,
-            continuation: self.continuation,
-        };
-        sockets.insert(key.clone(), Slot::Idle(Box::new(cached), generation));
-        tokio::spawn(async move {
-            tokio::time::sleep(IDLE_TTL).await;
-            let mut sockets = lock(&SOCKETS);
-            if matches!(sockets.get(&key), Some(Slot::Idle(_, current)) if *current == generation)
-                && let Some(Slot::Idle(cached, _)) = sockets.remove(&key)
-            {
-                close(cached.socket, "idle_timeout");
-            }
-        });
+        let (stop, stopped) = oneshot::channel();
+        let reader = tokio::spawn(read_idle(self.socket, stopped, key.clone(), generation));
+        sockets.insert(
+            key,
+            Slot::Idle(Idle {
+                stop,
+                reader,
+                created: self.created,
+                continuation: self.continuation,
+                generation,
+            }),
+        );
     }
 }
 
-/// Whether nothing has closed `socket` while no one read it: pi's
-/// `readyState` check, made by reading what has already arrived.
-fn is_open(socket: &mut Socket) -> bool {
-    loop {
-        match socket.next().now_or_never() {
-            None => return true,
-            Some(Some(Ok(Frame::Ping(_) | Frame::Pong(_)))) => {}
-            Some(_) => return false,
+/// Reads an idle socket until a request takes it back, which gets the
+/// socket, or until it closes, errs or idles for five minutes, which ends it
+/// and its slot.
+async fn read_idle(
+    mut socket: Socket,
+    mut stopped: oneshot::Receiver<Option<&'static str>>,
+    key: Key,
+    generation: u64,
+) -> Option<Socket> {
+    let expiry = tokio::time::sleep(IDLE_TTL);
+    tokio::pin!(expiry);
+    let reason = loop {
+        tokio::select! {
+            stop = &mut stopped => match stop {
+                Ok(None) => return Some(socket),
+                Ok(Some(reason)) => break Some(reason),
+                Err(_) => break Some("done"),
+            },
+            () = &mut expiry => break Some("idle_timeout"),
+            frame = socket.next() => match frame {
+                Some(Ok(Frame::Close(_)) | Err(_)) | None => break None,
+                // pi drops what arrives while no request listens.
+                Some(Ok(_)) => {}
+            },
+        }
+    };
+    {
+        let mut sockets = lock(&SOCKETS);
+        if matches!(sockets.get(&key), Some(Slot::Idle(idle)) if idle.generation == generation) {
+            sockets.remove(&key);
         }
     }
+    if let Some(reason) = reason {
+        close(socket, reason);
+    }
+    None
 }
 
 /// Closes `socket` with a normal close and `reason`, without waiting.
@@ -437,8 +580,7 @@ async fn connect(
     cancel: &CancellationToken,
     timeout_ms: Option<u64>,
 ) -> Result<Socket, Failure> {
-    let key =
-        base64::engine::general_purpose::STANDARD.encode(yapi_types::time::random_bytes::<16>());
+    let key = generate_key();
     let request = headers
         .apply(http::upgrade_client().get(url))
         .header("connection", "Upgrade")
@@ -451,7 +593,9 @@ async fn connect(
         let accepted = response
             .headers()
             .get("sec-websocket-accept")
-            .is_some_and(|accept| accept.as_bytes() == accept_key(&key).as_bytes());
+            .is_some_and(|accept| {
+                accept.as_bytes() == derive_accept_key(key.as_bytes()).as_bytes()
+            });
         if response.status() != reqwest::StatusCode::SWITCHING_PROTOCOLS || !accepted {
             return Err(Failure::error(WEBSOCKET_ERROR));
         }
@@ -475,13 +619,4 @@ async fn connect(
         .run_until_cancelled(open)
         .await
         .unwrap_or_else(|| Err(Failure::error(http::ABORTED_DURING_STREAM)))
-}
-
-/// RFC 6455's `Sec-WebSocket-Accept` for `key`.
-fn accept_key(key: &str) -> String {
-    let digest = sha1::Sha1::new()
-        .chain_update(key)
-        .chain_update("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-        .finalize();
-    base64::engine::general_purpose::STANDARD.encode(digest)
 }

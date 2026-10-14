@@ -1101,7 +1101,11 @@ async fn codex_websocket(
         .session_id
         .as_deref()
         .filter(|_| options.resolved_cache_retention() != CacheRetention::None);
-    if transport == Transport::Sse || codex_websocket::fallback_active(session) {
+    if transport == Transport::Sse {
+        return Ok(false);
+    }
+    if codex_websocket::fallback_active(session) {
+        codex_websocket::record_fallback(session);
         return Ok(false);
     }
     let request_id = session.map_or_else(yapi_types::time::uuid_v7, prompt_cache_key);
@@ -1160,13 +1164,22 @@ async fn codex_websocket(
             .diagnostics
             .get_or_insert_with(Vec::new)
             .push(diagnostic);
-        codex_websocket::record_failure(session);
-        return if state.events {
-            Err(failure.message)
-        } else {
-            Ok(false)
-        };
+        codex_websocket::record_failure(session, &failure.message);
+        if state.events {
+            return Err(failure.message);
+        }
+        codex_websocket::record_fallback(session);
+        return Ok(false);
     }
+}
+
+/// pi's `timeoutMs` as Codex waits on its WebSocket between messages; none
+/// without one. `prepare` has rejected an invalid value.
+fn codex_idle_timeout(options: &StreamOptions) -> Option<std::time::Duration> {
+    options
+        .timeout_ms
+        .filter(|ms| ms.is_finite() && *ms >= 1.0)
+        .map(|ms| std::time::Duration::from_millis(ms as u64))
 }
 
 /// Where and how a Codex request opens its WebSocket.
@@ -1204,6 +1217,9 @@ async fn codex_websocket_once(
     } else {
         body.clone()
     };
+    if let Some((session, _)) = &socket.key {
+        codex_websocket::count_request(session, lease.reused, socket.continues, &request);
+    }
     let mut result = state
         .consume_websocket(&mut lease, &request, model, sender, options)
         .await;
@@ -1891,7 +1907,9 @@ impl State {
     ) -> Result<(), Failure> {
         lease.send(codex_websocket::frame(request)).await?;
         while !self.terminal {
-            let text = lease.next(&options.cancel).await?;
+            let text = lease
+                .next(&options.cancel, codex_idle_timeout(options))
+                .await?;
             let event: Value = serde_json::from_str(&text)
                 .map_err(|err| Failure::protocol(format!("Invalid Codex WebSocket JSON: {err}")))?;
             options.hooks.stream_event(&event).await;

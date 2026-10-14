@@ -5,6 +5,7 @@
 )]
 
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use yapi_ai::api::Apis;
@@ -72,11 +73,15 @@ async fn ask_with(
     messages: Vec<Message>,
     options: StreamOptions,
 ) -> AssistantMessage {
+    ask_at(&server.url(), messages, options).await
+}
+
+async fn ask_at(url: &str, messages: Vec<Message>, options: StreamOptions) -> AssistantMessage {
     let mut model = builtin_models("openai-codex")
         .into_iter()
         .find(|model| model.id == "gpt-5.5")
         .unwrap();
-    model.base_url = server.url();
+    model.base_url = url.to_owned();
     // Grammar-constrained tools travel as custom tools.
     model
         .compat
@@ -240,7 +245,7 @@ async fn closing_a_session_closes_its_socket() {
     .unwrap();
     let options = || session("ws-closed", Some(Transport::Auto));
     let first = ask(&server, options()).await;
-    yapi_ai::api::close_codex_websockets("ws-closed");
+    yapi_ai::api::close_codex_websockets(Some("ws-closed"));
     let messages = vec![
         user("Say hello"),
         Message::Assistant(Box::new(first)),
@@ -298,4 +303,268 @@ async fn continuations_follow_a_grammar_tool_call() {
         delta["input"],
         json!([{"type": "custom_tool_call_output", "call_id": "call_1", "output": "1"}])
     );
+}
+
+fn stats(session: &str) -> Value {
+    serde_json::to_value(yapi_ai::api::codex_websocket_stats(session).unwrap()).unwrap()
+}
+
+/// The first event of the text response, for exchanges that stop after it.
+fn created() -> String {
+    sse().response.chunks[0]
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .unwrap()
+        .to_owned()
+}
+
+/// A server that never answers WebSocket upgrades and answers POSTs with the
+/// text response over SSE.
+async fn hanging_upgrades() -> String {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let body: String = sse().response.chunks.concat();
+    tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let body = body.clone();
+            tokio::spawn(async move {
+                let mut head = Vec::new();
+                while !head.ends_with(b"\r\n\r\n") {
+                    let Ok(byte) = socket.read_u8().await else {
+                        return;
+                    };
+                    head.push(byte);
+                }
+                if head.starts_with(b"GET") {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    return;
+                }
+                let head = String::from_utf8_lossy(&head).to_lowercase();
+                let length = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length:"))
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0);
+                let mut request = vec![0; length];
+                let _ = socket.read_exact(&mut request).await;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    url
+}
+
+#[tokio::test]
+async fn upgrades_carry_pis_headers() {
+    let server = MockServer::local(Cassette {
+        interactions: vec![text(), text()],
+    })
+    .await
+    .unwrap();
+    ask(&server, session("ws-headers", Some(Transport::Auto))).await;
+    // Without a session, the request id is a fresh UUIDv7.
+    let one_off = StreamOptions {
+        transport: Some(Transport::Auto),
+        ..StreamOptions::default()
+    };
+    ask(&server, one_off).await;
+    let requests = server.finish().unwrap();
+    let headers = &requests[0].headers;
+    assert_eq!(headers["openai-beta"], "responses_websockets=2026-02-06");
+    assert_eq!(headers["session-id"], "ws-headers");
+    assert_eq!(headers["x-client-request-id"], "ws-headers");
+    // reqwest's default, which Node's WebSocket sends too.
+    assert_eq!(headers["accept"], "*/*");
+    assert!(!headers.contains_key("content-type"));
+    let id = &requests[1].headers["x-client-request-id"];
+    assert_eq!((id.len(), &id[14..15]), (36, "7"));
+    assert_eq!(&requests[1].headers["session-id"], id);
+}
+
+#[tokio::test]
+async fn the_websocket_transport_sends_full_requests() {
+    let server = MockServer::local(Cassette {
+        interactions: vec![text(), text()],
+    })
+    .await
+    .unwrap();
+    let options = || session("ws-explicit", Some(Transport::Websocket));
+    let first = ask(&server, options()).await;
+    let messages = vec![
+        user("Say hello"),
+        Message::Assistant(Box::new(first)),
+        user("Again"),
+    ];
+    ask_with(&server, messages, options()).await;
+    let requests = server.finish().unwrap();
+    assert_eq!(body(&requests[1]).get("previous_response_id"), None);
+    assert_eq!(stats("ws-explicit")["connectionsReused"], 1);
+    assert_eq!(stats("ws-explicit")["cachedContextRequests"], 0);
+}
+
+#[tokio::test]
+async fn a_second_connection_limit_falls_back() {
+    let limit = json!({"type": "error", "code": "websocket_connection_limit_reached", "message": "Too many connections"});
+    let server = MockServer::local(Cassette {
+        interactions: vec![
+            exchange(vec![limit.to_string()]),
+            exchange(vec![limit.to_string()]),
+            sse(),
+        ],
+    })
+    .await
+    .unwrap();
+    let message = ask(&server, session("ws-limit-twice", Some(Transport::Auto))).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    let diagnostic = &message.diagnostics.unwrap()[0];
+    assert_eq!(
+        diagnostic["error"],
+        json!({"name": "CodexApiError", "message": "Codex error: Too many connections", "code": "websocket_connection_limit_reached"})
+    );
+    assert_eq!(diagnostic["details"]["fallbackTransport"], "sse");
+    assert_eq!(stats("ws-limit-twice")["sseFallbacks"], 1);
+}
+
+#[tokio::test]
+async fn a_busy_socket_gets_a_one_off_connection() {
+    let mut slow = text();
+    slow.response.chunk_delay_ms = 20;
+    let server = MockServer::local(Cassette {
+        interactions: vec![slow, text(), text()],
+    })
+    .await
+    .unwrap();
+    let options = || session("ws-busy", Some(Transport::Auto));
+    let first = ask(&server, options());
+    let second = async {
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        ask(&server, options()).await
+    };
+    let (first, second) = tokio::join!(first, second);
+    assert_eq!(
+        (first.stop_reason, second.stop_reason),
+        (StopReason::Stop, StopReason::Stop)
+    );
+    assert_eq!(stats("ws-busy")["connectionsCreated"], 2);
+    // The one-off socket closed; the cached one serves the next request.
+    ask(&server, options()).await;
+    assert_eq!(stats("ws-busy")["connectionsReused"], 1);
+    server.finish().unwrap();
+}
+
+#[tokio::test]
+async fn connecting_times_out_or_aborts() {
+    let url = hanging_upgrades().await;
+    let timed = StreamOptions {
+        websocket_connect_timeout_ms: Some(50),
+        ..session("ws-connect-timeout", Some(Transport::Auto))
+    };
+    let message = ask_at(&url, vec![user("Say hello")], timed).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    let diagnostic = &message.diagnostics.unwrap()[0];
+    assert_eq!(
+        diagnostic["error"]["message"],
+        "WebSocket connect timeout after 50ms"
+    );
+    let aborted = session("ws-connect-abort", Some(Transport::Auto));
+    let cancel = aborted.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        cancel.cancel();
+    });
+    let message = ask_at(&url, vec![user("Say hello")], aborted).await;
+    assert_eq!(message.stop_reason, StopReason::Aborted);
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Request was aborted")
+    );
+    assert_eq!(message.diagnostics, None);
+}
+
+#[tokio::test]
+async fn streams_abort_close_and_idle_as_pi_does() {
+    let mut slow = exchange(vec![created(), created()]);
+    slow.response.chunk_delay_ms = 200;
+    let mut too_big = exchange(vec![created()]);
+    too_big.response.close = Some(yapi_mock::Close {
+        code: 1009,
+        reason: String::new(),
+    });
+    let mut quiet = exchange(vec![created()]);
+    quiet.response.chunk_delay_ms = 300;
+    let server = MockServer::local(Cassette {
+        interactions: vec![slow, too_big, quiet, sse()],
+    })
+    .await
+    .unwrap();
+
+    let aborted = session("ws-abort", Some(Transport::Auto));
+    let cancel = aborted.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        cancel.cancel();
+    });
+    let message = ask(&server, aborted).await;
+    assert_eq!(message.stop_reason, StopReason::Aborted);
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Request was aborted")
+    );
+    assert_eq!(message.diagnostics, None);
+
+    let message = ask(&server, session("ws-too-big", Some(Transport::Auto))).await;
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("WebSocket closed 1009 message too big")
+    );
+    assert_eq!(
+        message.diagnostics.unwrap()[0]["error"]["code"],
+        json!(1009)
+    );
+
+    let idle = StreamOptions {
+        timeout_ms: Some(50.0),
+        ..session("ws-idle", Some(Transport::Auto))
+    };
+    let message = ask(&server, idle).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    let diagnostic = &message.diagnostics.unwrap()[0];
+    assert_eq!(
+        diagnostic["error"]["message"],
+        "WebSocket idle timeout after 50ms"
+    );
+    assert_eq!(diagnostic["details"]["fallbackTransport"], "sse");
+}
+
+#[tokio::test(start_paused = true)]
+async fn sockets_close_when_idle_and_age_out() {
+    let server = MockServer::local(Cassette {
+        interactions: (0..16).map(|_| text()).collect(),
+    })
+    .await
+    .unwrap();
+    // No timers but the cache's own, so the paused clock moves only as the
+    // test advances it.
+    let options = || StreamOptions {
+        websocket_connect_timeout_ms: Some(0),
+        ..session("ws-age", Some(Transport::Websocket))
+    };
+    ask(&server, options()).await;
+    tokio::time::advance(Duration::from_secs(301)).await;
+    ask(&server, options()).await;
+    assert_eq!(stats("ws-age")["connectionsCreated"], 2);
+    // Used every four minutes, the socket lasts 55 minutes.
+    for _ in 0..14 {
+        tokio::time::advance(Duration::from_secs(240)).await;
+        ask(&server, options()).await;
+    }
+    assert_eq!(stats("ws-age")["connectionsCreated"], 3);
+    assert_eq!(stats("ws-age")["connectionsReused"], 13);
+    server.finish().unwrap();
 }
