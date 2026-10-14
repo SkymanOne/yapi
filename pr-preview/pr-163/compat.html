@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dca840b6.js";
+            window.path_to_searchindex_js = "searchindex-c9b02d9a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -255,7 +255,6 @@
 <tr><td>Entry renderers and markdown transformers</td><td><code>registerEntryRenderer</code> and <code>registerMarkdownTransformer</code> change how entries and markdown render</td><td>Recorded but unused.</td><td><a href="https://github.com/SkymanOne/yapi/issues/30">#30</a></td></tr>
 <tr><td>Markdown</td><td>LaTeX as Unicode math, highlighted code blocks, Mermaid diagrams</td><td>LaTeX as written, code blocks and Mermaid source in the code block color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/31">#31</a></td></tr>
 <tr><td>Syntax highlighting in tool rows</td><td><code>read</code> results, <code>write</code> previews and codemode scripts are highlighted</td><td>Shown in the default color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/32">#32</a></td></tr>
-<tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>

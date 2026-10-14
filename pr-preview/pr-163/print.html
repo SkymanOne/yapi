@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dca840b6.js";
+            window.path_to_searchindex_js = "searchindex-c9b02d9a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -381,6 +381,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.</li>
 <li>Up recalls earlier prompts.</li>
 </ul>
+<p>A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.</p>
 <h2 id="follow-the-work"><a class="header" href="#follow-the-work">Follow the work</a></h2>
 <p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
 <h2 id="change-direction"><a class="header" href="#change-direction">Change direction</a></h2>
@@ -550,6 +551,8 @@ yapi --no-session            # do not save this run
 </ul>
 <h2 id="compact-context"><a class="header" href="#compact-context">Compact context</a></h2>
 <p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
+<h2 id="keep-the-prompt-cache-warm"><a class="header" href="#keep-the-prompt-cache-warm">Keep the prompt cache warm</a></h2>
+<p>Providers such as Anthropic cache a request’s prompt for a few minutes. While the agent works, yapi sends the latest request again with a one-token reply shortly before its cache entry expires, when that is expected to save at least $0.05. Each refresh and its cost are recorded in the session. The <code>cacheWarming</code> setting is <code>streaming</code> by default. <code>idle</code> also keeps the cache warm between runs, and <code>off</code> stops warming. Only the global settings set it, because each refresh costs money. <code>/session</code> shows the next decision and its costs, and the prompt tokens billed again after cache misses. Turn on “Cache miss notices” in <code>/settings</code> to see refreshes, costly cache misses, summary costs and the thinking blocks Anthropic dropped from a request in the transcript.</p>
 <h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
 <p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
 <p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
@@ -1629,7 +1632,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Entry renderers and markdown transformers</td><td><code>registerEntryRenderer</code> and <code>registerMarkdownTransformer</code> change how entries and markdown render</td><td>Recorded but unused.</td><td><a href="https://github.com/SkymanOne/yapi/issues/30">#30</a></td></tr>
 <tr><td>Markdown</td><td>LaTeX as Unicode math, highlighted code blocks, Mermaid diagrams</td><td>LaTeX as written, code blocks and Mermaid source in the code block color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/31">#31</a></td></tr>
 <tr><td>Syntax highlighting in tool rows</td><td><code>read</code> results, <code>write</code> previews and codemode scripts are highlighted</td><td>Shown in the default color.</td><td><a href="https://github.com/SkymanOne/yapi/issues/32">#32</a></td></tr>
-<tr><td>Cache warming</td><td>Refreshes the prompt cache while the model streams (<code>cacheWarming</code>) and reports cache misses</td><td>Sends no refresh requests. The setting is saved and ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/33">#33</a></td></tr>
 <tr><td>Images in the terminal</td><td>Inline images, with the “Show images” and “Image width” settings</td><td>Not shown.</td><td><a href="https://github.com/SkymanOne/yapi/issues/34">#34</a></td></tr>
 <tr><td>Full extension providers</td><td><code>registerProvider</code> also takes a complete pi-ai <code>Provider</code> object, image and classifier models with their implementations, and the legacy <code>oauth.modifyModels</code></td><td>A provider configuration only. Those parts are ignored.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
@@ -1640,7 +1642,7 @@ api.on("session_start", |_event, ctx| async move {
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
 <h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
-<p>Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images, prompt cache warming and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
+<p>Some Pi features are missing or incomplete, including highlighted code blocks and LaTeX in Markdown, syntax highlighting in tool output, inline images and complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
