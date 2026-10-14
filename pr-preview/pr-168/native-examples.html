@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d1a96447.js";
+            window.path_to_searchindex_js = "searchindex-2ebee289.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -204,7 +204,7 @@
 <tr><td><a href="#input-hooks"><code>input-hooks</code></a></td><td>A terminal input listener that reads the editor, an autocomplete provider and a shortcut</td><td>None</td></tr>
 <tr><td><a href="#crash-recovery"><code>crash-recovery</code></a></td><td>What yapi does when an extension panics</td><td>None</td></tr>
 <tr><td><a href="#countdown"><code>countdown</code></a></td><td>A tool that stops with its own result when the run is aborted, and one that ignores aborts</td><td>None</td></tr>
-<tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>A code renderer, yapi’s own API, that colors Rust keywords</td><td>None</td></tr>
+<tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>Colors Rust keywords with yapi’s code renderer API</td><td>None</td></tr>
 </tbody>
 </table>
 </div>
@@ -489,7 +489,7 @@ api.on("session_start", |_event, ctx| async move {
 <span class="boring">}</span></code></pre>
 <p><code>race</code> polls two futures until one finishes, so the tool needs no other crate. <code>futures::select!</code> does the same.</p>
 <h2 id="code-renderer"><a class="header" href="#code-renderer">code-renderer</a></h2>
-<p>A code renderer, yapi’s own API: it colors the keywords of Rust code with the theme’s keyword color, in code blocks and in <code>read</code>, <code>write</code> and codemode rows, and leaves other languages in one color.</p>
+<p>Colors Rust keywords in code blocks and tool rows with yapi’s code renderer API.</p>
 
                     </main>
 

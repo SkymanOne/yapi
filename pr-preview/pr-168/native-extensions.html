@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d1a96447.js";
+            window.path_to_searchindex_js = "searchindex-2ebee289.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -295,7 +295,7 @@ yapi install . -l    # for this project only
 <tr><td><code>Component</code></td><td>A piece of interface that renders lines for a width and handles keys and mouse events. See <a href="#interface-components">Interface components</a>.</td></tr>
 <tr><td><code>Context::custom</code>, <code>Context::set_widget</code>, <code>Context::set_footer</code>, <code>Context::set_header</code>, <code>Context::set_editor_component</code></td><td>Show components, as Pi’s <code>ctx.ui</code> does</td></tr>
 <tr><td><code>Tool::render_call</code>, <code>Tool::render_result</code>, <code>Api::register_message_renderer</code></td><td>Draw tool calls, tool results and custom messages in the transcript</td></tr>
-<tr><td><code>Api::register_code_renderer</code></td><td>Draw code in messages and tool rows, yapi’s <code>pi.yapi.registerCodeRenderer</code>. See <a href="#code-renderers">Code renderers</a>.</td></tr>
+<tr><td><code>Api::register_code_renderer</code></td><td>Draw code in messages and tool rows. See <a href="#code-renderers">Code renderers</a>.</td></tr>
 <tr><td><code>Context::on_terminal_input</code>, <code>Context::add_autocomplete_provider</code>, <code>editor_text</code></td><td>See raw keys before the editor does, complete text in the editor, and read the editor’s text. See <a href="#terminal-input-and-completion">Terminal input and completion</a>.</td></tr>
 <tr><td><code>theme</code>, <code>request_render</code>, <code>parse_key</code>, <code>terminal_size</code>, <code>editor_focused</code></td><td>Style text in the session’s theme, render components again, name keys, read the terminal’s size, and tell whether the prompt editor has the keyboard</td></tr>
 <tr><td><code>widgets</code></td><td>pi-tui’s widgets, such as <code>SelectList</code> and <code>Editor</code>, with the <code>widgets</code> feature</td></tr>
@@ -437,7 +437,7 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <p><code>Tool::render_call</code> and <code>Tool::render_result</code> draw a tool’s call and result in the transcript, as Pi’s <code>renderCall</code> and <code>renderResult</code> do, and <code>Tool::render_shell("self")</code> says they draw the tool’s whole box. <code>Api::register_message_renderer</code> draws custom messages of one type, as Pi’s <code>registerMessageRenderer</code> does. A renderer returns a component, or <code>None</code> to keep yapi’s own rendering.</p>
 <p>A tool renderer gets a <code>RenderContext</code>, with Pi’s context fields such as <code>toolCallId</code>, <code>expanded</code> and <code>isPartial</code> in <code>data</code>, and a <code>state</code> value that the call’s and the result’s renderers share for one tool call. Pi’s <code>lastComponent</code> has no counterpart, so a renderer builds a new component each time yapi asks. The new component takes the old one’s place, and yapi shows the old one’s lines until the new one has rendered.</p>
 <h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
-<p><code>Api::register_code_renderer</code> draws code, as <a href="extensions.html#yapi-only-apis"><code>pi.yapi.registerCodeRenderer</code></a> does for Pi extensions. It gets the code, its language when known and the columns it has, and returns lines of text with escape sequences colored with <code>theme</code>, or <code>None</code> to leave the code in one color. The <a href="native-examples.html#code-renderer"><code>code-renderer</code></a> example colors Rust keywords.</p>
+<p><code>Api::register_code_renderer</code> is the Rust form of <a href="extensions.html#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>. It gets the code, its language and the width, and returns styled lines or <code>None</code>. The <a href="native-examples.html#code-renderer"><code>code-renderer</code></a> example colors Rust keywords.</p>
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
