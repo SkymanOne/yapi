@@ -653,3 +653,38 @@ async fn sse_requests_do_not_retry_usage_limits_or_long_delays() {
     );
     assert_eq!(server.finish().unwrap().len(), 2);
 }
+
+/// Dropping the request task mid-request must not strand the session's slot.
+#[test]
+fn a_dropped_request_frees_the_session_slot() {
+    let server_rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut slow = text();
+    slow.response.chunk_delay_ms = 200;
+    let server = server_rt
+        .block_on(MockServer::local(Cassette {
+            interactions: vec![slow, text(), text(), text()],
+        }))
+        .unwrap();
+    let options = || session("ws-dropped", Some(Transport::Auto));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // The first request starts, then its task is dropped with the runtime.
+    let _ = rt.block_on(async {
+        tokio::time::timeout(Duration::from_millis(100), ask(&server, options())).await
+    });
+    drop(rt);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        ask(&server, options()).await;
+        ask(&server, options()).await;
+    });
+    assert_eq!(stats("ws-dropped")["connectionsReused"], 1);
+}
