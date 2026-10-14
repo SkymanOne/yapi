@@ -54,6 +54,10 @@ impl Engine {
         config.epoch_interruption(true);
         config.max_wasm_stack(WASM_STACK);
         config.async_stack_size(WASM_STACK + (1 << 20));
+        // wasmtime's Mach exception thread aborts the process when a caught
+        // signal interrupts it (bytecodealliance/wasmtime#14393). Unix signal
+        // handlers, as on Linux, have no such thread.
+        config.macos_use_mach_ports(false);
         let engine = wasmtime::Engine::new(&config).map_err(Error::compile)?;
         let component = compile(&engine, YAPI_JS, &inflate_runtime, cache_dir, "yapi-js")?;
         let mut linker = Linker::new(&engine);
