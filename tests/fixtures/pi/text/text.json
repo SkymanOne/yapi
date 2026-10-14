@@ -2154,6 +2154,1756 @@
 			]
 		},
 		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"text                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"text                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" text                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" text                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refEnd",
+			"text": "text\n\n[a]: http://x\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"text                                    ",
+				"                                        ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"text                                    ",
+				"                                        ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" text                   ",
+				"                        ",
+				"                        "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" text                   ",
+				"                        ",
+				"                        "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refEndBlank",
+			"text": "text\n\n[a]: http://x\n\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"                                        "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"                                        "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"                        "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"                        "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refOnly",
+			"text": "[a]: http://x\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"                                        ",
+				"para after                              "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"                                        ",
+				"para after                              "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"                        ",
+				" para after             "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"                        ",
+				" para after             "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				"                                                                                ",
+				" para after                                                                     ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refBefore",
+			"text": "[a]: http://x\n\npara after",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				"                                                                                ",
+				" para after                                                                     ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"one                                     ",
+				"                                        ",
+				"                                        ",
+				"two                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"one                                     ",
+				"                                        ",
+				"                                        ",
+				"two                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" one                    ",
+				"                        ",
+				"                        ",
+				" two                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" one                    ",
+				"                        ",
+				"                        ",
+				" two                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" one                                                                            ",
+				"                                                                                ",
+				"                                                                                ",
+				" two                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refBetween",
+			"text": "one\n\n[a]: http://x\n[b]: http://y\n\ntwo\n\n[c]: http://z\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" one                                                                            ",
+				"                                                                                ",
+				"                                                                                ",
+				" two                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"one                                     ",
+				"[a]: http://x                           ",
+				"two                                     "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"one                                     ",
+				"[a]: http://x                           ",
+				"two                                     "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" one                    ",
+				" [a]: http://x          ",
+				" two                    "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" one                    ",
+				" [a]: http://x          ",
+				" two                    "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" one                                                                            ",
+				" [a]: http://x                                                                  ",
+				" two                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refTight",
+			"text": "one\n[a]: http://x\ntwo",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" one                                                                            ",
+				" [a]: http://x                                                                  ",
+				" two                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ quoted                                ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ quoted                                ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ quoted               ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ quoted               ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ quoted                                                                       ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refQuote",
+			"text": "> quoted\n>\n> [a]: http://x\n>\n\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ quoted                                                                       ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- item                                  ",
+				"                                        ",
+				"                                        ",
+				"- next                                  "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- item                                  ",
+				"                                        ",
+				"                                        ",
+				"- next                                  "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - item                 ",
+				"                        ",
+				"                        ",
+				" - next                 "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - item                 ",
+				"                        ",
+				"                        ",
+				" - next                 "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - item                                                                         ",
+				"                                                                                ",
+				"                                                                                ",
+				" - next                                                                         ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "refList",
+			"text": "- item\n\n  [a]: http://x\n\n- next\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - item                                                                         ",
+				"                                                                                ",
+				"                                                                                ",
+				" - next                                                                         ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWs",
+			"text": "- a\n  \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWs3",
+			"text": "- a\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- a                                     ",
+				"                                        ",
+				"para                                    "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- a                                     ",
+				"                                        ",
+				"para                                    "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - a                    ",
+				"                        ",
+				" para                   "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - a                    ",
+				"                        ",
+				" para                   "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				" para                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsNext",
+			"text": "- a\n  \n\npara",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				" para                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- a                                     ",
+				"                                        ",
+				"- b                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- a                                     ",
+				"                                        ",
+				"- b                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - a                    ",
+				"                        ",
+				" - b                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - a                    ",
+				"                        ",
+				" - b                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				" - b                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsTight",
+			"text": "- a\n  \n- b\n  \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"                                                                                ",
+				" - b                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"- a                                     ",
+				"    - b                                 ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"- a                                     ",
+				"    - b                                 ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" - a                    ",
+				"     - b                ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" - a                    ",
+				"     - b                ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"     - b                                                                        ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsNested",
+			"text": "- a\n  - b\n    \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" - a                                                                            ",
+				"     - b                                                                        ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"1. a                                    ",
+				"                                        ",
+				"2. b                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"1. a                                    ",
+				"                                        ",
+				"2. b                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" 1. a                   ",
+				"                        ",
+				" 2. b                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" 1. a                   ",
+				"                        ",
+				" 2. b                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" 1. a                                                                           ",
+				"                                                                                ",
+				" 2. b                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsOrdered",
+			"text": "1. a\n   \n2. b\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" 1. a                                                                           ",
+				"                                                                                ",
+				" 2. b                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ - a                                   ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ - a                                   ",
+				"                                        ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ - a                  ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ - a                  ",
+				"                        ",
+				" after                  "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ - a                                                                          ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsQuote",
+			"text": "> - a\n>   \n>\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ - a                                                                          ",
+				"                                                                                ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"text                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"text                                    ",
+				"                                        "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" text                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" text                   ",
+				"                        "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "paraWs",
+			"text": "text\n   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"text                                    "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"text                                    "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" text                   "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" text                   "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "paraWsSame",
+			"text": "text   ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" text                                                                           ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteEnd",
+			"text": "> a\n\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ a                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ a                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteEndOne",
+			"text": "> a\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ a                                     "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ a                                     "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ a                    "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ a                    "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "quoteGt",
+			"text": "> a\n>\n>",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ a                                                                            ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"```                                     ",
+				"  x                                     ",
+				"```                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"```                                     ",
+				"  x                                     ",
+				"```                                     ",
+				"                                        "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" ```                    ",
+				"   x                    ",
+				" ```                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" ```                    ",
+				"   x                    ",
+				" ```                    ",
+				"                        "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" ```                                                                            ",
+				"   x                                                                            ",
+				" ```                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "codeWs",
+			"text": "```\nx\n```\n  ",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" ```                                                                            ",
+				"   x                                                                            ",
+				" ```                                                                            ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"│ - a                                   "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"│ - a                                   "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" │ - a                  "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" │ - a                  "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" │ - a                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "listWsQuoteEnd",
+			"text": "> - a\n>   \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" │ - a                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "bareUrls",
 			"text": "Visit https://example.com/docs, or http://x.io. Also www.example.com and ftp://files.example.org/a.txt!",
 			"width": 40,

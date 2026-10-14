@@ -123,6 +123,9 @@ enum Block {
     },
     Quote(Vec<Spaced>),
     Rule,
+    /// A link reference definition: marked keeps it as a token that draws
+    /// nothing but still separates its neighbours.
+    Def,
     Html(String),
     /// Display LaTeX.
     Math(Math),
@@ -138,6 +141,8 @@ enum Block {
 struct Spaced {
     block: Block,
     blank_after: bool,
+    /// Source offset where the block ends.
+    end: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +156,9 @@ struct Builder<'a> {
     source: &'a str,
     events: std::iter::Peekable<pulldown_cmark::OffsetIter<'a>>,
     preserve_escapes: bool,
+    /// Source spans of the link reference definitions still to place, in
+    /// document order.
+    defs: std::collections::VecDeque<Range<usize>>,
     /// Inside a link's text, where marked links no bare URLs.
     in_link: bool,
     /// The LaTeX expressions whose placeholders `source` holds.
@@ -168,6 +176,11 @@ fn blank_line_after(source: &str, end: usize, at_end: bool) -> bool {
     let gap_end = rest.find(|c: char| !blank(c)).unwrap_or(rest.len());
     if gap_end == rest.len() && !at_end {
         return false;
+    }
+    // marked turns the end of the source into a space token when more than
+    // one character of whitespace is left, even without a second newline.
+    if at_end && rest.len() > 1 && rest.chars().all(char::is_whitespace) {
+        return true;
     }
     let newlines =
         source[content_end..end].matches('\n').count() + rest[..gap_end].matches('\n').count();
@@ -422,14 +435,30 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Appends the definitions that start before `before` as def blocks.
+    fn place_defs(&mut self, out: &mut Vec<Spaced>, before: usize) {
+        while let Some(span) = self.defs.front().filter(|span| span.start < before) {
+            let end = span.end;
+            let blank_after = blank_line_after(self.source, end, false);
+            self.defs.pop_front();
+            out.push(Spaced {
+                block: Block::Def,
+                blank_after,
+                end,
+            });
+        }
+    }
+
     /// Blocks until `end`. Inline content outside a paragraph, as in tight list
     /// items, becomes a text block.
     fn blocks(&mut self, end: Option<TagEnd>) -> Vec<Spaced> {
         let mut out: Vec<Spaced> = Vec::new();
         while let Some((event, range)) = self.events.next() {
             if matches!(&event, Event::End(tag) if Some(*tag) == end) {
+                self.place_defs(&mut out, range.end);
                 break;
             }
+            self.place_defs(&mut out, range.start);
             let mut block_end = range.end;
             let mut underline = "";
             let block = if is_inline(&event) {
@@ -516,9 +545,11 @@ impl<'a> Builder<'a> {
                     block,
                     blank_after: index + 1 == count
                         && blank_line_after(self.source, block_end, false),
+                    end: block_end,
                 }));
             }
         }
+        self.place_defs(&mut out, usize::MAX);
         // Blank lines after the last nested block belong to the enclosing block;
         // at the top level they still render as one blank line.
         if let Some(last) = out.last_mut() {
@@ -530,7 +561,19 @@ impl<'a> Builder<'a> {
                     let rest = self.source.len() - self.source.trim_end().len();
                     !math.pending && rest.saturating_sub(usize::from(math.raw.ends_with('\n'))) >= 2
                 }
-                _ => blank_line_after(self.source, self.source.len(), true),
+                // A quote owns its trailing `>` lines, as in marked, and
+                // marked's quote ends before its last newline.
+                Block::Quote(_) => {
+                    let end = last.end - usize::from(self.source[..last.end].ends_with('\n'));
+                    let tail = self.source.get(end..).unwrap_or_default();
+                    tail.len() > 1 && tail.chars().all(char::is_whitespace)
+                }
+                // A list's range takes whitespace-only lines that marked leaves out.
+                Block::List { .. } => {
+                    let end = self.source.trim_end().len();
+                    blank_line_after(self.source, end, true)
+                }
+                _ => blank_line_after(self.source, last.end, true),
             };
             last.blank_after = end.is_none() && blank;
         }
@@ -1021,6 +1064,7 @@ impl Renderer<'_> {
                 }
                 spaced_unless(&mut lines, false);
             }
+            Block::Def => {}
             Block::Rule => {
                 lines.push(Line::from(Span::styled(
                     "─".repeat(width.min(80)),
@@ -1320,12 +1364,18 @@ pub fn render(
         Some(extracted) => extracted,
         None => (source, Vec::new()),
     };
+    let events = Parser::new_ext(&source, parser_options).into_offset_iter();
+    let mut defs: Vec<Range<usize>> = events
+        .reference_definitions()
+        .iter()
+        .map(|(_, def)| def.span.clone())
+        .collect();
+    defs.sort_by_key(|span| span.start);
     let mut builder = Builder {
         maths,
         source: &source,
-        events: Parser::new_ext(&source, parser_options)
-            .into_offset_iter()
-            .peekable(),
+        events: events.peekable(),
+        defs: defs.into(),
         preserve_escapes: options.preserve_backslash_escapes,
         in_link: false,
     };
