@@ -6,7 +6,9 @@
 //! environments are laid out over several lines. Unsupported or malformed
 //! input yields `None`.
 
-use crate::text::visible_width;
+mod letters;
+
+use crate::text::{is_js_whitespace as is_space, visible_width};
 
 fn symbol(key: &str) -> Option<&'static str> {
     Some(match key {
@@ -574,9 +576,33 @@ const PLAIN_WRAPPERS: &[&str] = &[
 
 const NEGATIVE_SPACE: &str = "\u{0000}";
 
-/// JS `\s`.
-fn is_space(c: char) -> bool {
-    c.is_whitespace() || c == '\u{feff}'
+/// JS `String.prototype.trim`.
+fn trim(value: &str) -> &str {
+    value.trim_matches(is_space)
+}
+
+fn trim_start(value: &str) -> &str {
+    value.trim_start_matches(is_space)
+}
+
+fn trim_end(value: &str) -> &str {
+    value.trim_end_matches(is_space)
+}
+
+/// `\p{L}`.
+fn is_letter(c: char) -> bool {
+    let c = u32::from(c);
+    letters::LETTERS
+        .binary_search_by(|&(lo, hi)| {
+            if hi < c {
+                std::cmp::Ordering::Less
+            } else if lo > c {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
 }
 
 fn is_blank(c: char) -> bool {
@@ -614,7 +640,7 @@ fn replace_characters(
 
 /// `value.trim().replace(/\s*([=+-])\s*/g, "$1")`.
 fn normalize_script_value(value: &str) -> String {
-    let chars: Vec<char> = value.trim().chars().collect();
+    let chars: Vec<char> = trim(value).chars().collect();
     let mut result = String::new();
     let mut i = 0;
     while i < chars.len() {
@@ -675,12 +701,12 @@ fn is_simple_term(value: &str) -> bool {
     !value.is_empty()
         && value
             .chars()
-            .all(|c| c.is_alphabetic() || c.is_numeric() || c == '.')
+            .all(|c| is_letter(c) || c.is_numeric() || c == '.')
 }
 
 fn format_fraction(numerator: &str, denominator: &str) -> String {
-    let numerator = numerator.trim();
-    let denominator = denominator.trim();
+    let numerator = trim(numerator);
+    let denominator = trim(denominator);
     let simple_numerator = is_simple_term(numerator);
     let simple_denominator = (!denominator.is_empty()
         && denominator.chars().all(|c| c.is_numeric() || c == '.'))
@@ -701,7 +727,7 @@ fn format_fraction(numerator: &str, denominator: &str) -> String {
 }
 
 fn format_root(value: &str, symbol: &str) -> String {
-    let value = value.trim();
+    let value = trim(value);
     if is_simple_term(value) {
         format!("{symbol}{value}")
     } else {
@@ -714,12 +740,12 @@ const NAMED_OPERATOR_END: char = '\u{f0005}';
 
 /// The class `[\p{L}\p{N})\]}\u{f0001}]` that gates the left spacing of a named operator.
 fn is_named_operator_left_context(c: char) -> bool {
-    c.is_alphabetic() || c.is_numeric() || matches!(c, ')' | ']' | '}' | '\u{f0001}')
+    is_letter(c) || c.is_numeric() || matches!(c, ')' | ']' | '}' | '\u{f0001}')
 }
 
 /// The class `[\p{L}\p{N}√\u{f0000}]` that gates the right spacing of a named operator.
 fn is_named_operator_right_context(c: char) -> bool {
-    c.is_alphabetic() || c.is_numeric() || matches!(c, '√' | '\u{f0000}')
+    is_letter(c) || c.is_numeric() || matches!(c, '√' | '\u{f0000}')
 }
 
 fn normalize_output(value: &str) -> String {
@@ -757,18 +783,17 @@ fn normalize_output(value: &str) -> String {
 
     let lines: Vec<String> = without_end
         .split('\n')
-        .map(|line| collapse_blanks(line).trim().to_string())
+        .map(|line| trim(&collapse_blanks(line)).to_string())
         .collect();
     let count = lines.len();
-    lines
+    let joined = lines
         .into_iter()
         .enumerate()
         .filter(|(index, line)| !line.is_empty() || (*index > 0 && *index + 1 < count))
         .map(|(_, line)| line)
         .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+        .join("\n");
+    trim(&joined).to_string()
 }
 
 /// `line.replace(/[ \t]+/g, " ")`.
@@ -901,7 +926,7 @@ fn join_layouts(layouts: &[Layout]) -> Layout {
                 line.push_str(&" ".repeat(layout.width));
             }
         }
-        lines.push(line.trim_end().to_string());
+        lines.push(trim_end(&line).to_string());
         row += 1;
     }
     Layout {
@@ -927,12 +952,11 @@ fn render_layout(source: &str, nodes: &[LayoutNode]) -> Layout {
             };
             if index > position {
                 let sliced = slice(&source_line, position, index);
-                let trimmed = (if previous_node.is_some() {
-                    sliced.trim_start()
+                let trimmed = trim_end(if previous_node.is_some() {
+                    trim_start(&sliced)
                 } else {
                     sliced.as_str()
-                })
-                .trim_end();
+                });
                 let preserve_leading_space =
                     matches!(previous_node, Some(LayoutNode::Matrix { .. }))
                         && sliced.starts_with(is_space);
@@ -1061,7 +1085,7 @@ fn render_layout(source: &str, nodes: &[LayoutNode]) -> Layout {
         if position < source_line.len() {
             let sliced = slice(&source_line, position, source_line.len());
             let trimmed = if previous_node.is_some() {
-                sliced.trim_start()
+                trim_start(&sliced)
             } else {
                 sliced.as_str()
             };
@@ -1188,7 +1212,7 @@ impl<'a> LatexParser<'a> {
             if character == '\\' {
                 let command = self.parse_command();
                 if command == NEGATIVE_SPACE {
-                    result = result.trim_end().to_string();
+                    result = trim_end(&result).to_string();
                     if result.ends_with(NAMED_OPERATOR_END) {
                         result.pop();
                     }
@@ -1200,7 +1224,7 @@ impl<'a> LatexParser<'a> {
 
             if character == '^' || character == '_' {
                 self.position += 1;
-                result = result.trim_end().to_string();
+                result = trim_end(&result).to_string();
                 let script = self.parse_scripts(character);
                 if result.ends_with(NAMED_OPERATOR_END) {
                     result.pop();
@@ -1218,7 +1242,7 @@ impl<'a> LatexParser<'a> {
             }
 
             if character == '=' || character == '<' || character == '>' {
-                result = format!("{} {} ", result.trim_end(), character);
+                result = format!("{} {} ", trim_end(&result), character);
                 self.position += 1;
                 continue;
             }
@@ -1392,7 +1416,7 @@ impl<'a> LatexParser<'a> {
             return "‖".to_string();
         }
         if command == "not" {
-            let value = self.parse_required_argument(false).trim().to_string();
+            let value = trim(&self.parse_required_argument(false)).to_string();
             if let Some(negated) = negated_symbol(&value) {
                 return format!(" {negated} ");
             }
@@ -1448,7 +1472,7 @@ impl<'a> LatexParser<'a> {
         if command == "sqrt" {
             let degree = self
                 .parse_optional_argument()
-                .map(|degree| degree.trim().to_string());
+                .map(|degree| trim(&degree).to_string());
             let value = self.parse_required_argument(true);
             return match degree.as_deref() {
                 None | Some("2") => format_root(&value, "√"),
@@ -1462,7 +1486,7 @@ impl<'a> LatexParser<'a> {
             };
         }
         if command == "boxed" || command == "fbox" {
-            return format!("[{}]", self.parse_required_argument(true).trim());
+            return format!("[{}]", trim(&self.parse_required_argument(true)));
         }
         if command == "binom" || command == "dbinom" || command == "tbinom" {
             let top = self.parse_required_argument(true);
@@ -1490,14 +1514,14 @@ impl<'a> LatexParser<'a> {
                 self.position += 1;
             }
             let argument = self.parse_required_argument(true);
-            let operator = normalize_output(&argument).trim().to_string();
+            let operator = trim(&normalize_output(&argument)).to_string();
             return self.parse_operator(&operator, LowerStyle::Bracket, starred, true);
         }
         if command == "mod" || command == "bmod" {
             return " mod ".to_string();
         }
         if command == "pmod" || command == "pod" {
-            let value = self.parse_required_argument(true).trim().to_string();
+            let value = trim(&self.parse_required_argument(true)).to_string();
             return if command == "pmod" {
                 format!(" (mod {value})")
             } else {
@@ -1506,12 +1530,12 @@ impl<'a> LatexParser<'a> {
         }
         if command == "overset" || command == "stackrel" {
             let upper = self.parse_required_argument(true);
-            let value = self.parse_required_argument(true).trim().to_string();
+            let value = trim(&self.parse_required_argument(true)).to_string();
             return format!("{value}{}", format_script(&upper, ScriptKind::Sup));
         }
         if command == "underset" {
             let lower = self.parse_required_argument(true);
-            let value = self.parse_required_argument(true).trim().to_string();
+            let value = trim(&self.parse_required_argument(true)).to_string();
             return format!("{value}{}", format_script(&lower, ScriptKind::Sub));
         }
         if PLAIN_WRAPPERS.contains(&command) {
@@ -1519,7 +1543,7 @@ impl<'a> LatexParser<'a> {
             return if command.starts_with("text") || command == "mbox" {
                 value
             } else {
-                value.trim().to_string()
+                trim(&value).to_string()
             };
         }
         if command == "begin" {
@@ -1734,7 +1758,7 @@ impl<'a> LatexParser<'a> {
         for row in Self::split_environment_rows(body) {
             let mut cells = Vec::new();
             for cell in row.split('&') {
-                cells.push(self.render_nested(cell, false).trim().to_string());
+                cells.push(trim(&self.render_nested(cell, false)).to_string());
             }
             if cells.iter().any(|cell| !cell.is_empty()) {
                 rows.push(cells);
@@ -1760,7 +1784,7 @@ impl<'a> LatexParser<'a> {
         let environment = environment.as_str();
 
         if matches!(environment, "equation" | "equation*" | "displaymath") {
-            return self.render_nested(&body, true).trim().to_string();
+            return trim(&self.render_nested(&body, true)).to_string();
         }
 
         if matches!(
@@ -1795,7 +1819,7 @@ impl<'a> LatexParser<'a> {
                 } else {
                     cells.concat()
                 };
-                let rendered = self.render_nested(&source, true).trim().to_string();
+                let rendered = trim(&self.render_nested(&source, true)).to_string();
                 if !rendered.is_empty() {
                     rendered_rows.push(rendered);
                 }
@@ -2044,27 +2068,19 @@ pub fn render_latex(source: &str, display: bool) -> Option<String> {
     let lines = render_layout(&rendered, &layout_nodes).lines;
     let indentation = lines
         .iter()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.chars().count() - line.trim_start().chars().count())
+        .filter(|line| !trim(line).is_empty())
+        .map(|line| line.chars().count() - trim_start(line).chars().count())
         .min();
     let unindented: Vec<String> = lines
         .iter()
         .map(|line| match indentation {
-            Some(indentation) => line
-                .chars()
-                .skip(indentation)
-                .collect::<String>()
-                .trim_end()
-                .to_string(),
+            Some(indentation) => {
+                trim_end(&line.chars().skip(indentation).collect::<String>()).to_string()
+            }
             None => String::new(),
         })
         .collect();
-    Some(
-        unindented
-            .join("\n")
-            .trim_end()
-            .replace(PROTECTED_SPACE, " "),
-    )
+    Some(trim_end(&unindented.join("\n")).replace(PROTECTED_SPACE, " "))
 }
 
 #[cfg(test)]
@@ -2740,5 +2756,21 @@ R\left(\frac{\pi}{4}\right)
         check_none("\\frac{\u{f0000}0\u{f0001}}{2}", true);
         check_none("\\frac{\u{f0000}1\u{f0001}}{2}\\frac{a}{b}", true);
         check_none("x\u{f0002}y", false);
+    }
+
+    #[test]
+    fn matches_javascript_character_classes() {
+        // `\s` and `trim` leave U+0085 alone and take U+FEFF.
+        check("a\u{85}b", false, "a\u{85}b");
+        check("x^{a\u{85}}", false, "x^(a\u{85})");
+        check("\u{feff}x", false, "x");
+        check("x^{\u{feff}2}", false, "x²");
+        // `\p{L}` is the letter category, not the alphabetic property.
+        check(r"\frac{Ⓐ}{2}", false, "(Ⓐ)/2");
+        check(r"\sqrt{Ⓐ}", false, "√(Ⓐ)");
+        check(r"\sqrt{Ⅻ}", false, "√Ⅻ");
+        check("\\sqrt{\u{93e}}", false, "√(\u{93e})");
+        check(r"Ⓐ\sin x", false, "Ⓐsin x");
+        check(r"x\sin Ⓐ", false, "x sin Ⓐ");
     }
 }

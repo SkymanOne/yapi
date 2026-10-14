@@ -12,6 +12,8 @@ use std::ops::Range;
 
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
+use crate::text::is_js_whitespace;
+
 /// A LaTeX expression as pi's tokenizers find it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Math {
@@ -191,10 +193,6 @@ fn looks_like_pending_dollar_math(source: &str) -> bool {
             .any(|c| "_^=+*/<>()[]|±≤≥≠≈∈→⇒∞∫∑√-".contains(c))
 }
 
-fn is_js_space(c: char) -> bool {
-    crate::text::is_js_whitespace(c)
-}
-
 /// An expression a tokenizer found at the start of its source: the length
 /// of its raw source, where its text is and whether it is pending.
 type Found = (usize, Range<usize>, bool);
@@ -207,7 +205,7 @@ fn tokenize_inline(source: &str) -> Option<Found> {
         ("\\(", "\\)")
     } else if source.starts_with("\\[") {
         ("\\[", "\\]")
-    } else if source.starts_with('$') && !source[1..].starts_with(is_js_space) {
+    } else if source.starts_with('$') && !source[1..].starts_with(is_js_whitespace) {
         ("$", "$")
     } else {
         return None;
@@ -232,13 +230,13 @@ fn tokenize_inline(source: &str) -> Option<Found> {
                     match (tail.next(), tail.next()) {
                         (None, _) => true,
                         (Some(c), None) => {
-                            !(c.is_ascii_alphanumeric() || c == '_' || is_js_space(c))
+                            !(c.is_ascii_alphanumeric() || c == '_' || is_js_whitespace(c))
                         }
                         _ => false,
                     }
                 }
         };
-        if inner.ends_with(is_js_space)
+        if inner.ends_with(is_js_whitespace)
             || after.starts_with(|c: char| c.is_ascii_digit())
             || (constant && after.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_'))
             || inner.contains('`')
