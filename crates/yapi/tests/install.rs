@@ -137,7 +137,9 @@ fn installs_the_latest_release_into_local_bin() {
     let site = dir.join("site");
     release(&site, "9.9.8");
     release(&site, "9.9.9");
-    let output = install(&serve(site, Some("9.9.9")), &dir, &[]);
+    // A trailing slash on the releases page is harmless.
+    let releases = format!("{}/", serve(site, Some("9.9.9")));
+    let output = install(&releases, &dir, &[]);
     assert!(output.status.success(), "{output:?}");
     let binary = dir.join(".local/bin/yapi");
     assert_eq!(installed_version(&binary), "9.9.9");

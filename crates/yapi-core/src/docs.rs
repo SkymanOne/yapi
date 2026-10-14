@@ -20,10 +20,12 @@ const BOOK_URL: &str = "https://nikolish.in/yapi/";
 const PI_URL: &str = "https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent";
 
 /// The releases page yapi downloads its docs from and checks for a newer
-/// version: `YAPI_RELEASES_URL`, which install.sh reads too, else GitHub's.
+/// version, without a trailing slash: `YAPI_RELEASES_URL`, which install.sh
+/// reads too, else GitHub's.
 pub fn releases_url() -> String {
     std::env::var("YAPI_RELEASES_URL")
         .ok()
+        .map(|url| url.trim_end_matches('/').to_owned())
         .filter(|url| !url.is_empty())
         .unwrap_or_else(|| RELEASES_URL.to_owned())
 }

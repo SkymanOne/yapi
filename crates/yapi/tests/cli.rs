@@ -1188,9 +1188,10 @@ async fn startup_shows_update_notices() {
             ("HOME", home.clone().into_os_string()),
             ("YAPI_CODING_AGENT_DIR", agent.clone().into_os_string()),
             ("YAPI_NO_DOCS", "1".into()),
+            // A trailing slash is harmless.
             (
                 "YAPI_RELEASES_URL",
-                format!("{}/releases", releases.url()).into(),
+                format!("{}/releases/", releases.url()).into(),
             ),
             ("npm_config_registry", format!("{}/", registry.url()).into()),
         ];
