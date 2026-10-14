@@ -285,4 +285,38 @@ mod tests {
             "Compaction: 26k tokens billed"
         );
     }
+
+    #[test]
+    fn an_unparsable_warm_timestamp_is_no_idle_time() {
+        use serde_json::json;
+        let registry = yapi_ai::registry::ModelRegistry::builtin();
+        let message = |id: &str, timestamp: u64, write: u64| -> FileEntry {
+            serde_json::from_value(json!({
+                "type": "message", "id": id, "parentId": null, "timestamp": "2026-10-13T10:00:00.000Z",
+                "message": {
+                    "role": "assistant", "content": [], "api": "faux", "provider": "p", "model": "m",
+                    "usage": {"input": 0, "output": 1, "cacheRead": 0, "cacheWrite": write,
+                        "totalTokens": write + 1,
+                        "cost": {"input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.1, "total": 0.1}},
+                    "stopReason": "stop", "timestamp": timestamp,
+                },
+            }))
+            .unwrap()
+        };
+        let warm: FileEntry = serde_json::from_value(json!({
+            "type": "usage", "id": "w", "parentId": null, "timestamp": "not a date",
+            "kind": "cache_warm", "provider": "p", "model": "m",
+            "usage": {"input": 0, "output": 0, "cacheRead": 100_000, "cacheWrite": 0,
+                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}},
+        }))
+        .unwrap();
+        let entries = [
+            message("a", 1_000_000, 100_000),
+            warm,
+            message("b", 1_700_000_000_000, 100_000),
+        ];
+        let misses = collect_cache_misses(&entries, &registry);
+        let notice = miss_notice(&misses[0].1).unwrap();
+        assert!(notice.starts_with("Cache miss:"), "{notice}");
+    }
 }
