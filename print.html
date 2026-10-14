@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c008552.js";
+            window.path_to_searchindex_js = "searchindex-0ad46228.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -871,7 +871,7 @@ export default function (pi: ExtensionAPI) {
 </tbody>
 </table>
 </div>
-<p>A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless">dev/status.md</a> lists each one.</p>
+<p>A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks.</p>
 <h2 id="yapi-only-apis"><a class="header" href="#yapi-only-apis">yapi-only APIs</a></h2>
 <p><code>pi.yapi</code> holds APIs that Pi does not have. Call them as <code>pi.yapi?.method()</code> so the package still loads in Pi.</p>
 <h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
@@ -1820,7 +1820,7 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
-<p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md">dev/status.md</a> tracks progress and deferred work.</p>
+<p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes.</p>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
 <li>Rust stable. <code>rust-toolchain.toml</code> selects it with Clippy and rustfmt, and rustup installs it on the first build.</li>
@@ -1837,7 +1837,7 @@ cd yapi
 cargo run -p yapi --
 </code></pre>
 <h2 id="checks"><a class="header" href="#checks">Checks</a></h2>
-<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, internal notes, skills or other workflows.</p>
+<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, skills or other workflows.</p>
 <pre><code class="language-sh">cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace

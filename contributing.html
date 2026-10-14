@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c008552.js";
+            window.path_to_searchindex_js = "searchindex-0ad46228.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
-<p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md">dev/status.md</a> tracks progress and deferred work.</p>
+<p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes.</p>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
 <li>Rust stable. <code>rust-toolchain.toml</code> selects it with Clippy and rustfmt, and rustup installs it on the first build.</li>
@@ -197,7 +197,7 @@ cd yapi
 cargo run -p yapi --
 </code></pre>
 <h2 id="checks"><a class="header" href="#checks">Checks</a></h2>
-<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, internal notes, skills or other workflows.</p>
+<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, skills or other workflows.</p>
 <pre><code class="language-sh">cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
