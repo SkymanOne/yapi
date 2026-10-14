@@ -366,7 +366,7 @@ pub(super) fn frame(body: &Value) -> String {
 pub(super) struct Lease {
     socket: Socket,
     /// The cache slot the socket returns to; `None` for a one-off socket.
-    key: Held,
+    key: BusySlot,
     created: Instant,
     /// Whether the socket served an earlier request.
     pub(super) reused: bool,
@@ -387,7 +387,7 @@ pub(super) async fn acquire(
     let open = || connect(url, headers, cancel, connect_timeout_ms);
     let lease = |socket, key, created| Lease {
         socket,
-        key: Held(key),
+        key: BusySlot(key),
         created,
         reused: false,
         continuation: None,
@@ -431,12 +431,12 @@ pub(super) async fn acquire(
     Ok(lease(socket, Some(key), Instant::now()))
 }
 
-/// The slot a request holds. Dropped before the request releases it, as
-/// when its task is cancelled, it frees the slot for the session's next
-/// request.
-struct Held(Option<Key>);
+/// The `Busy` cache slot a request holds. Dropping it frees the slot for the
+/// session's next request, including when the request's task is cancelled
+/// before it releases the slot itself.
+struct BusySlot(Option<Key>);
 
-impl Drop for Held {
+impl Drop for BusySlot {
     fn drop(&mut self) {
         if let Some(key) = &self.0 {
             remove_busy(key);
