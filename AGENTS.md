@@ -230,7 +230,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo test` compares yapi's normalized output and requests with the goldens; `cargo xtask e2e --record-pi` rewrites them;
   - the suite needs `rg` and `fd` on `PATH` for the search tool scenarios, and `python3` for the MCP test server in `tests/fixtures/mcp`;
   - TUI scenarios type into the program in a pseudo-terminal and compare the final screen text, without each product's startup header; `YAPI_SETTLE_MS` lengthens the quiet time that ends each step on slow machines;
-  - RPC scenarios send each command once the previous one's response or awaited event has arrived;
+  - RPC scenarios send each command once the previous one's response or awaited event has arrived, and, for a step that sets `requests`, once the mock has received that many requests, so an abort lands while a request is in flight;
   - client scenarios run a Node script from the fixture generator, such as pi's `RpcClient` example, against the program; `cargo test` skips them when the generator's packages are not installed;
   - goldens are recorded on Linux; a scenario whose screen shows text pi chooses by platform, such as macOS's Option key name, sets `"os": "linux"` and runs only there.
 - Every bug fix includes a regression test.
