@@ -94,6 +94,11 @@ pub struct RpcStep {
     /// the command becomes the value at that JSON pointer of the response to
     /// command `<id>`.
     pub send: Value,
+    /// Waits until the mock has received this many requests before writing
+    /// the command, so that an `abort` lands while a request is in flight
+    /// instead of racing the program's sending of it.
+    #[serde(default)]
+    pub requests: Option<usize>,
     /// Waits for an output line of this `type` before the next step. Without
     /// it, waits for the response to the command's `id`, if it has one.
     #[serde(default)]
@@ -436,9 +441,10 @@ pub async fn run(scenario: &Scenario, program: &Program) -> Result<Run, Error> {
         }
         None if scenario.rpc.is_some() => {
             let steps = scenario.rpc.as_deref().unwrap_or_default();
-            let (exit_code, stdout, stderr) = run_rpc(executable, &args, &cwd, &env, steps)
-                .await
-                .map_err(io(executable))?;
+            let (exit_code, stdout, stderr) =
+                run_rpc(executable, &args, &cwd, &env, steps, &server)
+                    .await
+                    .map_err(io(executable))?;
             (exit_code, stdout, stderr, None)
         }
         None => {
@@ -566,14 +572,16 @@ fn substitute(value: &Value, responses: &HashMap<String, Value>) -> Value {
 }
 
 /// Runs `executable` with piped stdio, writing each step's command once the
-/// previous step's awaited line has appeared, then closing stdin. Returns the
-/// exit code, stdout and stderr.
+/// previous step's awaited line has appeared and `server` has received the
+/// step's awaited requests, then closing stdin. Returns the exit code, stdout
+/// and stderr.
 async fn run_rpc(
     executable: &Path,
     args: &[String],
     cwd: &Path,
     env: &[(String, OsString)],
     steps: &[RpcStep],
+    server: &MockServer,
 ) -> std::io::Result<(i32, String, String)> {
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
     let mut command = command(executable, args, cwd, env);
@@ -618,6 +626,18 @@ async fn run_rpc(
             Value::String(text) => text.clone(),
             command => command.to_string(),
         };
+        if let Some(count) = step.requests {
+            let received = async {
+                while server.requests().len() < count {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            };
+            tokio::time::timeout(RPC_STEP_LIMIT, received)
+                .await
+                .map_err(|_| {
+                    std::io::Error::other(format!("RPC step {line} never saw {count} requests"))
+                })?;
+        }
         if !send.is_null() {
             stdin.write_all(format!("{line}\n").as_bytes()).await?;
             stdin.flush().await?;
@@ -1124,5 +1144,36 @@ mod tests {
         assert!(link.join("dist/bundle/cli.js").is_file());
         assert_eq!(pi_package_link(Path::new("/pi"), &root).unwrap(), None);
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rpc_steps_wait_for_requests() {
+        let server = MockServer::local(Cassette::default()).await.unwrap();
+        let url = format!("{}/v1/messages", server.url());
+        let delay = std::time::Duration::from_millis(200);
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = reqwest::Client::new().post(url).send().await;
+        });
+        let step = RpcStep {
+            send: json!({"type": "ping"}),
+            requests: Some(1),
+            until: Some("ping".to_owned()),
+        };
+        let echo = ["-c".to_owned(), r#"read line; echo "$line""#.to_owned()];
+        let started = std::time::Instant::now();
+        run_rpc(
+            Path::new("/bin/sh"),
+            &echo,
+            &fixtures_dir(),
+            &[],
+            &[step],
+            &server,
+        )
+        .await
+        .unwrap();
+        // The command went out only after the request arrived.
+        assert!(started.elapsed() >= delay);
+        assert_eq!(server.requests().len(), 1);
     }
 }
