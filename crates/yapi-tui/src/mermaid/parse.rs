@@ -11,9 +11,10 @@ use super::graph::{
     MAX_MEMBERS, MAX_NODES, Shape, parse_dir,
 };
 use super::labels::{
-    ascii_lower, clean_label, decode_html_entities, has_js_space, is_id_char, js_trim, js_trim_end,
-    js_trim_start, js_words, src_lines,
+    clean_label, decode_html_entities, is_id_char, js_trim, js_trim_end, js_trim_start, js_words,
+    src_lines,
 };
+use crate::text::has_whitespace;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------- statements
@@ -73,7 +74,7 @@ fn non_empty(s: &str) -> Option<String> {
 /// Diagram kind from the header statement, lowercased.
 fn header_kind(statements: &[String]) -> Option<String> {
     let kind = first_word(statements.first()?);
-    (!kind.is_empty()).then(|| ascii_lower(kind))
+    (!kind.is_empty()).then(|| kind.to_ascii_lowercase())
 }
 
 /// A diagram type this renderer draws.
@@ -124,7 +125,7 @@ pub(super) fn parse_graph(src: &str) -> Option<Graph> {
     let mut stack: Vec<usize> = Vec::new();
 
     for st in &statements[1..] {
-        match ascii_lower(first_word(st)).as_str() {
+        match first_word(st).to_ascii_lowercase().as_str() {
             "subgraph" => {
                 if graph.groups.len() >= MAX_GROUPS || stack.len() >= MAX_GROUP_DEPTH {
                     return None;
@@ -558,13 +559,13 @@ pub(super) fn parse_state(src: &str) -> Option<Graph> {
 
     for st in &statements[1..] {
         if in_note {
-            if ascii_lower(st) == "end note" {
+            if st.eq_ignore_ascii_case("end note") {
                 in_note = false;
             }
             continue;
         }
         let st = drop_style_tags(st);
-        let first = ascii_lower(first_word(&st));
+        let first = first_word(&st).to_ascii_lowercase();
         if first == "direction" {
             graph.dir = parse_dir(js_words(&st).get(1).copied().unwrap_or(""));
         } else if first == "note" {
@@ -595,7 +596,7 @@ pub(super) fn parse_state(src: &str) -> Option<Graph> {
 
 /// `state "Label" as id`, `state id <<choice>>`, or `state id {`.
 fn parse_state_decl(st: &str, graph: &mut Graph) -> Option<()> {
-    let rest = js_trim(&st["state".len()..]);
+    let rest = js_trim(skip_utf16(st, "state".len()));
     let rest = js_trim(rest.strip_suffix('{').unwrap_or(rest));
     if rest.is_empty() {
         return Some(());
@@ -626,7 +627,7 @@ fn parse_state_decl(st: &str, graph: &mut Graph) -> Option<()> {
         id = js_trim(&rest[..pos]);
         stereotyped = true;
     }
-    if id.is_empty() || has_js_space(id) {
+    if id.is_empty() || has_whitespace(id) {
         return None;
     }
     graph
@@ -691,6 +692,20 @@ fn parse_transition(st: &str, graph: &mut Graph) -> Option<()> {
     Some(())
 }
 
+/// `s` without its first `n` UTF-16 units, as JS `s.slice(n)`. Style tags can
+/// leave multibyte whitespace before the keyword, so `n` is not a byte offset.
+/// A cut inside a surrogate pair keeps the whole character.
+fn skip_utf16(s: &str, n: usize) -> &str {
+    let mut units = 0;
+    for (i, c) in s.char_indices() {
+        if units >= n {
+            return &s[i..];
+        }
+        units += c.len_utf16();
+    }
+    ""
+}
+
 /// Remove every `:::name` style tag from a statement, parsed with the same
 /// name scan as the flowchart shorthand. State and class statements are read
 /// by string splits, and the `:` label split would cut inside a `:::`, so tags
@@ -730,14 +745,14 @@ fn parse_state_desc(st: &str, graph: &mut Graph) -> Option<()> {
     if let Some((a, b)) = st.split_once(':') {
         let id = js_trim(a);
         let desc = js_trim(b);
-        if id.is_empty() || has_js_space(id) || desc.is_empty() {
+        if id.is_empty() || has_whitespace(id) || desc.is_empty() {
             return None;
         }
         return graph
             .node_label(id, &decode_html_entities(desc))
             .map(|_| ());
     }
-    if has_js_space(st) {
+    if has_whitespace(st) {
         return None;
     }
     graph.node_index(st, None, Shape::Round).map(|_| ())
@@ -768,9 +783,7 @@ const MAX_CLASS_OP: usize = 4;
 /// Declare a class, keeping `infos` aligned with `graph.nodes`.
 fn declare_class(graph: &mut Graph, infos: &mut Vec<ClassInfo>, name: &str) -> Option<usize> {
     let idx = graph.node_index(name, None, Shape::Rect);
-    while infos.len() < graph.nodes.len() {
-        infos.push(ClassInfo::default());
-    }
+    infos.resize_with(graph.nodes.len(), ClassInfo::default);
     idx
 }
 
@@ -796,7 +809,7 @@ pub(super) fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
         }
         let st = drop_style_tags(st);
 
-        let first = ascii_lower(first_word(&st));
+        let first = first_word(&st).to_ascii_lowercase();
         if first == "direction" {
             graph.dir = parse_dir(js_words(&st).get(1).copied().unwrap_or(""));
             continue;
@@ -817,14 +830,14 @@ pub(super) fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
             continue;
         }
         if first == "class" {
-            let rest = js_trim(&st["class".len()..]);
+            let rest = js_trim(skip_utf16(&st, "class".len()));
             let open = rest.ends_with('{');
             let name = if open {
                 js_trim(&rest[..rest.len() - 1])
             } else {
                 rest
             };
-            if name.is_empty() || has_js_space(name) {
+            if name.is_empty() || has_whitespace(name) {
                 return None;
             }
             let idx = declare_class(&mut graph, &mut infos, name)?;
@@ -837,7 +850,7 @@ pub(super) fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
         if let Some(after) = st.strip_prefix("<<") {
             let (annotation, name) = after.split_once(">>")?;
             let name = js_trim(name);
-            if name.is_empty() || has_js_space(name) {
+            if name.is_empty() || has_whitespace(name) {
                 return None;
             }
             let idx = declare_class(&mut graph, &mut infos, name)?;
@@ -865,7 +878,7 @@ pub(super) fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
         if let Some((a, b)) = st.split_once(':') {
             let id = js_trim(a);
             let text = js_trim(b);
-            if id.is_empty() || has_js_space(id) || text.is_empty() {
+            if id.is_empty() || has_whitespace(id) || text.is_empty() {
                 return None;
             }
             let idx = declare_class(&mut graph, &mut infos, id)?;
@@ -878,9 +891,7 @@ pub(super) fn parse_class(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
     if graph.nodes.is_empty() {
         return None;
     }
-    while infos.len() < graph.nodes.len() {
-        infos.push(ClassInfo::default());
-    }
+    infos.resize_with(graph.nodes.len(), ClassInfo::default);
     Some((graph, infos))
 }
 
@@ -952,7 +963,7 @@ fn parse_class_relation(st: &str) -> Option<ClassRelation> {
     };
     let to_id = js_trim(to_id_raw);
 
-    if lhs.is_empty() || to_id.is_empty() || has_js_space(lhs) || has_js_space(to_id) {
+    if lhs.is_empty() || to_id.is_empty() || has_whitespace(lhs) || has_whitespace(to_id) {
         return None;
     }
 
@@ -1080,9 +1091,7 @@ pub(super) fn parse_er(src: &str) -> Option<(Graph, Vec<ClassInfo>)> {
     if graph.nodes.is_empty() {
         return None;
     }
-    while infos.len() < graph.nodes.len() {
-        infos.push(ClassInfo::default());
-    }
+    infos.resize_with(graph.nodes.len(), ClassInfo::default);
     Some((graph, infos))
 }
 
@@ -1097,9 +1106,7 @@ fn er_entity(graph: &mut Graph, infos: &mut Vec<ClassInfo>, token: &str) -> Opti
     } else {
         graph.node_index(token, None, Shape::Rect)?
     };
-    while infos.len() < graph.nodes.len() {
-        infos.push(ClassInfo::default());
-    }
+    infos.resize_with(graph.nodes.len(), ClassInfo::default);
     Some(idx)
 }
 
@@ -1263,7 +1270,7 @@ pub(super) fn parse_sequence(src: &str) -> Option<Sequence> {
 
     for st in &statements[1..] {
         let first = first_word(st);
-        let lower = ascii_lower(first);
+        let lower = first.to_ascii_lowercase();
         let lower = lower.as_str();
 
         if lower == "participant" || lower == "actor" {
@@ -1380,7 +1387,7 @@ fn parse_note_anchor(rest: &str, seq: &mut Sequence) -> Option<(NoteAnchor, Stri
         Left,
         Right,
     }
-    let lower = ascii_lower(rest);
+    let lower = rest.to_ascii_lowercase();
     // Prefixes are ASCII and `ascii_lower` preserves byte lengths.
     let (kind, ids_and_text) = if lower.starts_with("over ") {
         (Kind::Over, &rest["over ".len()..])

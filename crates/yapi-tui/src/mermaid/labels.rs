@@ -4,6 +4,7 @@
 //! line splitting, wrapping and truncation to display columns.
 
 use super::width::{measured, string_width};
+use crate::text::is_js_whitespace;
 
 /// Node labels wrap to at most this many display columns per line ...
 pub(super) const WRAP_WIDTH: usize = 24;
@@ -22,59 +23,29 @@ pub(super) const LABEL_BREAK_CHARS: [char; 4] = ['_', '-', '.', '/'];
 // whitespace set (WhiteSpace plus LineTerminator) is not Rust's `White_Space`:
 // it includes U+FEFF and excludes U+0085.
 
-/// Whether `c` matches `\s` in a JavaScript regular expression.
-pub(super) fn is_js_space(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200a}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202f}'
-                | '\u{205f}'
-                | '\u{3000}'
-                | '\u{feff}'
-    )
-}
-
 /// `String.prototype.trim`.
 pub(super) fn js_trim(s: &str) -> &str {
-    s.trim_matches(is_js_space)
+    s.trim_matches(is_js_whitespace)
 }
 
 /// `String.prototype.trimStart`.
 pub(super) fn js_trim_start(s: &str) -> &str {
-    s.trim_start_matches(is_js_space)
+    s.trim_start_matches(is_js_whitespace)
 }
 
 /// `String.prototype.trimEnd`.
 pub(super) fn js_trim_end(s: &str) -> &str {
-    s.trim_end_matches(is_js_space)
+    s.trim_end_matches(is_js_whitespace)
 }
 
 /// `s.split(/\s+/).filter((w) => w !== '')`.
 pub(super) fn js_words(s: &str) -> Vec<&str> {
-    s.split(is_js_space).filter(|w| !w.is_empty()).collect()
-}
-
-/// `/\s/.test(s)`.
-pub(super) fn has_js_space(s: &str) -> bool {
-    s.chars().any(is_js_space)
+    s.split(is_js_whitespace)
+        .filter(|w| !w.is_empty())
+        .collect()
 }
 
 // ----------------------------------------------------------------- case/text
-
-/// ASCII-only case folding, matching Rust's `to_ascii_lowercase`.
-///
-/// `String.prototype.toLowerCase` can change a string's length (`İ` becomes two
-/// code points), which would desync the offsets some parsers slice with.
-pub(super) fn ascii_lower(s: &str) -> String {
-    s.to_ascii_lowercase()
-}
-
-pub(super) fn ascii_upper(s: &str) -> String {
-    s.to_ascii_uppercase()
-}
 
 /// Remove C0 and C1 controls, less the `\t\n\r` the parsers and `src_lines`
 /// read.
@@ -107,18 +78,15 @@ pub(super) fn src_lines(src: &str) -> Vec<&str> {
     out
 }
 
-/// Matches Rust's `char::is_alphanumeric` (`\p{Alphabetic}` or `\p{N}`).
-pub(super) fn is_alphanumeric(c: char) -> bool {
-    c.is_alphanumeric()
-}
-
 /// Characters allowed in a bare node/state/class identifier.
 pub(super) fn is_id_char(c: char) -> bool {
-    is_alphanumeric(c) || c == '_'
+    c.is_alphanumeric() || c == '_'
 }
 
 const ENTITY_LOOKAHEAD: usize = 10;
 
+// Upstream also decodes `&toString;` and `&__proto__;` into JS object text through
+// a plain-object lookup; yapi leaves them as written.
 fn decode_entity_body(body: &str) -> Option<char> {
     match body {
         "lt" => return Some('<'),
@@ -197,8 +165,8 @@ pub(super) fn strip_markdown(s: &str) -> String {
     for (i, &c) in chars.iter().enumerate() {
         // Keep `*`/`_` only when they sit inside a word, so snake_case survives.
         let in_word = i > 0
-            && is_alphanumeric(chars[i - 1])
-            && chars.get(i + 1).is_some_and(|&n| is_alphanumeric(n));
+            && (chars[i - 1]).is_alphanumeric()
+            && chars.get(i + 1).is_some_and(|&n| (n).is_alphanumeric());
         if (c == '*' || c == '_') && !in_word {
             continue;
         }

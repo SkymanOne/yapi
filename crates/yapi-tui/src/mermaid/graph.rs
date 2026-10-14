@@ -3,7 +3,6 @@
 //! The shared diagram model. Flowchart, state, class and ER sources all parse
 //! into a `Graph`; only sequence diagrams have their own model.
 
-use super::labels::ascii_upper;
 use std::collections::HashMap;
 
 /// Caps that keep layout bounded; exceeding one makes the parse give up.
@@ -81,7 +80,7 @@ pub(super) struct ClassInfo {
 
 /// `LR`/`RL`/`BT` as written in a header or `direction` statement; else `Down`.
 pub(super) fn parse_dir(token: &str) -> Dir {
-    match ascii_upper(token).as_str() {
+    match token.to_ascii_uppercase().as_str() {
         "LR" => Dir::Right,
         "RL" => Dir::Left,
         "BT" => Dir::Up,

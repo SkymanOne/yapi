@@ -10,22 +10,12 @@
 use super::Cls;
 use super::canvas::{Canvas, D, L, R, U, draw_text_over_edges};
 use super::labels::{WRAP_WIDTH, fit_label};
-use super::layout::{CanvasResult, Placed, draw_box};
+use super::layout::{CanvasResult, MAX_CANVAS_CELLS, PAD, Placed, draw_box, half, sat};
 use super::parse::{NoteAnchor, SeqHead, SeqItem, Sequence};
 use super::width::string_width;
 
-const PAD: usize = 1;
 /// Minimum columns between adjacent lifelines.
 const SEQ_GAP: usize = 5;
-const MAX_CANVAS_CELLS: usize = 1 << 21;
-
-fn sat(a: usize, b: usize) -> usize {
-    a.saturating_sub(b)
-}
-
-fn half(n: usize) -> usize {
-    n / 2
-}
 
 /// Where a note box sits, given the lifeline positions.
 fn note_geometry(xs: &[usize], anchor: NoteAnchor, text_w: usize) -> (usize, usize) {
@@ -179,24 +169,7 @@ pub(super) fn layout_sequence(seq: &Sequence) -> CanvasResult {
     for (k, item) in seq.items.iter().enumerate() {
         let r = rows[k];
         match item {
-            SeqItem::Message {
-                from,
-                to,
-                text,
-                dashed,
-                head,
-            } => {
-                draw_message(
-                    &mut canvas,
-                    *from,
-                    *to,
-                    text.as_deref(),
-                    *dashed,
-                    *head,
-                    &xs,
-                    r,
-                );
-            }
+            SeqItem::Message { .. } => draw_message(&mut canvas, item, &xs, r),
             SeqItem::Divider { text } => draw_divider(&mut canvas, text, r, canvas_w),
             SeqItem::Note { .. } => {}
         }
@@ -235,18 +208,20 @@ fn place_box(x: usize, y: usize, w: usize, h: usize) -> Placed {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_message(
-    canvas: &mut Canvas,
-    from: usize,
-    to: usize,
-    text: Option<&str>,
-    dashed: bool,
-    head: SeqHead,
-    xs: &[usize],
-    r: usize,
-) {
-    let line_ch = if dashed { "╌" } else { "─" };
+/// Draw a `SeqItem::Message` at row `r`; any other item draws nothing.
+fn draw_message(canvas: &mut Canvas, item: &SeqItem, xs: &[usize], r: usize) {
+    let SeqItem::Message {
+        from,
+        to,
+        text,
+        dashed,
+        head,
+    } = item
+    else {
+        return;
+    };
+    let (from, to, head, text) = (*from, *to, *head, text.as_deref());
+    let line_ch = if *dashed { "╌" } else { "─" };
 
     if from == to {
         // A stub that leaves the lifeline and returns two rows down.

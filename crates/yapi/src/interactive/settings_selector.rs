@@ -1502,11 +1502,9 @@ impl super::App {
             }
             "mermaid-rendering" => {
                 nested("markdown", "mermaid", text());
-                self.mermaid = match value {
-                    "off" => yapi_types::settings::MermaidMode::Off,
-                    "final" => yapi_types::settings::MermaidMode::Final,
-                    _ => yapi_types::settings::MermaidMode::Streaming,
-                };
+                // The settings file's own reading of the mode, streaming by default.
+                self.mermaid = serde_json::from_value(text())
+                    .unwrap_or(yapi_types::settings::MermaidMode::Streaming);
                 self.invalidate_all();
             }
             "cache-miss-notices" => {

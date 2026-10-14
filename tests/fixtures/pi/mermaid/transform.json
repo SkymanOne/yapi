@@ -778,6 +778,354 @@
 		]
 	},
 	{
+		"name": "mixedCase",
+		"text": "```MerMaid\nflowchart LR\n  A[Start] --> B[Done]\n```",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          "
+		]
+	},
+	{
+		"name": "mixedCase",
+		"text": "```MerMaid\nflowchart LR\n  A[Start] --> B[Done]\n```",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          "
+		]
+	},
+	{
+		"name": "mixedCase",
+		"text": "```MerMaid\nflowchart LR\n  A[Start] --> B[Done]\n```",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        "
+		]
+	},
+	{
+		"name": "mixedCase",
+		"text": "```MerMaid\nflowchart LR\n  A[Start] --> B[Done]\n```",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        "
+		]
+	},
+	{
+		"name": "crlf",
+		"text": "Intro\r\n\r\n```mermaid\r\nflowchart LR\r\n  A[Start] --> B[Done]\r\n```\r\n\r\nOutro\r\n",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nOutro\n",
+		"lines": [
+			" Intro                                                                          ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          ",
+			"                                                                                ",
+			" Outro                                                                          "
+		]
+	},
+	{
+		"name": "crlf",
+		"text": "Intro\r\n\r\n```mermaid\r\nflowchart LR\r\n  A[Start] --> B[Done]\r\n```\r\n\r\nOutro\r\n",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nOutro\n",
+		"lines": [
+			" Intro                                                                          ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          ",
+			"                                                                                ",
+			" Outro                                                                          "
+		]
+	},
+	{
+		"name": "crlf",
+		"text": "Intro\r\n\r\n```mermaid\r\nflowchart LR\r\n  A[Start] --> B[Done]\r\n```\r\n\r\nOutro\r\n",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nOutro\n",
+		"lines": [
+			" Intro                        ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        ",
+			"                              ",
+			" Outro                        "
+		]
+	},
+	{
+		"name": "crlf",
+		"text": "Intro\r\n\r\n```mermaid\r\nflowchart LR\r\n  A[Start] --> B[Done]\r\n```\r\n\r\nOutro\r\n",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nOutro\n",
+		"lines": [
+			" Intro                        ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        ",
+			"                              ",
+			" Outro                        "
+		]
+	},
+	{
+		"name": "loneCr",
+		"text": "Intro\r\r```mermaid\rflowchart LR\r  A[Start] --> B[Done]\r```\r",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" Intro                                                                          ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          "
+		]
+	},
+	{
+		"name": "loneCr",
+		"text": "Intro\r\r```mermaid\rflowchart LR\r  A[Start] --> B[Done]\r```\r",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" Intro                                                                          ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          "
+		]
+	},
+	{
+		"name": "loneCr",
+		"text": "Intro\r\r```mermaid\rflowchart LR\r  A[Start] --> B[Done]\r```\r",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" Intro                        ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        "
+		]
+	},
+	{
+		"name": "loneCr",
+		"text": "Intro\r\r```mermaid\rflowchart LR\r  A[Start] --> B[Done]\r```\r",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "Intro\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n",
+		"lines": [
+			" Intro                        ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        "
+		]
+	},
+	{
+		"name": "indented",
+		"text": "Text\n\n  ```mermaid\n  flowchart LR\n    A[Start] --> B[Done]\n  ```\n\nAfter",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "Text\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nAfter",
+		"lines": [
+			" Text                                                                           ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          ",
+			"                                                                                ",
+			" After                                                                          "
+		]
+	},
+	{
+		"name": "indented",
+		"text": "Text\n\n  ```mermaid\n  flowchart LR\n    A[Start] --> B[Done]\n  ```\n\nAfter",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "Text\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nAfter",
+		"lines": [
+			" Text                                                                           ",
+			"                                                                                ",
+			" ┌───────┐    ┌──────┐                                                          ",
+			" │ Start ├───▶│ Done │                                                          ",
+			" └───────┘    └──────┘                                                          ",
+			"                                                                                ",
+			" After                                                                          "
+		]
+	},
+	{
+		"name": "indented",
+		"text": "Text\n\n  ```mermaid\n  flowchart LR\n    A[Start] --> B[Done]\n  ```\n\nAfter",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "Text\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nAfter",
+		"lines": [
+			" Text                         ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        ",
+			"                              ",
+			" After                        "
+		]
+	},
+	{
+		"name": "indented",
+		"text": "Text\n\n  ```mermaid\n  flowchart LR\n    A[Start] --> B[Done]\n  ```\n\nAfter",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "Text\n\n`┌───────┐    ┌──────┐`  \n`│ Start ├───▶│ Done │`  \n`└───────┘    └──────┘`\n\n\nAfter",
+		"lines": [
+			" Text                         ",
+			"                              ",
+			" ┌───────┐    ┌──────┐        ",
+			" │ Start ├───▶│ Done │        ",
+			" └───────┘    └──────┘        ",
+			"                              ",
+			" After                        "
+		]
+	},
+	{
+		"name": "indentedWarning",
+		"text": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n\n`` Mermaid diagram not rendered: node \"A\": label is missing its closing `]` ``  \n",
+		"lines": [
+			" ```mermaid                                                                     ",
+			"   graph TD                                                                     ",
+			"     A[Start --> B                                                              ",
+			" ```                                                                            ",
+			"                                                                                ",
+			" Mermaid diagram not rendered: node \"A\": label is missing its closing `]`       "
+		]
+	},
+	{
+		"name": "indentedWarning",
+		"text": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "` ┌─────────────┐`  \n` │ Start --> B │`  \n` └─────────────┘`\n",
+		"lines": [
+			"  ┌─────────────┐                                                               ",
+			"  │ Start --> B │                                                               ",
+			"  └─────────────┘                                                               "
+		]
+	},
+	{
+		"name": "indentedWarning",
+		"text": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n\n`` Mermaid diagram not rendered: node \"A\": label is missing its closing `]` ``  \n",
+		"lines": [
+			" ```mermaid                   ",
+			"   graph TD                   ",
+			"     A[Start --> B            ",
+			" ```                          ",
+			"                              ",
+			" Mermaid diagram not          ",
+			" rendered: node \"A\": label is ",
+			" missing its closing `]`      "
+		]
+	},
+	{
+		"name": "indentedWarning",
+		"text": "  ```mermaid\n  graph TD\n    A[Start --> B\n  ```\n",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "` ┌─────────────┐`  \n` │ Start --> B │`  \n` └─────────────┘`\n",
+		"lines": [
+			"  ┌─────────────┐             ",
+			"  │ Start --> B │             ",
+			"  └─────────────┘             "
+		]
+	},
+	{
+		"name": "crlfWarning",
+		"text": "```mermaid\r\ngraph TD\r\n  A[Start --> B\r\n```\r\nend",
+		"width": 80,
+		"isStreaming": false,
+		"transformed": "```mermaid\ngraph TD\n  A[Start --> B\n```\n\n`` Mermaid diagram not rendered: node \"A\": label is missing its closing `]` ``  \nend",
+		"lines": [
+			" ```mermaid                                                                     ",
+			"   graph TD                                                                     ",
+			"     A[Start --> B                                                              ",
+			" ```                                                                            ",
+			"                                                                                ",
+			" Mermaid diagram not rendered: node \"A\": label is missing its closing `]`       ",
+			" end                                                                            "
+		]
+	},
+	{
+		"name": "crlfWarning",
+		"text": "```mermaid\r\ngraph TD\r\n  A[Start --> B\r\n```\r\nend",
+		"width": 80,
+		"isStreaming": true,
+		"transformed": "` ┌─────────────┐`  \n` │ Start --> B │`  \n` └─────────────┘`\nend",
+		"lines": [
+			"  ┌─────────────┐                                                               ",
+			"  │ Start --> B │                                                               ",
+			"  └─────────────┘                                                               ",
+			" end                                                                            "
+		]
+	},
+	{
+		"name": "crlfWarning",
+		"text": "```mermaid\r\ngraph TD\r\n  A[Start --> B\r\n```\r\nend",
+		"width": 30,
+		"isStreaming": false,
+		"transformed": "```mermaid\ngraph TD\n  A[Start --> B\n```\n\n`` Mermaid diagram not rendered: node \"A\": label is missing its closing `]` ``  \nend",
+		"lines": [
+			" ```mermaid                   ",
+			"   graph TD                   ",
+			"     A[Start --> B            ",
+			" ```                          ",
+			"                              ",
+			" Mermaid diagram not          ",
+			" rendered: node \"A\": label is ",
+			" missing its closing `]`      ",
+			" end                          "
+		]
+	},
+	{
+		"name": "crlfWarning",
+		"text": "```mermaid\r\ngraph TD\r\n  A[Start --> B\r\n```\r\nend",
+		"width": 30,
+		"isStreaming": true,
+		"transformed": "` ┌─────────────┐`  \n` │ Start --> B │`  \n` └─────────────┘`\nend",
+		"lines": [
+			"  ┌─────────────┐             ",
+			"  │ Start --> B │             ",
+			"  └─────────────┘             ",
+			" end                          "
+		]
+	},
+	{
 		"name": "tildes",
 		"text": "~~~mermaid\nflowchart LR\n  A[Start] --> B[Done]\n~~~",
 		"width": 80,

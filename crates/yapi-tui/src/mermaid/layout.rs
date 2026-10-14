@@ -21,22 +21,22 @@ use super::width::{measured, string_width};
 use std::collections::HashMap;
 
 /// Cells of padding between a box border and its text.
-const PAD: usize = 1;
+pub(super) const PAD: usize = 1;
 /// Minimum horizontal / vertical space between boxes.
 const GAP_X: usize = 3;
 const GAP_Y: usize = 2;
 /// Refuse to allocate a canvas larger than this many cells.
-const MAX_CANVAS_CELLS: usize = 1 << 21;
+pub(super) const MAX_CANVAS_CELLS: usize = 1 << 21;
 
 /// A laid-out canvas, or `None` when the diagram is empty or over the cell cap.
 pub(super) type CanvasResult = Option<Canvas>;
 
 /// Saturating subtraction; Rust's `usize` arithmetic never goes negative.
-fn sat(a: usize, b: usize) -> usize {
+pub(super) fn sat(a: usize, b: usize) -> usize {
     a.saturating_sub(b)
 }
 
-fn half(n: usize) -> usize {
+pub(super) fn half(n: usize) -> usize {
     n / 2
 }
 

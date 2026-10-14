@@ -92,9 +92,21 @@ pub fn transform(
     streaming: bool,
     theme: Option<&Theme>,
 ) -> String {
-    if !markdown.contains("ermaid") && !markdown.contains("ERMAID") {
+    if !markdown
+        .as_bytes()
+        .windows(7)
+        .any(|w| w.eq_ignore_ascii_case(b"mermaid"))
+    {
         return markdown.to_owned();
     }
+    // marked's lexer reads every line break as `\n`, so pi's output has no `\r`.
+    let normalized;
+    let markdown = if markdown.contains('\r') {
+        normalized = markdown.replace("\r\n", "\n").replace('\r', "\n");
+        normalized.as_str()
+    } else {
+        markdown
+    };
     let mut out = String::with_capacity(markdown.len());
     let mut at = 0;
     let mut depth = 0usize;
@@ -119,9 +131,16 @@ pub fn transform(
                     }
                 }
                 let end = token_end(markdown, range.end);
+                // marked's token includes the fence's indentation.
+                let line_start = markdown[..range.start].rfind('\n').map_or(0, |i| i + 1);
+                let start = if markdown[line_start..range.start].bytes().all(|b| b == b' ') {
+                    line_start
+                } else {
+                    range.start
+                };
                 let code = code.strip_suffix('\n').unwrap_or(&code);
-                let raw = &markdown[range.start..end];
-                out.push_str(&markdown[at..range.start]);
+                let raw = &markdown[start..end];
+                out.push_str(&markdown[at..start]);
                 at = end;
                 let Some(art) = render(code).filter(|art| art.width <= available_width) else {
                     out.push_str(raw);

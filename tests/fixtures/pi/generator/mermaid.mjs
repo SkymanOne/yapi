@@ -79,6 +79,30 @@ const sources = [
 	"sequenceDiagram\n  A->>B: hello\n  B->>",
 	"stateDiagram-v2\n  [*] --> A\n  A --> B\n  B -->",
 	"erDiagram\n  A ||--o{ B : rel\n  B ||--",
+	// Audit additions.
+	"stateDiagram-v2\n  A --> B\n  :::a　　state X",
+	"classDiagram\n  A <|-- B\n  :::a   class C",
+	"stateDiagram-v2\n  A --> B\n  :::a state",
+	"flowchart TD\n  A -->|loop| A\n  B --> C",
+	"flowchart LR\n  A -->|self| A\n  A --> B",
+	"flowchart TD\n  A <-- B\n  B x--x C",
+	"flowchart TD\n  A[\"&#x41;&#66; hex &#x1F600;\"] --> B[\"&#x3c;tag&#x3e;\"]",
+	"flowchart TD\n  --> A\n  A --> B",
+	"flowchart TD\n  A --> B\n  B --> C\n  A --> B\n  C --> D",
+	"stateDiagram-v2\n  state c <<choice>>\n  [*] --> c\n  c --> A: yes\n  c --> B: no",
+	"stateDiagram-v2\n  A --> B\n  note left of A\n    line one\n    line two\n  end note\n  B --> C",
+	"stateDiagram-v2\n  direction LR\n  hide empty description\n  scale 350 width\n  A --> B\n  --\n  B --> C",
+	"classDiagram\n  A --|> B\n  C ..|> D\n  E --* F\n  G --o H\n  I <-- J\n  K <.. L\n  M .. N",
+	"classDiagram\n  class Shape\n  <<interface>> Shape\n  Shape <|-- Circle",
+	"classDiagram\n  namespace Zoo {\n    class Duck\n    class Fish\n  }\n  Duck --> Fish",
+	"classDiagram\n  class Big {\n    +a\n    +b\n    +c\n    +d\n    +e\n    +f\n    +g\n    +h\n    +i\n    +j\n    +k\n  }\n  Big --> Other",
+	"erDiagram\n  A[alias] ||--o{ B : has\n  B {\n    int id PK\n  }",
+	"sequenceDiagram\n  participant A\n  participant B\n  Note left of A: left note\n  Note right of B: right note\n  Note over A: solo note\n  A->>B: hi",
+	"sequenceDiagram\n  A->>B: x\n  option maybe\n    B->>A: y\n  end",
+	"sequenceDiagram\n  box Aqua Group\n    participant A\n    participant B\n  end\n  A->>B: in box",
+	"sequenceDiagram\n  A--)B: async\n  A->B: open\n  A-->B: dotted open\n  B--xA: dotted cross",
+	"sequenceDiagram\n  activate A\n  A->>B: work\n  deactivate A\n  create participant C\n  B->>C: new\n  destroy C\n  C-->>B: bye",
+	"sequenceDiagram\n  create actor D as Dan\n  A->>D: hello\n  destroy D",
 ];
 
 const cases = [];
@@ -119,6 +143,12 @@ const docs = {
 	backticks: fence('flowchart LR\n  A["tick ` here"] --> B["``edge``"]'),
 	sequence: fence("sequenceDiagram\n  Alice->>Bob: Hi\n  Bob-->>Alice: Hello"),
 	two: `${fence(flow)}\n\n${fence("graph TD\n  X --> Y")}`,
+	mixedCase: fence(flow, "MerMaid"),
+	crlf: `Intro\r\n\r\n${fence(flow).replaceAll("\n", "\r\n")}\r\n\r\nOutro\r\n`,
+	loneCr: `Intro\r\r${fence(flow).replaceAll("\n", "\r")}\r`,
+	indented: `Text\n\n  ${fence(flow).replaceAll("\n", "\n  ")}\n\nAfter`,
+	indentedWarning: `  ${fence("graph TD\n  A[Start --> B").replaceAll("\n", "\n  ")}\n`,
+	crlfWarning: `${fence("graph TD\n  A[Start --> B").replaceAll("\n", "\r\n")}\r\nend`,
 	tildes: `~~~mermaid\n${flow}\n~~~`,
 };
 const transforms = [];

@@ -75,7 +75,7 @@ impl Canvas {
         self.cls[i] = cls;
     }
 
-    /// Mark the cell at flat index `i` as claimed by a box. An index past the
+    /// Mark the cell at `(x, y)` as claimed by a box. A cell past the
     /// grid is ignored, as a write past the end of a typed array is.
     pub(super) fn occupy(&mut self, x: usize, y: usize) {
         let i = self.idx(x, y);
