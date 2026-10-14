@@ -1065,13 +1065,12 @@ async fn send(
         headers.set("content-encoding", Some("zstd"));
     }
     let build = || headers.apply(http::client().post(&prepared.url).body(body.clone()));
+    if flavor == Flavor::Codex {
+        return send_codex(build, options).await;
+    }
     http::send(build, options)
         .await
         .map_err(|failure| match (flavor, failure) {
-            (Flavor::Codex, http::Failure::Status { status, body }) => {
-                codex_error_message(status, &body)
-            }
-            (Flavor::Codex, http::Failure::Aborted) => http::ABORTED_DURING_STREAM.to_owned(),
             (Flavor::Azure, failure) => failure_message(failure, "Azure OpenAI API error"),
             (_, failure) => {
                 let prefix = if model.provider == "openai" {
@@ -1082,6 +1081,157 @@ async fn send(
                 failure_message(failure, &prefix)
             }
         })
+}
+
+/// pi's first delay between Codex attempts, doubled after each.
+const CODEX_RETRY_BASE_MS: u64 = 1000;
+
+/// What a Codex attempt that got no usable response leads to.
+enum CodexRetry {
+    /// Try again after this long.
+    Wait(std::time::Duration),
+    /// Fail with this message, or retry it as a failed request when `retry`.
+    Failed { message: String, retry: bool },
+}
+
+/// pi's own Codex request loop, not the SDKs': up to `max_retries` more
+/// attempts. A retryable status waits as the server asks, else one second
+/// doubling. Any other failure, except a usage limit or a retry delay over
+/// the limit, waits one second doubling. pi reports every failed response to
+/// the response hook, and `run` reports the successful one.
+async fn send_codex(
+    build: impl Fn() -> reqwest::RequestBuilder,
+    options: &StreamOptions,
+) -> Result<reqwest::Response, String> {
+    let aborted = || http::ABORTED_DURING_STREAM.to_owned();
+    let mut attempt = 0;
+    loop {
+        let outcome = options
+            .cancel
+            .run_until_cancelled(codex_attempt(build(), options, attempt))
+            .await
+            .ok_or_else(aborted)?;
+        let delay = match outcome {
+            Ok(response) => return Ok(response),
+            Err(CodexRetry::Wait(delay)) => delay,
+            Err(CodexRetry::Failed { message, retry }) => {
+                if !retry || attempt >= options.max_retries || message.contains("usage limit") {
+                    return Err(message);
+                }
+                codex_backoff(attempt)
+            }
+        };
+        options
+            .cancel
+            .run_until_cancelled(tokio::time::sleep(delay))
+            .await
+            .ok_or_else(aborted)?;
+        attempt += 1;
+    }
+}
+
+fn codex_backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(CODEX_RETRY_BASE_MS << attempt.min(32))
+}
+
+/// One Codex SSE request; its response headers must arrive within pi's
+/// `timeoutMs` and the HTTP idle timeout.
+async fn codex_attempt(
+    request: reqwest::RequestBuilder,
+    options: &StreamOptions,
+    attempt: u32,
+) -> Result<reqwest::Response, CodexRetry> {
+    let failed = |message: String| CodexRetry::Failed {
+        message,
+        retry: true,
+    };
+    // pi's own timer on `timeoutMs`; the HTTP idle timeout underneath fails
+    // the fetch itself.
+    let send = async {
+        match http::idle_timeout() {
+            Some(idle) => tokio::time::timeout(idle, request.send())
+                .await
+                .ok()
+                .and_then(Result::ok),
+            None => request.send().await.ok(),
+        }
+    };
+    let sent = match codex_idle_timeout(options) {
+        Some(limit) => tokio::time::timeout(limit, send).await.map_err(|_| {
+            failed(format!(
+                "Codex SSE response headers timed out after {}ms",
+                limit.as_millis()
+            ))
+        })?,
+        None => send.await,
+    };
+    let response = sent.ok_or_else(|| failed("fetch failed".to_owned()))?;
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    options.hooks.response(&response).await;
+    let status = response.status().as_u16();
+    let headers = response.headers().clone();
+    let body = response.text().await.unwrap_or_default();
+    if attempt < options.max_retries && codex_retryable(status, &body) {
+        let Some(requested) = codex_retry_after_ms(&headers) else {
+            return Err(CodexRetry::Wait(codex_backoff(attempt)));
+        };
+        let max = options.max_retry_delay_ms.unwrap_or(60_000);
+        if max > 0 && requested > max as f64 {
+            return Err(CodexRetry::Failed {
+                message: format!(
+                    "Server requested {}s retry delay (max: {}s)",
+                    (requested / 1000.0).ceil(),
+                    max.div_ceil(1000)
+                ),
+                retry: false,
+            });
+        }
+        return Err(CodexRetry::Wait(std::time::Duration::from_millis(
+            requested as u64,
+        )));
+    }
+    Err(failed(codex_error_message(status, &body)))
+}
+
+/// pi's `isRetryableError` for Codex: 429 and the 5xx gateway statuses, or
+/// a body that reads as transient, but no 429 for a spent quota.
+fn codex_retryable(status: u16, body: &str) -> bool {
+    static TERMINAL: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new("(?i)GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing")
+            .expect("constant pattern; `codex_retries_follow_pi`")
+    });
+    static TRANSIENT: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new(
+            "(?i)rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused",
+        )
+        .expect("constant pattern; `codex_retries_follow_pi`")
+    });
+    if status == 429 && TERMINAL.is_match(body) {
+        return false;
+    }
+    matches!(status, 429 | 500 | 502 | 503 | 504) || TRANSIENT.is_match(body)
+}
+
+/// pi's `getRetryAfterDelayMs`: `retry-after-ms`, else `retry-after` in
+/// seconds or as an HTTP date.
+fn codex_retry_after_ms(headers: &reqwest::header::HeaderMap) -> Option<f64> {
+    let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+    // JavaScript's `Number`: blank text is 0.
+    let number = |text: &str| match text.trim() {
+        "" => Some(0.0),
+        text => text.parse::<f64>().ok().filter(|value| value.is_finite()),
+    };
+    if let Some(ms) = header("retry-after-ms").and_then(number) {
+        return Some(ms.max(0.0));
+    }
+    let after = header("retry-after").filter(|text| !text.is_empty())?;
+    if let Some(seconds) = number(after) {
+        return Some((seconds * 1000.0).max(0.0));
+    }
+    let date = crate::model_catalog::http_date_ms(after)?;
+    Some((date as f64 - now_ms() as f64).max(0.0))
 }
 
 /// pi's WebSocket attempt for Codex, retried once when the backend's
@@ -1173,8 +1323,9 @@ async fn codex_websocket(
     }
 }
 
-/// pi's `timeoutMs` as Codex waits on its WebSocket between messages; none
-/// without one. `prepare` has rejected an invalid value.
+/// pi's `timeoutMs` as Codex applies it: to SSE response headers and to the
+/// wait between WebSocket messages; none without one. `prepare` has rejected
+/// an invalid value.
 fn codex_idle_timeout(options: &StreamOptions) -> Option<std::time::Duration> {
     options
         .timeout_ms
@@ -2009,6 +2160,46 @@ mod tests {
             Some(("legacy".into(), None))
         );
         assert_eq!(parse_text_signature(Some("")), None);
+    }
+
+    #[test]
+    fn codex_retries_follow_pi() {
+        assert!(codex_retryable(503, ""));
+        assert!(codex_retryable(400, "upstream connect error"));
+        assert!(codex_retryable(429, "Too many requests"));
+        assert!(!codex_retryable(429, "insufficient_quota"));
+        assert!(!codex_retryable(401, "Unauthorized"));
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            pairs
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        reqwest::header::HeaderName::from_static(name),
+                        reqwest::header::HeaderValue::from_static(value),
+                    )
+                })
+                .collect::<reqwest::header::HeaderMap>()
+        };
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after-ms", "250")])),
+            Some(250.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after", "2")])),
+            Some(2000.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[(
+                "retry-after",
+                "Thu, 01 Jan 1970 00:00:10 GMT"
+            )])),
+            Some(0.0)
+        );
+        assert_eq!(
+            codex_retry_after_ms(&headers(&[("retry-after", "soon")])),
+            None
+        );
+        assert_eq!(codex_backoff(2), std::time::Duration::from_secs(4));
     }
 
     #[test]

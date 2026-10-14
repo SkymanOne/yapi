@@ -568,3 +568,64 @@ async fn sockets_close_when_idle_and_age_out() {
     assert_eq!(stats("ws-age")["connectionsReused"], 13);
     server.finish().unwrap();
 }
+
+/// A JSON error response to an SSE request.
+fn status(code: u16, headers: &[(&str, &str)], body: Value) -> Interaction {
+    let mut interaction = Interaction::json("POST", "/codex/responses", code, &body);
+    for (name, value) in headers {
+        interaction
+            .response
+            .headers
+            .insert((*name).to_owned(), (*value).to_owned());
+    }
+    interaction
+}
+
+fn sse_retrying(max_retries: u32) -> StreamOptions {
+    StreamOptions {
+        transport: Some(Transport::Sse),
+        max_retries,
+        ..StreamOptions::default()
+    }
+}
+
+#[tokio::test]
+async fn sse_requests_retry_as_pi_does() {
+    // pi retries any failure after one second, and a retryable status as the
+    // server asks.
+    let server = MockServer::local(Cassette {
+        interactions: vec![
+            status(400, &[], json!({"error": {"message": "Bad request"}})),
+            status(503, &[("retry-after-ms", "10")], json!({})),
+            sse(),
+        ],
+    })
+    .await
+    .unwrap();
+    let message = ask(&server, sse_retrying(2)).await;
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    assert_eq!(server.finish().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn sse_requests_do_not_retry_usage_limits_or_long_delays() {
+    let server = MockServer::local(Cassette {
+        interactions: vec![
+            status(400, &[], json!({"error": {"code": "usage_not_included"}})),
+            status(429, &[("retry-after", "120")], json!({})),
+        ],
+    })
+    .await
+    .unwrap();
+    let limited = ask(&server, sse_retrying(1)).await;
+    assert_eq!(
+        limited.error_message.as_deref(),
+        Some("You have hit your ChatGPT usage limit.")
+    );
+    let delayed = ask(&server, sse_retrying(1)).await;
+    assert_eq!(
+        delayed.error_message.as_deref(),
+        Some("Server requested 120s retry delay (max: 60s)")
+    );
+    assert_eq!(server.finish().unwrap().len(), 2);
+}

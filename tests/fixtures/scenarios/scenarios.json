@@ -813,6 +813,12 @@
     "agentFiles": {"auth.json": "{\"openai-codex\": {\"type\": \"oauth\", \"refresh\": \"r\", \"access\": \"eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig\", \"expires\": 4102444800000, \"accountId\": \"acct_mock\"}}", "settings.json": "{\"transport\": \"sse\", \"retry\": {\"baseDelayMs\": 5}}"}
   },
   {
+    "name": "codex-retries-json",
+    "cassette": "openai-codex-responses/retries.json",
+    "args": ["--mode", "json", "--no-session", "--model", "openai-codex/gpt-5.5", "Say hello"],
+    "agentFiles": {"auth.json": "{\"openai-codex\": {\"type\": \"oauth\", \"refresh\": \"r\", \"access\": \"eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig\", \"expires\": 4102444800000, \"accountId\": \"acct_mock\"}}", "settings.json": "{\"transport\": \"sse\", \"retry\": {\"baseDelayMs\": 5, \"provider\": {\"maxRetries\": 2}}}"}
+  },
+  {
     "name": "codex-websocket-tool-call-json",
     "cassette": "openai-codex-responses/websocket-tool-call.json",
     "args": ["--mode", "json", "--no-session", "--model", "openai-codex/gpt-5.5", "Read hello.txt"],
