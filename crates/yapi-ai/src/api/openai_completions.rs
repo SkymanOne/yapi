@@ -998,13 +998,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     let compat = Compat::new(&model);
     let output = new_output(&model, now_ms());
     let normalized = resolve_transcript(&messages, compat.supports_mid_convo_system_messages);
-    // Calls are stored as ordinary tool calls. Each request decides from the
-    // declared tools which ones travel as custom tool calls.
-    let grammar = match schema::grammar_properties(&normalized, compat.supports_grammar_tools) {
-        Ok(grammar) => grammar,
-        Err(message) => return send_error(&sender, output, &options.cancel, message),
-    };
-    let response = match connect(&model, &compat, &grammar, &messages, &normalized, &options).await
+    let (response, grammar) = match connect(&model, &compat, &messages, &normalized, &options).await
     {
         Ok(response) => response,
         Err(message) => return send_error(&sender, output, &options.cancel, message),
@@ -1033,15 +1027,15 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     }
 }
 
-/// Sends the request; the response once its status is a success.
+/// Sends the request; the response once its status is a success, and the
+/// input argument of each tool sent with a grammar, by name.
 async fn connect(
     model: &Model,
     compat: &Compat,
-    grammar: &HashMap<String, String>,
     messages: &[Message],
     normalized: &[Message],
     options: &StreamOptions,
-) -> Result<reqwest::Response, String> {
+) -> Result<(reqwest::Response, HashMap<String, String>), String> {
     let api_key = match options.api_key.clone().filter(|key| !key.is_empty()) {
         Some(key) => key,
         None if options.has_header("authorization")
@@ -1051,12 +1045,15 @@ async fn connect(
         }
         None => return Err(format!("No API key for provider: {}", model.provider)),
     };
+    // Calls are stored as ordinary tool calls. Each request decides from the
+    // declared tools which ones travel as custom tool calls.
+    let grammar = schema::grammar_properties(normalized, compat.supports_grammar_tools)?;
     // streamSimple: clamp output to the context and the level to the model.
     let max_tokens = requested_max_tokens(model, messages, options);
     let effort = effort(model, options);
     let retention = options.resolved_cache_retention();
     let params = build_params(
-        model, normalized, options, compat, grammar, max_tokens, effort,
+        model, normalized, options, compat, &grammar, max_tokens, effort,
     )?;
 
     let mut headers = super::openai_headers(&api_key, model.headers.as_ref());
@@ -1086,7 +1083,8 @@ async fn connect(
     let params = options.hooks.payload(params).await;
     let body = yapi_types::json::stringify(&params);
     let build = || headers.apply(http::client().post(&url).body(body.clone()));
-    http::send(build, options).await.map_err(failure_message)
+    let response = http::send(build, options).await.map_err(failure_message)?;
+    Ok((response, grammar))
 }
 
 fn failure_message(failure: Failure) -> String {
