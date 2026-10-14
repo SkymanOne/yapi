@@ -102,6 +102,9 @@ x^2
 	latexLinkText: "See [\\[x](u) and [\\(y\\)](u)",
 	latexTrailing: "$$x^2$$\n\n",
 	latexTrailingSpace: "Text\n\n\\[y\\]\n \n",
+	latexTablePipe: "| $a|b$ |\n|---|\n| c |",
+	latexTableEscape: "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+	latexTableStart: "$$a|b$$\n|---|---|\nafter",
 };
 const markdown = [];
 for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {

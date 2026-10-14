@@ -4572,6 +4572,270 @@
 			]
 		},
 		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"| a|b |                                 ",
+				"|---|                                   ",
+				"| c |                                   "
+			]
+		},
+		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"| a|b |                                 ",
+				"|---|                                   ",
+				"| c |                                   "
+			]
+		},
+		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" | a|b |                ",
+				" |---|                  ",
+				" | c |                  "
+			]
+		},
+		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" | a|b |                ",
+				" |---|                  ",
+				" | c |                  "
+			]
+		},
+		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" | a|b |                                                                        ",
+				" |---|                                                                          ",
+				" | c |                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTablePipe",
+			"text": "| $a|b$ |\n|---|\n| c |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" | a|b |                                                                        ",
+				" |---|                                                                          ",
+				" | c |                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"┌──────┬─────────┐                      ",
+				"│ Norm │ Pending │                      ",
+				"├──────┼─────────┤                      ",
+				"│ |v|₂ │ $x-     │                      ",
+				"└──────┴─────────┘                      "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"┌──────┬─────────┐                      ",
+				"│ Norm │ Pending │                      ",
+				"├──────┼─────────┤                      ",
+				"│ |v|₂ │ $x-     │                      ",
+				"└──────┴─────────┘                      "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" ┌──────┬─────────┐     ",
+				" │ Norm │ Pending │     ",
+				" ├──────┼─────────┤     ",
+				" │ |v|₂ │ $x-     │     ",
+				" └──────┴─────────┘     "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" ┌──────┬─────────┐     ",
+				" │ Norm │ Pending │     ",
+				" ├──────┼─────────┤     ",
+				" │ |v|₂ │ $x-     │     ",
+				" └──────┴─────────┘     "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" ┌──────┬─────────┐                                                             ",
+				" │ Norm │ Pending │                                                             ",
+				" ├──────┼─────────┤                                                             ",
+				" │ |v|₂ │ $x-     │                                                             ",
+				" └──────┴─────────┘                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTableEscape",
+			"text": "| Norm | Pending |\n|---|---|\n| $\\|v\\|_2$ | $x- |",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" ┌──────┬─────────┐                                                             ",
+				" │ Norm │ Pending │                                                             ",
+				" ├──────┼─────────┤                                                             ",
+				" │ |v|₂ │ $x-     │                                                             ",
+				" └──────┴─────────┘                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"a|b                                     ",
+				"                                        ",
+				"|---|---|                               ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"a|b                                     ",
+				"                                        ",
+				"|---|---|                               ",
+				"after                                   "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" a|b                    ",
+				"                        ",
+				" |---|---|              ",
+				" after                  "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" a|b                    ",
+				"                        ",
+				" |---|---|              ",
+				" after                  "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" a|b                                                                            ",
+				"                                                                                ",
+				" |---|---|                                                                      ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTableStart",
+			"text": "$$a|b$$\n|---|---|\nafter",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" a|b                                                                            ",
+				"                                                                                ",
+				" |---|---|                                                                      ",
+				" after                                                                          ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "links",
 			"text": "See [the docs](https://example.com/docs) and <https://example.com> or mail <me@example.com>.",
 			"width": 40,

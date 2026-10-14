@@ -33,26 +33,35 @@ pub(super) struct Math {
 }
 
 /// Starts a placeholder: `$`, this, the expression's index in private use
-/// digits, [`END`] and `$`, or [`WORD_END`] when the expression's first line
-/// ends in a letter or digit, as a pending expression's may. The ends of a
-/// placeholder are thus of the same kind as the ends of its expression, for
-/// the emphasis rules around it.
+/// digits, a `|` for each pipe on the expression's first line, [`END`] and
+/// `$`, or [`WORD_END`] when that line ends in a letter or digit, as a
+/// pending expression's may. When the line's last pipe ends it, it is
+/// [`PIPES_LAST`] in place of [`END`] and the pipes come last, so the pipe
+/// still ends the line. The ends of a placeholder are thus of the same kind
+/// as the ends of its expression, for the emphasis rules around it, and its
+/// line splits into as many table cells.
 const START: char = '\u{e000}';
 const END: char = '\u{e001}';
 /// Replaces each further line of a multi-line expression; the line is dropped.
 const CONTINUATION: char = '\u{e002}';
 /// Ends a placeholder in place of `$`; neither punctuation nor whitespace.
 const WORD_END: char = '\u{e003}';
+const PIPES_LAST: char = '\u{e004}';
 const DIGIT_ZERO: u32 = 0xe010;
 
-fn placeholder(index: usize, word_end: bool) -> String {
+fn placeholder(index: usize, pipes: usize, pipe_ends_line: bool, word_end: bool) -> String {
     let digits: String = index
         .to_string()
         .chars()
         .filter_map(|digit| char::from_u32(DIGIT_ZERO + digit.to_digit(10)?))
         .collect();
+    let pipes = "|".repeat(pipes);
     let end = if word_end { WORD_END } else { '$' };
-    format!("${START}{digits}{END}{end}")
+    if pipe_ends_line {
+        format!("${START}{digits}{PIPES_LAST}{end}{pipes}")
+    } else {
+        format!("${START}{digits}{pipes}{END}{end}")
+    }
 }
 
 /// A piece of text from the source [`extract`] returns.
@@ -84,25 +93,32 @@ pub(super) fn segments(text: &str) -> Vec<Segment<'_>> {
                 &rest[at + CONTINUATION.len_utf8()..],
             ),
             _ => {
-                // `$`, START, digits, END, and `$` or WORD_END.
                 let digits_start = at + START.len_utf8();
-                let Some(digits_len) = rest[digits_start..].find(END) else {
+                let Some(digits_len) = rest[digits_start..].find([END, PIPES_LAST]) else {
                     break;
                 };
                 let index = rest[digits_start..digits_start + digits_len]
                     .chars()
+                    .filter(|c| *c != '|')
                     .try_fold(0usize, |index, digit| {
                         let value = (digit as u32)
                             .checked_sub(DIGIT_ZERO)
                             .filter(|value| *value < 10)?;
                         Some(index * 10 + value as usize)
                     });
-                let end = digits_start + digits_len + END.len_utf8();
-                match (
-                    index,
-                    rest[..at].strip_suffix('$'),
-                    rest[end..].strip_prefix(['$', WORD_END]),
-                ) {
+                let end = digits_start + digits_len;
+                let pipes_last = rest[end..].starts_with(PIPES_LAST);
+                let after = rest[end..]
+                    .get(END.len_utf8()..)
+                    .and_then(|after| after.strip_prefix(['$', WORD_END]))
+                    .map(|after| {
+                        if pipes_last {
+                            after.trim_start_matches('|')
+                        } else {
+                            after
+                        }
+                    });
+                match (index, rest[..at].strip_suffix('$'), after) {
                     (Some(index), Some(before), Some(after)) => {
                         (before, Segment::Math(index), after)
                     }
@@ -331,6 +347,8 @@ struct Candidate {
     /// leaves out on its further lines.
     containers: Vec<Container>,
     display: bool,
+    /// In a table cell, whose `\|` marked reads as `|`.
+    in_cell: bool,
 }
 
 /// `source[range]` without the container prefixes of the lines that start
@@ -387,6 +405,7 @@ struct Hit {
     pending: bool,
     /// The containers of its first line.
     containers: Vec<Container>,
+    in_cell: bool,
 }
 
 /// Where the children of the container that `events[index]` starts end.
@@ -426,6 +445,7 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
     // them.
     let mut urls: Vec<Range<usize>> = Vec::new();
     let mut line_start = false;
+    let mut in_cell = false;
     for (index, (event, range)) in events.iter().enumerate() {
         let starts_line = std::mem::take(&mut line_start);
         match event {
@@ -459,8 +479,14 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                 line_start = true;
                 limits.push(trimmed_end(range.end));
             }
-            Event::Start(Tag::Heading { .. } | Tag::TableCell) => {
-                limits.push(trimmed_end(range.end));
+            Event::Start(Tag::Heading { .. }) => limits.push(trimmed_end(range.end)),
+            // A display block at the start of a table preempts it.
+            Event::Start(Tag::TableHead) => line_start = true,
+            Event::Start(Tag::TableCell) => {
+                // The header's first cell starts the table's line.
+                line_start = starts_line;
+                in_cell = true;
+                limits.push(source[..range.end].trim_end().len());
             }
             Event::Start(Tag::Emphasis) => limits.push(range.end - 1),
             Event::Start(Tag::Strong) => limits.push(range.end - 2),
@@ -489,10 +515,13 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                 }
             }
             Event::End(TagEnd::Image | TagEnd::CodeBlock) => opaque -= 1,
+            Event::End(TagEnd::TableCell) => {
+                in_cell = false;
+                limits.pop();
+            }
             Event::End(
                 TagEnd::Paragraph
                 | TagEnd::Heading(_)
-                | TagEnd::TableCell
                 | TagEnd::Emphasis
                 | TagEnd::Strong
                 | TagEnd::Strikethrough,
@@ -521,25 +550,27 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                     && !is_escaped(source, range.start))
                     || (escaped_bracket && text.starts_with('['));
                 if starts_line && display_start {
-                    // A display block on a paragraph's line. A continuation
-                    // line may be indented by at most three columns.
+                    // A display block at the start of a block, or of a line
+                    // indented by at most three columns.
                     let at = if escaped_bracket {
                         range.start - 1
                     } else {
                         range.start
                     };
                     let line = source[..at].rfind('\n').map_or(0, |newline| newline + 1);
-                    let indent = at - line - prefix_len(&source[line..at], &block_containers);
+                    let lead =
+                        &source[line..at][prefix_len(&source[line..at], &block_containers)..];
                     let first = matches!(
                         events.get(index.wrapping_sub(1)),
                         Some((Event::Start(Tag::Paragraph | Tag::Item), _))
                     );
-                    if first || indent <= 3 {
+                    if first || (lead.len() <= 3 && lead.bytes().all(|byte| byte == b' ')) {
                         candidates.push(Candidate {
                             at,
                             limit: containers.last().map_or(source.len(), |(_, end)| *end),
                             containers: block_containers.clone(),
                             display: true,
+                            in_cell: false,
                         });
                     }
                 }
@@ -562,6 +593,7 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                         limit,
                         containers: block_containers.clone(),
                         display: false,
+                        in_cell,
                     });
                 }
                 for (offset, _) in text.match_indices('$') {
@@ -572,6 +604,7 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
                             limit,
                             containers: block_containers.clone(),
                             display: false,
+                            in_cell,
                         });
                     }
                 }
@@ -620,6 +653,7 @@ fn find(source: &str, parsed: &str, options: Options) -> Vec<Hit> {
             display: candidate.display,
             pending,
             containers: candidate.containers.clone(),
+            in_cell: candidate.in_cell,
         });
     }
     hits
@@ -653,6 +687,11 @@ fn ends_in_word(first_line: &str) -> bool {
     first_line.chars().last().is_some_and(char::is_alphanumeric)
 }
 
+/// Whether the byte at `at` is a pipe that splits a table row.
+fn is_pipe(source: &str, at: usize) -> bool {
+    source.as_bytes().get(at) == Some(&b'|') && !is_escaped(source, at)
+}
+
 /// `source` with `edits`, which do not overlap, applied.
 fn apply(source: &str, mut edits: Vec<(Range<usize>, String)>) -> String {
     edits.sort_by_key(|(range, _)| range.start);
@@ -669,8 +708,8 @@ fn apply(source: &str, mut edits: Vec<(Range<usize>, String)>) -> String {
 
 /// `source` with each expression of `hits` masked as its placeholder will
 /// be, at the same length: the first line keeps its opening delimiter and
-/// ends in a `$` or a letter, as the placeholder, and the other characters
-/// become letters.
+/// its pipes, and ends in a `$` or a letter, as the placeholder, and the
+/// other characters become letters.
 fn mask(source: &str, hits: &[Hit]) -> String {
     let mut edits = Vec::new();
     for hit in hits {
@@ -684,7 +723,8 @@ fn mask(source: &str, hits: &[Hit]) -> String {
             };
             let mut masked = String::with_capacity(text.len());
             for (offset, c) in text.char_indices() {
-                if first && offset < opening {
+                let pipe = !hit.display && is_pipe(source, span.start + offset);
+                if first && (offset < opening || pipe) {
                     masked.push(c);
                 } else {
                     masked.extend(std::iter::repeat_n('x', c.len_utf8()));
@@ -731,9 +771,16 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
     let maths = hits
         .iter()
         .map(|hit| {
-            let text = strip_prefixes(source, hit.text.clone(), &hit.containers);
+            let unescape = |text: String| {
+                if hit.in_cell {
+                    text.replace("\\|", "|")
+                } else {
+                    text
+                }
+            };
+            let text = unescape(strip_prefixes(source, hit.text.clone(), &hit.containers));
             Math {
-                raw: strip_prefixes(source, hit.raw.clone(), &hit.containers),
+                raw: unescape(strip_prefixes(source, hit.raw.clone(), &hit.containers)),
                 // pi trims a complete display block's text.
                 text: if hit.display && !hit.pending {
                     text.trim_matches(is_js_whitespace).to_owned()
@@ -751,7 +798,20 @@ pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Mat
     for (index, hit) in hits.iter().enumerate() {
         for (line, span) in spans(source, hit).into_iter().enumerate() {
             let replacement = if line == 0 {
-                placeholder(index, ends_in_word(&source[span.clone()]))
+                let text = &source[span.clone()];
+                // marked lexes a display block before the table it starts.
+                let pipes = span
+                    .clone()
+                    .filter(|at| !hit.display && is_pipe(source, *at))
+                    .count();
+                let line_end = source[span.end..]
+                    .find('\n')
+                    .map_or(source.len(), |end| span.end + end);
+                let last = span.start + text.trim_end().len();
+                let pipe_ends_line = pipes > 0
+                    && is_pipe(source, last - 1)
+                    && source[span.end..line_end].trim().is_empty();
+                placeholder(index, pipes, pipe_ends_line, ends_in_word(text))
             } else {
                 CONTINUATION.to_string()
             };
