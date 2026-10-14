@@ -1231,6 +1231,26 @@ mod tests {
         assert!(replayable(&request("openai-responses", none, medium)));
     }
 
+    /// The lifetime follows `PI_CACHE_RETENTION` in the provider env too.
+    #[test]
+    fn the_provider_env_selects_the_cache_lifetime() {
+        let request = Request {
+            model: Model {
+                prompt_cache: Some(yapi_types::models::PromptCache {
+                    short: Some(300.0),
+                    long: Some(3600.0),
+                }),
+                ..cached_model()
+            },
+            messages: Vec::new(),
+            options: StreamOptions {
+                env: Some([("PI_CACHE_RETENTION".to_owned(), "long".to_owned())].into()),
+                ..StreamOptions::default()
+            },
+        };
+        assert_eq!(ttl_ms(&request), Some(3_600_000.0));
+    }
+
     #[test]
     fn refreshes_at_ninety_percent_with_ten_seconds_of_margin() {
         assert_eq!(delay_ms(10_000.0), None);
