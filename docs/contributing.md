@@ -63,7 +63,7 @@ Pi installs from `tests/fixtures/pi/generator` with `npm ci`, which needs Node.j
 2. For a new minor or major version, raise the `version` requirements on `yapi-types` and `yapi-tui` in `Cargo.toml` and `guest/yapi-extension-api/Cargo.toml`.
 3. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`.
 4. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
-5. Add the release's section to `CHANGELOG.md`.
+5. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
 6. Merge, then push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
 
 ## Documentation
