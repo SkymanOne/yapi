@@ -1334,4 +1334,35 @@ mod tests {
             "Cache warmed (extension override): $0.010"
         );
     }
+
+    /// Never finishes its `agent_settled` handler.
+    struct HangSettled;
+
+    impl Extension for HangSettled {
+        fn source(&self) -> SourceInfo {
+            builtin_source("hang")
+        }
+
+        fn handles(&self, kind: &str) -> bool {
+            kind == "agent_settled"
+        }
+
+        fn handle<'a>(
+            &'a self,
+            _ctx: &'a Context,
+            _event: &'a Value,
+        ) -> BoxFuture<'a, Option<Value>> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dropped_run_clears_settling() {
+        let provider = Cached::default();
+        let ext: Arc<dyn Extension> = Arc::new(HangSettled);
+        let session = warming_session(cached_model(), &provider, vec![ext], CacheWarming::Off);
+        let run = tokio::time::timeout(Duration::from_secs(5), session.prompt("hi", Vec::new()));
+        assert!(run.await.is_err());
+        assert!(session.settled_turn().is_none(), "settling stayed true");
+    }
 }

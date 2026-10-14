@@ -7,7 +7,7 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use futures_util::future::BoxFuture;
@@ -369,6 +369,23 @@ impl<'a> Compacting<'a> {
 impl Drop for Compacting<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Holds [`Inner::settling`] set while alive, so a run dropped while
+/// extensions hear `agent_settled` clears it, as pi's `finally` does.
+struct Settling<'a>(&'a AtomicBool);
+
+impl<'a> Settling<'a> {
+    fn start(flag: &'a AtomicBool) -> Settling<'a> {
+        flag.store(true, Ordering::SeqCst);
+        Settling(flag)
+    }
+}
+
+impl Drop for Settling<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 
@@ -1523,14 +1540,14 @@ impl AgentSession {
         *lock(&self.inner.cancel) = None;
         self.cache_warming_settled();
         // Extensions hear it first, as in pi.
-        self.inner.settling.store(true, Ordering::SeqCst);
+        let settling = Settling::start(&self.inner.settling);
         self.emit_extension_event(
             &ExtensionEvent::AgentSettled.to_value(),
             CancellationToken::new(),
         )
         .await;
         self.emit(&AgentEvent::AgentSettled);
-        self.inner.settling.store(false, Ordering::SeqCst);
+        drop(settling);
         let deferred = std::mem::take(&mut *lock(&self.inner.deferred));
         for turn in deferred {
             let (guard, ended) = tokio::sync::oneshot::channel();
