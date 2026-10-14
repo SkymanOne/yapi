@@ -421,6 +421,7 @@ impl ExtensionHost {
                     path: PathBuf::from(text(&description["path"])),
                     description: description.clone(),
                     completions: Arc::default(),
+                    crashed: Mutex::default(),
                 }) as Arc<dyn Extension>
             })
             .collect()
@@ -774,6 +775,8 @@ struct JsExtension {
     description: Value,
     /// Argument completions by command and prefix, as fetched.
     completions: Arc<Mutex<HashMap<(String, String), Fetched>>>,
+    /// The drawing requests that stopped the runtime, with their errors.
+    crashed: Mutex<HashMap<String, String>>,
 }
 
 /// An argument completion request: under way, or answered at a time.
@@ -800,6 +803,33 @@ impl JsExtension {
 
     fn path_text(&self) -> String {
         self.path.to_string_lossy().into_owned()
+    }
+
+    /// What the guest draws for a `kind` request, `null` unless this is the
+    /// bound session's extension. A request that stopped the runtime fails
+    /// at once when asked again, so redrawing the transcript after the
+    /// restart cannot stop it over and over.
+    async fn draw(&self, kind: &str, request: &Value) -> Result<Value, String> {
+        if *self.shared.bound.lock().await != self.generation + 1 {
+            return Ok(Value::Null);
+        }
+        let mut payload = request.clone();
+        payload["extension"] = json!(self.id);
+        let key = format!("{kind} {payload}");
+        if let Some(error) = lock(&self.crashed).get(&key) {
+            return Err(error.clone());
+        }
+        self.shared
+            .instance
+            .call(kind, &payload)
+            .await
+            .map_err(|err| {
+                let message = err.to_string();
+                if matches!(err, Error::Crashed(_)) {
+                    lock(&self.crashed).insert(key, message.clone());
+                }
+                message
+            })
     }
 
     /// One `refreshModels` phase of `provider` in the guest: the model list
@@ -1003,17 +1033,7 @@ impl Extension for JsExtension {
         request: &'a Value,
     ) -> BoxFuture<'a, Result<Option<String>, String>> {
         Box::pin(async move {
-            if *self.shared.bound.lock().await != self.generation + 1 {
-                return Ok(None);
-            }
-            let mut payload = request.clone();
-            payload["extension"] = json!(self.id);
-            let markdown = self
-                .shared
-                .instance
-                .call("markdown", &payload)
-                .await
-                .map_err(|err| err.to_string())?;
+            let markdown = self.draw("markdown", request).await?;
             Ok(markdown.as_str().map(str::to_owned))
         })
     }
@@ -1023,18 +1043,7 @@ impl Extension for JsExtension {
         request: &'a Value,
     ) -> BoxFuture<'a, Result<Option<Vec<String>>, String>> {
         Box::pin(async move {
-            // Only the bound session's extensions draw.
-            if *self.shared.bound.lock().await != self.generation + 1 {
-                return Ok(None);
-            }
-            let mut payload = request.clone();
-            payload["extension"] = json!(self.id);
-            let lines = self
-                .shared
-                .instance
-                .call("code", &payload)
-                .await
-                .map_err(|err| err.to_string())?;
+            let lines = self.draw("code", request).await?;
             Ok(lines
                 .as_array()
                 .map(|lines| lines.iter().map(text).collect()))
