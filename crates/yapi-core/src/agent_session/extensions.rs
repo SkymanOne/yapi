@@ -423,6 +423,14 @@ impl AgentHooks for Hooks {
         }
     }
 
+    fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
+        // As in pi, each turn continues from the session's transcript, with
+        // what the session recorded since the last, such as custom messages
+        // held while it ran and entries turn_end handlers committed.
+        let messages = self.session.messages();
+        Box::pin(async move { Some(messages) })
+    }
+
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
         let messages = drain(&self.session.inner.steering, self.steering_mode);
         Box::pin(async move { messages })
