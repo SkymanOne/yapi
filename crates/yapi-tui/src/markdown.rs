@@ -508,8 +508,17 @@ impl<'a> Builder<'a> {
         // Blank lines after the last nested block belong to the enclosing block;
         // at the top level they still render as one blank line.
         if let Some(last) = out.last_mut() {
-            last.blank_after =
-                end.is_none() && blank_line_after(self.source, self.source.len(), true);
+            let blank = match &last.block {
+                // marked's display block takes the line break after it, and a
+                // pending one the rest of the source. A space token is what
+                // remains, if two or more characters do.
+                Block::Math(math) => {
+                    let rest = self.source.len() - self.source.trim_end().len();
+                    !math.pending && rest.saturating_sub(usize::from(math.raw.ends_with('\n'))) >= 2
+                }
+                _ => blank_line_after(self.source, self.source.len(), true),
+            };
+            last.blank_after = end.is_none() && blank;
         }
         out
     }

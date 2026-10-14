@@ -4414,6 +4414,164 @@
 			]
 		},
 		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"x²                                      "
+			]
+		},
+		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"x²                                      "
+			]
+		},
+		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" x²                     "
+			]
+		},
+		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" x²                     "
+			]
+		},
+		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" x²                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTrailing",
+			"text": "$$x^2$$\n\n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" x²                                                                             ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				"Text                                    ",
+				"                                        ",
+				"y                                       ",
+				"                                        "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 40,
+			"paddingX": 0,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				"Text                                    ",
+				"                                        ",
+				"y                                       ",
+				"                                        "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": false,
+			"lines": [
+				" Text                   ",
+				"                        ",
+				" y                      ",
+				"                        "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 24,
+			"paddingX": 1,
+			"paddingY": 0,
+			"preserve": true,
+			"lines": [
+				" Text                   ",
+				"                        ",
+				" y                      ",
+				"                        "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": false,
+			"lines": [
+				"                                                                                ",
+				" Text                                                                           ",
+				"                                                                                ",
+				" y                                                                              ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
+			"name": "latexTrailingSpace",
+			"text": "Text\n\n\\[y\\]\n \n",
+			"width": 80,
+			"paddingX": 1,
+			"paddingY": 1,
+			"preserve": true,
+			"lines": [
+				"                                                                                ",
+				" Text                                                                           ",
+				"                                                                                ",
+				" y                                                                              ",
+				"                                                                                ",
+				"                                                                                "
+			]
+		},
+		{
 			"name": "links",
 			"text": "See [the docs](https://example.com/docs) and <https://example.com> or mail <me@example.com>.",
 			"width": 40,

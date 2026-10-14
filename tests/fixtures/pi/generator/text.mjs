@@ -100,6 +100,8 @@ x^2
 		"$a*b$ and $c*d$, $2*3$ and $4*5$ and $6*7$.\n\nLet $f(x)=2*x$ and $g(x)=3*x$, $a _b$ and $c_ d$, $a~~b$ and $c~~d$.\n\n" +
 		"- $a*b$ and $c*d$\n- $a _b$ and $c_ d$\n\n> $a~~b$ and $c~~d$\n\n## $2*3$ and $4*5$\n\n*a $x-2* b, $a*b$ $c*$d$",
 	latexLinkText: "See [\\[x](u) and [\\(y\\)](u)",
+	latexTrailing: "$$x^2$$\n\n",
+	latexTrailingSpace: "Text\n\n\\[y\\]\n \n",
 };
 const markdown = [];
 for (const [name, text] of [...Object.entries(docs), ...Object.entries(autolinks), ...Object.entries(latex)]) {
