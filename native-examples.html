@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-66181fee.js";
+            window.path_to_searchindex_js = "searchindex-61738ec7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="native-extension-examples"><a class="header" href="#native-extension-examples">Native extension examples</a></h1>
-<p>The repository has seventeen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Eleven are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
+<p>The repository has nineteen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Twelve are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -200,14 +200,16 @@
 <tr><td><a href="#question"><code>question</code></a></td><td>A tool that asks in a component with an <code>Editor</code> widget, and draws its own call and result</td><td><code>question.ts</code></td></tr>
 <tr><td><a href="#overlay-test"><code>overlay-test</code></a></td><td>An overlay with inline inputs, the cursor marker and wide characters</td><td><code>overlay-test.ts</code></td></tr>
 <tr><td><a href="#message-renderer"><code>message-renderer</code></a></td><td>Custom messages drawn in a box by a message renderer</td><td><code>message-renderer.ts</code></td></tr>
+<tr><td><a href="#entry-renderer"><code>entry-renderer</code></a></td><td>Session entries the model never sees, drawn by an entry renderer</td><td><code>entry-renderer.ts</code></td></tr>
 <tr><td><a href="#select-menu"><code>select-menu</code></a></td><td>A <code>SelectList</code> widget in a custom component</td><td>None</td></tr>
 <tr><td><a href="#input-hooks"><code>input-hooks</code></a></td><td>A terminal input listener that reads the editor, an autocomplete provider and a shortcut</td><td>None</td></tr>
 <tr><td><a href="#crash-recovery"><code>crash-recovery</code></a></td><td>What yapi does when an extension panics</td><td>None</td></tr>
 <tr><td><a href="#countdown"><code>countdown</code></a></td><td>A tool that stops with its own result when the run is aborted, and one that ignores aborts</td><td>None</td></tr>
+<tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>Colors Rust keywords with yapi’s code renderer API, and bolds <code>TODO</code> with a Markdown transformer</td><td>None</td></tr>
 </tbody>
 </table>
 </div>
-<p>Five of them, from <code>modal-editor</code> to <code>select-menu</code>, use the SDK’s <code>widgets</code> feature.</p>
+<p>Six of them, from <code>modal-editor</code> to <code>select-menu</code>, use the SDK’s <code>widgets</code> feature.</p>
 <h2 id="build-and-try-them"><a class="header" href="#build-and-try-them">Build and try them</a></h2>
 <p>Build any example from the <code>guest</code> folder of a clone, then load it for one run:</p>
 <pre><code class="language-sh">cd guest
@@ -427,6 +429,8 @@ api.on("session_start", |_event, ctx| async move {
 <p><code>/overlay-test</code> opens an overlay with inline text inputs and lines of wide characters, styled text and emoji. The component’s <code>width</code> sets the overlay’s, and the selected input puts pi-tui’s cursor marker where the terminal’s cursor belongs. <code>widgets::visible_width</code> pads styled text to the box’s width.</p>
 <h2 id="message-renderer"><a class="header" href="#message-renderer">message-renderer</a></h2>
 <p><code>/status [warn|error] message</code> adds a custom message that a message renderer draws in a box, colored by level. The box uses the <code>boxed</code> and <code>text</code> layouts of <code>widgets::tui::lines</code> over the theme’s custom message background.</p>
+<h2 id="entry-renderer"><a class="header" href="#entry-renderer">entry-renderer</a></h2>
+<p><code>/status-card message</code> stores a status card that the model never sees, and an entry renderer draws it in a box. Expanded, it shows the time in UTC, where Pi shows local time.</p>
 <h2 id="select-menu"><a class="header" href="#select-menu">select-menu</a></h2>
 <p><code>/menu</code> opens a drinks menu: a <code>SelectList</code> between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi’s own terminal scenarios use.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -487,6 +491,8 @@ api.on("session_start", |_event, ctx| async move {
 }
 <span class="boring">}</span></code></pre>
 <p><code>race</code> polls two futures until one finishes, so the tool needs no other crate. <code>futures::select!</code> does the same.</p>
+<h2 id="code-renderer"><a class="header" href="#code-renderer">code-renderer</a></h2>
+<p>Colors Rust keywords in code blocks and tool rows with yapi’s code renderer API. A Markdown transformer makes each <code>TODO</code> in messages bold.</p>
 
                     </main>
 

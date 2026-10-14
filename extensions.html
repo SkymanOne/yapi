@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-66181fee.js";
+            window.path_to_searchindex_js = "searchindex-61738ec7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -265,6 +265,23 @@ export default function (pi: ExtensionAPI) {
 </table>
 </div>
 <p>A package works without errors when its extensions load without errors and register the same tools, commands, flags, shortcuts and event handlers as in Pi. 43 of the 418 provide only skills, prompts or themes. Of the other 82, 47 fail in Pi with the same error, and most of the rest need native addons, parts of Pi beyond the extension API, or Node features the runtime lacks. <a href="https://github.com/SkymanOne/yapi/blob/main/dev/status.md#m5-extension-host-headless">dev/status.md</a> lists each one.</p>
+<h2 id="yapi-only-apis"><a class="header" href="#yapi-only-apis">yapi-only APIs</a></h2>
+<p><code>pi.yapi</code> holds APIs that Pi does not have. Call them as <code>pi.yapi?.method()</code> so the package still loads in Pi.</p>
+<h3 id="code-renderers"><a class="header" href="#code-renderers">Code renderers</a></h3>
+<p>yapi shows code in one color. <code>pi.yapi.registerCodeRenderer(render)</code> lets an extension color it, or draw it differently, in Markdown code blocks, <code>read</code> and <code>write</code> tool rows and codemode scripts.</p>
+<pre><code class="language-typescript">pi.yapi?.registerCodeRenderer((code, lang, { width }, theme) =&gt; {
+  if (lang !== "sql") return undefined;
+  return code
+    .split("\n")
+    .map((line) =&gt; line.replace(/\b(SELECT|FROM|WHERE)\b/g, (word) =&gt; theme.fg("syntaxKeyword", word)));
+});
+</code></pre>
+<ul>
+<li><code>lang</code> is the code block’s language or the file’s language, and may be <code>undefined</code>.</li>
+<li>Return the styled lines, or <code>undefined</code> to keep the plain code.</li>
+<li>When several extensions register a renderer, the first one that returns lines is used.</li>
+<li>Code shows plain until the renderer returns.</li>
+</ul>
 <h2 id="how-pi-extensions-run"><a class="header" href="#how-pi-extensions-run">How Pi extensions run</a></h2>
 <p>Pi extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.</p>
 <ul>
