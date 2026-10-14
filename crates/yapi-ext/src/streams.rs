@@ -38,6 +38,7 @@ pub(crate) fn options_json(options: &StreamOptions) -> Value {
     set("temperature", json!(options.temperature));
     set("sessionId", json!(options.session_id));
     set("transport", json!(options.transport));
+    set("timeoutMs", json!(options.timeout_ms));
     set(
         "websocketConnectTimeoutMs",
         json!(options.websocket_connect_timeout_ms),
@@ -74,6 +75,7 @@ pub(crate) fn options_from_json(value: &Value, cancel: CancellationToken) -> Str
         session_id: parse(value, "sessionId"),
         transport: parse(value, "transport"),
         websocket_connect_timeout_ms: parse(value, "websocketConnectTimeoutMs"),
+        timeout_ms: parse(value, "timeoutMs"),
         cache_retention: value["cacheRetention"]
             .as_str()
             .and_then(CacheRetention::parse),

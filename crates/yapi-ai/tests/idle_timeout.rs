@@ -43,6 +43,19 @@ async fn idle_requests_fail_like_pi() {
     );
     assert!(started.elapsed() < Duration::from_secs(5));
 
+    // A shorter `timeoutMs` is the SDK's own timer, which times the
+    // request out.
+    let url = silent_server("").await;
+    let sdk = StreamOptions {
+        timeout_ms: Some(50.0),
+        ..StreamOptions::default()
+    };
+    let result = http::send(|| http::client().get(&url), &sdk).await;
+    assert!(
+        matches!(&result, Err(Failure::Connection(message)) if message == "Request timed out."),
+        "{result:?}"
+    );
+
     // Headers, then a body that goes quiet: the read fails with undici's
     // `terminated`.
     let url = silent_server(

@@ -1006,6 +1006,14 @@ async fn connect(
         }
     };
     let params = options.hooks.payload(params).await;
+    if flavor == Flavor::Codex
+        && let Some(timeout) = options.timeout_ms.filter(|ms| !ms.is_finite() || *ms < 0.0)
+    {
+        return Err(format!(
+            "Invalid timeoutMs: {}",
+            yapi_types::json::stringify(&json!(timeout))
+        ));
+    }
     let mut body = yapi_types::json::stringify(&params).into_bytes();
     if flavor == Flavor::Codex {
         // ruzstd implements only its fastest level, near zstd's level 1, so the

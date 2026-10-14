@@ -799,7 +799,12 @@ async fn connect(
     headers.extend_model(model.headers.as_ref());
     headers.extend(&options.headers);
     let build = || headers.apply(http::client().post(&target.url).body(body.clone()));
-    http::send(build, options).await.map_err(failure_message)
+    // pi's Google client takes no `timeoutMs`.
+    let options = StreamOptions {
+        timeout_ms: None,
+        ..options.clone()
+    };
+    http::send(build, &options).await.map_err(failure_message)
 }
 
 /// Where a request goes and how it authenticates.

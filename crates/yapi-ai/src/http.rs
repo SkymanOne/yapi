@@ -228,7 +228,7 @@ pub async fn send(
     loop {
         let result = options
             .cancel
-            .run_until_cancelled(attempt(build()))
+            .run_until_cancelled(attempt(build(), options.timeout_ms))
             .await
             .unwrap_or_else(|| Err(Box::new((Failure::Aborted, HeaderMap::new()))));
         let (failure, headers) = match result {
@@ -254,11 +254,26 @@ pub async fn send(
 /// A failed attempt, with the response headers that steer retries.
 type Attempt = Box<(Failure, HeaderMap)>;
 
-async fn attempt(request: reqwest::RequestBuilder) -> Result<reqwest::Response, Attempt> {
+async fn attempt(
+    request: reqwest::RequestBuilder,
+    timeout_ms: Option<f64>,
+) -> Result<reqwest::Response, Attempt> {
     let failed = |message: String| Box::new((Failure::Connection(message), HeaderMap::new()));
     // Headers that do not arrive in time fail the fetch, which the SDKs
-    // report as a connection error.
-    let response = match within_idle_timeout(request.send()).await {
+    // report as a connection error. A shorter `timeoutMs` fires the SDK's
+    // own timer first.
+    let send = within_idle_timeout(request.send());
+    let sdk_limit = timeout_ms
+        .filter(|ms| ms.is_finite() && *ms > 0.0)
+        .map(|ms| Duration::from_millis(ms as u64))
+        .filter(|limit| idle_timeout().is_none_or(|idle| *limit < idle));
+    let sent = match sdk_limit {
+        Some(limit) => tokio::time::timeout(limit, send)
+            .await
+            .map_err(|_| failed("Request timed out.".to_owned()))?,
+        None => send.await,
+    };
+    let response = match sent {
         Some(Ok(response)) => response,
         Some(Err(err)) => return Err(failed(connection_message(&err))),
         None => return Err(failed("Connection error.".to_owned())),

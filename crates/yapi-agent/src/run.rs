@@ -20,8 +20,10 @@ use yapi_types::model::Model;
 use crate::hooks::{AfterToolCall, AgentHooks, BeforeToolCall};
 use crate::tool::{ExecutionMode, Tool, UpdateSink};
 
-/// Starts a provider request; dispatches on the model's wire API.
-pub type StreamFn = Arc<dyn Fn(Request) -> EventStream + Send + Sync>;
+/// Starts a provider request; dispatches on the model's wire API. An error
+/// before any request ends the run, as pi's agent ends it when its stream
+/// function throws.
+pub type StreamFn = Arc<dyn Fn(Request) -> Result<EventStream, String> + Send + Sync>;
 
 /// The transcript and the tools the model may call.
 #[derive(Clone, Default)]
@@ -153,7 +155,10 @@ async fn run_loop(
                 new_messages.push(message);
             }
 
-            let message = stream_response(context, &config, hooks).await;
+            let message = match stream_response(context, &config, hooks).await {
+                Ok(message) => message,
+                Err(error) => return fail_run(context, &config, hooks, error).await,
+            };
             new_messages.push(Message::Assistant(Box::new(message.clone())));
 
             if matches!(message.stop_reason, StopReason::Error | StopReason::Aborted) {
@@ -215,6 +220,33 @@ async fn run_loop(
         break;
     }
     end(hooks, new_messages).await;
+}
+
+/// pi's `handleRunFailure`: the run ends with a bare error message, the only
+/// message its `agent_end` reports.
+async fn fail_run(
+    context: &mut AgentContext,
+    config: &LoopConfig,
+    hooks: &dyn AgentHooks,
+    error: String,
+) {
+    let mut failure = yapi_ai::stream::new_output(&config.model, yapi_ai::stream::now_ms());
+    failure.content = vec![ContentBlock::text("")];
+    failure.stop_reason = if config.options.cancel.is_cancelled() {
+        StopReason::Aborted
+    } else {
+        StopReason::Error
+    };
+    failure.error_message = Some(error);
+    let message = emit_message(hooks, Message::Assistant(Box::new(failure))).await;
+    context.messages.push(message.clone());
+    hooks
+        .on_event(&AgentEvent::TurnEnd {
+            message: message.clone(),
+            tool_results: Vec::new(),
+        })
+        .await;
+    end(hooks, &[message]).await;
 }
 
 async fn end(hooks: &dyn AgentHooks, new_messages: &[Message]) {
@@ -294,11 +326,13 @@ fn with_tool_changes(
     }
 }
 
+/// The model's response to the context; the stream function's error when it
+/// fails before a request.
 async fn stream_response(
     context: &mut AgentContext,
     config: &LoopConfig,
     hooks: &dyn AgentHooks,
-) -> AssistantMessage {
+) -> Result<AssistantMessage, String> {
     let messages = hooks.transform_context(context.messages.clone()).await;
     let messages = hooks.convert_to_llm(messages);
     let auth = hooks.auth(&config.model).await;
@@ -314,7 +348,7 @@ async fn stream_response(
     let mut stream = match auth.apply(&mut request) {
         Ok(()) => {
             yapi_ai::stream::RequestHooks::prepare(&mut request).await;
-            (config.stream)(request)
+            (config.stream)(request)?
         }
         Err(message) => {
             yapi_ai::api::failed_stream(&request.model, &request.options.cancel, message)
@@ -347,7 +381,7 @@ async fn stream_response(
             }
             StreamEvent::Done(message) | StreamEvent::Error(message) => {
                 let message = finish(message);
-                return complete(context, hooks, message, started).await;
+                return Ok(complete(context, hooks, message, started).await);
             }
         }
     }
@@ -355,7 +389,7 @@ async fn stream_response(
     let mut message = yapi_ai::stream::new_output(&config.model, yapi_ai::stream::now_ms());
     message.stop_reason = StopReason::Error;
     message.error_message = Some("Provider stream ended without a result".into());
-    complete(context, hooks, finish(message), started).await
+    Ok(complete(context, hooks, finish(message), started).await)
 }
 
 async fn complete(

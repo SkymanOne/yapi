@@ -32,7 +32,7 @@ use crate::transcript::{current_tools, resolve_transcript, transform_messages};
 const TOOL_CALL_ID_LENGTH: usize = 9;
 const MAX_ERROR_BODY_CHARS: usize = 4000;
 /// pi's default `timeoutMs`; it bounds the whole request, stream included.
-const TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 const TIMEOUT_MESSAGE: &str = "The operation was aborted due to timeout";
 
 /// A Mistral tool-call id for `id`: nine alphanumerics, from the id itself when
@@ -584,13 +584,17 @@ impl State {
     }
 }
 
-/// Cancels `token` when the request has run for [`TIMEOUT`], recording that it did.
-fn start_timeout(token: &CancellationToken) -> Arc<AtomicBool> {
+/// Cancels `token` when the request has run for `timeout_ms`, else
+/// [`DEFAULT_TIMEOUT`], recording that it did.
+fn start_timeout(token: &CancellationToken, timeout_ms: Option<f64>) -> Arc<AtomicBool> {
+    let limit = timeout_ms
+        .filter(|ms| ms.is_finite() && *ms >= 0.0)
+        .map_or(DEFAULT_TIMEOUT, |ms| Duration::from_millis(ms as u64));
     let fired = Arc::new(AtomicBool::new(false));
     let (token, flag) = (token.clone(), Arc::clone(&fired));
     tokio::spawn(async move {
         if token
-            .run_until_cancelled(tokio::time::sleep(TIMEOUT))
+            .run_until_cancelled(tokio::time::sleep(limit))
             .await
             .is_some()
         {
@@ -609,7 +613,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     } = request;
     let output = new_output(&model, now_ms());
     let cancel = options.cancel.child_token();
-    let timed_out = start_timeout(&cancel);
+    let timed_out = start_timeout(&cancel, options.timeout_ms);
     let aborted = || {
         if timed_out.load(Ordering::SeqCst) {
             TIMEOUT_MESSAGE.to_owned()

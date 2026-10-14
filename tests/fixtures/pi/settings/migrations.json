@@ -1,0 +1,67 @@
+[
+	{
+		"name": "queue-mode",
+		"input": "{\n  \"queueMode\": \"all\",\n  \"theme\": \"dark\"\n}\n",
+		"output": "{\n  \"theme\": \"dark\",\n  \"steeringMode\": \"all\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "queue-mode-kept",
+		"input": "{\n  \"queueMode\": \"all\",\n  \"steeringMode\": \"one-at-a-time\"\n}\n",
+		"output": "{\n  \"queueMode\": \"all\",\n  \"steeringMode\": \"one-at-a-time\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "websockets",
+		"input": "{\n  \"websockets\": true,\n  \"theme\": \"dark\"\n}\n",
+		"output": "{\n  \"theme\": \"dark\",\n  \"transport\": \"websocket\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "websockets-kept",
+		"input": "{\n  \"websockets\": false,\n  \"transport\": \"auto\"\n}\n",
+		"output": "{\n  \"websockets\": false,\n  \"transport\": \"auto\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "skills-object",
+		"input": "{\n  \"skills\": {\n    \"enableSkillCommands\": false,\n    \"customDirectories\": [\n      \"~/skills\",\n      \"./more\"\n    ]\n  },\n  \"theme\": \"dark\"\n}\n",
+		"output": "{\n  \"skills\": [\n    \"~/skills\",\n    \"./more\"\n  ],\n  \"theme\": \"dark\",\n  \"enableSkillCommands\": false,\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "skills-object-empty",
+		"input": "{\n  \"theme\": \"dark\",\n  \"skills\": {\n    \"customDirectories\": []\n  }\n}\n",
+		"output": "{\n  \"theme\": \"dark\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "skills-object-kept",
+		"input": "{\n  \"enableSkillCommands\": true,\n  \"skills\": {\n    \"enableSkillCommands\": false\n  }\n}\n",
+		"output": "{\n  \"enableSkillCommands\": true,\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "retry-max-delay",
+		"input": "{\n  \"retry\": {\n    \"enabled\": true,\n    \"maxDelayMs\": 30000\n  },\n  \"theme\": \"dark\"\n}\n",
+		"output": "{\n  \"retry\": {\n    \"enabled\": true,\n    \"provider\": {\n      \"maxRetryDelayMs\": 30000\n    }\n  },\n  \"theme\": \"dark\",\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "retry-max-delay-provider",
+		"input": "{\n  \"retry\": {\n    \"maxDelayMs\": 30000,\n    \"provider\": {\n      \"maxRetries\": 2\n    },\n    \"baseDelayMs\": 10\n  }\n}\n",
+		"output": "{\n  \"retry\": {\n    \"provider\": {\n      \"maxRetries\": 2,\n      \"maxRetryDelayMs\": 30000\n    },\n    \"baseDelayMs\": 10\n  },\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "retry-max-delay-kept",
+		"input": "{\n  \"retry\": {\n    \"maxDelayMs\": 30000,\n    \"provider\": {\n      \"maxRetryDelayMs\": 5000\n    }\n  }\n}\n",
+		"output": "{\n  \"retry\": {\n    \"provider\": {\n      \"maxRetryDelayMs\": 5000\n    }\n  },\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "retry-max-delay-null",
+		"input": "{\n  \"retry\": {\n    \"maxDelayMs\": 30000,\n    \"provider\": {\n      \"maxRetryDelayMs\": null,\n      \"timeoutMs\": 1\n    }\n  }\n}\n",
+		"output": "{\n  \"retry\": {\n    \"provider\": {\n      \"maxRetryDelayMs\": 30000,\n      \"timeoutMs\": 1\n    }\n  },\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "retry-max-delay-not-number",
+		"input": "{\n  \"retry\": {\n    \"maxDelayMs\": \"30000\"\n  }\n}\n",
+		"output": "{\n  \"retry\": {},\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	},
+	{
+		"name": "all",
+		"input": "{\n  \"queueMode\": \"one-at-a-time\",\n  \"websockets\": false,\n  \"skills\": {\n    \"customDirectories\": [\n      \"./skills\"\n    ],\n    \"enableSkillCommands\": true\n  },\n  \"retry\": {\n    \"maxDelayMs\": 1000\n  }\n}\n",
+		"output": "{\n  \"skills\": [\n    \"./skills\"\n  ],\n  \"retry\": {\n    \"provider\": {\n      \"maxRetryDelayMs\": 1000\n    }\n  },\n  \"steeringMode\": \"one-at-a-time\",\n  \"transport\": \"sse\",\n  \"enableSkillCommands\": true,\n  \"lastChangelogVersion\": \"1.0.0\"\n}"
+	}
+]

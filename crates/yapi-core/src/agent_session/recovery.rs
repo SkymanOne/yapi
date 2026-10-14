@@ -345,6 +345,7 @@ impl AgentSession {
             auth: self.registry().auth(model).await,
             thinking_level,
             retry: self.retry_policy(),
+            request: self.request_options(),
             hooks: yapi_ai::stream::RequestHooks {
                 headers: self.headers_hook(&cancel),
                 ..Default::default()
