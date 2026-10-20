@@ -191,6 +191,8 @@ pub struct ModelRegistry {
     runtime_keys: IndexMap<String, String>,
     /// Providers whose `apiKey` an extension configures.
     extension_keys: HashSet<String>,
+    /// Providers extensions register.
+    extension_providers: HashSet<String>,
     error: Option<String>,
     /// Classifier models, built-in and refreshed.
     classifiers: Vec<ClassifierModel>,
@@ -891,6 +893,7 @@ impl ModelRegistry {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
         }
+        self.extension_providers.insert(provider.to_owned());
         self.config.providers.insert(provider.to_owned(), config);
         self.rebuild();
     }
@@ -1376,6 +1379,16 @@ impl ModelRegistry {
             .map(|info| info.name.to_owned())
             .or_else(|| self.oauth.get(provider).map(|flow| flow.name().to_owned()))
             .unwrap_or_else(|| provider.to_owned())
+    }
+
+    /// The `models.json` or extension configuration of `provider`.
+    pub fn provider_config(&self, provider: &str) -> Option<&ProviderConfig> {
+        self.config.providers.get(provider)
+    }
+
+    /// Whether an extension registered `provider`.
+    pub fn registered_by_extension(&self, provider: &str) -> bool {
+        self.extension_providers.contains(provider)
     }
 
     /// Whether `models.json` or an extension configures an `apiKey` for

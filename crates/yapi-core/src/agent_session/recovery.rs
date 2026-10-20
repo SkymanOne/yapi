@@ -355,6 +355,29 @@ impl AgentSession {
         }
     }
 
+    /// pi's `summarizeForBugReport`: a bug report the current model writes
+    /// from the end of the context, with the user's `hint`, or why it could
+    /// not. `cancel` stops the request.
+    pub async fn bug_report_summary(
+        &self,
+        hint: Option<&str>,
+        cancel: CancellationToken,
+    ) -> Result<String, String> {
+        let model = self.model().ok_or_else(|| "No model selected".to_owned())?;
+        let mut summarizer = self
+            .summarizer(
+                &model,
+                self.thinking_level(),
+                SummarySource::Compaction,
+                None,
+                cancel,
+            )
+            .await;
+        // pi retries a bug report summary without reporting it.
+        summarizer.on_retry = Box::new(|_| {});
+        crate::bug_report::summary(&summarizer, &self.messages(), hint).await
+    }
+
     /// What manual and automatic compaction share: pi's
     /// `session_before_compact` event, which may cancel the compaction or
     /// supply its summary; otherwise a summary of `preparation`. The

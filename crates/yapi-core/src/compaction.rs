@@ -747,7 +747,7 @@ pub struct Summary {
 
 /// Why a summary response cannot become a checkpoint, if it cannot: it
 /// failed, hit the token cap or called a tool.
-fn check_summary(response: &AssistantMessage, label: &str) -> Result<(), String> {
+pub(crate) fn check_summary(response: &AssistantMessage, label: &str) -> Result<(), String> {
     match response.stop_reason {
         StopReason::Error => Err(format!(
             "{label} failed: {}",
@@ -774,13 +774,14 @@ fn check_summary(response: &AssistantMessage, label: &str) -> Result<(), String>
 impl Summarizer<'_> {
     async fn complete_once(
         &self,
+        system: &str,
         prompt: &str,
         max_tokens: u64,
         session_id: &str,
     ) -> AssistantMessage {
         let messages = vec![
             Message::System(SystemMessage {
-                content: Content::Text(SUMMARIZATION_SYSTEM_PROMPT.to_owned()),
+                content: Content::Text(system.to_owned()),
                 sections: None,
                 timestamp: 0,
                 tools_added: None,
@@ -828,9 +829,14 @@ impl Summarizer<'_> {
         }
     }
 
-    /// One summary request with retries on transient failures, reported as
-    /// pi-ai's `retryAssistantCall` reports them.
-    async fn complete(&self, prompt: &str, max_tokens: u64) -> AssistantMessage {
+    /// One summary request under `system` with retries on transient
+    /// failures, reported as pi-ai's `retryAssistantCall` reports them.
+    pub(crate) async fn complete(
+        &self,
+        system: &str,
+        prompt: &str,
+        max_tokens: u64,
+    ) -> AssistantMessage {
         let session_id = uuid_v7();
         let max_attempts = if self.retry.enabled {
             self.retry.max_retries
@@ -840,7 +846,9 @@ impl Summarizer<'_> {
         let notify = &self.on_retry;
         let mut attempt = 0;
         loop {
-            let response = self.complete_once(prompt, max_tokens, &session_id).await;
+            let response = self
+                .complete_once(system, prompt, max_tokens, &session_id)
+                .await;
             if response.stop_reason != StopReason::Error
                 || attempt >= max_attempts
                 || !is_retryable_assistant_error(&response)
@@ -888,7 +896,9 @@ impl Summarizer<'_> {
         if self.cancel.is_cancelled() {
             return Err(format!("{label} failed: This operation was aborted"));
         }
-        let response = self.complete(prompt, max_tokens).await;
+        let response = self
+            .complete(SUMMARIZATION_SYSTEM_PROMPT, prompt, max_tokens)
+            .await;
         if response.stop_reason == StopReason::Aborted {
             return Ok(Summary {
                 text: yapi_types::message::blocks_text(&response.content, "\n"),
@@ -1138,7 +1148,9 @@ impl Summarizer<'_> {
         } else {
             4096
         };
-        let response = self.complete(&prompt, max_tokens).await;
+        let response = self
+            .complete(SUMMARIZATION_SYSTEM_PROMPT, &prompt, max_tokens)
+            .await;
         if response.stop_reason == StopReason::Aborted {
             return Ok(BranchSummary::Aborted);
         }
