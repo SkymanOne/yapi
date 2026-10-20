@@ -3,24 +3,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Builds the archives and installs them as users do, without publishing,
-  # when the release process or the installer changes.
-  pull_request:
-    paths:
-      - .github/workflows/release.yml
-      - CHANGELOG.md
-      - install.sh
-      - about.toml
-      - about.hbs
-      - scripts/package-release.sh
-      - scripts/package-docs.sh
-      - scripts/check-release.sh
-      - scripts/release-notes.sh
-      - scripts/third-party-notices.sh
-      - guest/Cargo.toml
-      - crates/yapi-types/Cargo.toml
-      - crates/yapi-tui/Cargo.toml
-      - guest/yapi-extension-api/Cargo.toml
   workflow_dispatch:
 
 permissions:
