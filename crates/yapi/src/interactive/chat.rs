@@ -47,6 +47,13 @@ pub struct RenderContext<'a> {
     pub thinking_label: &'a str,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     pub hyperlinks: bool,
+    /// How tool results show images: pi-tui's `images` capability, `None`
+    /// also when the `terminal.showImages` setting is off.
+    pub images: Option<yapi_tui::image::Protocol>,
+    /// The `terminal.imageWidthCells` setting.
+    pub image_width: usize,
+    /// The pixel size of a terminal cell.
+    pub cell_size: (u32, u32),
     /// The `markdown.mermaid` setting.
     pub mermaid: MermaidMode,
     /// The item is the message that is streaming.
@@ -398,8 +405,14 @@ impl Item {
             }
             Item::Assistant(message) => render_assistant(message, width, ctx, hits),
             Item::Tool(tool) => {
-                let out = tool.render(width, ctx);
+                let mut out = tool.render(width, ctx);
                 hits.extend(tool.hit(out.len(), width));
+                let images = tool.images(width, ctx);
+                // A hidden tool still shows its images, after pi's spacer.
+                if out.is_empty() && !images.is_empty() {
+                    out.push(Line::default());
+                }
+                out.extend(images);
                 out
             }
             Item::Custom(custom) => custom.render(width, ctx),
@@ -604,6 +617,9 @@ mod tests {
             agent_dir: std::path::Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            images: None,
+            image_width: 60,
+            cell_size: yapi_tui::image::DEFAULT_CELL,
             mermaid: MermaidMode::Streaming,
             streaming: true,
             transforms: None,

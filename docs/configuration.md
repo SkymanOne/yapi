@@ -58,6 +58,12 @@ yapi prepares images in prompts, `@path` arguments and tool results before they 
 
 Both settings are also in `/settings`.
 
+## Images in the terminal
+
+In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty's protocol takes PNG only, so other formats are shown as PNG copies. Other terminals, tmux and screen show a note with the image's type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.
+
+`"terminal": {"showImages": false}` turns images off, and `"imageWidthCells"` sets their preferred width in cells, 60 by default. Both are in `/settings` when the terminal shows images. Set `"terminal": {"images": "kitty"}`, `"iterm2"` or `false` to override the detection. The `PI_IMAGE_PROTOCOL` environment variable, `kitty`, `iterm2` or `none`, does the same, and the setting takes precedence.
+
 ## Links
 
 In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in `read`, `write`, `edit` and `ls` calls link to their files. In other terminals, a Markdown link shows its URL after its text.

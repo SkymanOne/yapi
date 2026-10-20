@@ -1,5 +1,5 @@
 //! The process terminal: raw mode, size, keyboard protocol negotiation and the
-//! color query.
+//! color and cell size queries.
 //!
 //! Port of `packages/tui/src/terminal.ts` and the color query of
 //! `packages/tui/src/tui.ts` in pi `v1.0.0`.
@@ -17,6 +17,22 @@ pub const MODIFY_OTHER_KEYS_DISABLE: &str = "\x1b[>4;0m";
 pub const BRACKETED_PASTE_ENABLE: &str = "\x1b[?2004h";
 /// Disables bracketed paste.
 pub const BRACKETED_PASTE_DISABLE: &str = "\x1b[?2004l";
+
+/// Asks for the size of a cell in pixels, which images are drawn in.
+pub const CELL_SIZE_QUERY: &str = "\x1b[16t";
+
+/// The width and height in pixels a reply to [`CELL_SIZE_QUERY`] reports,
+/// `CSI 6 ; height ; width t`.
+pub fn cell_size_reply(sequence: &str) -> Option<(u32, u32)> {
+    let body = sequence.strip_prefix("\x1b[6;")?.strip_suffix('t')?;
+    let (height, width) = body.split_once(';')?;
+    let number = |text: &str| {
+        (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    Some((number(width)?, number(height)?))
+}
 
 const PALETTE_SIZE: usize = 16;
 
@@ -394,6 +410,21 @@ pub fn size() -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_cell_size_replies() {
+        assert_eq!(cell_size_reply("\x1b[6;18;9t"), Some((9, 18)));
+        assert_eq!(cell_size_reply("\x1b[6;0;0t"), Some((0, 0)));
+        for other in [
+            "\x1b[6;18t",
+            "\x1b[6;a;9t",
+            "\x1b[4;18;9t",
+            "\x1b[6;18;9u",
+            "x",
+        ] {
+            assert_eq!(cell_size_reply(other), None, "{other:?}");
+        }
+    }
 
     #[test]
     fn negotiates_kitty_or_falls_back() {

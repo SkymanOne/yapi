@@ -6,6 +6,7 @@ pub mod autocomplete;
 pub mod color;
 pub mod editor;
 pub mod fuzzy;
+pub mod image;
 pub mod input;
 pub mod keybindings;
 pub mod keys;

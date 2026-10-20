@@ -51,18 +51,19 @@ use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::AutocompleteProvider;
 use yapi_tui::color::ColorMode;
 use yapi_tui::editor::{Editor, EditorEvent, EditorTheme};
+use yapi_tui::image::Protocol;
 use yapi_tui::input::{Input, InputBuffer, escape_timeout};
 use yapi_tui::keybindings::Keybindings;
 use yapi_tui::keys::Keys;
 use yapi_tui::lines::{self, StyledLine};
 use yapi_tui::markdown::MarkdownTheme;
 use yapi_tui::screen::{
-    ALT_SCREEN_LEAVE, AltScreen, COPY_ERROR_FLASH_DURATION, FLASH_DURATION, MainScreen,
-    MouseAction, MouseKind, Placement, alt_screen_enter,
+    AltScreen, COPY_ERROR_FLASH_DURATION, FLASH_DURATION, MainScreen, MouseAction, MouseKind,
+    Placement, alt_screen_enter,
 };
 use yapi_tui::terminal::{
-    BRACKETED_PASTE_DISABLE, BRACKETED_PASTE_ENABLE, ColorQuery, Filtered, KeyboardProtocol,
-    color_query,
+    BRACKETED_PASTE_DISABLE, BRACKETED_PASTE_ENABLE, CELL_SIZE_QUERY, ColorQuery, Filtered,
+    KeyboardProtocol, cell_size_reply, color_query,
 };
 use yapi_tui::theme::{
     Appearance, SystemThemeInput, Theme, detect_colorfgbg, resolve_theme_setting,
@@ -73,7 +74,7 @@ use yapi_types::message::{
     AssistantMessage, ContentBlock, ImageContent, Message, StopReason, ToolCall,
 };
 use yapi_types::rpc::StreamingBehavior;
-use yapi_types::settings::{DoubleEscapeAction, TuiMode};
+use yapi_types::settings::{BoolOr, DoubleEscapeAction, ImageProtocol, TuiMode};
 
 use self::bash_view::BashView;
 use self::chat::{Hit, Item, RenderContext, Toggle, Toggles};
@@ -395,6 +396,51 @@ fn true_color() -> bool {
         || !env("KITTY_WINDOW_ID").is_empty()
 }
 
+/// pi-tui's `images` capability: the `terminal.images` setting when it names
+/// a protocol or is false, else `PI_IMAGE_PROTOCOL`, else the terminal the
+/// environment names. Unlike pi, Herdr means Kitty, which its panes draw in
+/// any terminal, whatever variables of the outer terminal they keep.
+fn image_protocol(
+    setting: Option<BoolOr<ImageProtocol>>,
+    var: impl Fn(&str) -> String,
+) -> Option<Protocol> {
+    match setting {
+        Some(BoolOr::Bool(false)) => return None,
+        Some(BoolOr::Other(ImageProtocol::Kitty)) => return Some(Protocol::Kitty),
+        Some(BoolOr::Other(ImageProtocol::Iterm2)) => return Some(Protocol::Iterm2),
+        _ => {}
+    }
+    match var("PI_IMAGE_PROTOCOL").to_lowercase().as_str() {
+        "kitty" => return Some(Protocol::Kitty),
+        "iterm2" => return Some(Protocol::Iterm2),
+        "none" | "0" => return None,
+        _ => {}
+    }
+    let set = |name: &str| !var(name).is_empty();
+    let (program, term) = (
+        var("TERM_PROGRAM").to_lowercase(),
+        var("TERM").to_lowercase(),
+    );
+    // Image protocols are unreliable in tmux and screen.
+    if set("TMUX") || term.starts_with("tmux") || term.starts_with("screen") {
+        return None;
+    }
+    let kitty = [
+        "KITTY_WINDOW_ID",
+        "GHOSTTY_RESOURCES_DIR",
+        "WEZTERM_PANE",
+        "WARP_SESSION_ID",
+        "WARP_TERMINAL_SESSION_UUID",
+    ];
+    if ["herdr", "kitty", "ghostty", "wezterm", "warpterminal"].contains(&program.as_str())
+        || term.contains("ghostty")
+        || kitty.into_iter().any(set)
+    {
+        return Some(Protocol::Kitty);
+    }
+    (set("ITERM_SESSION_ID") || program == "iterm.app").then_some(Protocol::Iterm2)
+}
+
 /// pi-tui's `hyperlinks` capability: the `terminal.hyperlinks` setting when
 /// true or false, else what the environment tells, else whether tmux forwards
 /// OSC 8 hyperlinks to the terminal.
@@ -511,6 +557,14 @@ struct App {
     drawer_errors: std::collections::HashSet<String>,
     /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
     hyperlinks: bool,
+    /// pi-tui's `images` capability.
+    image_protocol: Option<Protocol>,
+    /// The `terminal.showImages` setting.
+    show_images: bool,
+    /// The `terminal.imageWidthCells` setting.
+    image_width: usize,
+    /// The pixel size of a cell, as the terminal reports it.
+    cell_size: (u32, u32),
     keys: Keybindings,
     editor: Editor,
     /// Where the built-in editor, or a selector in its place, shows in
@@ -775,6 +829,13 @@ fn subscribe(session: &AgentSession, tx: &UnboundedSender<Event>, epoch: u64) {
 }
 
 impl App {
+    /// The images the UI can draw: fullscreen mode shows iTerm2 images as
+    /// text, as pi does.
+    fn image_support(&self) -> Option<Protocol> {
+        self.image_protocol
+            .filter(|protocol| !(self.fullscreen && *protocol == Protocol::Iterm2))
+    }
+
     fn ctx(&self) -> RenderContext<'_> {
         RenderContext {
             theme: &self.theme,
@@ -790,6 +851,9 @@ impl App {
             agent_dir: &self.agent_dir,
             thinking_label: self.ext.thinking_label.as_deref().unwrap_or("Thinking..."),
             hyperlinks: self.hyperlinks,
+            images: self.image_support().filter(|_| self.show_images),
+            image_width: self.image_width,
+            cell_size: self.cell_size,
             mermaid: self.mermaid,
             streaming: false,
             transforms: None,
@@ -2659,6 +2723,15 @@ impl App {
     }
 
     fn handle_key(&mut self, data: &str, terminal: &mut Terminal) {
+        // pi-tui's `consumeCellSizeResponse`: images are drawn again in the
+        // reported cell size.
+        if let Some(size) = cell_size_reply(data) {
+            if size.0 > 0 && size.1 > 0 && size != self.cell_size {
+                self.cell_size = size;
+                self.invalidate_all();
+            }
+            return;
+        }
         if self.dispatch_key(data, terminal) {
             self.footer_cache = None;
             if let Some(view) = &self.ext.footer {
@@ -3764,7 +3837,7 @@ impl App {
             emit(&alt_screen_enter());
             self.alt.invalidate();
         } else {
-            emit(ALT_SCREEN_LEAVE);
+            emit(&self.alt.leave());
         }
         self.fullscreen = fullscreen;
         self.invalidate_all();
@@ -3775,7 +3848,7 @@ impl App {
         terminal.stdin_paused.store(true, Ordering::SeqCst);
         let mut out = String::from(self.stop_progress());
         if self.fullscreen {
-            out.push_str(ALT_SCREEN_LEAVE);
+            out.push_str(&self.alt.leave());
         } else {
             out.push_str(&self.main.stop());
         }
@@ -3788,6 +3861,9 @@ impl App {
         let _ = terminal.raw.reenable();
         let mut out = String::from(BRACKETED_PASTE_ENABLE);
         out.push_str(terminal.protocol.query());
+        if self.image_protocol.is_some() {
+            out.push_str(CELL_SIZE_QUERY);
+        }
         if self.fullscreen {
             out.push_str(&alt_screen_enter());
             self.alt.invalidate();
@@ -4137,6 +4213,9 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     if fullscreen {
         emit(&alt_screen_enter());
     }
+    if app.image_protocol.is_some() {
+        emit(CELL_SIZE_QUERY);
+    }
     app.install_autocomplete();
     app.render_history();
     if let Some(markdown) = changelog::since_last_start(&app.session) {
@@ -4300,9 +4379,9 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     let transcript = app.session.settings().fullscreen_exit_output
         != Some(yapi_types::settings::FullscreenExitOutput::ResumeHint);
     if app.fullscreen && !transcript {
-        out.push_str(ALT_SCREEN_LEAVE);
+        out.push_str(&app.alt.leave());
     } else if app.fullscreen {
-        out.push_str(ALT_SCREEN_LEAVE);
+        out.push_str(&app.alt.leave());
         let (width, height) = app.size;
         let mut document = app.transcript(width);
         let (dock, _) = app.dock(width);
@@ -4375,6 +4454,7 @@ impl App {
         let mut keys = keybindings::load(&agent_dir, Keys::detect(kitty));
         keys.set_kitty(kitty);
         let settings = session.settings();
+        let terminal = settings.terminal.clone().unwrap_or_default();
         let fullscreen = options.tui_mode.or(settings.tui_mode) != Some(TuiMode::Regular);
         let quiet = settings.quiet_startup.as_ref();
         let show_details = options.verbose
@@ -4406,6 +4486,14 @@ impl App {
             drawers: deferred::Drawers::default(),
             drawer_errors: std::collections::HashSet::new(),
             hyperlinks: false,
+            image_protocol: image_protocol(terminal.images.clone(), |name| {
+                std::env::var(name).unwrap_or_default()
+            }),
+            show_images: terminal.show_images.unwrap_or(true),
+            image_width: terminal
+                .image_width_cells
+                .map_or(60, |width| width.max(1) as usize),
+            cell_size: yapi_tui::image::DEFAULT_CELL,
             theme,
             keys,
             editor,
@@ -4494,11 +4582,8 @@ impl App {
         app.alt.bottom_key = keybindings::keys_display(&app.keys, "tui.altScreen.bottom");
         app.main.show_hardware_cursor = settings.show_hardware_cursor.unwrap_or(false);
         app.alt.show_hardware_cursor = app.main.show_hardware_cursor;
-        app.main.clear_on_shrink = settings
-            .terminal
-            .as_ref()
-            .and_then(|terminal| terminal.clear_on_shrink)
-            .unwrap_or(false);
+        app.main.clear_on_shrink = terminal.clear_on_shrink.unwrap_or(false);
+        app.alt.kitty_images = app.image_protocol == Some(Protocol::Kitty);
         (app, theme_error)
     }
 
@@ -5514,6 +5599,51 @@ mod tests {
         // Text, such as a saved image's path, goes in as it is.
         let path = clipboard::Paste::Text("/tmp/yapi-clipboard-1.png".into());
         assert_eq!(pasted("see", 0, path), "see/tmp/yapi-clipboard-1.png");
+    }
+
+    #[test]
+    fn detects_image_terminals_as_pi_tui_and_herdr() {
+        use yapi_types::settings::{BoolOr, ImageProtocol};
+        let detect = |setting: Option<BoolOr<ImageProtocol>>, vars: &[(&str, &str)]| {
+            image_protocol(setting, |name| {
+                let value = vars.iter().find(|(key, _)| *key == name);
+                value
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_default()
+            })
+        };
+        let kitty = Some(Protocol::Kitty);
+        assert_eq!(
+            detect(None, &[("TERM", "xterm-kitty"), ("KITTY_WINDOW_ID", "1")]),
+            kitty
+        );
+        assert_eq!(detect(None, &[("TERM_PROGRAM", "ghostty")]), kitty);
+        assert_eq!(
+            detect(None, &[("TERM_PROGRAM", "iTerm.app")]),
+            Some(Protocol::Iterm2)
+        );
+        assert_eq!(detect(None, &[("TERM_PROGRAM", "Apple_Terminal")]), None);
+        // Herdr panes keep the outer terminal's variables but draw Kitty.
+        let herdr = [("TERM_PROGRAM", "herdr"), ("HERDR_ENV", "1")];
+        assert_eq!(detect(None, &herdr), kitty);
+        assert_eq!(detect(None, &[herdr[0], ("ITERM_SESSION_ID", "w0")]), kitty);
+        // tmux and screen show none, even inside Herdr.
+        assert_eq!(
+            detect(None, &[("TMUX", "/tmp/t"), ("KITTY_WINDOW_ID", "1")]),
+            None
+        );
+        assert_eq!(detect(None, &[herdr[0], ("TERM", "screen-256color")]), None);
+        // `PI_IMAGE_PROTOCOL` and then the setting decide over the terminal.
+        let none = [("TERM_PROGRAM", "herdr"), ("PI_IMAGE_PROTOCOL", "none")];
+        assert_eq!(detect(None, &none), None);
+        assert_eq!(
+            detect(None, &[("PI_IMAGE_PROTOCOL", "ITERM2")]),
+            Some(Protocol::Iterm2)
+        );
+        assert_eq!(detect(Some(BoolOr::Bool(false)), &herdr), None);
+        assert_eq!(detect(Some(BoolOr::Bool(true)), &herdr), kitty);
+        let kitty_setting = Some(BoolOr::Other(ImageProtocol::Kitty));
+        assert_eq!(detect(kitty_setting, &none), kitty);
     }
 
     #[test]
