@@ -49,7 +49,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-types` | Serde types for every pi JSON shape: messages, events, session entries, settings, models, extension payloads. | Types across packages |
 | `crates/yapi-ai` | Wire APIs, model catalog and registry, cost, credentials, OAuth. | `pi-ai` |
 | `crates/yapi-agent` | Agent loop, tool execution, queues, events. | `pi-agent-core` |
-| `crates/yapi-tui` | Widgets, editor, Markdown with LaTeX and Mermaid, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
+| `crates/yapi-tui` | Widgets, editor, Markdown with LaTeX and Mermaid, inline images, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
 | `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner, MCP. | `pi-coding-agent` core, `pi-mcp` |
 | `crates/yapi-ext` | wasmtime host, WIT bindings, capability grants, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |

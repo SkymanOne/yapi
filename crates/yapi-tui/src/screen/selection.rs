@@ -808,6 +808,10 @@ fn columns(
     (start, end): (Point, Point),
     max: usize,
 ) -> (usize, usize) {
+    // A row that draws an image has no text to select, as in pi.
+    if crate::image::is_image_line(line) {
+        return (0, 0);
+    }
     let line_width = width(line);
     let mut from = 0;
     let mut to = line_width.min(max);

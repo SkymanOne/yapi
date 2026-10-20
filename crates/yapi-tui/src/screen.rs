@@ -8,11 +8,13 @@
 
 use std::time::{Duration, Instant};
 
+use indexmap::IndexMap;
 use ratatui_core::style::{Modifier, Style};
 use ratatui_core::text::{Line, Span};
 
-use crate::ansi::line_to_ansi;
-use crate::lines::{StyledLine, composite, truncate, width as line_width};
+use crate::ansi::{line_to_ansi, parse_line};
+use crate::image::{self, is_image, is_image_line};
+use crate::lines::{StyledLine, composite, plain, raw, truncate, width as line_width};
 pub use selection::{MouseAction, MouseEvent, MouseKind, WheelScroll};
 /// pi's `fullscreenScrollbar` setting.
 pub use yapi_types::settings::Scrollbar;
@@ -23,7 +25,7 @@ const SYNC_START: &str = "\x1b[?2026h";
 const SYNC_END: &str = "\x1b[?2026l";
 
 fn clip(line: &StyledLine, width: usize) -> String {
-    if line_width(line) > width {
+    if line_width(line) > width && !is_image_line(line) {
         line_to_ansi(&truncate(line, width, ""))
     } else {
         line_to_ansi(line)
@@ -62,6 +64,8 @@ fn composite_overlays(rows: &mut [StyledLine], overlays: &[Overlay], width: usiz
 #[derive(Debug, Default)]
 pub struct MainScreen {
     previous: Vec<String>,
+    /// The Kitty image ids in `previous`.
+    previous_kitty: Vec<u32>,
     previous_width: usize,
     previous_height: usize,
     hardware_cursor_row: usize,
@@ -82,6 +86,81 @@ fn move_rows(out: &mut String, diff: isize) {
     } else if diff < 0 {
         out.push_str(&format!("\x1b[{}A", -diff));
     }
+}
+
+/// The Kitty image ids `lines` draw, each once.
+fn kitty_ids<'a>(lines: impl IntoIterator<Item = &'a String>) -> Vec<u32> {
+    let mut ids = Vec::new();
+    for line in lines {
+        for id in image::kitty_header(line)
+            .map(|(ids, _)| ids)
+            .unwrap_or_default()
+        {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids
+}
+
+fn delete_kitty(ids: &[u32]) -> String {
+    ids.iter().map(|id| image::delete_kitty(*id)).collect()
+}
+
+/// pi's `getKittyImageReservedRows`: the rows from `index` that a Kitty
+/// image there covers, up to its `r` rows and `max_index`, while they stay
+/// blank.
+fn reserved_rows(lines: &[String], index: usize, max_index: usize) -> usize {
+    let rows = image::kitty_header(&lines[index]).map_or(1, |(_, rows)| rows);
+    let max = rows
+        .min((max_index + 1).saturating_sub(index))
+        .min(lines.len() - index);
+    let mut reserved = 1;
+    while reserved < max {
+        let line = &lines[index + reserved];
+        if is_image(line) || line_width(&parse_line(line).0) > 0 {
+            break;
+        }
+        reserved += 1;
+    }
+    reserved
+}
+
+/// pi's `expandChangedRangeForKittyImages`: rows `first..=last` grown to
+/// cover every Kitty image in `old` or `new` that they touch or that
+/// follows them, so its placement is deleted and drawn again whole.
+fn expand_for_images(first: usize, last: usize, old: &[String], new: &[String]) -> (usize, usize) {
+    let (mut from, mut to) = (first, last);
+    for lines in [old, new] {
+        for (index, line) in lines.iter().enumerate() {
+            if image::kitty_header(line).is_none_or(|(ids, _)| ids.is_empty()) {
+                continue;
+            }
+            let end = index + reserved_rows(lines, index, lines.len() - 1) - 1;
+            if index >= first || (index <= last && end >= first) {
+                from = from.min(index);
+                to = to.max(end);
+            }
+        }
+    }
+    (from, to)
+}
+
+/// Writes `line` and the blank rows below it that the image it draws
+/// covers, `reserved` in all, clearing them first when `clear`, so the
+/// image is placed once the rows exist.
+fn push_image_block(out: &mut String, line: &str, reserved: usize, clear: bool) {
+    let row = if clear { "\r\n\x1b[2K" } else { "\r\n" };
+    if clear {
+        out.push_str("\x1b[2K");
+    }
+    out.push_str(&row.repeat(reserved - 1));
+    out.push_str(&format!(
+        "\x1b[{}A{line}\x1b[{}B",
+        reserved - 1,
+        reserved - 1
+    ));
 }
 
 impl MainScreen {
@@ -124,9 +203,28 @@ impl MainScreen {
     ) {
         out.push_str(SYNC_START);
         if clear {
+            out.push_str(&delete_kitty(&self.previous_kitty));
             out.push_str("\x1b[2J\x1b[H\x1b[3J");
         }
-        out.push_str(&lines.join("\r\n"));
+        let mut index = 0;
+        while index < lines.len() {
+            if index > 0 {
+                out.push_str("\r\n");
+            }
+            let line = &lines[index];
+            let reserved = if is_image(line) {
+                reserved_rows(&lines, index, lines.len() - 1)
+            } else {
+                1
+            };
+            if reserved > 1 && reserved <= height {
+                push_image_block(out, line, reserved, false);
+                index += reserved;
+                continue;
+            }
+            out.push_str(line);
+            index += 1;
+        }
         out.push_str(SYNC_END);
         self.hardware_cursor_row = lines.len().saturating_sub(1);
         self.max_lines_rendered = if clear {
@@ -136,9 +234,19 @@ impl MainScreen {
         };
         self.previous_viewport_top = height.max(lines.len()) - height;
         self.position_cursor(out, cursor, lines.len());
+        self.previous_kitty = kitty_ids(&lines);
         self.previous = lines;
         self.previous_width = width;
         self.previous_height = height;
+    }
+
+    /// pi's `deleteChangedKittyImages`: deletes the Kitty images drawn on
+    /// rows `first..=last` of the previous frame.
+    fn delete_changed(&self, first: usize, last: usize) -> String {
+        let end = (last + 1).min(self.previous.len());
+        delete_kitty(&kitty_ids(
+            self.previous.get(first..end).unwrap_or_default(),
+        ))
     }
 
     /// Draws a frame of `width` by `height` and returns the bytes to write.
@@ -212,6 +320,11 @@ impl MainScreen {
             first.get_or_insert(self.previous.len());
             last = lines.len() - 1;
         }
+        if let Some(changed) = first {
+            let (from, to) = expand_for_images(changed, last, &self.previous, &lines);
+            first = Some(from);
+            last = to;
+        }
         let Some(first) = first else {
             self.position_cursor(&mut out, cursor, lines.len());
             self.previous_viewport_top = prev_top;
@@ -238,6 +351,7 @@ impl MainScreen {
                     return out;
                 }
                 out.push_str(SYNC_START);
+                out.push_str(&self.delete_changed(first, last));
                 move_rows(&mut out, line_diff(target, hardware_row, prev_top, top));
                 out.push('\r');
                 let start_offset = usize::from(!lines.is_empty());
@@ -258,6 +372,7 @@ impl MainScreen {
                 self.hardware_cursor_row = target;
             }
             self.position_cursor(&mut out, cursor, lines.len());
+            self.previous_kitty = kitty_ids(&lines);
             self.previous = lines;
             self.previous_width = width;
             self.previous_height = height;
@@ -272,6 +387,7 @@ impl MainScreen {
         }
 
         out.push_str(SYNC_START);
+        out.push_str(&self.delete_changed(first, last));
         let prev_bottom = prev_top + height - 1;
         let move_target = if append_start { first - 1 } else { first };
         if move_target > prev_bottom {
@@ -292,12 +408,34 @@ impl MainScreen {
         );
         out.push_str(if append_start { "\r\n" } else { "\r" });
         let render_end = last.min(lines.len() - 1);
-        for (offset, line) in lines[first..=render_end].iter().enumerate() {
-            if offset > 0 {
+        let mut index = first;
+        while index <= render_end {
+            if index > first {
                 out.push_str("\r\n");
+            }
+            let line = &lines[index];
+            let reserved = if is_image(line) {
+                reserved_rows(&lines, index, render_end)
+            } else {
+                1
+            };
+            if reserved > 1 {
+                // Clearing the image's rows must not scroll the screen.
+                let row = index
+                    .checked_sub(top)
+                    .filter(|row| row + reserved <= height);
+                if row.is_none() {
+                    out.clear();
+                    self.full_render(&mut out, lines, true, cursor, width, height);
+                    return out;
+                }
+                push_image_block(&mut out, line, reserved, true);
+                index += reserved;
+                continue;
             }
             out.push_str("\x1b[2K");
             out.push_str(line);
+            index += 1;
         }
         let mut final_row = render_end;
         if self.previous.len() > lines.len() {
@@ -316,6 +454,7 @@ impl MainScreen {
         self.max_lines_rendered = self.max_lines_rendered.max(lines.len());
         self.previous_viewport_top = prev_top.max((final_row + 1).saturating_sub(height));
         self.position_cursor(&mut out, cursor, lines.len());
+        self.previous_kitty = kitty_ids(&lines);
         self.previous = lines;
         self.previous_width = width;
         self.previous_height = height;
@@ -349,6 +488,9 @@ fn replace_last_cell(
     style: Style,
     keep_background: bool,
 ) -> StyledLine {
+    if is_image_line(line) {
+        return line.clone();
+    }
     let column = width - 1;
     let mut background = None;
     let mut at = 0;
@@ -490,6 +632,11 @@ pub struct AltScreen {
     pub bottom_key: String,
     /// Components drawn over the screen.
     pub overlays: Vec<Overlay>,
+    /// The terminal shows Kitty images, so the screen deletes and reuses
+    /// their uploads.
+    pub kitty_images: bool,
+    /// Kitty images the terminal holds, the least recently shown first.
+    uploaded: IndexMap<u32, Upload>,
     /// When the transcript's scrollbar shows; pi's `fullscreenScrollbar`.
     pub scrollbar: Scrollbar,
     /// Style of the scrollbar's track.
@@ -517,6 +664,38 @@ pub struct AltScreen {
     selection: selection::Selection,
     /// Messages at the top right, and when each goes.
     flashes: Vec<(String, Instant)>,
+}
+
+/// A Kitty image the terminal holds: pi's `CachedKittyImage`.
+#[derive(Clone, Copy, Debug)]
+struct Upload {
+    generation: u64,
+    bytes: usize,
+    decoded_bytes: u64,
+}
+
+/// How many Kitty images out of view, and how much of their data, the
+/// terminal keeps for placing again without an upload.
+const MAX_OFFSCREEN_IMAGES: usize = 16;
+const MAX_OFFSCREEN_BYTES: usize = 32 * 1024 * 1024;
+const MAX_OFFSCREEN_DECODED_BYTES: u64 = 64 * 1024 * 1024;
+
+/// The rows the Kitty image `line` draws was rendered with.
+fn kitty_rows(line: &StyledLine) -> Option<usize> {
+    is_image_line(line)
+        .then(|| image::kitty_rows(&plain(line)))
+        .flatten()
+}
+
+fn crop(line: &StyledLine, hidden: usize, visible: usize) -> StyledLine {
+    raw(image::crop_kitty(&plain(line), hidden, visible))
+}
+
+/// WezTerm erases the cells of a Kitty image that a later line clear
+/// covers.
+fn is_wezterm() -> bool {
+    std::env::var_os("WEZTERM_PANE").is_some()
+        || std::env::var("TERM_PROGRAM").is_ok_and(|name| name.eq_ignore_ascii_case("wezterm"))
 }
 
 /// How long pi's `auto` scrollbar stays after the view scrolls.
@@ -565,8 +744,78 @@ impl AltScreen {
         self.previous.clear();
         self.previous_size = (0, 0);
         self.previous_cursor.clear();
+        self.uploaded.clear();
         self.selection = selection::Selection::default();
         self.flashes.clear();
+    }
+
+    /// The bytes that leave the alternate screen, deleting the Kitty images
+    /// drawn on it first, as pi does.
+    pub fn leave(&mut self) -> String {
+        self.uploaded.clear();
+        let images = if self.kitty_images {
+            image::DELETE_KITTY_IMAGES
+        } else {
+            ""
+        };
+        format!("{images}{ALT_SCREEN_LEAVE}")
+    }
+
+    /// pi's `prepareKittyScreen`: `lines` with images the terminal holds
+    /// placed again without their data, and the deletions of images out of
+    /// view beyond what it keeps, the least recently shown first.
+    fn reuse_kitty_uploads(&mut self, lines: &[String]) -> (Vec<String>, String) {
+        let mut visible = Vec::new();
+        let drawn = lines
+            .iter()
+            .map(|line| {
+                let Some(placement) = image::kitty_placement(line) else {
+                    return line.clone();
+                };
+                visible.push(placement.id);
+                let held = self.uploaded.shift_remove(&placement.id);
+                self.uploaded.insert(
+                    placement.id,
+                    Upload {
+                        generation: placement.generation,
+                        bytes: placement.transmission_bytes,
+                        decoded_bytes: placement.decoded_bytes,
+                    },
+                );
+                if held.is_some_and(|held| held.generation == placement.generation) {
+                    placement.line
+                } else {
+                    line.clone()
+                }
+            })
+            .collect();
+        let offscreen: Vec<(u32, Upload)> = self
+            .uploaded
+            .iter()
+            .filter(|(id, _)| !visible.contains(id))
+            .map(|(id, upload)| (*id, *upload))
+            .collect();
+        let mut count = offscreen.len();
+        let mut bytes: usize = offscreen.iter().map(|(_, upload)| upload.bytes).sum();
+        let mut decoded: u64 = offscreen
+            .iter()
+            .map(|(_, upload)| upload.decoded_bytes)
+            .sum();
+        let mut deletions = String::new();
+        for (id, upload) in offscreen {
+            if count <= MAX_OFFSCREEN_IMAGES
+                && bytes <= MAX_OFFSCREEN_BYTES
+                && decoded <= MAX_OFFSCREEN_DECODED_BYTES
+            {
+                break;
+            }
+            deletions.push_str(&image::delete_kitty(id));
+            self.uploaded.shift_remove(&id);
+            count -= 1;
+            bytes -= upload.bytes;
+            decoded -= upload.decoded_bytes;
+        }
+        (drawn, deletions)
     }
 
     /// pi's `getScreenLines`: the rows of the last frame.
@@ -688,10 +937,7 @@ impl AltScreen {
         height: usize,
     ) -> String {
         let mut out = String::new();
-        if self.previous_size != (width, height) {
-            out.push_str("\x1b[2J");
-            self.previous.clear();
-        }
+        let full = self.previous.is_empty() || self.previous_size != (width, height);
         let height = height.max(1);
         let dock_rows = dock.len().min(height.saturating_sub(1));
         let dock_skip = dock.len() - dock_rows;
@@ -712,11 +958,38 @@ impl AltScreen {
             .cloned()
             .collect();
         rows.resize(viewport, Line::default());
+        // pi's `paintBox`: a Kitty image cut by the viewport shows its
+        // visible rows, including one that starts above it.
+        for (row, line) in rows.iter_mut().enumerate() {
+            if let Some(image_rows) = kitty_rows(line)
+                && viewport - row < image_rows
+            {
+                *line = crop(line, 0, viewport - row);
+            }
+        }
+        if viewport > 0 {
+            for (index, line) in transcript[..top.min(transcript.len())]
+                .iter()
+                .enumerate()
+                .rev()
+            {
+                if let Some(image_rows) = kitty_rows(line) {
+                    let hidden = top - index;
+                    if hidden < image_rows {
+                        rows[0] = crop(line, hidden, viewport.min(image_rows - hidden));
+                    }
+                    break;
+                }
+                if !plain(line).is_empty() {
+                    break;
+                }
+            }
+        }
         let scrollbar = self.paint_scrollbar(&mut rows, width);
         // pi's `compositeScrollToEndIndicator`: the label centered over the
         // last transcript row, stopping at the scrollbar.
         self.jump_label = None;
-        if self.scroll_top.is_some() && viewport > 0 {
+        if self.scroll_top.is_some() && viewport > 0 && !is_image_line(&rows[viewport - 1]) {
             let label = format!(" ↓ Jump to latest message · {} ", self.bottom_key);
             let label = truncate(&Line::from(label), width, "");
             let left = width.saturating_sub(line_width(&label)) / 2;
@@ -735,17 +1008,51 @@ impl AltScreen {
         self.highlight(&mut rows, top, width);
         self.composite_flashes(&mut rows, width);
         for row in &mut rows {
-            if line_width(row) > width {
+            if line_width(row) > width && !is_image_line(row) {
                 *row = truncate(row, width, "");
             }
         }
 
         let lines: Vec<String> = rows.iter().map(line_to_ansi).collect();
         self.screen = rows;
+        // A changed image row redraws every row, since an image covers rows
+        // that keep their text.
+        let images_changed = lines.iter().enumerate().any(|(row, line)| {
+            let old = self.previous.get(row);
+            old != Some(line) && (is_image(line) || old.is_some_and(|old| is_image(old)))
+        });
+        let redraw = full || images_changed;
+        let had_uploads = !self.uploaded.is_empty();
+        let (drawn, deletions) = if redraw && self.kitty_images {
+            self.reuse_kitty_uploads(&lines)
+        } else {
+            (lines.clone(), String::new())
+        };
         let mut changes = String::new();
-        for (index, line) in lines.iter().enumerate() {
-            if self.previous.get(index) != Some(line) {
-                changes.push_str(&format!("\x1b[{};1H\x1b[2K{line}", index + 1));
+        if full {
+            if self.kitty_images {
+                changes.push_str(if had_uploads {
+                    image::DELETE_KITTY_PLACEMENTS
+                } else {
+                    image::DELETE_KITTY_IMAGES
+                });
+            }
+            changes.push_str("\x1b[2J");
+        } else if images_changed && self.kitty_images {
+            changes.push_str(image::DELETE_KITTY_PLACEMENTS);
+        }
+        changes.push_str(&deletions);
+        let clear_first =
+            redraw && self.kitty_images && lines.iter().any(|line| is_image(line)) && is_wezterm();
+        if clear_first {
+            for row in 0..lines.len() {
+                changes.push_str(&format!("\x1b[{};1H\x1b[2K", row + 1));
+            }
+        }
+        for (index, line) in drawn.iter().enumerate() {
+            if redraw || self.previous.get(index) != Some(&lines[index]) {
+                let clear = if clear_first { "" } else { "\x1b[2K" };
+                changes.push_str(&format!("\x1b[{};1H{clear}{line}", index + 1));
             }
         }
         // pi parks the cursor at the frame cursor even when it stays hidden,
@@ -986,6 +1293,156 @@ mod tests {
         screen.top();
         let frame = screen.frame(&transcript, &dock, None, 10, 5);
         assert!(!frame.contains('┃'), "{frame:?}");
+    }
+
+    /// pi-tui's `encodeKitty` with the `Image` component's options.
+    fn kitty(data: &str, rows: usize, id: u32) -> String {
+        format!("\x1b_Ga=T,f=100,q=2,C=1,c=2,r={rows},i={id};{data}\x1b\\")
+    }
+
+    /// The rows of an image `size` pixels drawn in Kitty, as pi's tests make
+    /// them: in 10 pixel cells, `columns` wide.
+    fn kitty_image(size: (u32, u32), columns: usize, id: u32) -> Vec<StyledLine> {
+        image::render(
+            "AAAA",
+            size,
+            image::Protocol::Kitty,
+            40,
+            columns,
+            (10, 10),
+            id,
+        )
+        .unwrap()
+    }
+
+    fn with(rows: &[&str], image: &[StyledLine], after: &[&str]) -> Vec<StyledLine> {
+        let mut out = doc(rows);
+        out.extend(image.iter().cloned());
+        out.extend(doc(after));
+        out
+    }
+
+    // Ports of pi-tui's "TUI Kitty image cleanup" tests.
+    #[test]
+    fn main_screen_clears_reserved_image_rows_before_placing_the_image() {
+        let mut screen = MainScreen::new();
+        screen.frame(&doc(&["before"]), None, 40, 10);
+        let image = kitty_image((20, 20), 2, 9001);
+        let sequence = line_to_ansi(&image[0]);
+        let frame = screen.frame(&with(&["before"], &image, &["after"]), None, 40, 10);
+        assert!(
+            frame.contains(&format!("\x1b[2K\r\n\x1b[2K\x1b[1A{sequence}\x1b[1B")),
+            "{frame:?}"
+        );
+        assert!(!frame.contains(&format!("{sequence}\r\n\x1b[2K")));
+    }
+
+    #[test]
+    fn main_screen_redraws_when_clearing_image_rows_would_scroll() {
+        let mut screen = MainScreen::new();
+        screen.frame(&doc(&["before"]), None, 40, 2);
+        let image = kitty_image((30, 30), 3, 9002);
+        let frame = screen.frame(&with(&["before"], &image, &["after"]), None, 40, 2);
+        assert!(frame.contains("\x1b[2J"), "{frame:?}");
+    }
+
+    #[test]
+    fn main_screen_reserves_image_rows_in_a_full_redraw() {
+        let mut screen = MainScreen::new();
+        let text = ["l0", "l1", "l2", "l3", "l4"];
+        screen.frame(&doc(&text), None, 40, 5);
+        let image = kitty_image((30, 30), 3, 9003);
+        let sequence = line_to_ansi(&image[0]);
+        let frame = screen.frame(&with(&text, &image, &["after"]), None, 40, 5);
+        assert!(frame.contains("\x1b[2J"), "{frame:?}");
+        assert!(frame.contains(&format!("\r\n\r\n\x1b[2A{sequence}\x1b[2B")));
+        assert!(!frame.contains(&format!("{sequence}\r\n\x1b[0m")));
+    }
+
+    #[test]
+    fn main_screen_places_an_image_taller_than_the_screen_from_its_first_row() {
+        let image = kitty_image((60, 60), 6, 9004);
+        let sequence = line_to_ansi(&image[0]);
+        let frame = MainScreen::new().frame(&with(&["before"], &image, &["after"]), None, 40, 5);
+        assert!(frame.contains(&sequence));
+        assert!(!frame.contains(&format!("\x1b[{}A{sequence}", image.len() - 1)));
+    }
+
+    #[test]
+    fn main_screen_deletes_changed_images_before_drawing_them() {
+        let mut screen = MainScreen::new();
+        let old = kitty("AAAA", 2, 42);
+        screen.frame(&doc(&["top", &old]), None, 40, 10);
+        let new = kitty("BBBB", 1, 42);
+        let frame = screen.frame(&doc(&[&new, ""]), None, 40, 10);
+        let deleted = frame.find(&image::delete_kitty(42)).unwrap();
+        assert!(deleted < frame.find(&new).unwrap(), "{frame:?}");
+
+        // A change on a row the image covers redraws it, after deleting it.
+        let mut screen = MainScreen::new();
+        let image = kitty("AAAA", 2, 88);
+        screen.frame(&doc(&["", &image]), None, 40, 10);
+        let frame = screen.frame(&doc(&["covered", &image]), None, 40, 10);
+        let deleted = frame.find(&image::delete_kitty(88)).unwrap();
+        assert!(deleted < frame.find(&image).unwrap(), "{frame:?}");
+        assert!(!frame.contains("\x1b[2J"));
+
+        // A full redraw deletes the images drawn before.
+        let mut screen = MainScreen::new();
+        screen.frame(&doc(&[&kitty("AAAA", 2, 77)]), None, 40, 10);
+        let frame = screen.frame(&doc(&["plain text"]), None, 30, 10);
+        let deleted = frame.find(&image::delete_kitty(77)).unwrap();
+        assert!(deleted < frame.find("\x1b[2J").unwrap(), "{frame:?}");
+    }
+
+    // Ports of pi-tui's fullscreen Kitty tests.
+    #[test]
+    fn alt_screen_crops_an_image_that_starts_above_the_viewport() {
+        let image = kitty_image((100, 100), 3, 123);
+        assert_eq!(image.len(), 3);
+        let transcript = with(&["before"], &image, &["after", "end"]);
+        let frame = AltScreen::new().frame(&transcript, &[], None, 20, 3);
+        assert!(
+            frame.contains("i=123") && frame.contains("y=66,h=34,r=1"),
+            "{frame:?}"
+        );
+    }
+
+    #[test]
+    fn alt_screen_places_held_images_again_and_evicts_the_oldest() {
+        let mut screen = AltScreen::new();
+        screen.kitty_images = true;
+        let transcript = with(&[], &kitty_image((100, 50), 2, 321), &["after"]);
+        screen.frame(&transcript, &[], None, 20, 1);
+        screen.top();
+        let shown = screen.frame(&transcript, &[], None, 20, 1);
+        assert!(shown.contains("\x1b_Ga=T"), "{shown:?}");
+        screen.scroll_by(1);
+        screen.frame(&transcript, &[], None, 20, 1);
+        screen.scroll_by(-1);
+        let again = screen.frame(&transcript, &[], None, 20, 1);
+        assert!(again.contains("\x1b_Ga=p,q=2"), "{again:?}");
+        assert!(!again.contains("\x1b_Ga=T") && !again.contains(&image::delete_kitty(321)));
+
+        let mut screen = AltScreen::new();
+        screen.kitty_images = true;
+        let transcript: Vec<StyledLine> = (500..518)
+            .flat_map(|id| kitty_image((100, 50), 2, id))
+            .collect();
+        let mut frames = screen.frame(&transcript, &[], None, 20, 1);
+        screen.top();
+        for _ in 0..transcript.len() {
+            frames.push_str(&screen.frame(&transcript, &[], None, 20, 1));
+            screen.scroll_by(1);
+        }
+        assert!(frames.contains(&image::delete_kitty(500)), "{frames:?}");
+        screen.top();
+        assert!(
+            screen
+                .frame(&transcript, &[], None, 20, 1)
+                .contains("\x1b_Ga=T")
+        );
+        assert!(screen.leave().starts_with(image::DELETE_KITTY_IMAGES));
     }
 
     #[test]

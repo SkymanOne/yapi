@@ -250,6 +250,10 @@ pub(crate) fn composite(
     width: usize,
     total: usize,
 ) -> StyledLine {
+    // As pi-tui, nothing is drawn over a row that draws an image.
+    if crate::image::is_image_line(base) {
+        return from_cells(&cells(base));
+    }
     let space = |style: Style| Cell {
         text: " ".to_owned(),
         style,
