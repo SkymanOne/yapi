@@ -602,7 +602,7 @@ fn zip(files: &[(&str, String)], (time, date): (u16, u16)) -> io::Result<Vec<u8>
 
 const SUMMARY_SYSTEM_PROMPT: &str = "You are helping a user file a bug report about yapi, the coding agent they are talking to. You will be shown the conversation transcript. Write a report for the yapi developers describing what the user was doing and what went wrong.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the report.";
 
-const SUMMARY_INSTRUCTIONS: &str = "Write the bug report in Markdown with these sections:\n\n## What the user was doing\nOne short paragraph.\n\n## What went wrong\nConcrete description of the failure: wrong output, errors, hangs, tool failures, unexpected behavior. Quote error messages and tool output verbatim where they exist.\n\n## Steps to reproduce\nNumbered list, as specific as the transcript allows.\n\n## Relevant details\nTool calls involved, files touched, model behavior, anything else that helps a developer reproduce or locate the problem.\n\nDo not include file contents, secrets, or credentials from the transcript; refer to files by path only. Keep the report factual and concise.";
+const SUMMARY_INSTRUCTIONS: &str = "Write the bug report in Markdown with these sections:\n\n## What the user was doing\nOne short paragraph.\n\n## What went wrong\nConcrete description of the failure: wrong output, errors, hangs, tool failures, unexpected behavior. Quote error messages and tool output verbatim where they exist.\n\n## Steps to reproduce\nNumbered list, as specific as the transcript allows.\n\n## Relevant details\nTool calls involved, files touched, model behavior, anything else that helps a developer reproduce or locate the problem.\n\nDo not include file contents, secrets, or credentials from the transcript; refer to files by path only. The report is public: write paths inside the user's home folder as ~/..., even in quoted errors, and never state the user's name or where their home folder is. Keep the report factual and concise.";
 
 /// pi's `generateBugReportSummary`: a report `summarizer`'s model writes
 /// without tools from the last `messages` that fit in 60% of its context
@@ -915,6 +915,7 @@ mod tests {
         assert_eq!(summary.await.as_deref(), Ok("## What went wrong\nIt hung."));
         let request = format!("{:?}", faux.requests()[0]);
         assert!(request.contains("a bug report about yapi"), "{request}");
+        assert!(request.contains("home folder as ~/..."), "{request}");
         assert!(request.contains("the agent hangs"));
         assert!(request.contains("<user-report>\\nafter /reload\\n</user-report>"));
         let tool = session
