@@ -25,7 +25,7 @@ const SYNC_START: &str = "\x1b[?2026h";
 const SYNC_END: &str = "\x1b[?2026l";
 
 fn clip(line: &StyledLine, width: usize) -> String {
-    if line_width(line) > width && !is_image_line(line) {
+    if !is_image_line(line) && line_width(line) > width {
         line_to_ansi(&truncate(line, width, ""))
     } else {
         line_to_ansi(line)
@@ -1008,7 +1008,7 @@ impl AltScreen {
         self.highlight(&mut rows, top, width);
         self.composite_flashes(&mut rows, width);
         for row in &mut rows {
-            if line_width(row) > width && !is_image_line(row) {
+            if !is_image_line(row) && line_width(row) > width {
                 *row = truncate(row, width, "");
             }
         }
@@ -1443,6 +1443,37 @@ mod tests {
                 .contains("\x1b_Ga=T")
         );
         assert!(screen.leave().starts_with(image::DELETE_KITTY_IMAGES));
+    }
+
+    #[test]
+    fn frames_do_not_measure_image_rows() {
+        // Measuring a screenshot's escape text took a quarter second a frame
+        // in a debug build, where skipping it takes a millisecond.
+        let data = "A".repeat(1 << 20);
+        let image = image::render(
+            &data,
+            (2000, 1250),
+            image::Protocol::Kitty,
+            120,
+            60,
+            (9, 18),
+            9005,
+        );
+        let transcript = with(&["before"], &image.unwrap(), &["after"]);
+        let started = Instant::now();
+        let (mut main, mut alt) = (MainScreen::new(), AltScreen::new());
+        for frame in 0..10 {
+            let dock = doc(&[&format!("dock {frame}")]);
+            let mut document = transcript.clone();
+            document.extend(dock.iter().cloned());
+            main.frame(&document, None, 120, 50);
+            alt.frame(&transcript, &dock, None, 120, 50);
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
