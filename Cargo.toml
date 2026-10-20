@@ -61,8 +61,8 @@ tokio-tungstenite = { version = "0.30", default-features = false, features = ["h
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tz-rs = { version = "0.7", default-features = false, features = ["std"] }
 url = "2.5"
-wasmtime = { version = "=49.0.3", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
-wasmtime-wasi = { version = "=49.0.3", default-features = false }
+wasmtime = { version = "=49.0.4", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
+wasmtime-wasi = { version = "=49.0.4", default-features = false }
 unicode-normalization = "0.1"
 unicode-segmentation = "1"
 unicode-width = "0.2"

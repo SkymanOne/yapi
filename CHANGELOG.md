@@ -4,6 +4,8 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
+
 ## [0.2.0] - 2026-10-14
 
 - Add Mermaid diagrams and LaTeX math to messages. Extensions get Pi's entry renderers and Markdown transformers, and code renderers (`pi.yapi.registerCodeRenderer`, `Api::register_code_renderer`) that can highlight code ([#167](https://github.com/SkymanOne/yapi/pull/167), [#168](https://github.com/SkymanOne/yapi/pull/168), [#169](https://github.com/SkymanOne/yapi/pull/169), [#170](https://github.com/SkymanOne/yapi/pull/170)).
