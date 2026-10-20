@@ -457,9 +457,9 @@ impl Report {
     }
 
     /// The issue body: the description, the summary and `report.json`,
-    /// within GitHub's limit. The transcript and the diagnostics, which
-    /// can quote tool output, stay out.
-    pub fn issue_body(&self) -> String {
+    /// within GitHub's limit, with `home` written as `~`. The transcript and
+    /// the diagnostics, which can quote tool output, stay out.
+    pub fn issue_body(&self, home: &Path) -> String {
         let mut head = self.hint().unwrap_or("No description given.").to_owned();
         if let Some(summary) = &self.summary {
             head.push_str(&format!("\n\n## Summary\n\n{summary}"));
@@ -471,7 +471,11 @@ impl Report {
         let close = format!("{fence}\n");
         let head = truncate(&head, BODY_LIMIT / 2);
         let room = BODY_LIMIT - head.len() - open.len() - close.len();
-        format!("{head}{open}{}{close}", truncate(&report, room))
+        // Only shortens the body, so it stays within the limit.
+        tilde(
+            &format!("{head}{open}{}{close}", truncate(&report, room)),
+            home,
+        )
     }
 
     /// The `yapi.bug-report` session entry's data for the zip at `path`
@@ -491,6 +495,27 @@ impl Report {
         }
         entry
     }
+}
+
+/// `text` with each whole `home` path, such as one the summary quotes from an
+/// error, written as `~`, so a public issue does not name the user.
+fn tilde(text: &str, home: &Path) -> String {
+    let home = home.to_string_lossy();
+    let home = home.trim_end_matches('/');
+    if home.is_empty() {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(home) {
+        let after = &rest[at + home.len()..];
+        let whole = !after.starts_with(|c: char| c.is_alphanumeric() || "-_.".contains(c));
+        out.push_str(&rest[..at]);
+        out.push_str(if whole { "~" } else { home });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// `value` as `JSON.stringify(value, null, 2)` and a newline.
@@ -788,10 +813,24 @@ mod tests {
     }
 
     #[test]
+    fn issue_bodies_write_the_home_folder_as_a_tilde() {
+        let report = report(
+            None,
+            Some("ENOENT: '/home/me/work/a.txt' in /home/me, not /home/meg or /home/me.d"),
+        );
+        let body = report.issue_body(Path::new("/home/me/"));
+        assert!(
+            body.contains("ENOENT: '~/work/a.txt' in ~, not /home/meg or /home/me.d"),
+            "{body}"
+        );
+        assert_eq!(tilde("/a/b", Path::new("/")), "/a/b");
+    }
+
+    #[test]
     fn issue_bodies_stay_within_the_limit() {
         let mut long = report(None, Some(&"s".repeat(BODY_LIMIT)));
         long.metadata["settings"] = json!("r".repeat(BODY_LIMIT));
-        let body = long.issue_body();
+        let body = long.issue_body(Path::new("/home/me"));
         assert!(body.len() <= BODY_LIMIT, "{}", body.len());
         assert!(body.ends_with("[truncated]\n```\n"));
         assert_eq!(long.title(), "It broke");
@@ -909,7 +948,8 @@ mod tests {
         let report = report(Some("TRANSCRIPT-MARKER"), Some("SUMMARY-MARKER"));
         let title = format!("$(touch {0}/pwned); `touch {0}/pwned` \"'", dir.display());
         let body_file = dir.join("issue.md");
-        let url = create_issue(gh.as_os_str(), &title, &report.issue_body(), &body_file);
+        let body = report.issue_body(Path::new("/home/me"));
+        let url = create_issue(gh.as_os_str(), &title, &body, &body_file);
         assert_eq!(
             url.as_deref(),
             Ok("https://github.com/SkymanOne/yapi/issues/7")

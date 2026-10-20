@@ -209,7 +209,7 @@ async fn file_issue(
     if ask.confirm(create, &note, "Yes, create the issue").await != Some(true) {
         return Ok(None);
     }
-    let body = report.issue_body();
+    let body = report.issue_body(&yapi_core::tools::path::home_dir());
     let body_file: PathBuf = std::env::temp_dir().join(format!("yapi-bug-report-{}.md", report.id));
     let created = tokio::task::spawn_blocking(move || {
         bug_report::create_issue(&gh, &title, &body, &body_file)
