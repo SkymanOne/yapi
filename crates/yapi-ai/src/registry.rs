@@ -629,7 +629,7 @@ impl ModelRegistry {
 
     /// Credentials for a provider-level call: those of the provider's first
     /// model, or of a placeholder model of it.
-    async fn provider_auth(&self, provider: &str) -> Option<Auth> {
+    pub async fn provider_auth(&self, provider: &str) -> Option<Auth> {
         let model = self
             .models
             .iter()
@@ -1195,7 +1195,8 @@ impl ModelRegistry {
         };
         if let Some(key) = self.runtime_keys.get(provider) {
             auth.api_key = Some(key.clone());
-            auth.source = Some("--api-key".into());
+            // pi reads a runtime key as a stored credential.
+            auth.source = Some("stored credential".into());
             return auth;
         }
         if let Some(error) = self.store_error(provider) {
@@ -1250,7 +1251,7 @@ impl ModelRegistry {
             match credentials::resolve(key, None, false).await {
                 Some(value) if !value.is_empty() => {
                     auth.api_key = Some(value);
-                    auth.source = Some("models.json".into());
+                    auth.source = Some("configured API key".into());
                 }
                 // pi resolves the configured key or fails, without falling
                 // back to the environment.

@@ -4,6 +4,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Add `ctx.modelRegistry.getProviderAuth`, which gives extensions a provider's API key and headers as in Pi. It needs the network grant ([#189](https://github.com/SkymanOne/yapi/pull/189)).
 - Add inline images to tool results in Kitty, iTerm2 and Herdr terminals, with the "Show images" and "Image width" settings ([#187](https://github.com/SkymanOne/yapi/pull/187)).
 - Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
 

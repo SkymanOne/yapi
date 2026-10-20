@@ -880,7 +880,7 @@
 			getAvailable: () => yapi.request("models.available", {}),
 			getApiKey: (model) => yapi.op("models.apiKey", { provider: model.provider, id: model.id }),
 			getApiKeyForProvider: (provider) => yapi.op("models.apiKey", { provider }),
-			getProviderAuth: (provider) => yapi.op("models.auth", { provider }),
+			getProviderAuth: async (provider) => (await yapi.op("models.auth", { provider })) ?? undefined,
 			isUsingOAuth: (model) => !!yapi.request("models.usingOAuth", { provider: model.provider }),
 			hasConfiguredAuth: (model) => !!yapi.request("models.hasAuth", { provider: model.provider }),
 			getError: () => yapi.request("models.error", {}) ?? undefined,

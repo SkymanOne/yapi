@@ -2405,6 +2405,34 @@ impl Bridge for SessionBridge {
                         None => Ok(Value::Null),
                     }
                 }
+                // pi's `AuthResult`, or nothing for a provider without credentials.
+                "models.auth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let auth = registry.provider_auth(&provider).await.unwrap_or_default();
+                    if let Some(error) = auth.error {
+                        return Err(error);
+                    }
+                    if auth.source.is_none() {
+                        return Ok(Value::Null);
+                    }
+                    let defined = |mut value: Value| {
+                        if let Some(object) = value.as_object_mut() {
+                            object.retain(|_, field| !field.is_null());
+                        }
+                        value
+                    };
+                    let headers = (!auth.headers.is_empty()).then_some(auth.headers);
+                    Ok(defined(json!({
+                        "auth": defined(json!({
+                            "apiKey": auth.api_key,
+                            "headers": headers,
+                            "baseUrl": auth.base_url,
+                        })),
+                        "env": auth.env,
+                        "source": auth.source,
+                    })))
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)
