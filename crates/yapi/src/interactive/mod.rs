@@ -5,6 +5,7 @@
 //! lines for a width, and a renderer writes the frame.
 
 mod bash_view;
+mod bug_report;
 mod cache_notices;
 mod catalogs;
 mod changelog;
@@ -263,7 +264,7 @@ enum Dialog {
     Logout,
     /// A select prompt of the running sign-in.
     LoginSelect,
-    /// An extension's dialog.
+    /// An extension's dialog, or one of `/bug`'s.
     Extension(ExtensionReply),
 }
 

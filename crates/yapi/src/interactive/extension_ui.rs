@@ -1096,7 +1096,7 @@ impl super::App {
     /// Shows `selector` in the editor's place for an extension. As in pi, it
     /// replaces whatever selector is open; an extension dialog it replaces is
     /// answered as cancelled.
-    fn open_extension_dialog(
+    pub(super) fn open_extension_dialog(
         &mut self,
         selector: super::selectors::Selector,
         reply: Option<super::ExtensionReply>,

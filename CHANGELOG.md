@@ -4,6 +4,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Add `/bug`, which saves a bug report as a zip file and can post it as a public issue on SkymanOne/yapi with the GitHub CLI ([#192](https://github.com/SkymanOne/yapi/pull/192)).
 - Add inline images to tool results in Kitty, iTerm2 and Herdr terminals, with the "Show images" and "Image width" settings ([#187](https://github.com/SkymanOne/yapi/pull/187)).
 - Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
 

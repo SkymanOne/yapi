@@ -24,4 +24,14 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 ## Reporting a problem
 
+Run `/bug`, or `/bug <description>`, to report a problem:
+
+1. Describe what went wrong, or leave the description empty.
+2. Choose whether to include the session transcript. It holds your messages, model output, tool calls and their results, including file contents and command output.
+3. Without the transcript, the current model can write a summary instead. yapi sends the transcript to the model's provider with your credentials and keeps only the summary.
+
+yapi writes `yapi-bug-report-<id>.zip` to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its `report.json` leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.
+
+Unless yapi runs with `--offline` or `PI_OFFLINE`, and when the [GitHub CLI](https://cli.github.com/) is signed in, `/bug` then offers to open an issue on the [issue tracker](https://github.com/SkymanOne/yapi/issues). A GitHub issue is public, unlike Pi's private upload to radius.pi.dev. The issue holds your description, the summary and `report.json`. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.
+
 Run `/debug` to write the screen, the session's messages and recent extension output to `~/.yapi/agent/yapi-debug.log`. Check it for private data, then attach it to a report on the [issue tracker](https://github.com/SkymanOne/yapi/issues) with the output of `yapi --version` and your operating system.

@@ -1151,12 +1151,7 @@ impl ChoiceDialog {
             .collect();
         out.extend(lines::text(&title, width, 1, 0, None));
         if let Some(description) = &self.description {
-            out.extend(lines::spacer(1));
-            let description: Vec<StyledLine> = description
-                .split('\n')
-                .map(|line| styled(line, theme.fg("text")))
-                .collect();
-            out.extend(lines::text(&description, width, 1, 0, None));
+            out.extend(description_rows(description, width, theme));
         }
         out.extend(lines::spacer(1));
         for (index, option) in self.options.iter().enumerate() {
@@ -1211,9 +1206,23 @@ impl ChoiceDialog {
     }
 }
 
+/// A dialog's description under its title, as pi's dialogs show it: a
+/// blank row, then the text wrapped.
+fn description_rows(description: &str, width: usize, theme: &Theme) -> Vec<StyledLine> {
+    let text: Vec<StyledLine> = description
+        .split('\n')
+        .map(|line| styled(line, theme.fg("text")))
+        .collect();
+    let mut out = lines::spacer(1);
+    out.extend(lines::text(&text, width, 1, 0, None));
+    out
+}
+
 /// pi's `ExtensionEditorComponent`: a titled multi-line editor.
 pub struct TextDialog {
     title: String,
+    /// Text under the title.
+    pub description: Option<String>,
     editor: Editor,
     /// The editor's rows in the last render.
     editor_rows: Range<usize>,
@@ -1226,6 +1235,7 @@ impl TextDialog {
         editor.focused = true;
         TextDialog {
             title: title.to_owned(),
+            description: None,
             editor,
             editor_rows: 0..0,
         }
@@ -1243,6 +1253,9 @@ impl TextDialog {
             width,
             1,
         ));
+        if let Some(description) = &self.description {
+            out.extend(description_rows(description, width, ui.theme));
+        }
         out.extend(lines::spacer(1));
         let editor = self.editor.render(width);
         let cursor = self

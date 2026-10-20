@@ -57,7 +57,7 @@ pub const BUILTIN: &[(&str, &str, Option<&str>)] = &[
     ("share", "Share session as a secret GitHub gist", None),
     (
         "bug",
-        "Report a bug to the Pi developers",
+        "Report a bug to the yapi developers",
         Some("<description>"),
     ),
     ("copy", "Copy last agent message to clipboard", None),
@@ -633,9 +633,10 @@ impl super::App {
         self.set_editor_text("");
         match command {
             // pi built-ins that belong to pi's services and brand.
-            "/share" | "/bug" | "/arminsayshi" | "/dementedelves" => {
+            "/share" | "/arminsayshi" | "/dementedelves" => {
                 self.error(format!("{command} is not available in yapi"));
             }
+            "/bug" => self.report_bug(argument),
             "/login" => self.login_command(&argument),
             "/logout" => self.logout_command(),
             "/scoped-models" => self.open_scoped_models(),
