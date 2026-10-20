@@ -79,6 +79,8 @@ pub struct SettingsConfig {
     pub hide_thinking: bool,
     /// The current TUI mode.
     pub fullscreen: bool,
+    /// The terminal shows images where the UI draws.
+    pub supports_images: bool,
     /// Models with credentials.
     pub models: Vec<Model>,
     /// The session's model.
@@ -842,7 +844,7 @@ impl SettingsSelector {
             .collect();
         let wheel_refs: Vec<&str> = wheel_values.iter().map(String::as_str).collect();
         let timeouts: Vec<&str> = HTTP_IDLE_TIMEOUTS.iter().map(|(label, _)| *label).collect();
-        let items = vec![
+        let mut items = vec![
             bool_item(
                 "autocompact",
                 "Auto-compact",
@@ -1080,6 +1082,30 @@ impl SettingsSelector {
                 config.theme.clone(),
             ),
         ];
+        // As in pi, only a terminal that shows images lists their settings.
+        if config.supports_images {
+            items.splice(
+                1..1,
+                [
+                    bool_item(
+                        "show-images",
+                        "Show images",
+                        "Render images inline in terminal",
+                        terminal.show_images.unwrap_or(true),
+                    ),
+                    item(
+                        "image-width-cells",
+                        "Image width",
+                        "Preferred inline image width in terminal cells",
+                        terminal
+                            .image_width_cells
+                            .map_or(60, |width| width.max(1))
+                            .to_string(),
+                        &["60", "80", "120"],
+                    ),
+                ],
+            );
+        }
         let anthropic_extra_usage = settings
             .warnings
             .as_ref()
@@ -1373,6 +1399,7 @@ impl super::App {
             cache_warming: self.session.cache_warming_mode(),
             hide_thinking: self.hide_thinking,
             fullscreen: self.fullscreen,
+            supports_images: self.image_support().is_some(),
             models: self.session.available_models(),
             current_model: self
                 .session
@@ -1438,6 +1465,16 @@ impl super::App {
             "autocompact" => {
                 let _ = self.session.set_auto_compaction(on);
                 self.footer_cache = None;
+            }
+            "show-images" => {
+                nested("terminal", "showImages", on.into());
+                self.show_images = on;
+                self.invalidate_all();
+            }
+            "image-width-cells" => {
+                nested("terminal", "imageWidthCells", number().max(1).into());
+                self.image_width = number().max(1) as usize;
+                self.invalidate_all();
             }
             "auto-resize-images" => nested("images", "autoResize", on.into()),
             "block-images" => nested("images", "blockImages", on.into()),

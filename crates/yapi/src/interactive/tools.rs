@@ -46,6 +46,15 @@ pub struct ToolView {
     /// For an MCP server's tool: its `server/tool` label, which pi's MCP
     /// renderers show in place of the name.
     pub mcp_label: Option<String>,
+    /// The result's images as drawn so far, by index.
+    images: std::cell::RefCell<Vec<ShownImage>>,
+}
+
+/// A result image's Kitty id, and the PNG copy Kitty draws in place of
+/// another format: the source data's hash and the copy, if it converted.
+struct ShownImage {
+    id: u32,
+    png: Option<(u64, Option<String>)>,
 }
 
 /// Wrapped rows of MCP output that pi shows collapsed.
@@ -166,8 +175,22 @@ pub fn image_dimensions(data: &str, mime_type: &str) -> (u32, u32) {
     found.unwrap_or((800, 600))
 }
 
-/// pi's `getTextOutput`: text blocks joined by newlines, images as notes.
-pub fn text_output(result: &ToolResult) -> String {
+/// pi-tui's `imageFallback`: the note shown for an image of `size` pixels.
+fn image_fallback(mime_type: &str, (width, height): (u32, u32)) -> String {
+    format!("[Image: [{mime_type}] {width}x{height}]")
+}
+
+/// A base64 image as a base64 PNG, as pi's `convertToPng` makes one.
+fn png_copy(data: &str) -> Option<String> {
+    use base64::Engine;
+    let engine = base64::engine::general_purpose::STANDARD;
+    let png = yapi_core::images::to_png(&engine.decode(data.trim()).ok()?)?;
+    Some(engine.encode(png))
+}
+
+/// pi's `getTextOutput`: text blocks joined by newlines, and notes for the
+/// images unless the terminal shows them (`images_shown`).
+pub fn text_output(result: &ToolResult, images_shown: bool) -> String {
     let text: Vec<String> = result
         .content
         .iter()
@@ -183,10 +206,10 @@ pub fn text_output(result: &ToolResult) -> String {
         .content
         .iter()
         .filter_map(|block| match block {
-            ContentBlock::Image(image) => {
-                let (width, height) = image_dimensions(&image.data, &image.mime_type);
-                Some(format!("[Image: [{}] {width}x{height}]", image.mime_type))
-            }
+            ContentBlock::Image(image) if !images_shown => Some(image_fallback(
+                &image.mime_type,
+                image_dimensions(&image.data, &image.mime_type),
+            )),
             _ => None,
         })
         .collect();
@@ -483,7 +506,77 @@ impl ToolView {
             known: true,
             edit_preview: None,
             mcp_label: None,
+            images: Default::default(),
         }
+    }
+
+    /// pi's image components after the tool's box: each of the result's
+    /// images after a blank row, while the terminal shows images. Kitty
+    /// draws other formats as PNG copies, and skips those that do not
+    /// convert.
+    pub fn images(&self, width: usize, ctx: &RenderContext<'_>) -> Vec<StyledLine> {
+        use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
+        use yapi_tui::image::{Protocol, allocate_id, render};
+        let (Some(protocol), Some(result)) = (ctx.images, self.shown_result()) else {
+            return Vec::new();
+        };
+        let mut shown = self.images.borrow_mut();
+        let mut out = Vec::new();
+        let images = result.content.iter().filter_map(|block| match block {
+            ContentBlock::Image(image) => Some(image),
+            _ => None,
+        });
+        for (index, image) in images.enumerate() {
+            if image.data.is_empty() || image.mime_type.is_empty() {
+                continue;
+            }
+            if shown.len() <= index {
+                shown.resize_with(index + 1, || ShownImage {
+                    id: allocate_id(),
+                    png: None,
+                });
+            }
+            let kitty_copy = protocol == Protocol::Kitty && image.mime_type != "image/png";
+            if kitty_copy {
+                let hash = BuildHasherDefault::<DefaultHasher>::default().hash_one(&image.data);
+                if shown[index]
+                    .png
+                    .as_ref()
+                    .is_none_or(|(held, _)| *held != hash)
+                {
+                    // shortcut: converts on the UI thread when first drawn, where pi
+                    // converts in the background; move it off if large images stall input.
+                    shown[index].png = Some((hash, png_copy(&image.data)));
+                }
+            }
+            let (data, mime_type) = match &shown[index].png {
+                Some((_, Some(png))) if kitty_copy => (png.as_str(), "image/png"),
+                _ if kitty_copy => continue,
+                _ => (image.data.as_str(), image.mime_type.as_str()),
+            };
+            let size = image_dimensions(data, mime_type);
+            out.push(Line::default());
+            match render(
+                data,
+                size,
+                protocol,
+                width,
+                ctx.image_width,
+                ctx.cell_size,
+                shown[index].id,
+            ) {
+                Some(rows) => out.extend(rows),
+                None => out.push(lines::truncate(
+                    &Line::from(Span::styled(
+                        image_fallback(mime_type, size),
+                        ctx.theme.fg("toolOutput"),
+                    )),
+                    width,
+                    "",
+                )),
+            }
+        }
+        out
     }
 
     fn shown_result(&self) -> Option<&ToolResult> {
@@ -547,7 +640,7 @@ impl ToolView {
             text.extend(json.split('\n').map(|line| Line::from(line.to_owned())));
         }
         if let Some(result) = self.shown_result() {
-            let output = text_output(result);
+            let output = text_output(result, ctx.images.is_some());
             if !output.is_empty() {
                 text.extend(output.split('\n').map(|line| Line::from(line.to_owned())));
             }
@@ -859,7 +952,7 @@ impl ToolView {
             content: result.content[usize::from(header)..].to_vec(),
             ..ToolResult::default()
         };
-        let output = text_output(&shown);
+        let output = text_output(&shown, ctx.images.is_some());
         let output = output.trim();
         if output.is_empty() {
             return out;
@@ -901,7 +994,7 @@ impl ToolView {
                 if !ctx.expanded && !self.is_error {
                     return Vec::new();
                 }
-                let output = text_output(result);
+                let output = text_output(result, ctx.images.is_some());
                 let lang = (!self.is_error)
                     .then(|| string_arg(&self.args, &["file_path", "path"]).flatten())
                     .flatten()
@@ -952,7 +1045,7 @@ impl ToolView {
                 if !self.is_error {
                     return Vec::new();
                 }
-                let output = text_output(result);
+                let output = text_output(result, ctx.images.is_some());
                 if output.is_empty() {
                     return Vec::new();
                 }
@@ -965,7 +1058,7 @@ impl ToolView {
                 lines::wrap_all(&out, width)
             }
             "grep" | "find" | "ls" => {
-                let output = text_output(result);
+                let output = text_output(result, ctx.images.is_some());
                 let output = output.trim();
                 let mut out = Vec::new();
                 if !output.is_empty() {
@@ -1014,7 +1107,7 @@ impl ToolView {
                 lines::wrap_all(&out, width)
             }
             _ => {
-                let output = text_output(result);
+                let output = text_output(result, ctx.images.is_some());
                 if output.is_empty() {
                     return Vec::new();
                 }
@@ -1039,7 +1132,7 @@ impl ToolView {
         width: usize,
     ) -> Vec<StyledLine> {
         let theme = ctx.theme;
-        let output = text_output(result);
+        let output = text_output(result, ctx.images.is_some());
         let output = output.trim();
         if output.is_empty() {
             return Vec::new();
@@ -1084,7 +1177,7 @@ impl ToolView {
         let theme = ctx.theme;
         let partial = self.result.is_none();
         let details = result.details.as_ref();
-        let mut output = text_output(result).trim().to_owned();
+        let mut output = text_output(result, ctx.images.is_some()).trim().to_owned();
         let truncation = details
             .and_then(|d| d.get("truncation"))
             .filter(|t| t["truncated"] == true);
@@ -1201,7 +1294,7 @@ impl ToolView {
         if self.is_error
             && let Some(result) = &self.result
         {
-            let text = text_output(result);
+            let text = text_output(result, ctx.images.is_some());
             let previewed = matches!(&preview, Some(Err(error)) if *error == text);
             if !text.is_empty() && !previewed {
                 out.extend(lines::spacer(1));
@@ -1274,7 +1367,7 @@ fn read_range(args: &Value, theme: &Theme) -> Option<Span<'static>> {
 /// argument when expanded.
 /// pi's `createResultFallback`: the output's first lines and how many more.
 fn fallback_result(result: &ToolResult, ctx: &RenderContext<'_>, width: usize) -> Vec<StyledLine> {
-    let output = text_output(result);
+    let output = text_output(result, ctx.images.is_some());
     if output.is_empty() {
         return Vec::new();
     }
@@ -1526,11 +1619,14 @@ mod tests {
             content: vec![ContentBlock::text(text)],
             ..ToolResult::default()
         };
-        assert_eq!(text_output(&result("a\x1b[31mb\x1b[0m\r\nc\x07")), "ab\nc");
+        assert_eq!(
+            text_output(&result("a\x1b[31mb\x1b[0m\r\nc\x07"), false),
+            "ab\nc"
+        );
         // pi keeps DEL and C1 controls, drops interlinear annotations, and
         // strips charset selections and 8-bit CSI sequences whole.
         assert_eq!(
-            text_output(&result("a\x7fb\u{85}c\u{fff9}d\x1b(Be\u{9b}31mf\tg")),
+            text_output(&result("a\x7fb\u{85}c\u{fff9}d\x1b(Be\u{9b}31mf\tg"), false),
             "a\x7fb\u{85}cdef\tg"
         );
     }
@@ -1577,6 +1673,9 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            images: None,
+            image_width: 60,
+            cell_size: yapi_tui::image::DEFAULT_CELL,
             mermaid: yapi_types::settings::MermaidMode::Streaming,
             streaming: false,
             transforms: None,
@@ -1626,6 +1725,69 @@ mod tests {
     }
 
     #[test]
+    fn shows_result_images_after_the_box_as_pi() {
+        use yapi_tui::image::Protocol;
+        const GIF: &str = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+        let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let markdown = yapi_tui::markdown::MarkdownTheme::default();
+        let mut ctx = RenderContext {
+            theme: &theme,
+            markdown: &markdown,
+            expanded: false,
+            hide_thinking: false,
+            thinking: &[],
+            output_pad: 1,
+            expand_key: "ctrl+o",
+            cancel_key: "esc",
+            home: None,
+            cwd: Path::new("/work"),
+            agent_dir: Path::new("/agent"),
+            thinking_label: "Thinking...",
+            hyperlinks: false,
+            images: Some(Protocol::Kitty),
+            image_width: 60,
+            cell_size: yapi_tui::image::DEFAULT_CELL,
+            mermaid: yapi_types::settings::MermaidMode::Streaming,
+            streaming: false,
+            transforms: None,
+        };
+        let mut view = ToolView::new("read", serde_json::json!({"path": "a.gif"}));
+        view.result = serde_json::from_value(serde_json::json!({"content": [
+            {"type": "text", "text": "Read image"},
+            {"type": "image", "data": "", "mimeType": "image/png"},
+            {"type": "image", "data": GIF, "mimeType": "image/gif"},
+            {"type": "image", "data": "not base64!", "mimeType": "image/png"},
+        ]}))
+        .ok();
+        let text: Vec<String> = view.images(80, &ctx).iter().map(lines::plain).collect();
+        // The image without data shows nothing, and Kitty draws the GIF as a
+        // PNG copy after a blank row.
+        assert_eq!(text[0], "");
+        assert!(
+            text[1].contains("f=100") && text[1].contains(";iVBOR"),
+            "{text:?}"
+        );
+        // Data that is not base64 shows as a note.
+        assert_eq!(text.last().unwrap(), "[Image: [image/png] 800x600]");
+        // The image keeps its Kitty id, so an unchanged row is not drawn again.
+        let again: Vec<String> = view.images(80, &ctx).iter().map(lines::plain).collect();
+        assert_eq!(again, text);
+        let result = view.result.as_ref().unwrap();
+        assert_eq!(text_output(result, true), "Read image");
+        assert!(text_output(result, false).contains("[Image: [image/gif] 1x1]"));
+
+        ctx.images = Some(Protocol::Iterm2);
+        let text: Vec<String> = view.images(80, &ctx).iter().map(lines::plain).collect();
+        assert!(
+            text.iter()
+                .any(|row| row.contains("1337;File=") && row.contains(GIF)),
+            "{text:?}"
+        );
+        ctx.images = None;
+        assert!(view.images(80, &ctx).is_empty());
+    }
+
+    #[test]
     fn previews_mcp_output_as_pi() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
         let markdown = yapi_tui::markdown::MarkdownTheme::default();
@@ -1643,6 +1805,9 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            images: None,
+            image_width: 60,
+            cell_size: yapi_tui::image::DEFAULT_CELL,
             mermaid: yapi_types::settings::MermaidMode::Streaming,
             streaming: false,
             transforms: None,
@@ -1717,6 +1882,9 @@ mod tests {
             agent_dir: Path::new("/agent"),
             thinking_label: "Thinking...",
             hyperlinks: false,
+            images: None,
+            image_width: 60,
+            cell_size: yapi_tui::image::DEFAULT_CELL,
             mermaid: yapi_types::settings::MermaidMode::Streaming,
             streaming: false,
             transforms: None,
