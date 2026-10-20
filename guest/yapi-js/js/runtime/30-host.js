@@ -862,8 +862,26 @@
 		"isPersisted",
 		"getChildren",
 	];
-	// The writes `newSession`'s `setup` can make; other contexts get pi's read-only manager.
-	const sessionWrites = ["appendMessage", "appendCustomEntry", "appendSessionInfo"];
+	// pi's writes, for `newSession`'s `setup` only. The host makes appendMessage,
+	// appendCustomEntry and appendSessionInfo and names the others in its error.
+	const sessionWrites = [
+		"setSessionFile",
+		"newSession",
+		"appendMessage",
+		"appendThinkingLevelChange",
+		"appendModelChange",
+		"appendUsage",
+		"appendCompaction",
+		"appendCustomEntry",
+		"appendSessionInfo",
+		"appendCustomMessageEntry",
+		"appendContextEdit",
+		"appendLabelChange",
+		"branch",
+		"resetLeaf",
+		"branchWithSummary",
+		"createBranchedSession",
+	];
 	function createSessionManager(writable = false) {
 		const manager = {};
 		for (const method of sessionMethods) {
