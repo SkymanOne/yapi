@@ -1835,6 +1835,14 @@ fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
+/// `value` without its null fields, as `JSON.stringify` drops undefined ones.
+fn defined(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        object.retain(|_, field| !field.is_null());
+    }
+    value
+}
+
 fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
     let arg = |index: usize| args[index].as_str().map(str::to_owned);
     session.with_session(|file| {
@@ -2404,6 +2412,71 @@ impl Bridge for SessionBridge {
                         Some(model) => Ok(to_json(registry.auth(&model).await.api_key)),
                         None => Ok(Value::Null),
                     }
+                }
+                // pi's `AuthResult`, or nothing for an unknown provider or one
+                // without credentials.
+                "models.auth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let Some(auth) = registry.provider_level_auth(&provider).await else {
+                        return Ok(Value::Null);
+                    };
+                    if let Some(error) = auth.error {
+                        return Err(error);
+                    }
+                    if auth.source.is_none() {
+                        return Ok(Value::Null);
+                    }
+                    let headers = (!auth.headers.is_empty()).then_some(auth.headers);
+                    Ok(defined(json!({
+                        "auth": defined(json!({
+                            "apiKey": auth.api_key,
+                            "headers": headers,
+                            "baseUrl": auth.base_url,
+                        })),
+                        "env": auth.env,
+                        "source": auth.source,
+                    })))
+                }
+                // pi's `ResolvedRequestAuth`: what a request to the model sends.
+                "models.requestAuth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let model = registry.find(&provider, &text(&payload["id"])).cloned();
+                    let auth = match &model {
+                        Some(model) => Some(registry.auth(model).await),
+                        // shortcut: a model the registry lacks gets its provider's
+                        // credentials without its own headers; pass the guest's model to match pi.
+                        None => registry.provider_level_auth(&provider).await,
+                    }
+                    .unwrap_or_default();
+                    if let Some(error) = auth.error {
+                        return Ok(json!({"ok": false, "error": error}));
+                    }
+                    // The model's own headers, under the configured ones, as a request sends them.
+                    let mut headers = serde_json::Map::new();
+                    for (name, value) in model.and_then(|model| model.headers).into_iter().flatten()
+                    {
+                        headers.insert(name, Value::String(value));
+                    }
+                    for (name, value) in auth.headers {
+                        headers.insert(name, to_json(value));
+                    }
+                    let headers = (!headers.is_empty()).then_some(headers);
+                    if auth.source.is_none() {
+                        if registry.auth_header(&provider) {
+                            let error = format!("No API key found for \"{provider}\"");
+                            return Ok(json!({"ok": false, "error": error}));
+                        }
+                        return Ok(defined(json!({"ok": true, "headers": headers})));
+                    }
+                    Ok(defined(json!({
+                        "ok": true,
+                        "apiKey": auth.api_key,
+                        "headers": headers,
+                        "baseUrl": auth.base_url,
+                        "env": auth.env,
+                    })))
                 }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;

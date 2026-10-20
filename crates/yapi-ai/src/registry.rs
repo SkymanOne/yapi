@@ -639,6 +639,21 @@ impl ModelRegistry {
         Some(self.auth(&model).await)
     }
 
+    /// Credentials for `provider` as a whole, with its `models.json` headers
+    /// but no model's, as pi's `getAuth(providerId)`. `None` for a provider
+    /// the registry does not know.
+    pub async fn provider_level_auth(&self, provider: &str) -> Option<Auth> {
+        let known = providers::info(provider).is_some()
+            || self.config.providers.contains_key(provider)
+            || self.oauth.contains_key(provider)
+            || self.models.iter().any(|model| model.provider == provider)
+            || (self.llama && provider == crate::llama::PROVIDER_ID);
+        if !known {
+            return None;
+        }
+        Some(self.auth(&placeholder_model(provider)?).await)
+    }
+
     /// The catalog alone, with no files.
     pub fn builtin() -> ModelRegistry {
         let mut registry = ModelRegistry::default();
@@ -1195,7 +1210,8 @@ impl ModelRegistry {
         };
         if let Some(key) = self.runtime_keys.get(provider) {
             auth.api_key = Some(key.clone());
-            auth.source = Some("--api-key".into());
+            // pi reads a runtime key as a stored credential.
+            auth.source = Some("stored credential".into());
             return auth;
         }
         if let Some(error) = self.store_error(provider) {
@@ -1250,7 +1266,7 @@ impl ModelRegistry {
             match credentials::resolve(key, None, false).await {
                 Some(value) if !value.is_empty() => {
                     auth.api_key = Some(value);
-                    auth.source = Some("models.json".into());
+                    auth.source = Some("configured API key".into());
                 }
                 // pi resolves the configured key or fails, without falling
                 // back to the environment.
@@ -1376,6 +1392,15 @@ impl ModelRegistry {
             .map(|info| info.name.to_owned())
             .or_else(|| self.oauth.get(provider).map(|flow| flow.name().to_owned()))
             .unwrap_or_else(|| provider.to_owned())
+    }
+
+    /// Whether `models.json` or an extension sets `authHeader` for `provider`.
+    pub fn auth_header(&self, provider: &str) -> bool {
+        self.config
+            .providers
+            .get(provider)
+            .and_then(|config| config.auth_header)
+            .unwrap_or(false)
     }
 
     /// Whether `models.json` or an extension configures an `apiKey` for
