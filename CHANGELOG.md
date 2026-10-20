@@ -4,6 +4,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Update rustls-webpki to 0.103.16 and webpki-root-certs to 1.0.10 for RUSTSEC-2026-0382 and RUSTSEC-2026-0383: TLS connections could trust certificates issued through distrusted emSign intermediates ([#193](https://github.com/SkymanOne/yapi/pull/193)).
 - Add inline images to tool results in Kitty, iTerm2 and Herdr terminals, with the "Show images" and "Image width" settings ([#187](https://github.com/SkymanOne/yapi/pull/187)).
 - Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
 
