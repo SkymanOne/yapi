@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d9c7a639.js";
+            window.path_to_searchindex_js = "searchindex-f514ab79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -228,6 +228,9 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>
 <p>Both settings are also in <code>/settings</code>.</p>
+<h2 id="images-in-the-terminal"><a class="header" href="#images-in-the-terminal">Images in the terminal</a></h2>
+<p>In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty’s protocol takes PNG only, so other formats are shown as PNG copies. Other terminals, tmux and screen show a note with the image’s type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.</p>
+<p><code>"terminal": {"showImages": false}</code> turns images off, and <code>"imageWidthCells"</code> sets their preferred width in cells, 60 by default. Both are in <code>/settings</code> when the terminal shows images. Set <code>"terminal": {"images": "kitty"}</code>, <code>"iterm2"</code> or <code>false</code> to override the detection. The <code>PI_IMAGE_PROTOCOL</code> environment variable, <code>kitty</code>, <code>iterm2</code> or <code>none</code>, does the same, and the setting takes precedence.</p>
 <h2 id="links"><a class="header" href="#links">Links</a></h2>
 <p>In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> calls link to their files. In other terminals, a Markdown link shows its URL after its text.</p>
 <p>yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set <code>"terminal": {"hyperlinks": true}</code> or <code>false</code> to override the detection. The <code>PI_HYPERLINKS</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
