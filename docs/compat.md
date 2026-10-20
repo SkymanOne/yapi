@@ -61,4 +61,3 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
 | Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
-| Provider credentials in extensions | `ctx.modelRegistry.getProviderAuth` returns a provider's API key and headers | Rejects. | [#176](https://github.com/SkymanOne/yapi/issues/176) |

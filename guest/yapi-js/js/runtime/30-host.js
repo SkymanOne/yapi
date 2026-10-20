@@ -905,7 +905,12 @@
 			getAvailable: () => yapi.request("models.available", {}),
 			getApiKey: (model) => yapi.op("models.apiKey", { provider: model.provider, id: model.id }),
 			getApiKeyForProvider: (provider) => yapi.op("models.apiKey", { provider }),
-			getProviderAuth: (provider) => yapi.op("models.auth", { provider }),
+			getProviderAuth: async (provider) => (await yapi.op("models.auth", { provider })) ?? undefined,
+			// pi reports a failure in the result and never rejects.
+			getApiKeyAndHeaders: (model) =>
+				yapi
+					.op("models.requestAuth", { provider: model.provider, id: model.id })
+					.catch((error) => ({ ok: false, error: error.message })),
 			isUsingOAuth: (model) => !!yapi.request("models.usingOAuth", { provider: model.provider }),
 			hasConfiguredAuth: (model) => !!yapi.request("models.hasAuth", { provider: model.provider }),
 			getError: () => yapi.request("models.error", {}) ?? undefined,

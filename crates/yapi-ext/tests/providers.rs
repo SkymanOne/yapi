@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use common::{cli_source, engine, options, scratch};
+use common::{cli_source, custom_entries, engine, eventually, options, scratch};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use yapi_ai::api::Apis;
@@ -20,6 +20,7 @@ use yapi_ai::model_catalog::RefreshOptions;
 use yapi_ai::registry::{LoginKind, ModelRegistry};
 use yapi_ai::stream::{EventStream, Request, StreamEvent, StreamOptions};
 use yapi_core::agent_session::{AgentSession, Resources, SessionConfig};
+use yapi_core::extensions::{Mode, NoUi};
 use yapi_core::session::SessionManager;
 use yapi_core::settings::SettingsManager;
 use yapi_ext::ExtensionHost;
@@ -495,5 +496,99 @@ async fn refresh_models_replaces_and_persists_the_model_list() {
     assert_eq!(
         ids(&second),
         [("dyn-live".into(), "Live api_key dyn-key".into())]
+    );
+}
+
+const AUTH_EXTENSION: &str = r#"
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+	const provider = (apiKey) => ({
+		baseUrl: "http://127.0.0.1:9",
+		apiKey,
+		api: "openai-completions",
+		headers: { "X-Team": "yapi" },
+		models: [{ id: "m", name: "M", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100, headers: { "X-Model": "m" } }],
+	});
+	pi.registerProvider("fixture", provider("fixture-key"));
+	pi.registerProvider("broken", provider("!exit 1"));
+	pi.registerCommand("auth", {
+		description: "Reads provider credentials",
+		handler: async (_args, ctx) => {
+			const read = (id) => ctx.modelRegistry.getProviderAuth(id).then((auth) => (auth === undefined ? "undefined" : auth), (error) => error.message);
+			const request = (provider) => ctx.modelRegistry.getApiKeyAndHeaders({ provider, id: "m" });
+			pi.appendEntry("auth", {
+				fixture: await read("fixture"),
+				broken: await read("broken"),
+				missing: await read("missing"),
+				stored: await read("stored"),
+				request: await request("fixture"),
+				brokenRequest: await request("broken"),
+				storedRequest: await request("stored"),
+			});
+		},
+	});
+}
+"#;
+
+/// `getProviderAuth` resolves pi's `AuthResult` for a provider, without its
+/// models' headers, and nothing for an unknown provider or one without
+/// credentials. `getApiKeyAndHeaders` resolves what a request to a model
+/// sends. Both need the network grant.
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_auth_needs_the_network_grant() {
+    let mut entries = Vec::new();
+    for network in [true, false] {
+        let dir = scratch(&format!("provider-auth-{network}"));
+        let path = dir.join("auth.ts");
+        std::fs::write(&path, AUTH_EXTENSION).unwrap();
+        // pi knows no provider "stored", so its credential stays unused.
+        std::fs::create_dir_all(dir.join("agent")).unwrap();
+        std::fs::write(
+            dir.join("agent/auth.json"),
+            r#"{"stored":{"type":"api_key","key":"stored-key"}}"#,
+        )
+        .unwrap();
+        let mut options = options(&dir);
+        options.grants.network = network;
+        let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
+            .await
+            .unwrap();
+        assert!(host.errors().is_empty(), "{:?}", host.errors());
+        let session = AgentSession::new(session_config(&host, &dir));
+        session
+            .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+            .await;
+        session.prompt("/auth", Vec::new()).await.unwrap();
+        eventually("the auth entry", || {
+            !custom_entries(&session, "auth").is_empty()
+        })
+        .await;
+        entries.extend(custom_entries(&session, "auth"));
+    }
+    let denied = "Network access is not permitted for this extension";
+    let broken = "API key auth failed for provider broken: Failed to resolve API key for provider \"broken\" from shell command: exit 1";
+    assert_eq!(
+        entries,
+        [
+            json!({
+                "fixture": {"auth": {"apiKey": "fixture-key", "headers": {"X-Team": "yapi"}}, "source": "configured API key"},
+                "broken": broken,
+                "missing": "undefined",
+                "stored": "undefined",
+                "request": {"ok": true, "apiKey": "fixture-key", "headers": {"X-Model": "m", "X-Team": "yapi"}},
+                "brokenRequest": {"ok": false, "error": broken},
+                "storedRequest": {"ok": true},
+            }),
+            json!({
+                "fixture": denied,
+                "broken": denied,
+                "missing": denied,
+                "stored": denied,
+                "request": {"ok": false, "error": denied},
+                "brokenRequest": {"ok": false, "error": denied},
+                "storedRequest": {"ok": false, "error": denied},
+            }),
+        ]
     );
 }
