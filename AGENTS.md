@@ -78,6 +78,8 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 |---|---|---|---|
 | `Provider` | `yapi-ai` | Stream an assistant message for a model and context. | One per wire API; extension-registered providers |
 | `OAuthProvider` | `yapi-ai` | Log in, refresh, derive an API key from credentials. | Built-in subscriptions; extension-registered providers |
+| `KeyAuth` | `yapi-ai` | Resolve a provider's API key from the stored credential or the environment. | Extension-registered pi-ai providers |
+| `ModelOperations` | `yapi-ai` | Classify and generate images with a provider's models of an API. | Extension-registered providers |
 | `Tool` | `yapi-agent` | Declare a schema; execute with progress updates and cancellation. | Built-in, MCP and extension tools |
 | `AgentHooks` | `yapi-agent` | Intercept the loop: context transform, before and after tool calls, queue reads. | `yapi-core` session, which dispatches to extensions |
 | `Extension` | `yapi-core` | Register capabilities; handle events, tool calls and commands; build components for the transcript items it draws; transform Markdown and render code blocks; refresh the model lists of providers it registers. | Built-ins (MCP); wasm instances in `yapi-ext` |

@@ -59,6 +59,6 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
-| Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
+| Complete pi-ai providers | A `Provider` passed to `registerProvider` can limit its models per account with `filterModels`, and checks for an API key on every availability refresh. `/login` asks for its key with its own prompt. | `filterModels` and `filterAllModels` are ignored. The API key check runs once as the extension loads, and `/login` asks for the key with yapi's prompt. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
 | `newSession` setup | `setup` gets the new session's writable session manager before its extensions start | `setup` runs after the new session's `session_start` and gets the read-only session manager. | [#67](https://github.com/SkymanOne/yapi/issues/67) |
 | Provider credentials in extensions | `ctx.modelRegistry.getProviderAuth` returns a provider's API key and headers | Rejects. | [#176](https://github.com/SkymanOne/yapi/issues/176) |

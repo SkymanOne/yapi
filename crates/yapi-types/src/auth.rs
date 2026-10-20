@@ -45,3 +45,28 @@ pub struct OAuthCredential {
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
+
+/// Request credentials a provider derives, as an extension's provider
+/// returns them.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelAuth {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// `None` removes a header.
+    #[serde(default)]
+    pub headers: IndexMap<String, Option<String>>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+/// A provider's resolved API-key credentials, as an extension's provider
+/// returns them.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct AuthResult {
+    pub auth: ModelAuth,
+    #[serde(default)]
+    pub env: Option<IndexMap<String, String>>,
+    #[serde(default)]
+    pub source: Option<String>,
+}

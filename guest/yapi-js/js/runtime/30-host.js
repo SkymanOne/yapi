@@ -220,13 +220,14 @@
 				action("thinking.set")({ level });
 			},
 			registerProvider(nameOrProvider, config) {
+				let provider;
 				if (typeof nameOrProvider === "string") {
 					if (!config) throw new Error("Provider config is required when registering by name");
-					const provider = { name: nameOrProvider, config: describeProvider(config) };
-					// The code stays here; the host gets the description.
-					Object.defineProperty(provider, "implementation", { value: config });
-					extension.providers.push(provider);
-				} else extension.providers.push({ name: nameOrProvider.id, native: true });
+					provider = { name: nameOrProvider, config: describeProvider(config) };
+				} else provider = { name: nameOrProvider.id, native: true };
+				// The code stays here; the host gets the description.
+				Object.defineProperty(provider, "implementation", { value: config ?? nameOrProvider });
+				extension.providers.push(provider);
 			},
 			unregisterProvider(name) {
 				extension.providers = extension.providers.filter((provider) => provider.name !== name);
@@ -358,9 +359,63 @@
 			if (key === "oauth" && value) out.oauth = { name: value.name, isSubscription: value.isSubscription };
 			else out[key] = plain(value);
 		}
-		out.hasStreamSimple = typeof config.streamSimple === "function";
+		out.streamApis = typeof config.streamSimple === "function" && config.api ? [config.api] : [];
 		out.hasRefreshModels = typeof config.refreshModels === "function";
+		out.hasModifyModels = typeof config.oauth?.modifyModels === "function";
 		return out;
+	}
+	/** Whether `implementation` is a pi-ai `Provider` rather than a provider configuration. */
+	const isProvider = (implementation) => typeof implementation?.getModels === "function";
+	/** A pi-ai `Provider`'s models of every type; none when listing throws, as in pi. */
+	function providerModels(provider) {
+		try {
+			return provider.getAllModels?.() ?? provider.getModels();
+		} catch {
+			return [];
+		}
+	}
+	/** pi-ai's `defaultProviderAuthContext`. */
+	const authContext = {
+		env: async (name) => (process.env[name]?.trim() ? process.env[name] : undefined),
+		fileExists: async (path) => {
+			const { fs, os } = globalThis.__yapi_builtins;
+			return fs.existsSync(path.startsWith("~") ? os.homedir() + path.slice(1) : path);
+		},
+	};
+	/**
+	 * A pi-ai `Provider` described as `describeProvider` describes a
+	 * configuration: its models, the APIs its streams and operations serve,
+	 * and where its API key comes from now when none is stored, as pi's
+	 * availability check finds it.
+	 */
+	async function describeNative(provider) {
+		const models = providerModels(provider);
+		const apis = (type) => [...new Set(models.filter((model) => (model.type ?? "chat") === type).map((model) => model.api))];
+		const byApi = (implemented, type) => (implemented ? Object.fromEntries(apis(type).map((api) => [api, true])) : undefined);
+		const { apiKey, oauth } = provider.auth ?? {};
+		let keyAuth;
+		if (apiKey) {
+			// shortcut: the check runs once as the extension loads, not on each availability refresh as in pi; recheck on refresh once credentials can appear later.
+			const input = { ctx: authContext, signal: new AbortController().signal };
+			const found = await Promise.resolve()
+				.then(() => (apiKey.check ? apiKey.check(input) : apiKey.resolve(input)))
+				.catch(() => undefined);
+			keyAuth = { source: found ? (found.source ?? "configured provider") : null };
+		}
+		return {
+			name: provider.name,
+			baseUrl: provider.baseUrl,
+			// pi-ai's `null` removes a header, which a configuration cannot.
+			headers: provider.headers && Object.fromEntries(Object.entries(provider.headers).filter(([, value]) => value != null)),
+			models: plain(models),
+			oauth: oauth && { name: oauth.name, isSubscription: oauth.isSubscription },
+			keyAuth,
+			// shortcut: an API only refreshed models use streams through yapi's API of that name; describe the APIs again after a refresh once providers add some.
+			streamApis: apis("chat"),
+			images: byApi(typeof provider.generateImages === "function", "image"),
+			classifiers: byApi(typeof provider.classify === "function", "classifier"),
+			hasRefreshModels: typeof provider.refreshModels === "function",
+		};
 	}
 	/** The configuration of provider `name` as last registered, with its code. */
 	function providerConfig(name) {
@@ -457,6 +512,7 @@
 			return { id, path, error: `Failed to load extension: ${errorMessage(error)}` };
 		}
 		extensions.set(id, extension);
+		for (const provider of extension.providers) if (provider.native) provider.config = await describeNative(provider.implementation);
 		return describe(extension);
 	}
 
@@ -1284,11 +1340,32 @@
 			aborts.delete(id);
 		}
 	}
-	/** Runs `run` with provider `payload.provider`'s `oauth` as operation `payload.id`. */
+	/**
+	 * Runs `run` with provider `payload.provider`'s `oauth`, and whether it is
+	 * pi-ai's `OAuthAuth` rather than the legacy form, as operation `payload.id`.
+	 */
 	function withOAuth(payload, run) {
-		const oauth = providerConfig(payload.provider)?.oauth;
+		const config = providerConfig(payload.provider);
+		const oauth = isProvider(config) ? config.auth?.oauth : config?.oauth;
 		if (!oauth) throw new Error(`Provider ${payload.provider} has no OAuth sign-in`);
-		return abortable(payload.id, async (signal) => plain(await run(oauth, signal)) ?? null);
+		return abortable(payload.id, async (signal) => plain(await run(oauth, signal, isProvider(config))) ?? null);
+	}
+	/** Classifies or generates images with `payload.model` through its provider's code, as pi's provider composer picks it. */
+	function operate(payload, kind, method) {
+		const { model, options } = payload;
+		const config = providerConfig(model.provider);
+		const implementation = isProvider(config) ? config : config?.[kind === "image" ? "images" : "classifiers"]?.[model.api];
+		if (typeof implementation?.[method] !== "function") throw new Error(`Provider ${model.provider} has no ${kind} implementation for "${model.api}"`);
+		return abortable(payload.id, async (signal) =>
+			plain(
+				await implementation[method](model, payload.context, {
+					apiKey: orUndefined(options.apiKey),
+					headers: options.headers,
+					temperature: orUndefined(options.temperature),
+					signal,
+				}),
+			),
+		);
 	}
 	/** pi's `lazyStream` message for a stream that failed; pi-ai's facade uses it too. */
 	const setupError = (yapi.setupError = (model, error) => ({
@@ -1534,10 +1611,10 @@
 		},
 		/**
 		 * Streams a response for a model whose API an extension implements:
-		 * its provider's `streamSimple` when the API matches, else the API's
-		 * `registerApiProvider` stream, as pi's provider composer picks. Each
-		 * event goes to the host as it arrives. A stream that throws ends
-		 * with pi's setup error.
+		 * its provider's `streamSimple` when the API matches, or is one its
+		 * pi-ai `Provider`'s models use, else the API's `registerApiProvider`
+		 * stream, as pi's provider composer picks. Each event goes to the
+		 * host as it arrives. A stream that throws ends with pi's setup error.
 		 */
 		async stream(payload) {
 			const { id, model, context } = payload;
@@ -1547,7 +1624,10 @@
 					const config = providerConfig(model.provider);
 					const options = { ...payload.options, signal, ...requestHooks(id, payload.hooks) };
 					let events;
-					if (typeof config?.streamSimple === "function" && config.api === model.api) events = config.streamSimple(model, context, options);
+					const own = isProvider(config)
+						? config.getModels().some((entry) => entry.api === model.api)
+						: typeof config?.streamSimple === "function" && config.api === model.api;
+					if (own) events = config.streamSimple(model, context, options);
 					else {
 						const api = yapi.apiProviders?.get(model.api)?.provider;
 						if (!api) throw new Error(`No API provider registered for api: ${model.api}`);
@@ -1569,34 +1649,60 @@
 			return null;
 		},
 		/**
-		 * Runs provider `provider`'s `oauth.login` with callbacks that reach
-		 * the host's sign-in `id`, as pi's provider composer adapts them.
+		 * Runs provider `provider`'s `oauth.login` with an interaction, or
+		 * legacy callbacks as pi's provider composer adapts them, that reach
+		 * the host's sign-in `id`.
 		 */
 		oauthLogin(payload) {
 			const notify = (event) => yapi.request("oauth.notify", { id: payload.id, event });
 			const prompt = (question) => yapi.op("oauth.prompt", { id: payload.id, prompt: question });
-			return withOAuth(payload, (oauth, signal) =>
-				oauth.login({
-					onAuth: (info) => notify({ type: "auth_url", ...info }),
-					onDeviceCode: (info) => notify({ type: "device_code", ...info }),
-					onPrompt: (question) => prompt({ type: "text", ...question }),
-					onProgress: (message) => notify({ type: "progress", message }),
-					onManualCodeInput: () => prompt({ type: "manual_code", message: "Paste the authorization code" }),
-					onSelect: (question) => prompt({ type: "select", ...question }),
-					signal,
-				}),
+			return withOAuth(payload, (oauth, signal, canonical) =>
+				canonical
+					? oauth.login({ prompt, notify, signal })
+					: oauth.login({
+							onAuth: (info) => notify({ type: "auth_url", ...info }),
+							onDeviceCode: (info) => notify({ type: "device_code", ...info }),
+							onPrompt: (question) => prompt({ type: "text", ...question }),
+							onProgress: (message) => notify({ type: "progress", message }),
+							onManualCodeInput: () => prompt({ type: "manual_code", message: "Paste the authorization code" }),
+							onSelect: (question) => prompt({ type: "select", ...question }),
+							signal,
+						}),
 			);
 		},
 		oauthRefresh(payload) {
-			return withOAuth(payload, (oauth, signal) => oauth.refreshToken(payload.credential, signal));
+			const credential = { type: "oauth", ...payload.credential };
+			return withOAuth(payload, (oauth, signal, canonical) => (canonical ? oauth.refresh(credential, signal) : oauth.refreshToken(credential, signal)));
 		},
+		/** The key a legacy `getApiKey` derives, or the credentials of pi-ai's `toAuth`. */
 		oauthApiKey(payload) {
-			return withOAuth(payload, (oauth) => oauth.getApiKey(payload.credential));
+			const credential = { type: "oauth", ...payload.credential };
+			return withOAuth(payload, (oauth, _signal, canonical) => (canonical ? oauth.toAuth(credential) : oauth.getApiKey(credential)));
+		},
+		/** Provider `provider`'s legacy `oauth.modifyModels` of `models` for `credential`. */
+		modifyModels(payload) {
+			const oauth = providerConfig(payload.provider)?.oauth;
+			if (typeof oauth?.modifyModels !== "function") throw new Error(`Provider ${payload.provider} has no modifyModels`);
+			return plain(oauth.modifyModels(payload.models, { type: "oauth", ...payload.credential }));
+		},
+		/** Provider `provider`'s pi-ai `auth.apiKey.resolve` with the stored `credential`: its result, or `null`. */
+		async keyResolve(payload) {
+			const apiKey = providerConfig(payload.provider)?.auth?.apiKey;
+			if (!apiKey) throw new Error(`Provider ${payload.provider} has no API key auth`);
+			const credential = payload.credential ? { type: "api_key", ...payload.credential } : undefined;
+			return plain(await apiKey.resolve({ ctx: authContext, credential, signal: new AbortController().signal })) ?? null;
+		},
+		classify(payload) {
+			return operate(payload, "classifier", "classify");
+		},
+		generateImages(payload) {
+			return operate(payload, "image", "generateImages");
 		},
 		/**
 		 * Runs one phase of provider `provider`'s `refreshModels`: `{ models }`,
 		 * `null` when it returns none, with the last entry it asked `publish`
-		 * to persist (`null` to delete) as `persist`. The host writes it.
+		 * to persist (`null` to delete) as `persist`. The host writes it. A
+		 * pi-ai `Provider` returns nothing and lists its models after.
 		 */
 		async refreshModels(payload) {
 			const config = providerConfig(payload.provider);
@@ -1616,7 +1722,7 @@
 					},
 				}),
 			);
-			result.models = plain(models) ?? null;
+			result.models = plain(isProvider(config) ? providerModels(config) : models) ?? null;
 			return result;
 		},
 		/**

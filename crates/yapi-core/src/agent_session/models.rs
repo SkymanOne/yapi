@@ -10,6 +10,7 @@ use yapi_types::model::Model;
 use yapi_types::sync::{lock, read, write};
 
 use super::AgentSession;
+use crate::extensions::ModelUpdate;
 
 /// Outcome of a model catalog refresh.
 #[derive(Clone, Debug, Default)]
@@ -274,7 +275,14 @@ impl AgentSession {
         let mut next = (**slot).clone();
         next.apply_catalogs(refreshed.models);
         for (provider, list) in lists {
-            if let Err(error) = list.and_then(|models| next.replace_models(&provider, models))
+            let applied = list.and_then(|update| match update {
+                ModelUpdate::Definitions(models) => next.replace_models(&provider, models),
+                ModelUpdate::Modified(models) => {
+                    next.modify_models(&provider, models);
+                    Ok(())
+                }
+            });
+            if let Err(error) = applied
                 && !options.cancel.is_cancelled()
             {
                 errors.push((provider, error));

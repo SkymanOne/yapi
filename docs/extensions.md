@@ -133,5 +133,8 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 - A provider with its own `streamSimple` can implement an API yapi does not have, or hand requests to pi-ai's built-in APIs, such as `anthropicMessagesApi()`. A stream registered with pi-ai's `registerApiProvider` serves every model of its API, including ones from `models.json`. Provider hooks such as `before_provider_request` run either way.
 - A provider with `oauth` adds its sign-in to `/login`. yapi stores its credentials in `auth.json` and refreshes them before they expire.
 - A provider with `refreshModels` updates its model list whenever yapi refreshes model catalogs.
+- A provider with the legacy `oauth.modifyModels` adjusts its models for the signed-in account whenever yapi refreshes model catalogs.
+- Image and classifier models run through the provider's `images` and `classifiers` implementations for their `api`. Codemode scripts and extensions use them with `generateImages` and `classify`.
+- A complete pi-ai `Provider`, such as one `createProvider` builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh.
 
 Pi's [custom provider documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md) describes the configuration.

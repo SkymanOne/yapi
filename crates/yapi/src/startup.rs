@@ -825,19 +825,11 @@ pub fn models(
     let mut apis = Apis::default();
     for host in &extensions.hosts {
         for provider in host.providers() {
-            let name = provider.name;
-            match serde_json::from_value(provider.config) {
-                Ok(config) => registry.register_config(&name, config),
-                Err(error) if warn => {
-                    eprintln!("Warning: provider \"{name}\" from an extension is invalid: {error}");
-                }
-                Err(_) => {}
-            }
-            if let Some(stream) = provider.stream {
-                apis.register_for(&name, stream);
-            }
-            if let Some(oauth) = provider.oauth {
-                registry.register_oauth(&name, oauth);
+            let name = provider.name.clone();
+            if let Err(error) = provider.install(&mut registry, &mut apis)
+                && warn
+            {
+                eprintln!("Warning: provider \"{name}\" from an extension is invalid: {error}");
             }
         }
         for api in host.apis() {

@@ -23,7 +23,7 @@ yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in 
 - A message shows as written until its `registerMarkdownTransformer` transformers return.
 - yapi shows code in one color. Extensions can color it with `pi.yapi?.registerCodeRenderer`, which Pi does not have.
 - `registerMcpServer` needs the extension's `process` grant for a stdio server and its `network` grant for an HTTP server. With the default grants it behaves as in Pi.
-- `registerProvider` does not take a complete pi-ai `Provider` object, image or classifier models, or `oauth.modifyModels`.
+- A complete pi-ai `Provider` passed to `registerProvider` keeps every model, as yapi ignores `filterModels` and `filterAllModels`. Its API key `check` runs once as the extension loads, and `/login` asks for its key with yapi's prompt, not its `login`.
 
 ## Interface
 

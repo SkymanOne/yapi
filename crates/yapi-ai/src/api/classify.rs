@@ -85,6 +85,25 @@ pub(crate) fn failure_reason(cancel: &CancellationToken) -> OutcomeReason {
     }
 }
 
+/// pi's `classifierErrorResult`: `model`'s result for a classification that
+/// failed with `message`, aborted when `cancel` fired.
+pub fn error_result(
+    model: &ClassifierModel,
+    message: String,
+    cancel: &CancellationToken,
+) -> ClassifierResult {
+    ClassifierResult {
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        answers: IndexMap::new(),
+        usage: None,
+        stop_reason: failure_reason(cancel),
+        error_message: Some(message),
+        timestamp: now_ms(),
+    }
+}
+
 /// POSTs `body` as JSON with pi's retry policy and returns the JSON answer.
 /// Errors read as pi's `formatProviderError` with `prefix`.
 pub(crate) async fn post_json(
