@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-84ff4324.js";
+            window.path_to_searchindex_js = "searchindex-c243f9a8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -199,7 +199,7 @@
 <li>Without the transcript, the current model can write a summary instead. yapi sends the transcript to the model’s provider with your credentials and keeps only the summary.</li>
 </ol>
 <p>yapi writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its <code>report.json</code> leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.</p>
-<p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
+<p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>, with your home folder written as <code>~</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
 <p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
 
                     </main>
