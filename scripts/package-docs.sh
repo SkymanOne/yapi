@@ -64,6 +64,7 @@ tar -xzf "$work/pi.tgz" -C "$work/npm"
     done
 )
 # macOS tar would otherwise add AppleDouble files for extended attributes.
+# shellcheck disable=SC2035 # yapi's pages, none named like an option.
 (cd "$docs" && COPYFILE_DISABLE=1 tar -czf "$out/yapi-docs.tar.gz" .version *.md pi)
 
 cd "$out"

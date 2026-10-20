@@ -20,7 +20,7 @@ Packages can run code and can hold skills that instruct the model to run program
 
 `yapi list` shows each package with its install location. A tag after the source shows its extension kinds: `[npm]` for JavaScript or TypeScript, `[wasm]` for native, or `[npm, wasm]` for both. Packages without extensions, and packages not installed yet, have no tag.
 
-```
+```text
 User packages:
   npm:pi-mcp-adapter [npm]
     /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter

@@ -57,11 +57,12 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored JS. | None |
 | `guest/yapi-extension-api` | Rust SDK for native extensions. | None |
 | `wit/` | Versioned WIT packages shared by host and guests. | None |
-| `install.sh`, `scripts/` | The release installer, and the packaging, notices and install checks the Release workflow runs. | None |
+| `install.sh`, `scripts/` | The release installer, the packaging, notices and install checks the Release workflow runs, and the branch name check the git hooks run. | None |
 | `skills/` | Agent Skills for using yapi and writing its extensions. The repository installs as a package that provides them. | None |
 | `xtask/` | Developer commands: mock server, end-to-end scenarios, benchmarks, model catalog codegen, JS vendoring, `yapi-js.wasm` build. | Build scripts |
 
 Dependency direction:
+
 - `yapi-types` ← `yapi-ai` ← `yapi-agent` ← `yapi-core` ← `yapi-ext` ← `yapi`.
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
@@ -121,6 +122,7 @@ Two tiers share one host, one WIT world and one package format.
 ### Module loading
 
 Module loading runs on the host, in `yapi-ext`:
+
 - `oxc_resolver` handles Node resolution and `oxc_transformer` handles TypeScript, with a content-hash transpile cache.
 - pi host packages resolve to the facade and vendored modules.
 
@@ -190,6 +192,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `cargo deny check`
+- `prek install` installs the git hooks in `.pre-commit-config.yaml`. On commit they run `cargo fmt`, Clippy and checks of whitespace, TOML, YAML, JSON, shell scripts and Markdown, and check the message and the branch name. On push they check the branch name.
 - CI runs the same checks on Linux and macOS. It skips them when a change touches only docs, skills, root Markdown files other than `CHANGELOG.md`, or other workflows.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
 - Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
@@ -248,5 +251,6 @@ Module loading runs on the host, in `yapi-ext`:
 - A change to the architecture or to a decision updates this file in the same commit.
 - A meaningful feature or bug fix adds one line under `## [Unreleased]` in `CHANGELOG.md`, in the same pull request. The line starts with an action word such as Add, Fix, Change or Refactor, says what users notice and ends with links to its pull requests. A stack of pull requests gets one line. Internal, test-only and docs-only changes, and fixes to features not yet released, get none. A release turns the Unreleased lines into its own section.
 - Commit messages use `type(scope): summary`. Type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`; scope is the crate name.
+- Branch names follow [Conventional Branch](https://conventional-branch.github.io/): `main`, or `<type>/<description>`. Type is one of `feature` (or `feat`), `bugfix` (or `fix`), `hotfix`, `release`, `chore`; the description is lowercase letters and digits, with single hyphens or dots between them, such as `release/v1.2.0`.
 - Pull request descriptions state the key changes, behavior changes and decisions. They do not paraphrase commits or report line counts.
 - Stage explicit paths. Never commit secrets, `target/` or local caches.

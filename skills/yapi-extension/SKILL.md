@@ -37,9 +37,11 @@ Choose a Pi extension unless the user asks for Rust or a sandboxed, self-contain
    - Node's built-in modules are shims. `fs`, `path`, `os`, `child_process`, `events`, `stream`, `util`, `crypto` hashes, `buffer`, timers and `fetch` work. Sockets, `http` requests, servers, `worker_threads`, `node:sqlite`, `zlib` compression and `vm` import but throw when used. Use `fetch` for HTTP.
    - Pi's internal classes, such as `SettingsManager` or `ExtensionRunner`, are not available. Stay within `ExtensionAPI`.
 4. Check that it loads, without a model or the network:
+
    ```sh
    python3 scripts/check-extension.py extensions/<name>.ts
    ```
+
    It prints the commands the extension registered and every load error, and exits with 1 on an error. Then try it for real with `yapi -e extensions/<name>.ts` and call its command or ask the model to use its tool.
 5. Consult [references/differences.md](references/differences.md) when something works in Pi but not in yapi.
 
@@ -72,11 +74,13 @@ Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Ru
    | `widgets` (feature `widgets`) | pi-tui's widgets as yapi ports them: `tui::select_list::SelectList`, `tui::editor::Editor`, `CustomEditor` for editor components, `Text`, and `to_ansi` to turn their styled lines into a component's lines |
 
 4. Build, copy the build into the package, then check it loads:
+
    ```sh
    cargo build --release
    cp target/wasm32-wasip2/release/<crate>.wasm extensions/
    python3 scripts/check-extension.py .
    ```
+
 5. The repository's [native examples](https://skymanone.github.io/yapi/native-examples.html) show a command guard, protected paths, a todo list kept per session branch and shown in a component, a footer component, a git status reporter, a subagent that runs another yapi in the foreground or the background, events shared with other extensions, scripts shipped in the package, a modal editor, a question tool with its own rendering, an overlay, a message renderer, an entry renderer, a select list, a terminal input listener with an autocomplete provider and a shortcut, and a countdown that stops with its own result when the run is aborted.
 
 ## Package and share

@@ -1,0 +1,88 @@
+# Git hooks run by prek (https://prek.j178.dev/). Install them with `prek install`.
+minimum_prek_version: "0.5.6"
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+
+# Goldens, generated, vendored and built files, and pi text embedded byte for
+# byte. Their bytes are fixed by pi, by an xtask or by the JS runtime's inputs
+# hash.
+exclude: |
+  (?x)^(
+    tests/fixtures/|
+    guest/yapi-js/js/vendor/|
+    crates/yapi-ai/data/|
+    crates/yapi-ai/src/catalog/data\.rs|
+    crates/yapi/assets/export-html/|
+    crates/yapi-ext/yapi-js\.wasm|
+    crates/yapi-ext/tests/fixtures/|
+    crates/yapi-ext/src/codemode/mcp-types\.ts|
+    crates/yapi-ai/src/auth/oauth-page\.html|
+    (guest/)?Cargo\.lock
+  )
+
+repos:
+  - repo: builtin
+    hooks:
+      # The stages override the push stage these three default to.
+      - id: trailing-whitespace
+        stages: [pre-commit]
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+      - id: check-added-large-files
+        stages: [pre-commit]
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: require-pattern
+        name: "commit message is type(scope): summary"
+        stages: [commit-msg]
+        args:
+          - --multiline
+          - '\A((feat|fix|docs|refactor|test|chore)(\((yapi(-(agent|ai|core|ext|extension-api|js|mock|tui|types))?|xtask)\))?!?: \S|Merge |(Revert|Reapply) "|(amend|fixup|squash)! )'
+
+  - repo: local
+    hooks:
+      - id: branch-name
+        name: conventional branch name
+        language: script
+        entry: scripts/check-branch-name.sh
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: cargo fmt --all
+        types: [rust]
+        exclude: ^guest/
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: cargo clippy --workspace --all-targets --locked -- -D warnings
+        files: (\.rs|Cargo\.toml|clippy\.toml|rust-toolchain\.toml|\.cargo/config\.toml)$
+        exclude: ^guest/
+        pass_filenames: false
+
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: taplo-format
+      - id: taplo-lint
+        # Without schema catalogs, which taplo fetches from the network.
+        args: []
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.3
+    hooks:
+      - id: markdownlint-cli2
+        # mdBook's table of contents, with a heading per part.
+        exclude: ^docs/SUMMARY\.md$

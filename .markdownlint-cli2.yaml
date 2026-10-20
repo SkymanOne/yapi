@@ -1,0 +1,13 @@
+# markdownlint, run by the git hooks. The rules turned off are the docs' house
+# style.
+config:
+  # One line per paragraph.
+  MD013: false
+  # The README's centered logo and badges.
+  MD033: false
+  MD041: false
+  # Tables written as `|---|---|`.
+  MD060: false
+  # The changelog repeats its section names in each release.
+  MD024:
+    siblings_only: true

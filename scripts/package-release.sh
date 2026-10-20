@@ -27,9 +27,8 @@ cp "$binary" "$work/yapi"
 chmod 755 "$work/yapi"
 cp "$root/LICENSE-MIT" "$root/LICENSE-APACHE" "$work/"
 cp "$4" "$work/THIRD-PARTY-NOTICES"
-files="yapi LICENSE-MIT LICENSE-APACHE THIRD-PARTY-NOTICES"
 # macOS tar would otherwise add AppleDouble files for extended attributes.
-(cd "$work" && COPYFILE_DISABLE=1 tar -czf "$out/$name.tar.gz" $files)
+(cd "$work" && COPYFILE_DISABLE=1 tar -czf "$out/$name.tar.gz" yapi LICENSE-MIT LICENSE-APACHE THIRD-PARTY-NOTICES)
 
 cd "$out"
 if command -v sha256sum >/dev/null 2>&1; then
