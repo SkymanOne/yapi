@@ -157,6 +157,7 @@ echo "Installed yapi $installed to $dir/yapi"
 # step fails.
 if [ -n "$docs" ]; then
     agent="${YAPI_CODING_AGENT_DIR:-}"
+    # shellcheck disable=SC2088 # A leading ~/ the shell did not expand.
     case "$agent" in
         "~/"*) agent="${HOME:-}/${agent#\~/}" ;;
     esac

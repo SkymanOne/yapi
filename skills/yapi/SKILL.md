@@ -113,4 +113,4 @@ Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so cod
 2. `yapi auth check --provider <id>` and `yapi --list-models` confirm the model and credentials.
 3. Startup warnings name settings, skills, themes or extensions that failed to load. The interactive header lists the loaded resources, and `--verbose` shows it even when `quietStartup` is set.
 4. In the interface, `/debug` writes what yapi rendered and sent to `~/.yapi/agent/yapi-debug.log`.
-5. When behavior differs from Pi, check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) before treating it as a bug. Report bugs at https://github.com/SkymanOne/yapi/issues.
+5. When behavior differs from Pi, check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) before treating it as a bug. Report bugs at <https://github.com/SkymanOne/yapi/issues>.

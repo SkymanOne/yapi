@@ -1,0 +1,6 @@
+# taplo, run by the git hooks. Keeps the hand-written layout: four-space
+# indents, and arrays on one line or one item per line as written.
+[formatting]
+indent_string = "    "
+array_auto_expand = false
+array_auto_collapse = false

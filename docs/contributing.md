@@ -7,6 +7,7 @@ yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https:/
 - Rust stable. `rust-toolchain.toml` selects it with Clippy and rustfmt, and rustup installs it on the first build.
 - [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) for the license and advisory check: `cargo install --locked cargo-deny`.
 - `rg`, `fd` and `python3` on `PATH` for the tests.
+- [prek](https://prek.j178.dev/) for the git hooks: `cargo install --locked prek` or `brew install prek`. It installs the hooks' own tools when they first run.
 - A checkout of Pi `v1.0.0` (commit `a13d35a`) outside this repository. Read the matching Pi source before changing a behavior.
 - Node.js 22.19 or newer, only to record goldens from Pi or compare with Pi live.
 - A [WASI SDK](https://github.com/WebAssembly/wasi-sdk) and the `wasm32-wasip2` Rust target, only to rebuild the JS runtime with `cargo xtask js-runtime`.
@@ -33,6 +34,8 @@ cargo deny check
 ```
 
 `cargo test` includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.
+
+`prek install` sets up git hooks that run `cargo fmt` and Clippy on every commit, along with checks of whitespace, TOML, shell scripts, Markdown, the commit message and the branch name. `prek run --all-files` runs them on the whole repository. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) gives the rules for commit messages and branch names.
 
 ## Common changes
 
