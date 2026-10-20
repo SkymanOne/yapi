@@ -20,6 +20,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Terminal input listeners | Pi handles each key before the next one reaches them | They run while yapi keeps drawing, so keys that arrive together pass through them together. |
 | Focused component | `tui.focusedComponent` is the component that has the keyboard | The extension's own editor when it replaced yapi's. Otherwise a stand-in, as yapi's editor, selectors and dialogs are not objects in the runtime: an `Editor` with no state while the prompt editor has the keyboard, and an empty object while a selector, a dialog or a component has it. |
 | Autocomplete providers | The editor waits for providers | yapi's editor never waits: `applyCompletion` runs for every suggestion, and `signal` never aborts. Editors from `setEditorComponent` behave as in Pi. |
+| `newSession` setup | `setup` gets the new session's whole `SessionManager` | It reads the session and writes with `appendMessage`, `appendCustomEntry` and `appendSessionInfo`. Other writes throw. |
 | Failing session actions | A throwing `setup` or `withSession` callback ends interactive mode | yapi reports the error and keeps the current session. |
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
@@ -60,5 +61,4 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
 | Full extension providers | `registerProvider` also takes a complete pi-ai `Provider` object, image and classifier models with their implementations, and the legacy `oauth.modifyModels` | A provider configuration only. Those parts are ignored. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
-| `newSession` setup | `setup` gets the new session's writable session manager before its extensions start | `setup` runs after the new session's `session_start` and gets the read-only session manager. | [#67](https://github.com/SkymanOne/yapi/issues/67) |
 | Provider credentials in extensions | `ctx.modelRegistry.getProviderAuth` returns a provider's API key and headers | Rejects. | [#176](https://github.com/SkymanOne/yapi/issues/176) |

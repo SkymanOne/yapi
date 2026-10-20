@@ -26,8 +26,8 @@ use yapi_ai::stream::{
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
     Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, TerminalState, ToolRenderers,
-    Tools, Widget, WorkingIndicator,
+    NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup, TerminalState,
+    ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{Credential, OAuthCredential};
@@ -1876,6 +1876,48 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
     })
 }
 
+/// pi's `SessionManager` appends that `newSession`'s `setup` makes: the new
+/// entry's id.
+fn session_write(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
+    session.with_session(|file| {
+        match method {
+            "appendMessage" => {
+                let message =
+                    serde_json::from_value(args[0].clone()).map_err(|err| err.to_string())?;
+                file.append_message(message)
+            }
+            "appendCustomEntry" => file.append_custom_entry(
+                &text(&args[0]),
+                Some(args[1].clone()).filter(|data| !data.is_null()),
+            ),
+            "appendSessionInfo" => file.append_session_info(&text(&args[0])),
+            other => {
+                return Err(format!(
+                    "sessionManager.{other}() is not available in yapi extensions"
+                ));
+            }
+        }
+        .map(Value::String)
+        .map_err(|err| err.to_string())
+    })
+}
+
+/// `newSession`'s `setup` `id`, which the guest runs against the replacement
+/// session before it binds.
+fn setup(owner: Weak<ExtensionHost>, id: u64) -> Setup {
+    Box::new(move |session| {
+        Box::pin(async move {
+            let Some(host) = owner.upgrade() else {
+                return;
+            };
+            // The guest's requests reach the replacement, which binds next.
+            *lock(&host.bridge.session) = session.downgrade();
+            // The guest rethrows setup's error from `newSession`; a restart reports a trap.
+            let _ = host.instance.call("setup", &json!({ "id": id })).await;
+        })
+    })
+}
+
 impl Bridge for SessionBridge {
     fn log(&self, level: &str, message: &str) {
         if lock(&OUTPUT).is_none() {
@@ -2047,6 +2089,7 @@ impl Bridge for SessionBridge {
                 Ok(ctx_data(Some(&session), ui.as_ref(), mode, trusted, &CancellationToken::new()))
             }
             "session.read" => session_read(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
+            "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
                 session
@@ -2292,6 +2335,7 @@ impl Bridge for SessionBridge {
             ),
         };
         let codemode = self.codemode.clone();
+        let owner = self.owner.get().cloned().unwrap_or_default();
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -2422,6 +2466,7 @@ impl Bridge for SessionBridge {
                     let action = match kind.as_str() {
                         "session.new" => SessionAction::New {
                             parent: payload["parentSession"].as_str().map(str::to_owned),
+                            setup: payload["setup"].as_u64().map(|id| setup(owner, id)),
                         },
                         "session.fork" => SessionAction::Fork {
                             entry_id: text(&payload["entryId"]),
