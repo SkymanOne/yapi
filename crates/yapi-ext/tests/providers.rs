@@ -508,7 +508,7 @@ export default function (pi: ExtensionAPI) {
 		apiKey,
 		api: "openai-completions",
 		headers: { "X-Team": "yapi" },
-		models: [{ id: "m", name: "M", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 }],
+		models: [{ id: "m", name: "M", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100, headers: { "X-Model": "m" } }],
 	});
 	pi.registerProvider("fixture", provider("fixture-key"));
 	pi.registerProvider("broken", provider("!exit 1"));
@@ -516,14 +516,25 @@ export default function (pi: ExtensionAPI) {
 		description: "Reads provider credentials",
 		handler: async (_args, ctx) => {
 			const read = (id) => ctx.modelRegistry.getProviderAuth(id).then((auth) => (auth === undefined ? "undefined" : auth), (error) => error.message);
-			pi.appendEntry("auth", { fixture: await read("fixture"), broken: await read("broken"), missing: await read("missing") });
+			const request = (provider) => ctx.modelRegistry.getApiKeyAndHeaders({ provider, id: "m" });
+			pi.appendEntry("auth", {
+				fixture: await read("fixture"),
+				broken: await read("broken"),
+				missing: await read("missing"),
+				stored: await read("stored"),
+				request: await request("fixture"),
+				brokenRequest: await request("broken"),
+				storedRequest: await request("stored"),
+			});
 		},
 	});
 }
 "#;
 
-/// `getProviderAuth` resolves pi's `AuthResult` for a provider, nothing for
-/// one without credentials, and needs the network grant.
+/// `getProviderAuth` resolves pi's `AuthResult` for a provider, without its
+/// models' headers, and nothing for an unknown provider or one without
+/// credentials. `getApiKeyAndHeaders` resolves what a request to a model
+/// sends. Both need the network grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_auth_needs_the_network_grant() {
     let mut entries = Vec::new();
@@ -531,6 +542,13 @@ async fn provider_auth_needs_the_network_grant() {
         let dir = scratch(&format!("provider-auth-{network}"));
         let path = dir.join("auth.ts");
         std::fs::write(&path, AUTH_EXTENSION).unwrap();
+        // pi knows no provider "stored", so its credential stays unused.
+        std::fs::create_dir_all(dir.join("agent")).unwrap();
+        std::fs::write(
+            dir.join("agent/auth.json"),
+            r#"{"stored":{"type":"api_key","key":"stored-key"}}"#,
+        )
+        .unwrap();
         let mut options = options(&dir);
         options.grants.network = network;
         let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
@@ -549,15 +567,28 @@ async fn provider_auth_needs_the_network_grant() {
         entries.extend(custom_entries(&session, "auth"));
     }
     let denied = "Network access is not permitted for this extension";
+    let broken = "API key auth failed for provider broken: Failed to resolve API key for provider \"broken\" from shell command: exit 1";
     assert_eq!(
         entries,
         [
             json!({
                 "fixture": {"auth": {"apiKey": "fixture-key", "headers": {"X-Team": "yapi"}}, "source": "configured API key"},
-                "broken": "API key auth failed for provider broken: Failed to resolve API key for provider \"broken\" from shell command: exit 1",
+                "broken": broken,
                 "missing": "undefined",
+                "stored": "undefined",
+                "request": {"ok": true, "apiKey": "fixture-key", "headers": {"X-Model": "m", "X-Team": "yapi"}},
+                "brokenRequest": {"ok": false, "error": broken},
+                "storedRequest": {"ok": true},
             }),
-            json!({"fixture": denied, "broken": denied, "missing": denied}),
+            json!({
+                "fixture": denied,
+                "broken": denied,
+                "missing": denied,
+                "stored": denied,
+                "request": {"ok": false, "error": denied},
+                "brokenRequest": {"ok": false, "error": denied},
+                "storedRequest": {"ok": false, "error": denied},
+            }),
         ]
     );
 }

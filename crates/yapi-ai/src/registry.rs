@@ -629,7 +629,7 @@ impl ModelRegistry {
 
     /// Credentials for a provider-level call: those of the provider's first
     /// model, or of a placeholder model of it.
-    pub async fn provider_auth(&self, provider: &str) -> Option<Auth> {
+    async fn provider_auth(&self, provider: &str) -> Option<Auth> {
         let model = self
             .models
             .iter()
@@ -637,6 +637,21 @@ impl ModelRegistry {
             .cloned()
             .or_else(|| placeholder_model(provider))?;
         Some(self.auth(&model).await)
+    }
+
+    /// Credentials for `provider` as a whole, with its `models.json` headers
+    /// but no model's, as pi's `getAuth(providerId)`. `None` for a provider
+    /// the registry does not know.
+    pub async fn provider_level_auth(&self, provider: &str) -> Option<Auth> {
+        let known = providers::info(provider).is_some()
+            || self.config.providers.contains_key(provider)
+            || self.oauth.contains_key(provider)
+            || self.models.iter().any(|model| model.provider == provider)
+            || (self.llama && provider == crate::llama::PROVIDER_ID);
+        if !known {
+            return None;
+        }
+        Some(self.auth(&placeholder_model(provider)?).await)
     }
 
     /// The catalog alone, with no files.
@@ -1377,6 +1392,15 @@ impl ModelRegistry {
             .map(|info| info.name.to_owned())
             .or_else(|| self.oauth.get(provider).map(|flow| flow.name().to_owned()))
             .unwrap_or_else(|| provider.to_owned())
+    }
+
+    /// Whether `models.json` or an extension sets `authHeader` for `provider`.
+    pub fn auth_header(&self, provider: &str) -> bool {
+        self.config
+            .providers
+            .get(provider)
+            .and_then(|config| config.auth_header)
+            .unwrap_or(false)
     }
 
     /// Whether `models.json` or an extension configures an `apiKey` for

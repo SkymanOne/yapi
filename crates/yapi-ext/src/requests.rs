@@ -379,7 +379,7 @@ impl Host {
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
             // Credentials are only good for requests, so they need the network grant.
-            "models.auth" if !self.options.grants.network => {
+            "models.auth" | "models.requestAuth" if !self.options.grants.network => {
                 Box::pin(async { Err(denied("Network access")) })
             }
             "ai.next" => {
