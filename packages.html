@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0ad46228.js";
+            window.path_to_searchindex_js = "searchindex-d9c7a639.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -193,7 +193,7 @@ yapi remove npm:@scope/some-pi-package
 <p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
-<pre><code>User packages:
+<pre><code class="language-text">User packages:
   npm:pi-mcp-adapter [npm]
     /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter
   /home/you/extensions/shout.wasm [wasm]

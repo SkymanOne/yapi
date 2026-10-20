@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0ad46228.js";
+            window.path_to_searchindex_js = "searchindex-d9c7a639.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -721,7 +721,7 @@ yapi remove npm:@scope/some-pi-package
 <p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
-<pre><code>User packages:
+<pre><code class="language-text">User packages:
   npm:pi-mcp-adapter [npm]
     /home/you/.yapi/agent/npm/node_modules/pi-mcp-adapter
   /home/you/extensions/shout.wasm [wasm]
@@ -1826,6 +1826,7 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <li>Rust stable. <code>rust-toolchain.toml</code> selects it with Clippy and rustfmt, and rustup installs it on the first build.</li>
 <li><a href="https://github.com/EmbarkStudios/cargo-deny">cargo-deny</a> for the license and advisory check: <code>cargo install --locked cargo-deny</code>.</li>
 <li><code>rg</code>, <code>fd</code> and <code>python3</code> on <code>PATH</code> for the tests.</li>
+<li><a href="https://prek.j178.dev/">prek</a> for the git hooks: <code>cargo install --locked prek</code> or <code>brew install prek</code>. It installs the hooks’ own tools when they first run.</li>
 <li>A checkout of Pi <code>v1.0.0</code> (commit <code>a13d35a</code>) outside this repository. Read the matching Pi source before changing a behavior.</li>
 <li>Node.js 22.19 or newer, only to record goldens from Pi or compare with Pi live.</li>
 <li>A <a href="https://github.com/WebAssembly/wasi-sdk">WASI SDK</a> and the <code>wasm32-wasip2</code> Rust target, only to rebuild the JS runtime with <code>cargo xtask js-runtime</code>.</li>
@@ -1844,6 +1845,7 @@ cargo test --workspace
 cargo deny check
 </code></pre>
 <p><code>cargo test</code> includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.</p>
+<p><code>prek install</code> sets up git hooks that run <code>cargo fmt</code> and Clippy on every commit, along with checks of whitespace, TOML, shell scripts, Markdown, the commit message and the branch name. <code>prek run --all-files</code> runs them on the whole repository. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> gives the rules for commit messages and branch names.</p>
 <h2 id="common-changes"><a class="header" href="#common-changes">Common changes</a></h2>
 <div class="table-wrapper">
 <table>
