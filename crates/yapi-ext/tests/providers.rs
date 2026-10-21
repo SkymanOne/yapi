@@ -166,6 +166,79 @@ export default function (pi: ExtensionAPI) {
 			fetchModels: async (context) => [{ ...model("n2", `Fetched ${context.credential.key}`), api: "native-api", provider: "native", baseUrl: "http://127.0.0.1:9" }],
 		}),
 	);
+	// A pi-ai provider whose models depend on the account, with its own key prompt.
+	let checks = 0;
+	const tiered = (entry) => ({ ...entry, provider: "tiered", baseUrl: "http://127.0.0.1:9" });
+	const pro = (credential) => credential?.key === "pro";
+	pi.registerProvider(
+		createProvider({
+			id: "tiered",
+			name: "Tiered",
+			auth: {
+				apiKey: {
+					name: "Tiered key",
+					async login(interaction) {
+						const key = await interaction.prompt({ type: "secret", message: "Tiered token:" });
+						return { type: "api_key", key };
+					},
+					check: async ({ credential }) => ({ type: "api_key", source: `check ${++checks} ${credential?.key ?? "ambient"}` }),
+					resolve: async ({ credential }) => ({ auth: { apiKey: credential?.key ?? "ambient" } }),
+				},
+			},
+			models: [
+				tiered({ ...model("basic", "Basic"), api: "tiered-api" }),
+				tiered({ ...model("pro", "Pro"), api: "tiered-api" }),
+				tiered({ type: "image", id: "sketch", name: "Sketch", api: "tiered-images", input: ["text"], output: ["image"], cost }),
+				tiered({ type: "image", id: "paint", name: "Paint", api: "tiered-images", input: ["text"], output: ["image"], cost }),
+			],
+			api: { stream: streamSimple, streamSimple },
+			images: { "tiered-images": { generateImages: async (model) => generated(model, "drawn") } },
+			filterModels: (models, credential) => (pro(credential) ? models : models.filter((entry) => entry.id === "basic")),
+			filterAllModels: (models, credential) => (pro(credential) ? models : models.filter((entry) => entry.id !== "paint")),
+		}),
+	);
+	// Providers registered and unregistered once the session runs.
+	pi.registerCommand("late", {
+		handler: async () => {
+			pi.registerProvider("late", { baseUrl: "http://127.0.0.1:9", apiKey: "late-key", api: "echo-api", models: [model("late-1", "Late")], streamSimple });
+			pi.registerProvider(
+				createProvider({
+					id: "checked",
+					name: "Checked",
+					auth: { apiKey: { name: "Checked key", check: async () => ({ type: "api_key", source: "late check" }), resolve: async () => ({ auth: { apiKey: "k" } }) } },
+					models: [{ ...model("checked-1", "Checked 1"), api: "checked-api", provider: "checked", baseUrl: "http://127.0.0.1:9" }],
+					api: { stream: streamSimple, streamSimple },
+				}),
+			);
+		},
+	});
+	pi.registerCommand("rebase", { handler: async () => pi.registerProvider("late", { baseUrl: "http://127.0.0.1:8", apiKey: undefined }) });
+	pi.registerCommand("proxy", { handler: async () => pi.registerProvider("anthropic", { baseUrl: "http://proxy.example" }) });
+	// A pi-ai provider in a built-in's place, whose slow key check keeps none of its models.
+	pi.registerCommand("shadow", {
+		handler: async () =>
+			pi.registerProvider(
+				createProvider({
+					id: "anthropic",
+					name: "Shadow",
+					auth: {
+						apiKey: {
+							name: "Shadow key",
+							async check() {
+								pi.appendEntry("checking", {});
+								await new Promise((resolve) => setTimeout(resolve, 300));
+								return { type: "api_key", source: "shadow" };
+							},
+							resolve: async () => ({ auth: { apiKey: "k" } }),
+						},
+					},
+					models: [{ ...model("shadow-1", "Shadow"), api: "shadow-api", provider: "anthropic", baseUrl: "http://127.0.0.1:9" }],
+					api: { stream: streamSimple, streamSimple },
+					filterModels: () => [],
+				}),
+			),
+	});
+	pi.registerCommand("drop", { handler: async (name) => pi.unregisterProvider(name) });
 }
 "#;
 
@@ -733,6 +806,262 @@ async fn modify_models_per_account() {
     store.delete("corp", &cancel).await.unwrap();
     session.refresh_model_catalogs(only_corp).await;
     assert_eq!(names(&session), ["Corp 1"]);
+}
+
+/// An offline refresh of the `tiered` provider only.
+fn only_tiered() -> RefreshOptions {
+    RefreshOptions {
+        providers: Some(vec!["tiered".into()]),
+        allow_network: false,
+        ..RefreshOptions::default()
+    }
+}
+
+/// The ids of the `tiered` provider's available models: chat models as
+/// pi's `getAvailable` and `getAvailableOfType("chat")` list them, then
+/// image models.
+fn tiered(registry: &ModelRegistry) -> [Vec<String>; 3] {
+    let ids = |models: Vec<(&String, &String)>| -> Vec<String> {
+        models
+            .into_iter()
+            .filter(|(provider, _)| *provider == "tiered")
+            .map(|(_, id)| id.clone())
+            .collect()
+    };
+    let chat = |models: Vec<&Model>| ids(models.iter().map(|m| (&m.provider, &m.id)).collect());
+    let images = registry.available_image_models();
+    [
+        chat(registry.available()),
+        chat(registry.available_of_all_types()),
+        ids(images.iter().map(|m| (&m.provider, &m.id)).collect()),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn filters_models_per_credential() {
+    let dir = scratch("provider-filter");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    // Without the account's key its filters keep the basic models.
+    // `filterAllModels` decides every type, `filterModels` the model list.
+    assert_eq!(
+        tiered(&session.registry()),
+        [vec!["basic"], vec!["basic", "pro"], vec!["sketch"]]
+    );
+
+    // A refresh filters them for the key stored since.
+    let credential = serde_json::from_value(json!({"type": "api_key", "key": "pro"})).unwrap();
+    let store = Arc::clone(session.registry().store());
+    store
+        .set("tiered", credential, &CancellationToken::new())
+        .await
+        .unwrap();
+    let result = session.refresh_model_catalogs(only_tiered()).await;
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let all = [
+        vec!["basic", "pro"],
+        vec!["basic", "pro"],
+        vec!["sketch", "paint"],
+    ];
+    assert_eq!(tiered(&session.registry()), all);
+
+    // Extensions that load with the key stored filter for it at once, as
+    // `--list-models` lists them.
+    let host = load(&dir).await;
+    assert_eq!(tiered(&registry_and_apis(&host, &dir).0), all);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn check_on_refresh() {
+    let dir = scratch("provider-check");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    let status = |session: &AgentSession| session.registry().login_status("tiered");
+    // The API key check runs as the extension loads, and again with each refresh.
+    assert_eq!(status(&session).as_deref(), Some("check 1 ambient"));
+    session.refresh_model_catalogs(only_tiered()).await;
+    assert_eq!(status(&session).as_deref(), Some("check 2 ambient"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_login_prompt() {
+    let dir = scratch("provider-key-login");
+    let host = load(&dir).await;
+    let (registry, _) = registry_and_apis(&host, &dir);
+    assert_eq!(registry.key_auth("tiered").unwrap().name(), "Tiered key");
+
+    // An API key sign-in asks the provider's own questions.
+    let (interaction, mut requests) = Interaction::new(CancellationToken::new());
+    let ui = tokio::spawn(async move {
+        let mut prompts = Vec::new();
+        while let Some(request) = requests.recv().await {
+            if let AuthRequest::Prompt { prompt, reply, .. } = request {
+                prompts.push(prompt);
+                let _ = reply.send("pro".to_owned());
+            }
+        }
+        prompts
+    });
+    let credential = registry
+        .login(
+            "tiered",
+            LoginKind::ApiKey,
+            &interaction,
+            &LoginOptions::default(),
+        )
+        .await
+        .unwrap();
+    drop(interaction);
+    let secret = AuthPrompt::Secret {
+        message: "Tiered token:".into(),
+    };
+    assert_eq!(ui.await.unwrap(), [secret]);
+    assert_eq!(json!(credential), json!({"type": "api_key", "key": "pro"}));
+    assert_eq!(registry.store().get("tiered"), Some(credential));
+}
+
+/// A session on the test extension's providers, bound to its extensions.
+async fn bound_session(config: SessionConfig) -> AgentSession {
+    let session = AgentSession::new(config);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    session
+}
+
+/// The ids of `provider`'s available models.
+fn available(session: &AgentSession, provider: &str) -> Vec<String> {
+    session
+        .available_models()
+        .into_iter()
+        .filter(|model| model.provider == provider)
+        .map(|model| model.id)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn registers_after_load() {
+    let dir = scratch("provider-late");
+    let host = load(&dir).await;
+    let session = bound_session(session_config(&host, &dir)).await;
+
+    // A command's providers apply at once. A pi-ai provider's key check
+    // runs in the refresh that follows.
+    session.prompt("/late", Vec::new()).await.unwrap();
+    eventually("the late providers", || {
+        available(&session, "late") == ["late-1"] && available(&session, "checked") == ["checked-1"]
+    })
+    .await;
+    let status = session.registry().login_status("checked");
+    assert_eq!(status.as_deref(), Some("late check"));
+    // Its own stream serves its models.
+    let model = session.registry().find("late", "late-1").unwrap().clone();
+    let reply = session
+        .apis()
+        .stream(request(model, CancellationToken::new()))
+        .result()
+        .await
+        .unwrap();
+    assert_eq!(reply.error_message, None);
+
+    // Registering it again merges the values given over the previous ones.
+    session.prompt("/rebase", Vec::new()).await.unwrap();
+    eventually("the merged provider", || {
+        let model = session.registry().find("late", "late-1").cloned();
+        model.is_some_and(|model| model.base_url == "http://127.0.0.1:8")
+    })
+    .await;
+    assert_eq!(available(&session, "late"), ["late-1"]);
+
+    session.prompt("/drop late", Vec::new()).await.unwrap();
+    eventually("the provider to go", || {
+        session.registry().find("late", "late-1").is_none()
+    })
+    .await;
+    assert!(available(&session, "late").is_empty());
+}
+
+const SETUP_EXTENSION: &str = r#"
+import { writeFileSync } from "node:fs";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+	// A setup that ends once the extension has loaded, before its session starts.
+	setTimeout(() => {
+		const model = { id: "setup-1", name: "Setup", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 };
+		pi.registerProvider("setup", { baseUrl: "http://127.0.0.1:9", apiKey: "setup-key", api: "openai-completions", models: [model] });
+		writeFileSync(`${process.cwd()}/registered`, "");
+	}, 0);
+}
+"#;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn registers_before_bind() {
+    let dir = scratch("provider-setup");
+    let path = dir.join("setup.ts");
+    std::fs::write(&path, SETUP_EXTENSION).unwrap();
+    let host = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
+    eventually("the setup", || dir.join("registered").exists()).await;
+    // The session gets it as it starts.
+    let session = bound_session(session_config(&host, &dir)).await;
+    eventually("the provider", || {
+        available(&session, "setup") == ["setup-1"]
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unregister_restores_builtin() {
+    let dir = scratch("provider-restore");
+    let host = load(&dir).await;
+    let mut config = session_config(&host, &dir);
+    config.registry.set_runtime_key("anthropic", "key".into());
+    let builtin = config
+        .registry
+        .models()
+        .iter()
+        .find(|model| model.provider == "anthropic")
+        .unwrap()
+        .clone();
+    let session = bound_session(SessionConfig {
+        model: Some(builtin.clone()),
+        ..config
+    })
+    .await;
+    let base_url = |session: &AgentSession| session.model().unwrap().base_url;
+
+    // An override applies to the current model too, as in pi.
+    session.prompt("/proxy", Vec::new()).await.unwrap();
+    eventually("the override", || {
+        base_url(&session) == "http://proxy.example"
+    })
+    .await;
+
+    session.prompt("/drop anthropic", Vec::new()).await.unwrap();
+    eventually("the built-in", || base_url(&session) == builtin.base_url).await;
+    assert_eq!(
+        session.registry().find("anthropic", &builtin.id),
+        Some(&builtin)
+    );
+
+    // What a refresh found for a provider unregistered meanwhile is dropped,
+    // so the built-in keeps none of its filters.
+    session.prompt("/shadow", Vec::new()).await.unwrap();
+    eventually("the check", || {
+        !custom_entries(&session, "checking").is_empty()
+    })
+    .await;
+    session.prompt("/drop anthropic", Vec::new()).await.unwrap();
+    // Queued behind the refreshes that registering and unregistering started.
+    session
+        .refresh_model_catalogs(RefreshOptions {
+            allow_network: false,
+            ..RefreshOptions::default()
+        })
+        .await;
+    assert!(available(&session, "anthropic").contains(&builtin.id));
 }
 
 const AUTH_EXTENSION: &str = r#"

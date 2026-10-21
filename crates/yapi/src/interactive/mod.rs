@@ -10,7 +10,6 @@ mod cache_notices;
 mod catalogs;
 mod changelog;
 mod chat;
-mod clipboard;
 mod commands;
 mod completions;
 pub mod config_selector;
@@ -46,6 +45,7 @@ use yapi_core::agent_session::{
     AgentSession, Replacement, SessionChange, TreeNavigation, TreeOutcome, UserBash,
 };
 use yapi_core::bash_executor::BashResult;
+use yapi_core::clipboard;
 use yapi_core::extensions::{BashOperations, SessionAction, Setup};
 use yapi_core::extensions::{Mode, NotifyKind};
 use yapi_core::session::SessionManager;
@@ -91,6 +91,8 @@ const PROGRESS_CLEAR: &str = "\x1b]9;4;0\x07";
 const PROGRESS_KEEPALIVE: Duration = Duration::from_secs(1);
 const DOUBLE_PRESS: Duration = Duration::from_millis(500);
 const COLOR_QUERY_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long pi-tui holds a partial keyboard negotiation reply for the rest.
+const NEGOTIATION_FRAGMENT_TIMEOUT: Duration = Duration::from_millis(150);
 const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const STDIN_POLL: Duration = Duration::from_millis(50);
 /// The app's actions that keys trigger from the editor, in the order pi
@@ -252,6 +254,8 @@ enum Dialog {
     ResumeMissingCwd(PathBuf, Reply),
     /// Import a session file.
     Import(String),
+    /// Import a session file whose working directory is gone.
+    ImportMissingCwd(String),
     /// The `/login` method menu, for all providers or these, offering these kinds.
     LoginMenu(
         Option<Vec<login::ProviderOption>>,
@@ -311,9 +315,15 @@ pub struct Options {
     pub model_network: bool,
 }
 
-/// The color mode for this terminal: truecolor when it advertises it.
-fn color_mode() -> ColorMode {
-    if true_color() {
+/// The color mode for this terminal: truecolor when it supports it, or when
+/// `settings` force it with `terminal.trueColor`.
+fn color_mode(settings: Option<&yapi_types::settings::Settings>) -> ColorMode {
+    let setting =
+        match settings.and_then(|settings| settings.terminal.as_ref()?.true_color.as_ref()) {
+            Some(BoolOr::Bool(on)) => Some(*on),
+            _ => None,
+        };
+    if true_color(setting, |name| std::env::var(name).unwrap_or_default()) {
         ColorMode::TrueColor
     } else {
         ColorMode::Ansi256
@@ -347,54 +357,139 @@ fn terminal_leave(protocol: &mut KeyboardProtocol) -> String {
     format!("{BRACKETED_PASTE_DISABLE}{}\x1b[?25h", protocol.disable())
 }
 
-/// Decodes terminal input into keys and bracketed pastes, in order, and
-/// writes back the keyboard protocol's replies.
-fn decode_input(
-    buffer: &mut InputBuffer,
-    protocol: &mut KeyboardProtocol,
-    bytes: &[u8],
-) -> Vec<String> {
-    let mut write = String::new();
-    let mut keys = Vec::new();
-    for input in buffer.push(bytes) {
-        match input {
-            Input::Key(sequence) => {
-                if let Filtered::Forward(forward) = protocol.filter(&sequence, &mut write) {
-                    keys.extend(forward);
-                }
-            }
-            Input::Paste(text) => keys.push(format!("\x1b[200~{text}\x1b[201~")),
-        }
-    }
-    if !write.is_empty() {
-        emit(&write);
-    }
-    keys
+/// Terminal input decoded into keys and bracketed pastes, in order, through
+/// the keyboard protocol filter, on pi-tui's timers: a partial sequence is
+/// released after the input buffer's timeout, and a partial negotiation reply
+/// [`NEGOTIATION_FRAGMENT_TIMEOUT`] after its last piece.
+struct TerminalInput {
+    buffer: InputBuffer,
+    escape_wait: Duration,
+    /// When the input buffer's partial sequence is released.
+    sequence_at: Option<Instant>,
+    /// When the protocol's partial reply is released as input.
+    negotiation_at: Option<Instant>,
 }
 
-fn true_color() -> bool {
-    let env = |name: &str| std::env::var(name).unwrap_or_default();
-    match env("PI_TRUE_COLOR").as_str() {
+impl TerminalInput {
+    fn new() -> TerminalInput {
+        TerminalInput {
+            buffer: InputBuffer::new(),
+            escape_wait: escape_timeout(|name| std::env::var(name).ok()),
+            sequence_at: None,
+            negotiation_at: None,
+        }
+    }
+
+    /// Decodes `bytes` just read, writing back the protocol's replies.
+    fn decode(&mut self, protocol: &mut KeyboardProtocol, bytes: &[u8]) -> Vec<String> {
+        let inputs = self.buffer.push(bytes);
+        let now = Instant::now();
+        self.sequence_at = self.buffer.timeout(self.escape_wait).map(|wait| now + wait);
+        self.filter(protocol, inputs)
+    }
+
+    /// How long until the next held piece is due; `None` when nothing is held.
+    fn wait(&self) -> Option<Duration> {
+        let next = self
+            .sequence_at
+            .into_iter()
+            .chain(self.negotiation_at)
+            .min()?;
+        Some(next.saturating_duration_since(Instant::now()))
+    }
+
+    /// Releases the held pieces that are due.
+    fn expire(&mut self, protocol: &mut KeyboardProtocol) -> Vec<String> {
+        let now = Instant::now();
+        let due = |at: &mut Option<Instant>| at.take_if(|at| *at <= now).is_some();
+        let mut keys = Vec::new();
+        if due(&mut self.negotiation_at) {
+            keys.extend(protocol.flush());
+        }
+        if due(&mut self.sequence_at) {
+            let inputs = self.buffer.flush();
+            keys.extend(self.filter(protocol, inputs));
+        }
+        keys
+    }
+
+    fn filter(&mut self, protocol: &mut KeyboardProtocol, inputs: Vec<Input>) -> Vec<String> {
+        let mut write = String::new();
+        let mut keys = Vec::new();
+        for input in inputs {
+            match input {
+                Input::Key(sequence) => match protocol.filter(&sequence, &mut write) {
+                    Filtered::Forward(forward) => {
+                        self.negotiation_at = None;
+                        keys.extend(forward);
+                    }
+                    Filtered::Pending => {
+                        self.negotiation_at = Some(Instant::now() + NEGOTIATION_FRAGMENT_TIMEOUT)
+                    }
+                },
+                Input::Paste(text) => keys.push(format!("\x1b[200~{text}\x1b[201~")),
+            }
+        }
+        if !write.is_empty() {
+            emit(&write);
+        }
+        keys
+    }
+}
+
+/// A terminal behavior's setting, else whether the pi environment variable
+/// `name` is `1`, as pi's `getShowHardwareCursor` and `getClearOnShrink` read
+/// them.
+fn setting_or_env(setting: Option<bool>, name: &str) -> bool {
+    setting.unwrap_or_else(|| std::env::var(name).as_deref() == Ok("1"))
+}
+
+/// pi-tui's `trueColor` capability: the `terminal.trueColor` setting when
+/// true or false, else `PI_TRUE_COLOR` as `1` or `0`, else whether the
+/// terminal the environment names shows 24-bit color, as pi-tui detects it.
+fn true_color(setting: Option<bool>, var: impl Fn(&str) -> String) -> bool {
+    if let Some(on) = setting {
+        return on;
+    }
+    match var("PI_TRUE_COLOR").as_str() {
         "1" => return true,
         "0" => return false,
         _ => {}
     }
-    let colorterm = env("COLORTERM").to_lowercase();
-    if colorterm == "truecolor" || colorterm == "24bit" {
-        return true;
+    let set = |name: &str| !var(name).is_empty();
+    let (program, term, colorterm) = (
+        var("TERM_PROGRAM").to_lowercase(),
+        var("TERM").to_lowercase(),
+        var("COLORTERM").to_lowercase(),
+    );
+    let hint = colorterm == "truecolor" || colorterm == "24bit" || term.ends_with("-direct");
+    if set("TMUX") || term.starts_with("tmux") || term.starts_with("screen") {
+        return hint;
     }
-    let term = env("TERM");
-    if term.ends_with("-direct") || term == "xterm-kitty" || term == "xterm-ghostty" {
-        return true;
-    }
-    if term.starts_with("screen") || term.starts_with("tmux") || !env("TMUX").is_empty() {
-        return false;
-    }
-    matches!(
-        env("TERM_PROGRAM").as_str(),
-        "iTerm.app" | "WezTerm" | "vscode" | "ghostty" | "WarpTerminal" | "zed" | "Alacritty"
-    ) || !env("WT_SESSION").is_empty()
-        || !env("KITTY_WINDOW_ID").is_empty()
+    let known = [
+        "KITTY_WINDOW_ID",
+        "GHOSTTY_RESOURCES_DIR",
+        "WEZTERM_PANE",
+        "WARP_SESSION_ID",
+        "WARP_TERMINAL_SESSION_UUID",
+        "ITERM_SESSION_ID",
+        "WT_SESSION",
+    ];
+    let programs = [
+        "kitty",
+        "ghostty",
+        "wezterm",
+        "warpterminal",
+        "iterm.app",
+        "alacritty",
+        "vscode",
+        "zed",
+    ];
+    hint || known.into_iter().any(set)
+        || term.contains("ghostty")
+        || programs.contains(&program.as_str())
+        || var("TERMINAL_EMULATOR").eq_ignore_ascii_case("jetbrains-jediterm")
+        || cfg!(windows)
 }
 
 /// pi-tui's `images` capability: the `terminal.images` setting when it names
@@ -751,13 +846,16 @@ pub(crate) fn export_theme(setting: Option<&str>, agent_dir: &Path) -> (Theme, A
 
 /// The configured theme as extensions see it outside the terminal UI, where
 /// no terminal colors are known.
-pub(crate) fn extension_theme(setting: Option<&str>, agent_dir: &Path) -> Value {
+pub(crate) fn extension_theme(
+    settings: &yapi_types::settings::Settings,
+    agent_dir: &Path,
+) -> Value {
     let (theme, _) = load_theme(
-        setting,
+        settings.theme.as_deref(),
         &themes::ThemeFiles::default(),
         agent_dir,
         &yapi_tui::terminal::TerminalColors::default(),
-        color_mode(),
+        color_mode(Some(settings)),
     );
     extension_ui::theme_json(&theme)
 }
@@ -3240,7 +3338,9 @@ impl App {
                 self.status("Resume cancelled");
                 answer(reply, Ok(true));
             }
-            Some(Dialog::Import(_)) => self.status("Import cancelled"),
+            Some(Dialog::Import(_) | Dialog::ImportMissingCwd(_)) => {
+                self.status("Import cancelled");
+            }
             Some(Dialog::LoginMenu(..) | Dialog::Logout) => {}
             Some(Dialog::LoginProviders(kind, _)) => self.providers_cancelled(kind),
             Some(Dialog::LoginSelect) => self.login_select_done(None),
@@ -3336,7 +3436,15 @@ impl App {
             },
             Some(Dialog::Import(path)) => {
                 if index == 0 {
-                    self.import(&path);
+                    self.import(&path, None);
+                } else {
+                    self.status("Import cancelled");
+                }
+            }
+            Some(Dialog::ImportMissingCwd(path)) => {
+                if index == 0 {
+                    let cwd = std::env::current_dir().unwrap_or_else(|_| self.cwd.clone());
+                    self.import(&path, Some(cwd));
                 } else {
                     self.status("Import cancelled");
                 }
@@ -3791,15 +3899,11 @@ impl App {
                 fallback,
                 ..
             }) => {
-                self.dialog = Some(Dialog::ResumeMissingCwd(path.to_path_buf(), reply));
-                self.selector = Some(Selector::Choice(ChoiceDialog::new(
-                    &format!(
-                        "Session cwd not found\ncwd from session file does not exist\n{}\n\ncontinue in current cwd\n{}",
-                        session_cwd.display(),
-                        fallback.display()
-                    ),
-                    &["Yes", "No"],
-                )));
+                self.ask_missing_cwd(
+                    Dialog::ResumeMissingCwd(path.to_path_buf(), reply),
+                    &session_cwd,
+                    &fallback,
+                );
                 return;
             }
             Err(error) => {
@@ -3821,6 +3925,20 @@ impl App {
                 Err(error) => app.fatal("Failed to resume session", &error, None),
             },
         );
+    }
+
+    /// pi's prompt for a session whose working directory is gone; `dialog`
+    /// takes the answer.
+    fn ask_missing_cwd(&mut self, dialog: Dialog, session_cwd: &Path, fallback: &Path) {
+        self.dialog = Some(dialog);
+        self.selector = Some(Selector::Choice(ChoiceDialog::new(
+            &format!(
+                "Session cwd not found\ncwd from session file does not exist\n{}\n\ncontinue in current cwd\n{}",
+                session_cwd.display(),
+                fallback.display()
+            ),
+            &["Yes", "No"],
+        )));
     }
 
     /// Runs `then` once the replacement session's extensions have started,
@@ -4168,7 +4286,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     emit(&terminal_enter(&mut terminal.protocol));
 
     // Wait briefly for the color replies; keys typed meanwhile are kept.
-    let mut buffer = InputBuffer::new();
+    let mut input = TerminalInput::new();
     let mut early: Vec<String> = Vec::new();
     let mut early_events: Vec<Event> = Vec::new();
     let deadline = Instant::now() + COLOR_QUERY_TIMEOUT;
@@ -4179,7 +4297,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         }
         match tokio::time::timeout(remaining, rx.recv()).await {
             Ok(Some(Event::Input(bytes))) => early.extend(
-                decode_input(&mut buffer, &mut terminal.protocol, &bytes)
+                input
+                    .decode(&mut terminal.protocol, &bytes)
                     .into_iter()
                     .filter(|key| !query.consume(key)),
             ),
@@ -4274,7 +4393,6 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     // SIGTERM, or SIGHUP when the terminal goes away; it ends the loop.
     let terminated = crate::modes::rpc::termination();
     tokio::pin!(terminated);
-    let escape_wait = escape_timeout(|name| std::env::var(name).ok());
     let mut last_draw = Instant::now();
     let mut dirty = false;
     while !app.quit {
@@ -4288,9 +4406,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         {
             tick = tick.min(at.saturating_duration_since(Instant::now()));
         }
-        let input_wait = buffer
-            .timeout(escape_wait)
-            .unwrap_or(Duration::from_secs(3600));
+        let input_wait = input.wait();
         #[cfg(unix)]
         let resized = async {
             match resize.as_mut() {
@@ -4312,7 +4428,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 let Some(event) = event else { break };
                 match event {
                     Event::Input(bytes) => {
-                        let mut keys = decode_input(&mut buffer, &mut terminal.protocol, &bytes);
+                        let mut keys = input.decode(&mut terminal.protocol, &bytes);
                         // A pointer move changes at most the scrollbar's
                         // hover; a frame is drawn only when it does.
                         let (decoded, mut hovered) = (keys.len(), false);
@@ -4341,16 +4457,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 }
                 dirty |= redraw;
             }
-            _ = tokio::time::sleep(input_wait) => {
-                let mut keys: Vec<String> = buffer
-                    .flush()
-                    .into_iter()
-                    .filter_map(|input| match input {
-                        Input::Key(key) => Some(key),
-                        _ => None,
-                    })
-                    .collect();
-                keys.extend(terminal.protocol.flush());
+            _ = tokio::time::sleep(input_wait.unwrap_or_default()), if input_wait.is_some() => {
+                let keys = input.expire(&mut terminal.protocol);
                 app.on_keys(keys, &mut terminal);
                 dirty = true;
             }
@@ -4452,7 +4560,7 @@ impl App {
         colors: yapi_tui::terminal::TerminalColors,
         kitty: bool,
     ) -> (App, Option<String>) {
-        let mode = color_mode();
+        let mode = color_mode(Some(&session.settings()));
         let theme_files = themes::ThemeFiles::load(&session.resources().themes);
         let theme_override = options.use_theme.clone();
         let (theme, theme_error) = load_theme(
@@ -4593,11 +4701,22 @@ impl App {
         };
         app.style_alt_screen();
         app.alt.bottom_key = keybindings::keys_display(&app.keys, "tui.altScreen.bottom");
-        app.main.show_hardware_cursor = settings.show_hardware_cursor.unwrap_or(false);
-        app.alt.show_hardware_cursor = app.main.show_hardware_cursor;
-        app.main.clear_on_shrink = terminal.clear_on_shrink.unwrap_or(false);
+        app.apply_screen_settings(&settings);
         app.alt.kitty_images = app.image_protocol == Some(Protocol::Kitty);
         (app, theme_error)
+    }
+
+    /// pi's screen settings of `applyRuntimeSettings`: the hardware cursor
+    /// and clearing on shrink.
+    fn apply_screen_settings(&mut self, settings: &yapi_types::settings::Settings) {
+        let clear = settings
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.clear_on_shrink);
+        self.main.show_hardware_cursor =
+            setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR");
+        self.alt.show_hardware_cursor = self.main.show_hardware_cursor;
+        self.main.clear_on_shrink = setting_or_env(clear, "PI_CLEAR_ON_SHRINK");
     }
 
     /// Starts the current session's extensions once the event that replaced
@@ -5137,6 +5256,30 @@ mod tests {
         );
     }
 
+    /// A per-model thinking level changes the global settings alone, so a
+    /// trusted project's levels stay in the project.
+    #[tokio::test]
+    async fn model_thinking_global_only() {
+        use yapi_types::message::ThinkingLevel;
+        let dir = std::env::temp_dir().join(format!("yapi-model-thinking-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".yapi")).unwrap();
+        let project = r#"{"modelThinkingLevels": {"openai/gpt-5": "high"}}"#;
+        std::fs::write(dir.join(".yapi/settings.json"), project).unwrap();
+        let mut config = config(SessionManager::in_memory(Path::new("/work")));
+        config.settings = yapi_core::settings::SettingsManager::load(&dir, &dir, true);
+        let (mut app, _events) = app_with(AgentSession::new(config));
+        let global = || std::fs::read_to_string(dir.join("settings.json")).unwrap();
+        app.set_model_thinking("anthropic", "claude-opus-4-8", Some(ThinkingLevel::Low));
+        assert_eq!(
+            global(),
+            "{\n  \"modelThinkingLevels\": {\n    \"anthropic/claude-opus-4-8\": \"low\"\n  }\n}"
+        );
+        app.set_model_thinking("anthropic", "claude-opus-4-8", None);
+        assert_eq!(global(), "{}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     /// Clicks on the chat's items against pi's, recorded by
     /// `tests/fixtures/pi/generator/selection.mjs`: the screen text after
     /// each click.
@@ -5217,6 +5360,38 @@ mod tests {
             let event = events.recv().await.unwrap();
             app.on_event(event);
         }
+    }
+
+    /// `/import` of a session whose folder is gone asks to use the current
+    /// one, and declining cancels the import, as in pi.
+    #[tokio::test]
+    async fn import_missing_cwd() {
+        let dir = std::env::temp_dir().join(format!("yapi-import-cwd-{}", std::process::id()));
+        let sessions = dir.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let source = dir.join("x.jsonl");
+        std::fs::write(
+            &source,
+            "{\"type\":\"session\",\"version\":3,\"id\":\"a\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"/nonexistent/gone-dir\"}\n",
+        )
+        .unwrap();
+        let (mut app, mut events) = app();
+        app.session.with_session(|session| {
+            *session = SessionManager::create(Path::new("/work"), &sessions, None).unwrap();
+        });
+        let path = source.display().to_string();
+        app.import(&path, None);
+        assert!(matches!(app.dialog, Some(Dialog::ImportMissingCwd(_))));
+        app.on_choice(1);
+        assert!(matches!(app.chat.last(), Some(Item::Status(text)) if text == "Import cancelled"));
+        app.import(&path, None);
+        app.on_choice(0);
+        replaced(&mut app, &mut events).await;
+        let cwd = app
+            .session
+            .with_session(|session| session.cwd().to_path_buf());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(cwd, std::env::current_dir().unwrap());
     }
 
     /// A session change asked for while the current session shuts down for
@@ -5663,6 +5838,32 @@ mod tests {
         assert_eq!(detect(Some(BoolOr::Bool(true)), &herdr), kitty);
         let kitty_setting = Some(BoolOr::Other(ImageProtocol::Kitty));
         assert_eq!(detect(kitty_setting, &none), kitty);
+    }
+
+    #[test]
+    fn detects_truecolor_terminals() {
+        let detect = |setting: Option<bool>, vars: &[(&str, &str)]| {
+            true_color(setting, |name| {
+                let value = vars.iter().find(|(key, _)| *key == name);
+                value
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_default()
+            })
+        };
+        assert!(detect(None, &[("TERMINAL_EMULATOR", "JetBrains-JediTerm")]));
+        assert!(detect(None, &[("TERM_PROGRAM", "kitty")]));
+        assert!(detect(None, &[("GHOSTTY_RESOURCES_DIR", "/opt/ghostty")]));
+        assert!(!detect(None, &[("TERM_PROGRAM", "Apple_Terminal")]));
+        // tmux and screen go by `COLORTERM` alone.
+        assert!(!detect(
+            None,
+            &[("TMUX", "/tmp/t"), ("KITTY_WINDOW_ID", "1")]
+        ));
+        assert!(detect(None, &[("TERM", "screen"), ("COLORTERM", "24bit")]));
+        // The setting decides over `PI_TRUE_COLOR` and the terminal.
+        let truecolor = [("COLORTERM", "truecolor"), ("PI_TRUE_COLOR", "1")];
+        assert!(!detect(Some(false), &truecolor));
+        assert!(detect(Some(true), &[("PI_TRUE_COLOR", "0")]));
     }
 
     #[test]

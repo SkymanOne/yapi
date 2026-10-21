@@ -1,0 +1,2043 @@
+{
+  "exitCode": 0,
+  "stdout": [
+    {
+      "type": "session",
+      "version": 3
+    },
+    {
+      "type": "compaction_start",
+      "reason": "threshold"
+    },
+    {
+      "type": "compaction_end",
+      "reason": "threshold",
+      "result": {
+        "summary": "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.",
+        "firstKeptEntryId": "<id-1>",
+        "tokensBefore": 20017,
+        "estimatedTokensAfter": "<estimatedTokensAfter>",
+        "usage": {
+          "input": 30000,
+          "output": 200,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "totalTokens": 30200,
+          "cost": {
+            "input": 0.09,
+            "output": 0.003,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.093
+          },
+          "cacheWrite1h": 0
+        },
+        "details": {
+          "readFiles": [],
+          "modifiedFiles": []
+        }
+      },
+      "aborted": false,
+      "willRetry": false
+    },
+    {
+      "type": "agent_start"
+    },
+    {
+      "type": "turn_start"
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "system",
+        "content": "",
+        "sections": {
+          "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+          "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+          "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+          "cwd": "<cwd>\n<cwd>\n</cwd>"
+        },
+        "timestamp": "<timestamp>",
+        "toolsAdded": [
+          {
+            "name": "read",
+            "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to read (relative or absolute)"
+                },
+                "offset": {
+                  "type": "number",
+                  "description": "Line number to start reading from (1-indexed)"
+                },
+                "limit": {
+                  "type": "number",
+                  "description": "Maximum number of lines to read"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "edit",
+            "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "edits"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to edit (relative or absolute)"
+                },
+                "edits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "oldText",
+                      "newText"
+                    ],
+                    "properties": {
+                      "oldText": {
+                        "type": "string",
+                        "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                      },
+                      "newText": {
+                        "type": "string",
+                        "description": "Replacement text for this targeted edit."
+                      }
+                    }
+                  },
+                  "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "write",
+            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to write (relative or absolute)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Content to write to the file"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "system",
+        "content": "",
+        "sections": {
+          "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+          "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+          "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+          "cwd": "<cwd>\n<cwd>\n</cwd>"
+        },
+        "timestamp": "<timestamp>",
+        "toolsAdded": [
+          {
+            "name": "read",
+            "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to read (relative or absolute)"
+                },
+                "offset": {
+                  "type": "number",
+                  "description": "Line number to start reading from (1-indexed)"
+                },
+                "limit": {
+                  "type": "number",
+                  "description": "Maximum number of lines to read"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "number",
+                  "description": "Timeout in seconds (optional, no default timeout)"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "edit",
+            "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "edits"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to edit (relative or absolute)"
+                },
+                "edits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "oldText",
+                      "newText"
+                    ],
+                    "properties": {
+                      "oldText": {
+                        "type": "string",
+                        "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                      },
+                      "newText": {
+                        "type": "string",
+                        "description": "Replacement text for this targeted edit."
+                      }
+                    }
+                  },
+                  "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          },
+          {
+            "name": "write",
+            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+            "parameters": {
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to write (relative or absolute)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Content to write to the file"
+                }
+              }
+            },
+            "constrainedSampling": {
+              "type": "json_schema",
+              "strict": "prefer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Read hello.txt"
+          }
+        ],
+        "timestamp": "<timestamp>"
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Read hello.txt"
+          }
+        ],
+        "timestamp": "<timestamp>"
+      }
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "assistant"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "thinking_start",
+        "contentIndex": 0
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "thinking_delta",
+        "contentIndex": 0,
+        "delta": "I need to read "
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "thinking_delta",
+        "contentIndex": 0,
+        "delta": "the file."
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "thinking_end",
+        "contentIndex": 0,
+        "content": "I need to read the file."
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_start",
+        "contentIndex": 1
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 1,
+        "delta": "Reading it now."
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_end",
+        "contentIndex": 1,
+        "content": "Reading it now."
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_start",
+        "contentIndex": 2,
+        "id": "<id-2>",
+        "toolName": "read"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 2,
+        "delta": ""
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 2,
+        "delta": "{\"path\": \"hel"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_delta",
+        "contentIndex": 2,
+        "delta": "lo.txt\"}"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "toolcall_end",
+        "contentIndex": 2,
+        "toolCall": {
+          "type": "toolCall",
+          "id": "<id-2>",
+          "name": "read",
+          "arguments": {
+            "path": "hello.txt"
+          }
+        }
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "I need to read the file.",
+            "thinkingSignature": "EqQBCkYIBxgCKkBmockSignature=="
+          },
+          {
+            "type": "text",
+            "text": "Reading it now."
+          },
+          {
+            "type": "toolCall",
+            "id": "<id-2>",
+            "name": "read",
+            "arguments": {
+              "path": "hello.txt"
+            }
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "usage": {
+          "input": 1500,
+          "output": 64,
+          "cacheRead": 0,
+          "cacheWrite": 1200,
+          "totalTokens": 2764,
+          "cost": {
+            "input": 0.0045000000000000005,
+            "output": 0.00096,
+            "cacheRead": 0,
+            "cacheWrite": 0.0045,
+            "total": 0.00996
+          },
+          "cacheWrite1h": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": "<timestamp>",
+        "responseId": "<id-3>",
+        "responseModel": "claude-sonnet-4-5-20250929",
+        "rawStopReason": "tool_use",
+        "thinkingLevel": "off"
+      }
+    },
+    {
+      "type": "tool_execution_start",
+      "toolCallId": "<id-2>",
+      "toolName": "read",
+      "args": {
+        "path": "hello.txt"
+      }
+    },
+    {
+      "type": "tool_execution_end",
+      "toolCallId": "<id-2>",
+      "toolName": "read",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "hi\n"
+          }
+        ]
+      },
+      "isError": false
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "<id-2>",
+        "toolName": "read",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi\n"
+          }
+        ],
+        "isError": false,
+        "timestamp": "<timestamp>"
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "toolResult",
+        "toolCallId": "<id-2>",
+        "toolName": "read",
+        "content": [
+          {
+            "type": "text",
+            "text": "hi\n"
+          }
+        ],
+        "isError": false,
+        "timestamp": "<timestamp>"
+      }
+    },
+    {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "I need to read the file.",
+            "thinkingSignature": "EqQBCkYIBxgCKkBmockSignature=="
+          },
+          {
+            "type": "text",
+            "text": "Reading it now."
+          },
+          {
+            "type": "toolCall",
+            "id": "<id-2>",
+            "name": "read",
+            "arguments": {
+              "path": "hello.txt"
+            }
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "usage": {
+          "input": 1500,
+          "output": 64,
+          "cacheRead": 0,
+          "cacheWrite": 1200,
+          "totalTokens": 2764,
+          "cost": {
+            "input": 0.0045000000000000005,
+            "output": 0.00096,
+            "cacheRead": 0,
+            "cacheWrite": 0.0045,
+            "total": 0.00996
+          },
+          "cacheWrite1h": 0
+        },
+        "stopReason": "toolUse",
+        "timestamp": "<timestamp>",
+        "responseId": "<id-3>",
+        "responseModel": "claude-sonnet-4-5-20250929",
+        "rawStopReason": "tool_use",
+        "thinkingLevel": "off"
+      },
+      "toolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "<id-2>",
+          "toolName": "read",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi\n"
+            }
+          ],
+          "isError": false,
+          "timestamp": "<timestamp>"
+        }
+      ]
+    },
+    {
+      "type": "compaction_start",
+      "reason": "threshold"
+    },
+    {
+      "type": "compaction_end",
+      "reason": "threshold",
+      "result": {
+        "summary": "## Goal\nAnswer the questions.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.",
+        "firstKeptEntryId": "<id-4>",
+        "tokensBefore": 2765,
+        "estimatedTokensAfter": "<estimatedTokensAfter>",
+        "usage": {
+          "input": 60000,
+          "output": 400,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "cacheWrite1h": 0,
+          "totalTokens": 60400,
+          "cost": {
+            "input": 0.18,
+            "output": 0.006,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0.186
+          }
+        },
+        "details": {
+          "readFiles": [],
+          "modifiedFiles": []
+        }
+      },
+      "aborted": false,
+      "willRetry": false
+    },
+    {
+      "type": "turn_start"
+    },
+    {
+      "type": "message_start",
+      "message": {
+        "role": "assistant"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_start",
+        "contentIndex": 0
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "contentIndex": 0,
+        "delta": "The file says: hi"
+      }
+    },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_end",
+        "contentIndex": 0,
+        "content": "The file says: hi"
+      }
+    },
+    {
+      "type": "message_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "The file says: hi"
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "usage": {
+          "input": 40,
+          "output": 8,
+          "cacheRead": 1500,
+          "cacheWrite": 0,
+          "totalTokens": 1548,
+          "cost": {
+            "input": 0.00012,
+            "output": 0.00012,
+            "cacheRead": 0.00045,
+            "cacheWrite": 0,
+            "total": 0.00069
+          },
+          "cacheWrite1h": 0
+        },
+        "stopReason": "stop",
+        "timestamp": "<timestamp>",
+        "responseId": "<id-5>",
+        "responseModel": "claude-sonnet-4-5-20250929",
+        "rawStopReason": "end_turn",
+        "thinkingLevel": "off"
+      }
+    },
+    {
+      "type": "turn_end",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "The file says: hi"
+          }
+        ],
+        "api": "anthropic-messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5",
+        "usage": {
+          "input": 40,
+          "output": 8,
+          "cacheRead": 1500,
+          "cacheWrite": 0,
+          "totalTokens": 1548,
+          "cost": {
+            "input": 0.00012,
+            "output": 0.00012,
+            "cacheRead": 0.00045,
+            "cacheWrite": 0,
+            "total": 0.00069
+          },
+          "cacheWrite1h": 0
+        },
+        "stopReason": "stop",
+        "timestamp": "<timestamp>",
+        "responseId": "<id-5>",
+        "responseModel": "claude-sonnet-4-5-20250929",
+        "rawStopReason": "end_turn",
+        "thinkingLevel": "off"
+      },
+      "toolResults": []
+    },
+    {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "cwd": "<cwd>\n<cwd>\n</cwd>"
+          },
+          "timestamp": "<timestamp>",
+          "toolsAdded": [
+            {
+              "name": "read",
+              "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+              "parameters": {
+                "type": "object",
+                "required": [
+                  "path"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to the file to read (relative or absolute)"
+                  },
+                  "offset": {
+                    "type": "number",
+                    "description": "Line number to start reading from (1-indexed)"
+                  },
+                  "limit": {
+                    "type": "number",
+                    "description": "Maximum number of lines to read"
+                  }
+                }
+              },
+              "constrainedSampling": {
+                "type": "json_schema",
+                "strict": "prefer"
+              }
+            },
+            {
+              "name": "bash",
+              "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+              "parameters": {
+                "type": "object",
+                "required": [
+                  "command"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "description": "Shell command to execute"
+                  },
+                  "timeout": {
+                    "type": "number",
+                    "description": "Timeout in seconds (optional, no default timeout)"
+                  }
+                }
+              },
+              "constrainedSampling": {
+                "type": "json_schema",
+                "strict": "prefer"
+              }
+            },
+            {
+              "name": "edit",
+              "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+              "parameters": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "edits"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to the file to edit (relative or absolute)"
+                  },
+                  "edits": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "oldText",
+                        "newText"
+                      ],
+                      "properties": {
+                        "oldText": {
+                          "type": "string",
+                          "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                        },
+                        "newText": {
+                          "type": "string",
+                          "description": "Replacement text for this targeted edit."
+                        }
+                      }
+                    },
+                    "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                  }
+                }
+              },
+              "constrainedSampling": {
+                "type": "json_schema",
+                "strict": "prefer"
+              }
+            },
+            {
+              "name": "write",
+              "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+              "parameters": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to the file to write (relative or absolute)"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Content to write to the file"
+                  }
+                }
+              },
+              "constrainedSampling": {
+                "type": "json_schema",
+                "strict": "prefer"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Read hello.txt"
+            }
+          ],
+          "timestamp": "<timestamp>"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "I need to read the file.",
+              "thinkingSignature": "EqQBCkYIBxgCKkBmockSignature=="
+            },
+            {
+              "type": "text",
+              "text": "Reading it now."
+            },
+            {
+              "type": "toolCall",
+              "id": "<id-2>",
+              "name": "read",
+              "arguments": {
+                "path": "hello.txt"
+              }
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-5",
+          "usage": {
+            "input": 1500,
+            "output": 64,
+            "cacheRead": 0,
+            "cacheWrite": 1200,
+            "totalTokens": 2764,
+            "cost": {
+              "input": 0.0045000000000000005,
+              "output": 0.00096,
+              "cacheRead": 0,
+              "cacheWrite": 0.0045,
+              "total": 0.00996
+            },
+            "cacheWrite1h": 0
+          },
+          "stopReason": "toolUse",
+          "timestamp": "<timestamp>",
+          "responseId": "<id-3>",
+          "responseModel": "claude-sonnet-4-5-20250929",
+          "rawStopReason": "tool_use",
+          "thinkingLevel": "off"
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "<id-2>",
+          "toolName": "read",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi\n"
+            }
+          ],
+          "isError": false,
+          "timestamp": "<timestamp>"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "The file says: hi"
+            }
+          ],
+          "api": "anthropic-messages",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-5",
+          "usage": {
+            "input": 40,
+            "output": 8,
+            "cacheRead": 1500,
+            "cacheWrite": 0,
+            "totalTokens": 1548,
+            "cost": {
+              "input": 0.00012,
+              "output": 0.00012,
+              "cacheRead": 0.00045,
+              "cacheWrite": 0,
+              "total": 0.00069
+            },
+            "cacheWrite1h": 0
+          },
+          "stopReason": "stop",
+          "timestamp": "<timestamp>",
+          "responseId": "<id-5>",
+          "responseModel": "claude-sonnet-4-5-20250929",
+          "rawStopReason": "end_turn",
+          "thinkingLevel": "off"
+        }
+      ],
+      "willRetry": false
+    },
+    {
+      "type": "agent_settled"
+    }
+  ],
+  "stderr": "",
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "query": "beta=true",
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "# Conversation\n[User]: First question\n\n# Instructions\nThe messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.\n\nCreate a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.\n\n## Original Request\n[What did the user ask for?]\n\n## Progress So Far\n- [Key decisions and work completed in these messages]\n\n## Context Needed to Continue\n- [Information from these messages needed to understand the later work]\n\nOnly summarize information explicitly present above. Do not infer or recreate later messages."
+              }
+            ]
+          }
+        ],
+        "max_tokens": 1000,
+        "stream": true,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "query": "beta=true",
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "The conversation history before this point was compacted into the following summary:\n\n<summary>\nNo prior history.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.\n</summary>"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "First answer."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Read hello.txt",
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 1000,
+        "stream": true,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.\n\n<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>\n\n<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n<cwd>\n</cwd>",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tools": [
+          {
+            "name": "read",
+            "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "offset",
+                "limit"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to read (relative or absolute)"
+                },
+                "offset": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Line number to start reading from (1-indexed)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "limit": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Maximum number of lines to read"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "command",
+                "timeout"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Timeout in seconds (optional, no default timeout)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "edit",
+            "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "edits"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to edit (relative or absolute)"
+                },
+                "edits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "oldText",
+                      "newText"
+                    ],
+                    "properties": {
+                      "oldText": {
+                        "type": "string",
+                        "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                      },
+                      "newText": {
+                        "type": "string",
+                        "description": "Replacement text for this targeted edit."
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "write",
+            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to write (relative or absolute)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Content to write to the file"
+                }
+              },
+              "additionalProperties": false
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "query": "beta=true",
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "<conversation>\n[Assistant]: First answer.\n</conversation>\n\n<previous-summary>\nNo prior history.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.\n</previous-summary>\n\nThe messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.\n\nUpdate the existing structured summary with new information. RULES:\n- PRESERVE all existing information from the previous summary\n- ADD new progress, decisions, and context from the new messages\n- UPDATE the Progress section: move items from \"In Progress\" to \"Done\" when completed\n- UPDATE \"Next Steps\" based on what was accomplished\n- PRESERVE exact file paths, function names, and error messages\n- If something is no longer relevant, you may remove it\n\nUse this EXACT format:\n\n## Goal\n[Preserve existing goals, add new ones if the task expanded]\n\n## Constraints & Preferences\n- [Preserve existing, add new ones discovered]\n\n## Progress\n### Done\n- [x] [Include previously done items AND newly completed items]\n\n### In Progress\n- [ ] [Current work - update based on progress]\n\n### Blocked\n- [Current blockers - remove if resolved]\n\n## Key Decisions\n- **[Decision]**: [Brief rationale] (preserve all previous, add new)\n\n## Next Steps\n1. [Update based on current state]\n\n## Critical Context\n- [Preserve important context, add new if needed]\n\nKeep each section concise. Preserve exact file paths, function names, and error messages."
+              }
+            ]
+          }
+        ],
+        "max_tokens": 1000,
+        "stream": true,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "query": "beta=true",
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "# Conversation\n[User]: Read hello.txt\n\n# Instructions\nThe messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.\n\nCreate a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.\n\n## Original Request\n[What did the user ask for?]\n\n## Progress So Far\n- [Key decisions and work completed in these messages]\n\n## Context Needed to Continue\n- [Information from these messages needed to understand the later work]\n\nOnly summarize information explicitly present above. Do not infer or recreate later messages."
+              }
+            ]
+          }
+        ],
+        "max_tokens": 1000,
+        "stream": true,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "query": "beta=true",
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "The conversation history before this point was compacted into the following summary:\n\n<summary>\n## Goal\nAnswer the questions.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.\n</summary>"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "I need to read the file.",
+                "signature": "EqQBCkYIBxgCKkBmockSignature=="
+              },
+              {
+                "type": "text",
+                "text": "Reading it now."
+              },
+              {
+                "type": "tool_use",
+                "id": "<id-2>",
+                "name": "read",
+                "input": {
+                  "path": "hello.txt"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "toolu_mock_01",
+                "content": "hi\n",
+                "is_error": false,
+                "cache_control": {
+                  "type": "ephemeral"
+                }
+              }
+            ]
+          }
+        ],
+        "max_tokens": 1000,
+        "stream": true,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.\n\n<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>\n\n<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>\n\n<cwd>\n<cwd>\n</cwd>",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "tools": [
+          {
+            "name": "read",
+            "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "offset",
+                "limit"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to read (relative or absolute)"
+                },
+                "offset": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Line number to start reading from (1-indexed)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "limit": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Maximum number of lines to read"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "bash",
+            "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "command",
+                "timeout"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "description": "Timeout in seconds (optional, no default timeout)"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "edit",
+            "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "edits"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to edit (relative or absolute)"
+                },
+                "edits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "oldText",
+                      "newText"
+                    ],
+                    "properties": {
+                      "oldText": {
+                        "type": "string",
+                        "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                      },
+                      "newText": {
+                        "type": "string",
+                        "description": "Replacement text for this targeted edit."
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "write",
+            "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+            "eager_input_streaming": true,
+            "strict": true,
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to the file to write (relative or absolute)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Content to write to the file"
+                }
+              },
+              "additionalProperties": false
+            },
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        }
+      }
+    }
+  ],
+  "sessions": [
+    {
+      "file": "2026-10-01T10-00-00-000Z_019a0000-0000-7000-8000-00000000cac1.jsonl",
+      "lines": [
+        {
+          "type": "session",
+          "version": 3,
+          "id": "<id-6>",
+          "timestamp": "<timestamp>",
+          "cwd": "<cwd>"
+        },
+        {
+          "type": "model_change",
+          "id": "<id-7>",
+          "parentId": null,
+          "timestamp": "<timestamp>",
+          "provider": "anthropic",
+          "modelId": "claude-sonnet-4-5"
+        },
+        {
+          "type": "thinking_level_change",
+          "id": "<id-8>",
+          "parentId": "<id-7>",
+          "timestamp": "<timestamp>",
+          "thinkingLevel": "off"
+        },
+        {
+          "type": "message",
+          "id": "<id-9>",
+          "parentId": "<id-8>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "First question"
+              }
+            ],
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-1>",
+          "parentId": "<id-9>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "First answer."
+              }
+            ],
+            "api": "anthropic-messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+            "usage": {
+              "input": 12,
+              "output": 5,
+              "cacheRead": 0,
+              "cacheWrite": 20000,
+              "totalTokens": 20017,
+              "cost": {
+                "input": 0.000036,
+                "output": 0.000075,
+                "cacheRead": 0,
+                "cacheWrite": 0.075,
+                "total": 0.075111
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "compaction",
+          "id": "<id-10>",
+          "parentId": "<id-1>",
+          "timestamp": "<timestamp>",
+          "summary": "No prior history.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.",
+          "firstKeptEntryId": "<id-1>",
+          "tokensBefore": 20017,
+          "details": {
+            "readFiles": [],
+            "modifiedFiles": []
+          },
+          "usage": {
+            "input": 30000,
+            "output": 200,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 30200,
+            "cost": {
+              "input": 0.09,
+              "output": 0.003,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.093
+            },
+            "cacheWrite1h": 0
+          },
+          "fromHook": false
+        },
+        {
+          "type": "message",
+          "id": "<id-11>",
+          "parentId": "<id-10>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "cwd": "<cwd>\n<cwd>\n</cwd>"
+            },
+            "timestamp": "<timestamp>",
+            "toolsAdded": [
+              {
+                "name": "read",
+                "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to read (relative or absolute)"
+                    },
+                    "offset": {
+                      "type": "number",
+                      "description": "Line number to start reading from (1-indexed)"
+                    },
+                    "limit": {
+                      "type": "number",
+                      "description": "Maximum number of lines to read"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "bash",
+                "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "command"
+                  ],
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "description": "Shell command to execute"
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "description": "Timeout in seconds (optional, no default timeout)"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "edit",
+                "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "edits"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to edit (relative or absolute)"
+                    },
+                    "edits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "oldText",
+                          "newText"
+                        ],
+                        "properties": {
+                          "oldText": {
+                            "type": "string",
+                            "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                          },
+                          "newText": {
+                            "type": "string",
+                            "description": "Replacement text for this targeted edit."
+                          }
+                        }
+                      },
+                      "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "write",
+                "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to write (relative or absolute)"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Content to write to the file"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-12>",
+          "parentId": "<id-11>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Read hello.txt"
+              }
+            ],
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-4>",
+          "parentId": "<id-12>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "I need to read the file.",
+                "thinkingSignature": "EqQBCkYIBxgCKkBmockSignature=="
+              },
+              {
+                "type": "text",
+                "text": "Reading it now."
+              },
+              {
+                "type": "toolCall",
+                "id": "<id-2>",
+                "name": "read",
+                "arguments": {
+                  "path": "hello.txt"
+                }
+              }
+            ],
+            "api": "anthropic-messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+            "usage": {
+              "input": 1500,
+              "output": 64,
+              "cacheRead": 0,
+              "cacheWrite": 1200,
+              "totalTokens": 2764,
+              "cost": {
+                "input": 0.0045000000000000005,
+                "output": 0.00096,
+                "cacheRead": 0,
+                "cacheWrite": 0.0045,
+                "total": 0.00996
+              },
+              "cacheWrite1h": 0
+            },
+            "stopReason": "toolUse",
+            "timestamp": "<timestamp>",
+            "responseId": "<id-3>",
+            "responseModel": "claude-sonnet-4-5-20250929",
+            "rawStopReason": "tool_use",
+            "thinkingLevel": "off"
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-13>",
+          "parentId": "<id-4>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "toolResult",
+            "toolCallId": "<id-2>",
+            "toolName": "read",
+            "content": [
+              {
+                "type": "text",
+                "text": "hi\n"
+              }
+            ],
+            "isError": false,
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "compaction",
+          "id": "<id-14>",
+          "parentId": "<id-13>",
+          "timestamp": "<timestamp>",
+          "summary": "## Goal\nAnswer the questions.\n\n---\n\n**Turn Context (split turn):**\n\n## Goal\nAnswer the questions.",
+          "firstKeptEntryId": "<id-4>",
+          "tokensBefore": 2765,
+          "details": {
+            "readFiles": [],
+            "modifiedFiles": []
+          },
+          "usage": {
+            "input": 60000,
+            "output": 400,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "cacheWrite1h": 0,
+            "totalTokens": 60400,
+            "cost": {
+              "input": 0.18,
+              "output": 0.006,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.186
+            }
+          },
+          "fromHook": false,
+          "systemMessage": {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "cwd": "<cwd>\n<cwd>\n</cwd>"
+            },
+            "toolsAdded": [
+              {
+                "name": "read",
+                "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to read (relative or absolute)"
+                    },
+                    "offset": {
+                      "type": "number",
+                      "description": "Line number to start reading from (1-indexed)"
+                    },
+                    "limit": {
+                      "type": "number",
+                      "description": "Maximum number of lines to read"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "bash",
+                "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "command"
+                  ],
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "description": "Shell command to execute"
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "description": "Timeout in seconds (optional, no default timeout)"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "edit",
+                "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "edits"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to edit (relative or absolute)"
+                    },
+                    "edits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "oldText",
+                          "newText"
+                        ],
+                        "properties": {
+                          "oldText": {
+                            "type": "string",
+                            "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+                          },
+                          "newText": {
+                            "type": "string",
+                            "description": "Replacement text for this targeted edit."
+                          }
+                        }
+                      },
+                      "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              },
+              {
+                "name": "write",
+                "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+                "parameters": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path to the file to write (relative or absolute)"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Content to write to the file"
+                    }
+                  }
+                },
+                "constrainedSampling": {
+                  "type": "json_schema",
+                  "strict": "prefer"
+                }
+              }
+            ],
+            "timestamp": "<timestamp>"
+          }
+        },
+        {
+          "type": "message",
+          "id": "<id-15>",
+          "parentId": "<id-14>",
+          "timestamp": "<timestamp>",
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "The file says: hi"
+              }
+            ],
+            "api": "anthropic-messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+            "usage": {
+              "input": 40,
+              "output": 8,
+              "cacheRead": 1500,
+              "cacheWrite": 0,
+              "totalTokens": 1548,
+              "cost": {
+                "input": 0.00012,
+                "output": 0.00012,
+                "cacheRead": 0.00045,
+                "cacheWrite": 0,
+                "total": 0.00069
+              },
+              "cacheWrite1h": 0
+            },
+            "stopReason": "stop",
+            "timestamp": "<timestamp>",
+            "responseId": "<id-5>",
+            "responseModel": "claude-sonnet-4-5-20250929",
+            "rawStopReason": "end_turn",
+            "thinkingLevel": "off"
+          }
+        }
+      ]
+    }
+  ]
+}

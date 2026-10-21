@@ -221,6 +221,11 @@ impl Pty {
         self.lock().shown.rows(0, self.cols).collect()
     }
 
+    /// Whether the program hides the cursor, as of the last complete frame.
+    pub fn cursor_hidden(&self) -> bool {
+        self.lock().shown.hide_cursor()
+    }
+
     /// The OSC 9;4 progress sequences the program wrote so far, in order,
     /// such as `"9;4;3"`.
     pub fn progress(&self) -> Vec<String> {

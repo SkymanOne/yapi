@@ -914,10 +914,78 @@
       "type": "response",
       "command": "parse",
       "success": false,
-      "error": "<parse error>"
+      "error": "Failed to parse command: Unexpected token 'o', \"not json\" is not valid JSON"
+    },
+    {
+      "type": "response",
+      "command": "parse",
+      "success": false,
+      "error": "Failed to parse command: Unexpected non-whitespace character after JSON at position 21 (line 1 column 22)"
+    },
+    {
+      "type": "response",
+      "command": "parse",
+      "success": false,
+      "error": "Failed to parse command: Expected ',' or '}' after property value in JSON at position 31 (line 1 column 32)"
     },
     {
       "id": "<id-11>",
+      "type": "response",
+      "command": "set_model",
+      "success": false,
+      "error": "Model not found: undefined/undefined"
+    },
+    {
+      "id": "<id-12>",
+      "type": "response",
+      "command": "set_model",
+      "success": false,
+      "error": "Model not found: anthropic/null"
+    },
+    {
+      "id": "<id-13>",
+      "type": "response",
+      "command": "prompt",
+      "success": false,
+      "error": "Cannot read properties of undefined (reading 'startsWith')"
+    },
+    {
+      "id": "<id-14>",
+      "type": "response",
+      "command": "steer",
+      "success": false,
+      "error": "text.startsWith is not a function"
+    },
+    {
+      "id": "<id-15>",
+      "type": "response",
+      "command": "switch_session",
+      "success": false,
+      "error": "Cannot read properties of undefined (reading 'startsWith')"
+    },
+    {
+      "id": "<id-16>",
+      "type": "response",
+      "command": "set_session_name",
+      "success": false,
+      "error": "Cannot read properties of null (reading 'trim')"
+    },
+    {
+      "id": "<id-17>",
+      "type": "response",
+      "command": "fork",
+      "success": false,
+      "error": "Invalid entry ID for forking"
+    },
+    {
+      "id": "<id-18>",
+      "type": "response",
+      "command": "get_entries",
+      "success": false,
+      "error": "Entry not found: 5"
+    },
+    {
+      "id": "<id-19>",
       "type": "response",
       "command": "set_session_name",
       "success": false,
@@ -935,7 +1003,7 @@
       "errorMessage": "Compaction failed: Nothing to compact (session too small)"
     },
     {
-      "id": "<id-12>",
+      "id": "<id-20>",
       "type": "response",
       "command": "compact",
       "success": false,

@@ -36,6 +36,10 @@ fn session(faux: &Faux) -> AgentSession {
 }
 
 fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
+    session_resources(provider, Resources::default())
+}
+
+fn session_resources(provider: Arc<dyn Provider>, resources: Resources) -> AgentSession {
     let model = faux_model();
     let mut registry = ModelRegistry::builtin();
     registry.register_provider("faux", vec![model.clone()]);
@@ -56,7 +60,7 @@ fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
         include_extension_tools: false,
         allowed_tools: None,
         excluded_tools: Vec::new(),
-        resources: Resources::default(),
+        resources,
         docs: yapi_core::docs::Locations::default(),
     })
 }
@@ -385,4 +389,154 @@ async fn write_error_reported_once() {
         notes[0].starts_with("Failed to save session: "),
         "{notes:?}"
     );
+}
+
+/// pi's `getLastAssistantText` reads only the last assistant message.
+#[tokio::test]
+async fn last_text_after_error() {
+    let faux = Faux::new([Response::text("one"), Response::error("boom")]);
+    let session = session(&faux);
+    session.prompt("first", Vec::new()).await.unwrap();
+    assert_eq!(session.last_assistant_text().as_deref(), Some("one"));
+    session.prompt("second", Vec::new()).await.unwrap();
+    assert_eq!(session.last_assistant_text(), None);
+}
+
+/// Records the extension errors reported to it.
+#[derive(Default)]
+struct Errors(std::sync::Mutex<Vec<String>>);
+
+impl yapi_core::extensions::ExtensionUi for Errors {
+    fn has_ui(&self) -> bool {
+        false
+    }
+    fn notify(&self, _message: &str, _kind: yapi_core::extensions::NotifyKind) {}
+    fn extension_error(&self, path: &str, event: &str, error: &str, _stack: Option<&str>) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("{event} {path}: {error}"));
+    }
+}
+
+/// A `/skill:` name ends at a space only; an unreadable skill file is
+/// reported and leaves the prompt as typed, as in pi.
+#[tokio::test]
+async fn skill_split_space() {
+    let dir = std::env::temp_dir().join(format!("yapi-skill-split-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("SKILL.md");
+    std::fs::write(&file, "---\nname: review\ndescription: d\n---\nBody\n").unwrap();
+    let skill = |name: &str, file_path: &Path| yapi_types::system_prompt::Skill {
+        name: name.into(),
+        file_path: file_path.to_path_buf(),
+        base_dir: dir.clone(),
+        ..Default::default()
+    };
+    let faux = Faux::new([
+        Response::text("a"),
+        Response::text("b"),
+        Response::text("c"),
+    ]);
+    let resources = Resources {
+        skills: vec![skill("review", &file), skill("gone", &dir.join("gone.md"))],
+        ..Resources::default()
+    };
+    let session = session_resources(Arc::new(faux.clone()), resources);
+    let errors = Arc::new(Errors::default());
+    session
+        .bind_extensions(
+            errors.clone(),
+            yapi_core::extensions::Mode::Print,
+            None,
+            None,
+        )
+        .await;
+    for prompt in [
+        "/skill:review\tfocus",
+        "/skill:review  focus ",
+        "/skill:gone x",
+    ] {
+        session.prompt(prompt, Vec::new()).await.unwrap();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let sent: Vec<String> = faux
+        .requests()
+        .iter()
+        .map(|messages| match messages.last().unwrap() {
+            Message::User(user) => user.content.text(""),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let block = format!(
+        "<skill name=\"review\" location=\"{}\">\nReferences are relative to {}.\n\nBody\n</skill>",
+        file.display(),
+        dir.display()
+    );
+    assert_eq!(
+        sent,
+        [
+            "/skill:review\tfocus".to_owned(),
+            format!("{block}\n\nfocus"),
+            "/skill:gone x".to_owned(),
+        ]
+    );
+    let gone = dir.join("gone.md");
+    assert_eq!(
+        *errors.0.lock().unwrap(),
+        [format!(
+            "skill_expansion {}: ENOENT: no such file or directory, open '{}'",
+            gone.display(),
+            gone.display()
+        )]
+    );
+}
+
+/// The faux provider, queueing two steering messages and switching the
+/// steering mode to `all` while its first request streams.
+struct SteerOnce {
+    faux: Faux,
+    session: Arc<std::sync::OnceLock<AgentSession>>,
+    done: AtomicBool,
+}
+
+impl Provider for SteerOnce {
+    fn api(&self) -> &str {
+        "faux"
+    }
+
+    fn stream(&self, request: Request) -> EventStream {
+        if !self.done.swap(true, Ordering::SeqCst) {
+            let session = self.session.get().unwrap();
+            session.steer("s1", Vec::new());
+            session.steer("s2", Vec::new());
+            session.set_steering_mode(Some("all".into())).unwrap();
+        }
+        self.faux.stream(request)
+    }
+}
+
+/// A steering mode change applies to the running agent, as in pi.
+#[tokio::test]
+async fn steering_mode_live() {
+    let faux = Faux::new([
+        Response::tool_call("call-1", "missing", serde_json::json!({})),
+        Response::text("done"),
+    ]);
+    let cell = Arc::new(std::sync::OnceLock::new());
+    let session = session_with(Arc::new(SteerOnce {
+        faux: faux.clone(),
+        session: cell.clone(),
+        done: AtomicBool::new(false),
+    }));
+    let _ = cell.set(session.clone());
+    session.prompt("go", Vec::new()).await.unwrap();
+    let users: Vec<String> = faux.requests()[1]
+        .iter()
+        .filter_map(|message| match message {
+            Message::User(user) => Some(user.content.text("")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["go", "s1", "s2"]);
 }

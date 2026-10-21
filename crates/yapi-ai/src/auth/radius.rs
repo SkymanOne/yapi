@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use yapi_types::auth::OAuthCredential;
 
-use super::callback::{Reply, Server, error_page, query, success_page};
+use super::callback::start_code_server;
 use super::device::{DEVICE_CODE_GRANT, Poll, poll_device_code};
 use super::{
     AuthError, AuthEvent, AuthPrompt, BoxFuture, Interaction, LoginOptions, OAuthProvider, form,
@@ -125,7 +125,8 @@ impl RadiusOAuth {
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
-            expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(TOKEN_EXPIRY_SKEW_MS),
+            expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(TOKEN_EXPIRY_SKEW_MS)
+                as f64,
             extra,
         }))
     }
@@ -151,8 +152,8 @@ impl RadiusOAuth {
         let endpoint = discovery["authorizationEndpoint"].as_str().ok_or_else(|| {
             AuthError::Failed(format!("Invalid Radius OAuth config from {}", self.gateway))
         })?;
-        let pkce = pkce::generate();
-        let state = yapi_types::time::uuid_v4();
+        let pkce = pkce::generate()?;
+        let state = yapi_types::time::try_uuid_v4().map_err(AuthError::random)?;
         let redirect_uri = self.redirect_uri();
         let mut authorize =
             Url::parse(endpoint).map_err(|err| AuthError::Failed(err.to_string()))?;
@@ -166,39 +167,14 @@ impl RadiusOAuth {
             ("handoff", "url"),
             ("state", &state),
         ])));
-        let expected_state = state.clone();
-        let handler = move |method: &str, url: &Url| -> Reply<String> {
-            if method != "GET" || url.path() != CALLBACK_PATH {
-                return Reply::page(404, error_page("Callback route not found.", None));
-            }
-            if query(url, "state").as_deref() != Some(expected_state.as_str()) {
-                return Reply::page(400, error_page("State mismatch.", None));
-            }
-            if let Some(error) = query(url, "error") {
-                let description = query(url, "error_description").unwrap_or(error);
-                return Reply {
-                    status: 400,
-                    html: error_page("Radius authorization failed.", Some(&description)),
-                    outcome: Some(Err(AuthError::Failed(format!(
-                        "Radius authorization failed: {description}"
-                    )))),
-                };
-            }
-            match query(url, "code").filter(|code| !code.is_empty()) {
-                Some(code) => Reply {
-                    status: 200,
-                    html: success_page("Signed in to Radius. You may now close this page."),
-                    outcome: Some(Ok(code)),
-                },
-                None => Reply::page(400, error_page("Missing authorization code.", None)),
-            }
-        };
-        let mut server = Server::start(
+        let mut server = start_code_server(
+            "Radius",
             CALLBACK_HOST,
             self.callback_port,
             CALLBACK_PATH,
+            Some(state),
+            true,
             cancel,
-            Box::new(handler),
         )
         .await
         .map_err(|err| AuthError::Failed(err.to_string()))?;
@@ -209,20 +185,25 @@ impl RadiusOAuth {
             url: authorize.to_string(),
             instructions: Some("Continue in your browser.".into()),
         });
-        let code = server.wait().await?;
-        drop(server);
-        self.token(
-            &[
-                ("grant_type", "authorization_code"),
-                ("client_id", CLIENT_ID),
-                ("redirect_uri", &redirect_uri),
-                ("code", &code),
-                ("code_verifier", &pkce.verifier),
-            ],
-            cancel,
-        )
-        .await?
-        .map_err(|failure| AuthError::Failed(failure.message))
+        let (code, page) = server.wait_pending().await?;
+        // pi exchanges the code before the browser's page, which then shows the result.
+        let result = self
+            .token(
+                &[
+                    ("grant_type", "authorization_code"),
+                    ("client_id", CLIENT_ID),
+                    ("redirect_uri", &redirect_uri),
+                    ("code", &code),
+                    ("code_verifier", &pkce.verifier),
+                ],
+                cancel,
+            )
+            .await
+            .and_then(|result| result.map_err(|failure| AuthError::Failed(failure.message)));
+        if let Some(page) = page {
+            page.finish("Radius", &result).await;
+        }
+        result
     }
 
     async fn login_device(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {

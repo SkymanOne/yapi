@@ -731,42 +731,6 @@ fn retention_hint(message: &str) -> String {
     }
 }
 
-/// V8's `JSON.parse` message for a body that is not JSON.
-fn json_parse_error(text: &str) -> String {
-    let err = match serde_json::from_str::<Value>(text) {
-        Ok(_) => return String::new(),
-        Err(err) => err,
-    };
-    if text.trim().is_empty() || err.is_eof() {
-        return "Unexpected end of JSON input".into();
-    }
-    // serde reports the 1-based column after the offending character.
-    let line_start: usize = text
-        .split_inclusive('\n')
-        .take(err.line().saturating_sub(1))
-        .map(|line| line.chars().count())
-        .sum();
-    let chars: Vec<char> = text.chars().collect();
-    let position = (line_start + err.column().saturating_sub(1)).min(chars.len().saturating_sub(1));
-    let token = chars[position];
-    let slice =
-        |from: usize, to: usize| chars[from..to.min(chars.len())].iter().collect::<String>();
-    const CONTEXT: usize = 10;
-    let source = if chars.len() < CONTEXT * 2 + 1 {
-        format!("\"{text}\"")
-    } else if position < CONTEXT {
-        format!("\"{}\"...", slice(0, position + CONTEXT))
-    } else if position + CONTEXT >= chars.len() {
-        format!("...\"{}\"", slice(position - CONTEXT, chars.len()))
-    } else {
-        format!(
-            "...\"{}\"...",
-            slice(position - CONTEXT, position + CONTEXT)
-        )
-    };
-    format!("Unexpected token '{token}', {source} is not valid JSON")
-}
-
 /// The SDK's error for a non-2xx response.
 fn response_failure(status: u16, headers: &reqwest::header::HeaderMap, body: &str) -> Failure {
     let header = |name: &str| {
@@ -785,7 +749,7 @@ fn response_failure(status: u16, headers: &reqwest::header::HeaderMap, body: &st
         return Failure {
             message: format!(
                 "{}\n  Deserialization error: to see the raw response, inspect the hidden field {{error}}.$response on this object.",
-                json_parse_error(body)
+                crate::json_parse::js_parse_error(body).unwrap_or_default()
             ),
             status: Some(status),
             code: None,
@@ -864,7 +828,8 @@ fn max_attempts(options: &StreamOptions) -> u32 {
 fn retry_delay(attempt: u32, throttled: bool) -> Duration {
     let base: u64 = if throttled { 500 } else { 100 };
     let ceiling = (base << attempt.min(16)).min(20_000);
-    let random = u64::from_le_bytes(yapi_types::time::random_bytes());
+    // Like the SDK's `Math.random`, jitter never fails; without the generator it is 0.
+    let random = u64::from_le_bytes(yapi_types::time::try_random_bytes().unwrap_or_default());
     let fraction = (random % 10_000) as f64 / 10_000.0;
     Duration::from_millis((ceiling as f64 * fraction) as u64)
 }
@@ -1151,6 +1116,7 @@ async fn consume(
                 Err(message) => return Err(plain(message)),
             };
         let Some(bytes) = chunk else {
+            decoder.finish().map_err(plain)?;
             break;
         };
         decoder.push(&bytes);
@@ -1341,10 +1307,6 @@ mod tests {
         assert_eq!(
             response_failure(502, &none, "<html>Bad Gateway</html>").message,
             "Unexpected token '<', \"<html>Bad \"... is not valid JSON\n  Deserialization error: to see the raw response, inspect the hidden field {error}.$response on this object."
-        );
-        assert_eq!(
-            json_parse_error("Forbidden by gateway"),
-            "Unexpected token 'F', \"Forbidden by gateway\" is not valid JSON"
         );
         assert!(response_failure(502, &none, "x").retryable);
         assert!(!response_failure(403, &none, "{}").retryable);

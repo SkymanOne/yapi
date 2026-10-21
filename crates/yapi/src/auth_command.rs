@@ -390,7 +390,7 @@ async fn credential_for_print(
             let min = command
                 .min_expiry_ms
                 .unwrap_or(DEFAULT_BEARER_MIN_EXPIRY_MS);
-            registry.auth_valid_for(model, min).await
+            registry.auth_valid_for(model, Some(min)).await
         } else {
             registry.auth(model).await
         };

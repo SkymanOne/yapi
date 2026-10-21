@@ -68,6 +68,20 @@ fn prompt_input(input: &str) -> String {
     input.to_owned()
 }
 
+/// The texts appended to the system prompt: the `--append-system-prompt`
+/// values, each a file or text, else the `discovered` `APPEND_SYSTEM.md`.
+/// An empty value adds nothing.
+fn append_prompts(flags: &[String], discovered: impl FnOnce() -> Option<String>) -> Vec<String> {
+    if flags.is_empty() {
+        return discovered().into_iter().collect();
+    }
+    flags
+        .iter()
+        .filter(|input| !input.is_empty())
+        .map(|input| prompt_input(input))
+        .collect()
+}
+
 fn file_arguments(files: &[String], cwd: &Path) -> anyhow::Result<(String, Vec<ImageContent>)> {
     let mut text = String::new();
     let mut images = Vec::new();
@@ -229,28 +243,9 @@ fn tool_names(args: &Args, settings: &SettingsManager) -> Vec<String> {
     if args.no_tools || args.no_builtin_tools {
         return Vec::new();
     }
-    let mut names: Vec<String> = yapi_core::tools::DEFAULT_TOOLS
-        .iter()
-        .map(|name| (*name).to_owned())
-        .collect();
-    if let Some(configured) = &settings.settings().default_tools {
-        for entry in configured {
-            if let Some(name) = entry.strip_prefix('+') {
-                if !names.iter().any(|existing| existing == name) {
-                    names.push(name.to_owned());
-                }
-            } else if let Some(name) = entry.strip_prefix('-') {
-                names.retain(|existing| existing != name);
-            } else {
-                names = configured
-                    .iter()
-                    .filter(|entry| !entry.starts_with('+') && !entry.starts_with('-'))
-                    .cloned()
-                    .collect();
-                break;
-            }
-        }
-    }
+    let mut names = settings
+        .default_tools()
+        .unwrap_or_else(|| yapi_core::tools::DEFAULT_TOOLS.map(str::to_owned).to_vec());
     if let Some(tools) = &args.tools {
         names = tools.clone();
     }
@@ -260,15 +255,16 @@ fn tool_names(args: &Args, settings: &SettingsManager) -> Vec<String> {
     names
 }
 
-/// The session directory from `--session-dir`, the environment or settings.
+/// The session directory from `--session-dir`, the environment or settings;
+/// an empty value is unset.
 fn custom_session_dir(args: &Args, settings: &SettingsManager, cwd: &Path) -> Option<PathBuf> {
-    let env_dir = std::env::var(SESSION_DIR_ENV)
-        .ok()
-        .filter(|dir| !dir.is_empty());
+    let set = |dir: &&str| !dir.is_empty();
+    let env_dir = std::env::var(SESSION_DIR_ENV).ok();
     args.session_dir
         .as_deref()
-        .or(env_dir.as_deref())
-        .or(settings.settings().session_dir.as_deref())
+        .filter(set)
+        .or(env_dir.as_deref().filter(set))
+        .or(settings.settings().session_dir.as_deref().filter(set))
         .map(|dir| resolve_to_cwd(dir, cwd))
 }
 
@@ -469,12 +465,29 @@ pub fn factory(
             *lock(&current) = Arc::clone(&extensions);
             let preloaded = Some((run.settings, run.trusted));
             let (session, _) = build(&args, session, false, &extensions, preloaded)?;
+            sync_runtime_key(&args, &session).await;
             for (path, error) in extensions.failures() {
                 session.add_extension_load_error(path, error);
             }
             Ok(session)
         })
     })
+}
+
+/// pi's `setRuntimeApiKey` for `--api-key`: an offline refresh of the
+/// session model's provider, so its availability is checked with the key.
+pub async fn sync_runtime_key(args: &Args, session: &AgentSession) {
+    let (Some(_), Some(model)) = (&args.api_key, session.model()) else {
+        return;
+    };
+    use yapi_ai::model_catalog::{REFRESH_TIMEOUT, RefreshOptions, cancel_after};
+    let options = RefreshOptions {
+        providers: Some(vec![model.provider]),
+        allow_network: false,
+        cancel: cancel_after(REFRESH_TIMEOUT),
+        ..RefreshOptions::default()
+    };
+    session.refresh_model_catalogs(options).await;
 }
 
 /// Builds a session around `session` in its working directory, with the
@@ -713,15 +726,9 @@ fn build(
         args.no_themes,
         theme_paths,
     );
-    let mut appends: Vec<String> =
+    let appends = append_prompts(&args.append_system_prompt, || {
         system_prompt_file(&project, &agent_dir, trusted, "APPEND_SYSTEM.md")
-            .into_iter()
-            .collect();
-    appends.extend(
-        args.append_system_prompt
-            .iter()
-            .map(|input| prompt_input(input)),
-    );
+    });
     let (skills, skill_diagnostics) = yapi_core::resources::skills_from(&skill_sources);
     let (templates, mut template_diagnostics) =
         yapi_core::resources::templates_from(&template_sources);
@@ -1344,5 +1351,42 @@ mod builtin_tests {
         assert!(builtin_enabled("mcp", &args(&[], false), &both));
         let project_off = [entries(&["!builtin:m*"]), Vec::new()];
         assert!(!builtin_enabled("mcp", &args(&[], false), &project_off));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A settings manager whose global settings are `json`, in `dir`.
+    fn settings(dir: &Path, json: &str) -> SettingsManager {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("settings.json"), json).unwrap();
+        SettingsManager::load(dir, dir, false)
+    }
+
+    /// The session directory, the tools and the appended system prompt
+    /// read from settings and flags as pi reads them.
+    #[test]
+    fn startup_inputs() {
+        let dir = std::env::temp_dir().join(format!("yapi-startup-inputs-{}", std::process::id()));
+        // An empty session directory is unset.
+        let args = Args {
+            session_dir: Some(String::new()),
+            ..Args::default()
+        };
+        let empty = settings(&dir, r#"{"sessionDir": ""}"#);
+        assert_eq!(custom_session_dir(&args, &empty, &dir), None);
+        // `+name` applies next to plain names.
+        let tools = settings(&dir, r#"{"defaultTools": ["read", "+ls"]}"#);
+        assert_eq!(tool_names(&Args::default(), &tools), ["read", "ls"]);
+        // `--append-system-prompt` replaces `APPEND_SYSTEM.md`.
+        let discovered = || Some("GLOBAL APPEND".to_owned());
+        assert_eq!(append_prompts(&[], discovered), ["GLOBAL APPEND"]);
+        let flags = ["literal".to_owned(), String::new()];
+        assert_eq!(append_prompts(&flags, discovered), ["literal"]);
+        assert!(append_prompts(&[String::new()], discovered).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

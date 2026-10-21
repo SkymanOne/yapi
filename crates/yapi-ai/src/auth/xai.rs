@@ -119,7 +119,7 @@ fn credential(body: &Value, previous_refresh: Option<&str>) -> Result<OAuthCrede
     Ok(OAuthCredential {
         access,
         refresh,
-        expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(REFRESH_SKEW_MS),
+        expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(REFRESH_SKEW_MS) as f64,
         extra: Map::new(),
     })
 }

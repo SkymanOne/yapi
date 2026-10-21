@@ -17,9 +17,8 @@ use yapi_types::message::{
     Content, ContentBlock, ImageContent, Message, StopReason, SystemMessage, ToolResultMessage,
 };
 use yapi_types::model::Model;
-use yapi_types::rpc::SourceInfo;
 use yapi_types::rpc::StreamingBehavior;
-use yapi_types::settings::QueueMode;
+use yapi_types::rpc::{CommandSource, SlashCommand, SourceInfo};
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
@@ -32,8 +31,6 @@ use super::{AgentSession, InputSource, Replacement, SessionChange, drain};
 
 pub(super) struct Hooks {
     pub(super) session: AgentSession,
-    pub(super) steering_mode: Option<QueueMode>,
-    pub(super) follow_up_mode: Option<QueueMode>,
     pub(super) cancel: CancellationToken,
     /// pi's turn index for extension events: turns since `agent_start`.
     pub(super) turn_index: std::sync::atomic::AtomicU64,
@@ -296,13 +293,16 @@ impl AgentHooks for Hooks {
         Box::pin(async move { registry.auth(model).await })
     }
 
-    fn current_tools(&self) -> Option<Vec<Arc<dyn Tool>>> {
-        let declared = self
-            .session
-            .inner
-            .tools
-            .with(|registry| registry.declared());
-        Some(self.session.loadout(declared))
+    fn current_tools(&self) -> BoxFuture<'_, Option<Vec<Arc<dyn Tool>>>> {
+        Box::pin(async move {
+            let declared = self
+                .session
+                .inner
+                .tools
+                .with(|registry| registry.declared());
+            self.session.refresh_loadouts(declared.clone()).await;
+            Some(self.session.loadout(declared))
+        })
     }
 
     fn before_tool_call<'a>(
@@ -423,21 +423,28 @@ impl AgentHooks for Hooks {
         }
     }
 
-    fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
+    fn next_turn_messages(&self) -> BoxFuture<'_, Result<Option<Vec<Message>>, String>> {
         // As in pi, each turn continues from the session's transcript, with
         // what the session recorded since the last, such as custom messages
-        // held while it ran and entries turn_end handlers committed.
-        let messages = self.session.messages();
-        Box::pin(async move { Some(messages) })
+        // held while it ran and entries turn_end handlers committed, once a
+        // context over the threshold is compacted.
+        Box::pin(async move {
+            self.session
+                .compact_before_next_response(&self.cancel)
+                .await?;
+            Ok(Some(self.session.messages()))
+        })
     }
 
+    // As pi's agent, each drain reads the current mode, so a change applies
+    // to the running agent.
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.steering, self.steering_mode);
+        let messages = drain(&self.session.inner.steering, self.session.drains_all().0);
         Box::pin(async move { messages })
     }
 
     fn follow_up_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.follow_up, self.follow_up_mode);
+        let messages = drain(&self.session.inner.follow_up, self.session.drains_all().1);
         Box::pin(async move { messages })
     }
 }
@@ -1017,10 +1024,7 @@ impl AgentSession {
         let selected = options.selected_tools.clone();
         let ctx = self.extension_context(CancellationToken::new());
         for extension in handlers {
-            let system_prompt = match &options.force_system_prompt {
-                Some(forced) => forced.clone(),
-                None => self.prompt_text(&options).unwrap_or_default(),
-            };
+            let system_prompt = self.render_prompt(&options).unwrap_or_default();
             let event = ExtensionEvent::BeforeAgentStart {
                 prompt,
                 images,
@@ -1369,6 +1373,43 @@ impl AgentSession {
                 }
             })
             .collect()
+    }
+
+    /// pi's slash commands, as RPC's `get_commands` and `pi.getCommands()`
+    /// list them: the extensions' commands, then the prompt templates and
+    /// the skills, each with where it comes from.
+    pub fn slash_commands(&self) -> Vec<SlashCommand> {
+        let resources = self.resources();
+        let mut commands: Vec<SlashCommand> = self
+            .extension_commands()
+            .into_iter()
+            .map(|resolved| SlashCommand {
+                name: resolved.invocation,
+                // pi omits a description the command did not give.
+                description: Some(resolved.command.description)
+                    .filter(|description| !description.is_empty()),
+                source: CommandSource::Extension,
+                source_info: resolved.extension.source(),
+            })
+            .collect();
+        commands.extend(
+            resources
+                .templates
+                .into_iter()
+                .map(|template| SlashCommand {
+                    name: template.name,
+                    description: Some(template.description),
+                    source: CommandSource::Prompt,
+                    source_info: template.source,
+                }),
+        );
+        commands.extend(resources.skills.into_iter().map(|skill| SlashCommand {
+            name: format!("skill:{}", skill.name),
+            description: Some(skill.description),
+            source: CommandSource::Skill,
+            source_info: skill.source,
+        }));
+        commands
     }
 
     /// Whether `text` invokes an extension command.

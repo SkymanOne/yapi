@@ -6,7 +6,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 |---|---|
 | Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
 | Project instructions | `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` in the project, its parent folders and `~/.yapi/agent` |
-| System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/` |
+| System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/`. `--append-system-prompt` extends it in place of `APPEND_SYSTEM.md`. |
 | Skills | `~/.yapi/agent/skills`, `~/.agents/skills`, `.yapi/skills` and `.agents/skills` |
 | Prompt templates | `~/.yapi/agent/prompts` and `.yapi/prompts` |
 | Themes | `~/.yapi/agent/themes` and `.yapi/themes` |
@@ -20,7 +20,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 
 ## Project instructions
 
-yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. Use them for build commands, conventions and anything else the agent should know about the project.
+yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. In a git worktree inside its main checkout, such as `.worktrees/feature`, the worktree's own file replaces the main checkout's file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.
 
 ## Skills and prompt templates
 
@@ -69,3 +69,7 @@ In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their imag
 In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in `read`, `write`, `edit` and `ls` calls link to their files. In other terminals, a Markdown link shows its URL after its text.
 
 yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set `"terminal": {"hyperlinks": true}` or `false` to override the detection. The `PI_HYPERLINKS` environment variable, `1` or `0`, does the same, and the setting takes precedence.
+
+## Colors
+
+Themes use 24-bit color in terminals that support it, such as iTerm2, Ghostty, kitty, WezTerm, VS Code and JetBrains IDEs, or when `COLORTERM` is `truecolor` or `24bit`. Elsewhere, and in tmux or screen unless `COLORTERM` says so, they use 256 colors. Set `"terminal": {"trueColor": true}` or `false` to override the detection. The `PI_TRUE_COLOR` environment variable, `1` or `0`, does the same, and the setting takes precedence.

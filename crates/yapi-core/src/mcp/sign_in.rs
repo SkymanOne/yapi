@@ -559,7 +559,7 @@ async fn listen(
     let start = |port: u16| {
         let expected = Arc::clone(&expected);
         let path = settings.path.clone();
-        let handler = move |_method: &str, url: &Url| -> Reply<Callback> {
+        let handler = move |_method: &str, url: &Url, _handled: bool| -> Reply<Callback> {
             if url.path() != path {
                 return Reply::page(404, error_page("Not found", None));
             }

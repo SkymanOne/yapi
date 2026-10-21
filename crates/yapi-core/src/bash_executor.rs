@@ -225,10 +225,11 @@ mod tests {
     async fn runs_and_cancels() {
         let dir = std::env::temp_dir();
         let mut seen = String::new();
+        // An empty `shellPath` means the default shell.
         let result = execute(
             "printf 'one\\r\\ntwo\\n'; exit 3",
             &dir,
-            None,
+            Some(""),
             &dir,
             CancellationToken::new(),
             |chunk| seen.push_str(chunk),

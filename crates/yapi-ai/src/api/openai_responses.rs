@@ -1433,7 +1433,9 @@ fn failure_message(failure: http::Failure, prefix: &str) -> String {
         http::Failure::Status { status, body } => {
             http::openai_status_message(status, &body, Some(prefix))
         }
-        other => other.plain_message().unwrap_or_default(),
+        other => other
+            .plain_message(http::openai_sdk_message)
+            .unwrap_or_default(),
     };
     if message.contains("subscription_sharing_usage_limit_exceeded") {
         format!("{message}\nCheck your ChatGPT usage: {CHATGPT_USAGE_URL}")

@@ -73,13 +73,23 @@ pub fn session_with_tools(
     extensions: Vec<Arc<dyn Extension>>,
     tools: &[&str],
 ) -> AgentSession {
+    AgentSession::new(session_config(faux, dir, extensions, tools))
+}
+
+/// What [`session_with_tools`] starts a session with.
+pub fn session_config(
+    faux: &Faux,
+    dir: &Path,
+    extensions: Vec<Arc<dyn Extension>>,
+    tools: &[&str],
+) -> SessionConfig {
     let model = faux_model();
     let mut registry = ModelRegistry::builtin();
     registry.register_provider("faux", vec![model.clone()]);
     registry.set_runtime_key("faux", "key".into());
     let mut apis = Apis::default();
     apis.register(Arc::new(faux.clone()));
-    AgentSession::new(SessionConfig {
+    SessionConfig {
         cwd: dir.to_path_buf(),
         agent_dir: dir.join("agent"),
         settings: SettingsManager::in_memory(),
@@ -95,7 +105,7 @@ pub fn session_with_tools(
         excluded_tools: Vec::new(),
         resources: Resources::default(),
         docs: yapi_core::docs::Locations::default(),
-    })
+    }
 }
 
 pub fn custom_entries(session: &AgentSession, kind: &str) -> Vec<serde_json::Value> {

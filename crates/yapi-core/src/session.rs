@@ -10,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use indexmap::IndexMap;
 use serde_json::Value;
 use yapi_types::message::{
     BranchSummaryMessage, CompactionSummaryMessage, Content, ContentBlock, CustomMessage, Message,
@@ -149,7 +150,9 @@ pub struct SessionManager {
     write_failed: bool,
     entries: Vec<Entry>,
     by_id: HashMap<String, usize>,
-    labels: HashMap<String, (String, String)>,
+    /// Label and timestamp by target, in pi's `Map` order: a relabelled
+    /// target keeps its place.
+    labels: IndexMap<String, (String, String)>,
     leaf: Option<String>,
 }
 
@@ -169,8 +172,9 @@ fn line(doc: &Value) -> String {
 }
 
 /// Reads the entries of a session file; empty when the file is missing or does not
-/// start with a session header.
-fn load_docs(path: &Path) -> Result<Vec<Value>> {
+/// start with a session header. With `repair`, a valid file whose last line lacks
+/// its newline gets one appended.
+fn load_docs(path: &Path, repair: bool) -> Result<Vec<Value>> {
     let Ok(bytes) = fs::read(path) else {
         return Ok(Vec::new());
     };
@@ -190,7 +194,7 @@ fn load_docs(path: &Path) -> Result<Vec<Value>> {
     if !valid {
         return Ok(Vec::new());
     }
-    if !text.is_empty() && !text.ends_with('\n') {
+    if repair && !text.is_empty() && !text.ends_with('\n') {
         OpenOptions::new()
             .append(true)
             .open(path)
@@ -305,7 +309,7 @@ impl SessionManager {
             write_failed: false,
             entries: Vec::new(),
             by_id: HashMap::new(),
-            labels: HashMap::new(),
+            labels: IndexMap::new(),
             leaf: None,
         }
     }
@@ -343,7 +347,7 @@ impl SessionManager {
     /// working directory comes from the header unless given; new sessions go to
     /// `dir`, else the file's directory.
     pub fn open(path: &Path, dir: Option<&Path>, cwd: Option<&Path>) -> Result<SessionManager> {
-        let docs = load_docs(path)?;
+        let docs = load_docs(path, true)?;
         let header_cwd = docs
             .first()
             .and_then(|header| header["cwd"].as_str())
@@ -422,7 +426,7 @@ impl SessionManager {
                         );
                     }
                     _ => {
-                        self.labels.remove(&label.target_id);
+                        self.labels.shift_remove(&label.target_id);
                     }
                 }
             }
@@ -735,7 +739,7 @@ impl SessionManager {
                 self.labels.insert(target_id.to_owned(), (label, timestamp));
             }
             None => {
-                self.labels.remove(target_id);
+                self.labels.shift_remove(target_id);
             }
         }
         appended
@@ -1029,13 +1033,12 @@ impl SessionManager {
             .iter()
             .filter_map(|doc| doc["id"].as_str().map(str::to_owned))
             .collect();
-        let mut labels: Vec<(String, String, String)> = self
+        let labels: Vec<(String, String, String)> = self
             .labels
             .iter()
             .filter(|(target, _)| kept_ids.contains(target))
             .map(|(target, (label, timestamp))| (target.clone(), label.clone(), timestamp.clone()))
             .collect();
-        labels.sort_by(|a, b| a.2.cmp(&b.2));
 
         let previous_dir = self.dir.clone();
         let persist = self.persist;
@@ -1084,7 +1087,7 @@ impl SessionManager {
         dir: &Path,
         id: Option<String>,
     ) -> Result<SessionManager> {
-        let docs = load_docs(source)?;
+        let docs = load_docs(source, true)?;
         if docs.is_empty() {
             return Err(SessionError::Rejected(format!(
                 "Cannot fork: source session file is empty or invalid: {}",
@@ -1393,7 +1396,8 @@ pub fn find_by_id(dir: &Path, id: &str, cwd: Option<&Path>) -> Option<PathBuf> {
 }
 
 fn summary(path: &Path) -> Option<SessionSummary> {
-    let docs = load_docs(path).ok()?;
+    // Listing never writes: only opening a session repairs it.
+    let docs = load_docs(path, false).ok()?;
     let header = docs.first().filter(|header| header["type"] == "session")?;
     let mut summary = SessionSummary {
         path: path.to_path_buf(),

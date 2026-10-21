@@ -873,9 +873,7 @@ impl SettingsSelector {
                 "show-hardware-cursor",
                 "Show hardware cursor",
                 "Show the terminal cursor while still positioning it for IME support",
-                settings
-                    .show_hardware_cursor
-                    .unwrap_or_else(|| std::env::var("PI_HARDWARE_CURSOR").as_deref() == Ok("1")),
+                super::setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR"),
             ),
             item(
                 "editor-padding",
@@ -907,9 +905,7 @@ impl SettingsSelector {
                 "clear-on-shrink",
                 "Clear on shrink",
                 "Clear empty rows when content shrinks (may cause flicker)",
-                terminal
-                    .clear_on_shrink
-                    .unwrap_or_else(|| std::env::var("PI_CLEAR_ON_SHRINK").as_deref() == Ok("1")),
+                super::setting_or_env(terminal.clear_on_shrink, "PI_CLEAR_ON_SHRINK"),
             ),
             bool_item(
                 "terminal-progress",
@@ -1385,14 +1381,14 @@ impl super::App {
     pub(super) fn open_settings(&mut self) {
         let settings = self.session.settings();
         let appearance = super::appearance(&self.colors);
-        let mode = |mode: yapi_types::settings::QueueMode| {
-            serde_json::to_value(mode)
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
+        let mode = |mode: Option<serde_json::Value>| {
+            mode.as_ref()
+                .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
+                .to_owned()
         };
         let config = SettingsConfig {
-            auto_compact: self.session.auto_compaction_enabled(),
+            auto_compact: yapi_ai::http::is_truthy(&self.session.auto_compaction_enabled()),
             steering_mode: mode(self.session.steering_mode()),
             follow_up_mode: mode(self.session.follow_up_mode()),
             http_idle_timeout_ms: self.session.http_idle_timeout_ms(),
@@ -1463,7 +1459,7 @@ impl super::App {
         let text = || Value::String(value.to_owned());
         match id {
             "autocompact" => {
-                let _ = self.session.set_auto_compaction(on);
+                let _ = self.session.set_auto_compaction(Some(on.into()));
                 self.footer_cache = None;
             }
             "show-images" => {
@@ -1506,13 +1502,11 @@ impl super::App {
             }
             "terminal-progress" => nested("terminal", "showTerminalProgress", on.into()),
             "steering-mode" | "follow-up-mode" => {
-                if let Ok(mode) = serde_json::from_value(text()) {
-                    let _ = if id == "steering-mode" {
-                        self.session.set_steering_mode(mode)
-                    } else {
-                        self.session.set_follow_up_mode(mode)
-                    };
-                }
+                let _ = if id == "steering-mode" {
+                    self.session.set_steering_mode(Some(text()))
+                } else {
+                    self.session.set_follow_up_mode(Some(text()))
+                };
             }
             "transport" => global("transport", text()),
             "http-idle-timeout" => {
@@ -1623,25 +1617,29 @@ impl super::App {
         level: Option<ThinkingLevel>,
     ) {
         let key = format!("{provider}/{id}");
-        let mut levels = self
-            .session
-            .settings()
-            .model_thinking_levels
-            .unwrap_or_default();
+        // As pi, only the global levels change, so a project's stay in it.
+        let manager = self.session.settings_manager();
+        let global = manager
+            .document(yapi_core::settings::Scope::Global)
+            .get("modelThinkingLevels");
+        let mut levels = match global {
+            Some(serde_json::Value::Object(levels)) => levels.clone(),
+            _ => serde_json::Map::new(),
+        };
         match level {
             Some(level) => {
-                levels.insert(key, level);
+                levels.insert(key, level.as_str().into());
             }
             None => {
                 levels.shift_remove(&key);
             }
         }
-        let value = (!levels.is_empty())
-            .then(|| serde_json::to_value(&levels).ok())
-            .flatten();
-        let _ = self
-            .session
-            .set_global_setting("modelThinkingLevels", value);
+        if level.is_some() || global.is_some() {
+            let value = (!levels.is_empty()).then_some(serde_json::Value::Object(levels));
+            let _ = self
+                .session
+                .set_global_setting("modelThinkingLevels", value);
+        }
         let current = self
             .session
             .model()

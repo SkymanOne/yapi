@@ -80,3 +80,5 @@ yapi auth check --provider anthropic --json
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 ```
+
+`print-bearer-token` refreshes a token that expires within `--min-expiry`, which is 30 minutes by default and at least five minutes. It fails when the refreshed token does not last that long.

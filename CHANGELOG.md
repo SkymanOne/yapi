@@ -16,6 +16,8 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
+- Various bug fixes ([#198](https://github.com/SkymanOne/yapi/pull/198), [#251](https://github.com/SkymanOne/yapi/pull/251), [#252](https://github.com/SkymanOne/yapi/pull/252), [#253](https://github.com/SkymanOne/yapi/pull/253), [#254](https://github.com/SkymanOne/yapi/pull/254), [#255](https://github.com/SkymanOne/yapi/pull/255)).
+- Change `yapi-types`' `OAuthCredential.expires` to `f64`, so expiry times with a fraction read as in Pi. Code that builds a credential passes a float ([#252](https://github.com/SkymanOne/yapi/pull/252)).
 - Fix Mistral responses that contain non-ASCII text ending with "Provider stream ended without a result" ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix high CPU use while a model streams large tool-call arguments ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix package installs writing outside `node_modules` when a dependency is named by a path or a git package links its `node_modules` elsewhere. Git sources whose host or ref starts with `-` are refused, as git would read them as options ([#195](https://github.com/SkymanOne/yapi/pull/195)).

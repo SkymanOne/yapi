@@ -64,6 +64,12 @@
 		throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
 	};
 	const action = (kind) => (payload) => (bound ? yapi.request(kind, payload) : notInitialized());
+	/** Whether the host has the descriptions of the latest run of the factories. */
+	let described = false;
+	// Provider changes made since then reach the session as it binds, as pi
+	// applies them once its runner binds.
+	const unboundChanges = [];
+	const providerChange = (change) => (bound ? change() : unboundChanges.push(change));
 	// The requests behind `sendMessage` and `sendUserMessage`.
 	const messageRequest = (message, options) => ({ message: plain(message), options: plain(options) });
 	const userMessageRequest = (content, options) => ({ content: plain(content), options: plain(options) });
@@ -223,14 +229,36 @@
 				let provider;
 				if (typeof nameOrProvider === "string") {
 					if (!config) throw new Error("Provider config is required when registering by name");
+					// As in pi, a configuration registered again takes the values it
+					// defines over the previous configuration's.
+					const previous = providerConfig(nameOrProvider, extension);
+					if (previous && !isProvider(previous)) {
+						config = { ...previous, ...Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)) };
+					}
 					provider = { name: nameOrProvider, config: describeProvider(config) };
 				} else provider = { name: nameOrProvider.id, native: true };
 				// The code stays here; the host gets the description.
 				Object.defineProperty(provider, "implementation", { value: config ?? nameOrProvider });
 				extension.providers.push(provider);
+				if (!described) return;
+				providerChange(() => {
+					if (provider.native) provider.config = describeNative(provider.implementation);
+					try {
+						yapi.request("providers.register", { extension: extension.id, provider });
+					} catch (error) {
+						extension.providers = extension.providers.filter((entry) => entry !== provider);
+						throw error;
+					}
+				});
 			},
 			unregisterProvider(name) {
 				extension.providers = extension.providers.filter((provider) => provider.name !== name);
+				if (!described) return;
+				providerChange(() => {
+					// pi removes the provider whichever extension registered it.
+					for (const other of extensions.values()) other.providers = other.providers.filter((provider) => provider.name !== name);
+					yapi.request("providers.unregister", { name });
+				});
 			},
 			registerMcpServer(name, config) {
 				// The host checks the config, the grant its transport needs and
@@ -326,10 +354,59 @@
 				options.signal?.removeEventListener("abort", killProcess);
 				resolve({ stdout, stderr, code, killed });
 			};
-			proc.on("close", (code) => finish(code ?? 0));
-			proc.on("error", () => finish(1));
+			yapi.waitForChild(proc).then(
+				(code) => finish(code ?? 0),
+				() => finish(1),
+			);
 		});
 	}
+
+	/**
+	 * pi's `waitForChildProcess`: `child`'s exit code once it has exited and
+	 * its output has ended or been quiet for 100 ms, so a descendant that
+	 * holds the output open does not hold the caller.
+	 */
+	yapi.waitForChild = (child) =>
+		new Promise((resolve, reject) => {
+			let settled = false;
+			let exited = false;
+			let exitCode = null;
+			let ended = 0;
+			let idle;
+			const finish = (code) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				resolve(code);
+			};
+			const quiet = () => {
+				clearTimeout(idle);
+				idle = setTimeout(() => finish(exitCode), 100);
+			};
+			const end = () => {
+				if (++ended === 2 && exited) finish(exitCode);
+			};
+			const data = () => {
+				if (exited && !settled) quiet();
+			};
+			for (const stream of [child.stdout, child.stderr]) {
+				stream.once("end", end);
+				stream.on("data", data);
+			}
+			child.once("error", (error) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				reject(error);
+			});
+			child.once("exit", (code) => {
+				exited = true;
+				exitCode = code;
+				if (ended === 2) finish(code);
+				else quiet();
+			});
+			child.once("close", finish);
+		});
 
 	// ----- descriptions sent to the host -----------------------------------------------
 	function describeTool(tool) {
@@ -348,6 +425,7 @@
 			annotations: tool.annotations,
 			defaultActive: tool.defaultActive,
 			executionMode: tool.executionMode,
+			hasPrepareLoadout: typeof tool.prepareLoadout === "function",
 			hasRenderCall: typeof tool.renderCall === "function",
 			hasRenderResult: typeof tool.renderResult === "function",
 		};
@@ -382,26 +460,19 @@
 			return fs.existsSync(path.startsWith("~") ? os.homedir() + path.slice(1) : path);
 		},
 	};
+	/** pi-ai's `isModelType`. */
+	const isType = (model, type) => (model.type ?? "chat") === type;
 	/**
 	 * A pi-ai `Provider` described as `describeProvider` describes a
 	 * configuration: its models, the APIs its streams and operations serve,
-	 * and where its API key comes from now when none is stored, as pi's
-	 * availability check finds it.
+	 * its API key method, and whether its API key check or model filters
+	 * decide what is available. The host asks `availability` for that.
 	 */
-	async function describeNative(provider) {
+	function describeNative(provider) {
 		const models = providerModels(provider);
-		const apis = (type) => [...new Set(models.filter((model) => (model.type ?? "chat") === type).map((model) => model.api))];
+		const apis = (type) => [...new Set(models.filter((model) => isType(model, type)).map((model) => model.api))];
 		const byApi = (implemented, type) => (implemented ? Object.fromEntries(apis(type).map((api) => [api, true])) : undefined);
 		const { apiKey, oauth } = provider.auth ?? {};
-		let keyAuth;
-		if (apiKey) {
-			// shortcut: the check runs once as the extension loads, not on each availability refresh as in pi; recheck on refresh once credentials can appear later.
-			const input = { ctx: authContext, signal: new AbortController().signal };
-			const found = await Promise.resolve()
-				.then(() => (apiKey.check ? apiKey.check(input) : apiKey.resolve(input)))
-				.catch(() => undefined);
-			keyAuth = { source: found ? (found.source ?? "configured provider") : null };
-		}
 		return {
 			name: provider.name,
 			baseUrl: provider.baseUrl,
@@ -409,18 +480,24 @@
 			headers: provider.headers && Object.fromEntries(Object.entries(provider.headers).filter(([, value]) => value != null)),
 			models: plain(models),
 			oauth: oauth && { name: oauth.name, isSubscription: oauth.isSubscription },
-			keyAuth,
+			keyAuth: apiKey && { name: apiKey.name, login: typeof apiKey.login === "function" },
 			// shortcut: an API only refreshed models use streams through yapi's API of that name; describe the APIs again after a refresh once providers add some.
 			streamApis: apis("chat"),
 			images: byApi(typeof provider.generateImages === "function", "image"),
 			classifiers: byApi(typeof provider.classify === "function", "classifier"),
 			hasRefreshModels: typeof provider.refreshModels === "function",
+			hasFilter: typeof provider.filterModels === "function" || typeof provider.filterAllModels === "function",
 		};
 	}
-	/** The configuration of provider `name` as last registered, with its code. */
-	function providerConfig(name) {
+	/**
+	 * The configuration of provider `name` as last registered, with its code,
+	 * by the loaded extensions or `loading`, one whose factory runs.
+	 */
+	function providerConfig(name, loading) {
 		let found;
-		for (const extension of extensions.values()) {
+		const all = new Set(extensions.values());
+		if (loading) all.add(loading);
+		for (const extension of all) {
 			for (const provider of extension.providers) if (provider.name === name && provider.implementation) found = provider.implementation;
 		}
 		return found;
@@ -512,7 +589,7 @@
 			return { id, path, error: `Failed to load extension: ${errorMessage(error)}` };
 		}
 		extensions.set(id, extension);
-		for (const provider of extension.providers) if (provider.native) provider.config = await describeNative(provider.implementation);
+		for (const provider of extension.providers) if (provider.native) provider.config = describeNative(provider.implementation);
 		return describe(extension);
 	}
 
@@ -787,6 +864,17 @@
 	};
 
 	// ----- contexts --------------------------------------------------------------------------------------
+	let nextSignal = 1;
+	/** Starts host operation `kind`, which `signal` cancels as it aborts. */
+	function cancellable(kind, payload, signal) {
+		if (!signal) return yapi.op(kind, payload);
+		const id = nextSignal++;
+		const cancel = () => yapi.request("op.cancel", { id });
+		const op = yapi.op(kind, { ...payload, signal: id });
+		if (signal.aborted) cancel();
+		else signal.addEventListener("abort", cancel, { once: true });
+		return op.finally(() => signal.removeEventListener("abort", cancel));
+	}
 	function createUi(data) {
 		const shown = !!(data.hasUI && data.components);
 		const replaceSlot = (slot, factory, ...args) => {
@@ -801,11 +889,17 @@
 			getAvailableProviderCount: () => request("footerData", {})?.providers ?? 0,
 			onBranchChange: () => () => {},
 		};
+		// pi's dialog options: `timeout` and `signal` close the dialog with its
+		// default answer, and an aborted `signal` opens none.
+		const dialog = (kind, payload, opts, fallback) => {
+			if (!data.hasUI || opts?.signal?.aborted) return Promise.resolve(fallback);
+			return cancellable(`ui.${kind}`, { ...payload, timeout: opts?.timeout }, opts?.signal);
+		};
 		return {
 			// A cancelled dialog resolves to `undefined`, as in pi.
-			select: (title, options, opts) => (data.hasUI ? yapi.op("ui.select", { title, options, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
-			confirm: (title, message, opts) => (data.hasUI ? yapi.op("ui.confirm", { title, message, timeout: opts?.timeout }) : Promise.resolve(false)),
-			input: (title, placeholder, opts) => (data.hasUI ? yapi.op("ui.input", { title, placeholder, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
+			select: (title, options, opts) => dialog("select", { title, options }, opts, undefined).then(orUndefined),
+			confirm: (title, message, opts) => dialog("confirm", { title, message }, opts, false),
+			input: (title, placeholder, opts) => dialog("input", { title, placeholder }, opts, undefined).then(orUndefined),
 			editor: (title, prefill) => (data.hasUI ? yapi.op("ui.editor", { title, prefill }).then(orUndefined) : Promise.resolve(undefined)),
 			notify: (message, type) => request("notify", type === undefined ? { message } : { message, type }),
 			onTerminalInput(handler) {
@@ -909,6 +1003,8 @@
 		"getEntry",
 		"getLabel",
 		"getBranch",
+		"buildContextEntries",
+		"buildSessionProjection",
 		"getHeader",
 		"getEntries",
 		"getTree",
@@ -973,6 +1069,11 @@
 			getProviderDisplayName: (provider) => yapi.request("models.providerName", { provider }) ?? provider,
 			getModelsOfType: (type, provider) => yapi.request("models.ofType", { type, provider }) ?? [],
 			getModelOfType: (type, provider, id) => ofType(type, provider, id),
+			getProvider: registryProvider,
+			getProviderAuthStatus: (provider) => yapi.request("models.authStatus", { provider }),
+			stream: registryStream,
+			streamSimple: registryStream,
+			complete: (model, context, options) => registryStream(model, context, options).result(),
 			findOfType: (type, provider, id) => ofType(type, provider, id),
 			getAvailableOfType: (type, provider) => yapi.op("models.availableOfType", { type, provider }),
 			// Only the provider and id cross: the host runs its own catalog entry with its credentials.
@@ -999,8 +1100,67 @@
 	function ofType(type, provider, id) {
 		return (yapi.request("models.ofType", { type, provider }) ?? []).find((model) => model.id === id);
 	}
+	/**
+	 * pi's `ModelRegistry.stream`: the session's provider of `model` with the
+	 * registry's credentials. pi-ai's facade, which streams through the host,
+	 * loads with the first.
+	 */
+	function registryStream(model, context, options) {
+		const stream = import("@earendil-works/pi-ai").then(() => yapi.registryStream(model, context, options));
+		return {
+			async *[Symbol.asyncIterator]() {
+				yield* await stream;
+			},
+			result: async () => (await stream).result(),
+		};
+	}
+	/**
+	 * pi-ai's `Provider` `provider` as yapi gives it: its names, models and
+	 * streams, as `docs/compat.md` lists.
+	 */
+	function registryProvider(provider) {
+		const all = () => ["chat", "image", "classifier"].flatMap((type) => yapi.request("models.ofType", { type, provider }) ?? []);
+		if (all().length === 0) return undefined;
+		return {
+			id: provider,
+			name: yapi.request("models.providerName", { provider }) ?? provider,
+			getModels: () => yapi.request("models.ofType", { type: "chat", provider }) ?? [],
+			getAllModels: all,
+			stream: registryStream,
+			streamSimple: registryStream,
+		};
+	}
+	// The current run's abort signal, by the host's id, as pi's `ctx.signal`.
+	let runAbort;
+	function runSignal() {
+		let run = null;
+		try {
+			run = yapi.request("agent.signal", {});
+		} catch {
+			// Hosts without a session have no run.
+		}
+		if (!run) return undefined;
+		if (runAbort?.id !== run.id) {
+			if (runAbort) aborts.delete(runAbort.id);
+			runAbort = { id: run.id, controller: new AbortController() };
+			aborts.set(run.id, runAbort.controller);
+		}
+		if (run.aborted) runAbort.controller.abort();
+		return runAbort.controller.signal;
+	}
+	/** What the session holds now for the `key` of the host's context data, else `data`'s. */
+	function current(data, key) {
+		if (bound) {
+			try {
+				return yapi.request("session.context", {})?.[key] ?? undefined;
+			} catch {
+				// Hosts without a session answer from the call's data.
+			}
+		}
+		return data[key] ?? undefined;
+	}
 	function createContext(data = {}, extra = {}) {
-		const controller = new AbortController();
+		// pi reads the model, thinking level, scoped models and run signal as they are read.
 		const context = {
 			ui: createUi(data),
 			mode: data.mode ?? "print",
@@ -1008,10 +1168,18 @@
 			cwd: data.cwd ?? yapi.cwd,
 			sessionManager: createSessionManager(),
 			modelRegistry: createModelRegistry(),
-			model: data.model ?? undefined,
-			scopedModels: data.scopedModels ?? [],
-			thinkingLevel: data.thinkingLevel,
-			signal: data.aborted ? AbortSignal.abort() : controller.signal,
+			get model() {
+				return current(data, "model");
+			},
+			get scopedModels() {
+				return current(data, "scopedModels") ?? [];
+			},
+			get thinkingLevel() {
+				return current(data, "thinkingLevel");
+			},
+			get signal() {
+				return runSignal();
+			},
 			isIdle: () => !!yapi.request("agent.isIdle", {}),
 			isProjectTrusted: () => !!data.projectTrusted,
 			abort: () => yapi.request("agent.abort", {}),
@@ -1030,12 +1198,13 @@
 		// Every member throws once the session is replaced.
 		const born = generation;
 		const guarded = {};
-		for (const [key, value] of Object.entries(context)) {
+		for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(context))) {
+			const read = descriptor.get ?? (() => descriptor.value);
 			Object.defineProperty(guarded, key, {
 				enumerable: true,
 				get() {
 					assertActive(born);
-					return value;
+					return read();
 				},
 			});
 		}
@@ -1119,10 +1288,10 @@
 
 	// ----- emitting to one extension -----------------------------------------------------------
 	/** Runs `extension`'s handlers for `event` as pi's runner does for each handler. */
-	async function emit(extension, event, ctx) {
+	async function emit(extension, event, ctx, signal) {
 		const handlers = [...(extension.handlers.get(event.type) ?? [])];
 		// What JSON cannot carry: the abort signal and pi's file operation sets.
-		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = ctx.signal;
+		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = signal;
 		const fileOps = event.type === "session_before_compact" ? event.preparation?.fileOps : undefined;
 		if (fileOps) for (const key of ["read", "written", "edited"]) fileOps[key] = new Set(fileOps[key] ?? []);
 		const errors = [];
@@ -1205,12 +1374,14 @@
 			case "before_agent_start": {
 				// As in pi, handlers share the live prompt options and may edit them; a
 				// returned `systemPrompt` forces the prompt through `forceSystemPrompt`.
+				// The prompt, and `ctx.getSystemPrompt()`, render the options as they are.
 				const messages = [];
 				const options = event.systemPromptOptions;
-				const rendered = event.systemPrompt;
-				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: () => options.forceSystemPrompt ?? rendered });
+				const render = () => options.forceSystemPrompt ?? yapi.request("agent.renderSystemPrompt", { options: plain(options) });
+				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: render });
+				const local = Object.create(ctx, { getSystemPrompt: { value: render } });
 				for (const handler of handlers) {
-					const handlerResult = await guard(() => handler(event, ctx));
+					const handlerResult = await guard(() => handler(event, local));
 					if (handlerResult?.message) messages.push(handlerResult.message);
 					if (handlerResult?.systemPrompt !== undefined) options.forceSystemPrompt = handlerResult.systemPrompt;
 				}
@@ -1388,6 +1559,11 @@
 		if (!oauth) throw new Error(`Provider ${payload.provider} has no OAuth sign-in`);
 		return abortable(payload.id, async (signal) => plain(await run(oauth, signal, isProvider(config))) ?? null);
 	}
+	/** pi-ai's `AuthInteraction` whose prompts and events reach the host's sign-in `payload.id`. */
+	const signInInteraction = (payload) => ({
+		notify: (event) => yapi.request("oauth.notify", { id: payload.id, event }),
+		prompt: (question) => yapi.op("oauth.prompt", { id: payload.id, prompt: question }),
+	});
 	/** Classifies or generates images with `payload.model` through its provider's code, as pi's provider composer picks it. */
 	function operate(payload, kind, method) {
 		const { model, options } = payload;
@@ -1418,6 +1594,9 @@
 		timestamp: Date.now(),
 	}));
 
+	/** `onUpdate` of `executeTool` calls, by id. */
+	const nestedUpdates = new Map();
+
 	// ----- dispatch -------------------------------------------------------------------------------
 	const extensionOf = (id) => {
 		const extension = extensions.get(id);
@@ -1434,11 +1613,19 @@
 			for (const [name, value] of Object.entries(payload.flags ?? {})) flagValues.set(name, value);
 			const results = [];
 			for (const entry of payload.extensions) results.push(await loadOne(entry));
+			described = true;
 			// Wire APIs registered with pi-ai's `registerApiProvider`.
 			return { extensions: results, apis: [...(yapi.apiProviders?.keys() ?? [])] };
 		},
 		async bind() {
 			bound = true;
+			for (const change of unboundChanges.splice(0)) {
+				try {
+					change();
+				} catch (error) {
+					console.error(error);
+				}
+			}
 			// The servers registered while loading. After a restart, the
 			// session drops the servers registered since.
 			try {
@@ -1480,6 +1667,8 @@
 		/** Runs the extensions of `{ extensions }`, entries as `load` takes them, for the next session. */
 		async reload(payload) {
 			bound = false;
+			described = false;
+			unboundChanges.length = 0;
 			generation.stale = true;
 			generation = { stale: false };
 			// pi drops the stale extensions' `pi.events` listeners.
@@ -1499,6 +1688,7 @@
 			extensions.clear();
 			const results = [];
 			for (const entry of payload.extensions) results.push(await loadOne(entry));
+			described = true;
 			return { extensions: results, apis: [...(yapi.apiProviders?.keys() ?? [])] };
 		},
 		flags(payload) {
@@ -1516,7 +1706,8 @@
 			return null;
 		},
 		emit(payload) {
-			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx));
+			const signal = payload.ctx?.aborted ? AbortSignal.abort() : new AbortController().signal;
+			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx), signal);
 		},
 		async tool(payload) {
 			const extension = extensionOf(payload.extension);
@@ -1526,7 +1717,13 @@
 				const ctx = createContext(payload.ctx, {
 					signal: payload.ctx?.aborted ? AbortSignal.abort() : signal,
 					tools: payload.tools ?? [],
-					executeTool: (name, args) => yapi.op("tool.execute", { toolCallId: payload.toolCallId, name, args: plain(args) }),
+					// Without `options.signal`, the calling tool's signal cancels the nested call.
+					executeTool: (name, args, options = {}) => {
+						const updates = typeof options.onUpdate === "function" ? nextSignal++ : undefined;
+						if (updates !== undefined) nestedUpdates.set(updates, options.onUpdate);
+						const call = { toolCallId: payload.toolCallId, name, args: plain(args), updates };
+						return cancellable("tool.execute", call, options.signal).finally(() => nestedUpdates.delete(updates));
+					},
 				});
 				const onUpdate = (partial) => yapi.request("tool.update", { toolCallId: payload.toolCallId, partial: plain(partial) });
 				let params = payload.params;
@@ -1557,6 +1754,38 @@
 				}
 			}
 			return null;
+		},
+		/**
+		 * pi's `prepareLoadout` hooks of extension `extension`'s declared tools
+		 * for `loadout`, `{ declared, callable, registered }` as `getAllTools`
+		 * describes tools: `{ descriptions, hidden, errors }`.
+		 */
+		loadout(payload) {
+			const extension = extensionOf(payload.extension);
+			const { declared, callable, registered } = payload.loadout;
+			const byName = new Map(registered.map((tool) => [tool.name, tool]));
+			const loadout = {
+				declared,
+				callable,
+				registered,
+				getExposure: (name) => byName.get(name)?.exposure ?? "direct",
+				getNamespace: (name) => byName.get(name)?.namespace,
+			};
+			const descriptions = {};
+			const hidden = [];
+			const errors = [];
+			for (const tool of declared) {
+				const hook = extension.tools.get(tool.name)?.prepareLoadout;
+				if (typeof hook !== "function") continue;
+				try {
+					const changes = hook(loadout);
+					Object.assign(descriptions, changes?.descriptions);
+					hidden.push(...(changes?.hiddenDeclarations ?? []));
+				} catch (error) {
+					errors.push(errorInfo(error));
+				}
+			}
+			return { descriptions: plain(descriptions), hidden, errors };
 		},
 		async complete(payload) {
 			const command = extensionOf(payload.extension).commands.get(payload.name);
@@ -1649,6 +1878,15 @@
 			bashAborts.get(payload.id)?.abort();
 			return null;
 		},
+		/** A partial result of nested tool call `id`, for its `onUpdate`. */
+		nestedUpdate(payload) {
+			try {
+				nestedUpdates.get(payload.id)?.(payload.partial);
+			} catch (error) {
+				console.error("Nested tool update error:", error);
+			}
+			return null;
+		},
 		async shortcut(payload) {
 			const shortcut = extensionOf(payload.extension).shortcuts.get(payload.shortcut);
 			if (!shortcut) throw new Error(`Shortcut ${payload.shortcut} is not registered`);
@@ -1700,8 +1938,7 @@
 		 * the host's sign-in `id`.
 		 */
 		oauthLogin(payload) {
-			const notify = (event) => yapi.request("oauth.notify", { id: payload.id, event });
-			const prompt = (question) => yapi.op("oauth.prompt", { id: payload.id, prompt: question });
+			const { notify, prompt } = signInInteraction(payload);
 			return withOAuth(payload, (oauth, signal, canonical) =>
 				canonical
 					? oauth.login({ prompt, notify, signal })
@@ -1730,6 +1967,42 @@
 			const oauth = providerConfig(payload.provider)?.oauth;
 			if (typeof oauth?.modifyModels !== "function") throw new Error(`Provider ${payload.provider} has no modifyModels`);
 			return plain(oauth.modifyModels(payload.models, { type: "oauth", ...payload.credential }));
+		},
+		/** Runs provider `provider`'s pi-ai `auth.apiKey.login` with an interaction that reaches the host's sign-in `id`. */
+		keyLogin(payload) {
+			const apiKey = providerConfig(payload.provider)?.auth?.apiKey;
+			if (typeof apiKey?.login !== "function") throw new Error(`Provider ${payload.provider} has no API key login`);
+			return abortable(payload.id, async (signal) => plain(await apiKey.login({ ...signInInteraction(payload), signal })) ?? null);
+		},
+		/**
+		 * What provider `provider`, a pi-ai `Provider`, makes available for
+		 * the stored `credential`, as pi's `Models` checks it: where its API
+		 * key `check`, else its `resolve`, finds a key (`null` for none), and
+		 * the ids of the chat models `filterModels` keeps and of the models
+		 * of each type `getAllAvailable` keeps (`null` to keep every one).
+		 */
+		async availability(payload) {
+			const provider = providerConfig(payload.provider);
+			const credential = payload.credential ?? undefined;
+			const apiKey = provider.auth?.apiKey;
+			let source = null;
+			// pi checks no key while an OAuth credential is stored.
+			if (apiKey && credential?.type !== "oauth") {
+				const input = { ctx: authContext, credential, signal: new AbortController().signal };
+				const found = await (apiKey.check ? apiKey.check(input) : apiKey.resolve(input));
+				source = found ? (found.source ?? "configured provider") : null;
+			}
+			const models = providerModels(provider);
+			const chat = provider.filterModels?.(models.filter((model) => isType(model, "chat")), credential).map((model) => model.id) ?? null;
+			let kept = null;
+			if (provider.filterAllModels) kept = provider.filterAllModels(models, credential);
+			else if (chat) kept = models.filter((model) => !isType(model, "chat") || chat.includes(model.id));
+			let all = null;
+			if (kept) {
+				all = {};
+				for (const model of kept) (all[model.type ?? "chat"] ??= []).push(model.id);
+			}
+			return { source, chat, all };
 		},
 		/** Provider `provider`'s pi-ai `auth.apiKey.resolve` with the stored `credential`: its result, or `null`. */
 		async keyResolve(payload) {

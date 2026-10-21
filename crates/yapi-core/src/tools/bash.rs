@@ -73,14 +73,25 @@ pub fn shell() -> (String, Vec<String>) {
     ("sh".into(), vec!["-c".into()])
 }
 
-/// The shell for `!` commands: the `shellPath` setting when set, else [`shell`].
+/// The shell for commands: the `shellPath` setting when set and not empty,
+/// with `~` and `file://` expanded as pi's `getShellPath` does, else [`shell`].
 pub fn shell_with(custom: Option<&str>) -> Result<(String, Vec<String>), String> {
-    match custom {
-        Some(path) if std::path::Path::new(path).exists() => {
-            Ok((path.to_owned(), vec!["-c".into()]))
-        }
+    match custom
+        .filter(|path| !path.is_empty())
+        .map(super::path::expand)
+    {
+        Some(path) if std::path::Path::new(&path).exists() => Ok((path, vec!["-c".into()])),
         Some(path) => Err(format!("Custom shell path not found: {path}")),
         None => Ok(shell()),
+    }
+}
+
+/// `command` after the `shellCommandPrefix` setting's line, when it is set
+/// and not empty.
+pub fn with_prefix(prefix: Option<&str>, command: &str) -> String {
+    match prefix {
+        Some(prefix) if !prefix.is_empty() => format!("{prefix}\n{command}"),
+        _ => command.to_owned(),
     }
 }
 
@@ -532,6 +543,8 @@ impl Tool for Bash {
             if cancel.is_cancelled() {
                 return Err("Command aborted".into());
             }
+            let runtime = self.env.runtime();
+            let shell = shell_with(runtime.shell_path.as_deref())?;
             if !cwd.exists() {
                 return Err(format!(
                     "Working directory does not exist: {}\nCannot execute bash commands.",
@@ -539,8 +552,8 @@ impl Tool for Bash {
                 ));
             }
 
-            let mut process = shell_command(shell(), &command, cwd, &self.env.bin_dir);
-            let runtime = self.env.runtime();
+            let command = with_prefix(runtime.shell_command_prefix.as_deref(), &command);
+            let mut process = shell_command(shell, &command, cwd, &self.env.bin_dir);
             if let Some(id) = &runtime.session_id {
                 process.env("PI_SESSION_ID", id);
             }

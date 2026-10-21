@@ -40,4 +40,4 @@ Providers such as Anthropic cache a prompt for a few minutes. yapi can resend th
 
 `/export` writes the session to a standalone HTML file. `yapi --export <file>.jsonl [output.html]` does the same for a session file from the command line. `/export <path>.jsonl` writes the current branch as a new session file, without the other branches.
 
-`/import <path>.jsonl` copies a session file into the project's session folder and resumes it.
+`/import <path>.jsonl` copies a session file into the project's session folder and resumes it. When the session's working folder no longer exists, yapi asks whether to resume it in the current folder instead.

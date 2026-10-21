@@ -40,10 +40,17 @@ pub struct ApiKeyCredential {
 pub struct OAuthCredential {
     pub access: String,
     pub refresh: String,
-    /// Expiry as Unix time in milliseconds.
-    pub expires: u64,
+    /// Expiry as Unix time in milliseconds: any finite number, as in pi.
+    #[serde(serialize_with = "js_number")]
+    pub expires: f64,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// Serializes a number as [`crate::json::number`] does, so it equals the same
+/// number parsed from a pi file.
+fn js_number<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::json::number(*value).serialize(serializer)
 }
 
 /// Request credentials a provider derives, as an extension's provider

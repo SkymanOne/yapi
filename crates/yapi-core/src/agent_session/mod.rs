@@ -30,11 +30,11 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::{PromptDisposition, StreamingBehavior};
 use yapi_types::session::FileEntry;
-use yapi_types::settings::{QueueMode, Transport};
+use yapi_types::settings::Transport;
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
-use crate::compaction::{BranchSummary, CompactionSettings};
+use crate::compaction::BranchSummary;
 use crate::extensions::{
     BashOperations, Extension, ExtensionUi, Loadout, LoadoutChanges, Mode, NoUi, NotifyKind,
     SessionActions, Tools,
@@ -271,7 +271,7 @@ struct Inner {
     registry: RwLock<Arc<ModelRegistry>>,
     /// Serializes model catalog refreshes.
     catalog_refresh: tokio::sync::Mutex<()>,
-    apis: Apis,
+    apis: RwLock<Apis>,
     state: Mutex<State>,
     /// The models cycling moves through; empty means every available one.
     scoped_models: Mutex<Vec<crate::model_resolver::ScopedModel>>,
@@ -298,6 +298,9 @@ struct Inner {
     listeners: Mutex<Vec<Listener>>,
     steering: Mutex<VecDeque<Message>>,
     follow_up: Mutex<VecDeque<Message>>,
+    /// The steering and follow-up modes as pi's agent holds them: any value
+    /// last set, `None` once set to nothing.
+    queue_modes: Mutex<(Option<Value>, Option<Value>)>,
     /// Texts of queued steering and follow-up messages until they start, as
     /// `queue_update` reports them.
     queued: Mutex<(Vec<String>, Vec<String>)>,
@@ -515,13 +518,26 @@ impl AgentSession {
             let _ = session.append_thinking_level_change(thinking_level.as_str());
         }
 
+        // pi's agent takes its queue modes from the settings: a value that
+        // is not truthy reads as `one-at-a-time`.
+        let queue_mode = |key: &str| {
+            Some(
+                settings
+                    .merged_document()
+                    .get(key)
+                    .filter(|mode| yapi_ai::http::is_truthy(mode))
+                    .cloned()
+                    .unwrap_or_else(|| "one-at-a-time".into()),
+            )
+        };
+        let queue_modes = (queue_mode("steeringMode"), queue_mode("followUpMode"));
         AgentSession {
             inner: Arc::new(Inner {
                 cwd,
                 settings: Mutex::new(settings),
                 registry: RwLock::new(Arc::new(registry)),
                 catalog_refresh: tokio::sync::Mutex::new(()),
-                apis,
+                apis: RwLock::new(apis),
                 state: Mutex::new(State {
                     session,
                     model,
@@ -543,6 +559,7 @@ impl AgentSession {
                 listeners: Mutex::new(Vec::new()),
                 steering: Mutex::new(VecDeque::new()),
                 follow_up: Mutex::new(VecDeque::new()),
+                queue_modes: Mutex::new(queue_modes),
                 queued: Mutex::new((Vec::new(), Vec::new())),
                 cancel: Mutex::new(None),
                 recovery: Mutex::new(Recovery::default()),
@@ -735,43 +752,71 @@ impl AgentSession {
         queued.0.len() + queued.1.len()
     }
 
-    /// How queued steering messages are delivered.
-    pub fn steering_mode(&self) -> QueueMode {
-        self.settings()
-            .steering_mode
-            .unwrap_or(QueueMode::OneAtATime)
+    /// How queued steering messages are delivered: `all`, or one at a time
+    /// for any other value. It is the mode last set, as pi's agent keeps it,
+    /// and `None` once set to nothing.
+    pub fn steering_mode(&self) -> Option<Value> {
+        lock(&self.inner.queue_modes).0.clone()
     }
 
-    /// How queued follow-up messages are delivered.
-    pub fn follow_up_mode(&self) -> QueueMode {
-        self.settings()
-            .follow_up_mode
-            .unwrap_or(QueueMode::OneAtATime)
+    /// How queued follow-up messages are delivered, as
+    /// [`AgentSession::steering_mode`].
+    pub fn follow_up_mode(&self) -> Option<Value> {
+        lock(&self.inner.queue_modes).1.clone()
     }
 
-    /// Sets the steering mode in the global settings.
-    pub fn set_steering_mode(&self, mode: QueueMode) -> Result<(), String> {
-        self.set_global_setting("steeringMode", serde_json::to_value(mode).ok())
+    /// Whether the steering and the follow-up queue each deliver all their
+    /// messages at once.
+    pub(super) fn drains_all(&self) -> (bool, bool) {
+        let all = |mode: &Option<Value>| mode.as_ref().and_then(Value::as_str) == Some("all");
+        let modes = lock(&self.inner.queue_modes);
+        (all(&modes.0), all(&modes.1))
     }
 
-    /// Sets the follow-up mode in the global settings.
-    pub fn set_follow_up_mode(&self, mode: QueueMode) -> Result<(), String> {
-        self.set_global_setting("followUpMode", serde_json::to_value(mode).ok())
+    /// Sets the steering mode, any value as pi takes it, and saves it in the
+    /// global settings; `None` removes the setting.
+    pub fn set_steering_mode(&self, mode: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.queue_modes).0.clone_from(&mode);
+        self.set_global_setting("steeringMode", mode)
     }
 
-    /// Whether threshold and overflow compaction run.
-    pub fn auto_compaction_enabled(&self) -> bool {
-        CompactionSettings::resolve(lock(&self.inner.settings).settings(), None).enabled
+    /// Sets the follow-up mode as [`AgentSession::set_steering_mode`] does.
+    pub fn set_follow_up_mode(&self, mode: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.queue_modes).1.clone_from(&mode);
+        self.set_global_setting("followUpMode", mode)
     }
 
-    /// Turns automatic compaction on or off in the global settings.
-    pub fn set_auto_compaction(&self, enabled: bool) -> Result<(), String> {
-        self.set_nested_global_setting("compaction", "enabled", enabled.into())
+    /// pi's `autoCompactionEnabled`: the setting as saved, `true` when unset
+    /// or `null`. Compaction runs when it is truthy.
+    pub fn auto_compaction_enabled(&self) -> Value {
+        lock(&self.inner.settings)
+            .merged_document()
+            .get("compaction")
+            .and_then(|compaction| compaction.get("enabled"))
+            .filter(|enabled| !enabled.is_null())
+            .cloned()
+            .unwrap_or(Value::Bool(true))
     }
 
-    /// Turns automatic retries on or off in the global settings.
-    pub fn set_auto_retry(&self, enabled: bool) -> Result<(), String> {
-        self.set_nested_global_setting("retry", "enabled", enabled.into())
+    /// Saves whether automatic compaction runs in the global settings, any
+    /// value as pi takes it; `None` removes the setting.
+    pub fn set_auto_compaction(&self, enabled: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.settings)
+            .set_nested(
+                crate::settings::Scope::Global,
+                "compaction",
+                "enabled",
+                enabled,
+            )
+            .map_err(|err| err.to_string())
+    }
+
+    /// Saves whether automatic retries run, as
+    /// [`AgentSession::set_auto_compaction`] does.
+    pub fn set_auto_retry(&self, enabled: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.settings)
+            .set_nested(crate::settings::Scope::Global, "retry", "enabled", enabled)
+            .map_err(|err| err.to_string())
     }
 
     /// Sets `key` inside the global object setting `field` and writes
@@ -783,7 +828,7 @@ impl AgentSession {
         value: serde_json::Value,
     ) -> Result<(), String> {
         lock(&self.inner.settings)
-            .set_nested(crate::settings::Scope::Global, field, key, value)
+            .set_nested(crate::settings::Scope::Global, field, key, Some(value))
             .map_err(|err| err.to_string())
     }
 
@@ -823,10 +868,8 @@ impl AgentSession {
         let cancel = CancellationToken::new();
         lock(&self.inner.bash).push((token, cancel.clone()));
         let settings = self.settings();
-        let resolved = match settings.shell_command_prefix.as_deref() {
-            Some(prefix) if !prefix.is_empty() => format!("{prefix}\n{command}"),
-            _ => command.to_owned(),
-        };
+        let resolved =
+            crate::tools::bash::with_prefix(settings.shell_command_prefix.as_deref(), command);
         let cwd = self.with_session(|session| session.cwd().to_path_buf());
         let on_chunk = |delta: &str| {
             on_chunk(delta);
@@ -975,19 +1018,31 @@ impl AgentSession {
     }
 
     /// pi's `getLastAssistantText`: the text of the last assistant message,
-    /// skipping aborted ones without content.
+    /// skipping aborted ones without content; `None` when that message has no
+    /// text.
     pub fn last_assistant_text(&self) -> Option<String> {
-        self.messages().into_iter().rev().find_map(|message| {
-            let Message::Assistant(assistant) = message else {
-                return None;
-            };
-            if assistant.stop_reason == StopReason::Aborted && assistant.content.is_empty() {
-                return None;
-            }
-            let text = assistant_text(&assistant);
-            let text = text.trim();
-            (!text.is_empty()).then(|| text.to_owned())
-        })
+        let assistant = self
+            .messages()
+            .into_iter()
+            .rev()
+            .find_map(|message| match message {
+                Message::Assistant(assistant)
+                    if !(assistant.stop_reason == StopReason::Aborted
+                        && assistant.content.is_empty()) =>
+                {
+                    Some(assistant)
+                }
+                _ => None,
+            })?;
+        let text = assistant_text(&assistant);
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_owned())
+    }
+
+    /// What [`AgentSession::abort`] cancels: the current run's token, or
+    /// `None` while no run is active, as pi's `agent.signal`.
+    pub fn run_cancel(&self) -> Option<CancellationToken> {
+        lock(&self.inner.cancel).clone()
     }
 
     /// Cancels the current run.
@@ -1032,7 +1087,9 @@ impl AgentSession {
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
             let session = self.clone();
-            return Some(async move { session.run(vec![message]).await });
+            return Some(async move {
+                let _ = session.run(vec![message]).await;
+            });
         } else if self.is_streaming() {
             lock(&self.inner.pending_custom).push(message);
         } else {
@@ -1170,13 +1227,15 @@ impl AgentSession {
         expand_prompt_template(&text, &read(&self.inner.resources).templates)
     }
 
-    /// `/skill:name args` becomes the skill's content with the arguments.
+    /// `/skill:name args` becomes the skill's content with the arguments. The
+    /// name ends at the first space. A skill file that cannot be read is
+    /// reported as an extension error and leaves the text as typed.
     fn expand_skill(&self, text: &str) -> String {
         let Some(rest) = text.strip_prefix("/skill:") else {
             return text.to_owned();
         };
-        let (name, args) = match rest.find(char::is_whitespace) {
-            Some(index) => (&rest[..index], rest[index..].trim()),
+        let (name, args) = match rest.split_once(' ') {
+            Some((name, args)) => (name, args.trim()),
             None => (rest, ""),
         };
         let Some(skill) = read(&self.inner.resources)
@@ -1187,15 +1246,27 @@ impl AgentSession {
         else {
             return text.to_owned();
         };
-        let Ok(content) = std::fs::read_to_string(&skill.file_path) else {
-            return text.to_owned();
+        let content = match std::fs::read_to_string(&skill.file_path) {
+            Ok(content) => content,
+            Err(error) => {
+                let error = crate::tools::node_error(&error, "open", &skill.file_path);
+                let ui = lock(&self.inner.binding).0.clone();
+                ui.extension_error(
+                    &skill.file_path.to_string_lossy(),
+                    "skill_expansion",
+                    &error,
+                    None,
+                );
+                return text.to_owned();
+            }
         };
         let (_, body) = crate::resources::split_frontmatter(&content);
         let mut expanded = format!(
-            "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{body}\n</skill>",
+            "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{}\n</skill>",
             skill.name,
             skill.file_path.display(),
-            skill.base_dir.display()
+            skill.base_dir.display(),
+            body.trim()
         );
         if !args.is_empty() {
             expanded += &format!("\n\n{args}");
@@ -1283,6 +1354,18 @@ impl AgentSession {
         options
     }
 
+    /// Has the extensions' loadout hooks that answer later look at the
+    /// `declared` tools, before a request presents them.
+    pub(super) async fn refresh_loadouts(&self, declared: Vec<RegisteredTool>) {
+        let loadout = Loadout {
+            declared,
+            callable: self.callable_tools(),
+        };
+        for extension in &self.inner.extensions {
+            extension.refresh_loadout(&loadout).await;
+        }
+    }
+
     /// The extensions' loadout hooks' changes for `declared` tools, with the
     /// loadout they saw.
     fn loadout_changes(&self, declared: Vec<RegisteredTool>) -> (Loadout, LoadoutChanges) {
@@ -1351,6 +1434,27 @@ impl AgentSession {
     /// The system prompt for `active` tools as the model reads it.
     fn system_prompt_text(&self, active: &[String]) -> Result<String, String> {
         self.prompt_text(&self.prompt_options(active))
+    }
+
+    /// pi's `systemPrompt`: the prompt of the current run's options, as
+    /// the run sends it, or of the base options while no run is active.
+    pub fn system_prompt(&self) -> Result<String, String> {
+        if !self.is_streaming() {
+            return self.prompt_text(&self.base_prompt_options());
+        }
+        if let Some(forced) = lock(&self.inner.forced_prompt).clone() {
+            return Ok(forced);
+        }
+        self.system_prompt_text(&self.inner.tools.active())
+    }
+
+    /// pi's `buildSystemPrompt`: the system prompt `options` give, their
+    /// forced prompt if they have one.
+    pub fn render_prompt(&self, options: &SystemPromptOptions) -> Result<String, String> {
+        match &options.force_system_prompt {
+            Some(forced) => Ok(forced.clone()),
+            None => self.prompt_text(options),
+        }
     }
 
     /// The system prompt `options` describe, as the model reads it.
@@ -1474,6 +1578,7 @@ impl AgentSession {
                 &self.inner.docs,
             ));
         }
+        self.compact_before_prompt().await?;
         let mut sections = self.base_prompt_options().sections;
         let ctx = self.extension_context(CancellationToken::new());
         for extension in &self.inner.extensions {
@@ -1514,6 +1619,8 @@ impl AgentSession {
             format!("{expanded}\n\n{}", hints.join("\n"))
         };
         let messages = self.messages();
+        // The prompt leaves out the snippets of tools the hooks hide.
+        self.refresh_loadouts(self.active_tools(&active)).await;
         let mut prompts = Vec::new();
         if let Some(update) = self.system_update(&messages, &active)? {
             prompts.push(update);
@@ -1522,19 +1629,27 @@ impl AgentSession {
         prompts.append(&mut lock(&self.inner.next_turn));
         prompts.extend(custom);
         preflight(PromptDisposition::Started);
-        self.run(prompts).await;
-        Ok(())
+        self.run(prompts).await
     }
 
     /// Runs prompts, then pi's post-run loop: retries, overflow recovery and
-    /// compaction, and queued messages, until the agent settles.
-    async fn run(&self, prompts: Vec<Message>) {
+    /// compaction, and queued messages, until the agent settles. An invalid
+    /// compaction setting ends the loop with its error once the agent settles.
+    async fn run(&self, prompts: Vec<Message>) -> Result<(), String> {
         let cancel = CancellationToken::new();
         *lock(&self.inner.cancel) = Some(cancel.clone());
         lock(&self.inner.state).streaming = true;
         self.run_agent(Some(prompts), &cancel).await;
+        let mut result = Ok(());
         while !cancel.is_cancelled() {
-            if self.handle_post_run(&cancel).await {
+            let again = match self.handle_post_run(&cancel).await {
+                Ok(again) => again,
+                Err(error) => {
+                    result = Err(error);
+                    break;
+                }
+            };
+            if again {
                 if cancel.is_cancelled() {
                     break;
                 }
@@ -1572,6 +1687,7 @@ impl AgentSession {
             }
         }
         self.inner.idle.notify_waiters();
+        result
     }
 
     fn has_queued(&self) -> bool {
@@ -1738,8 +1854,10 @@ impl AgentSession {
             session_id: Some(session_id.clone()),
             session_file,
             auto_resize_images: settings.image_auto_resize(),
+            shell_path: settings.shell_path.clone(),
+            shell_command_prefix: settings.shell_command_prefix.clone(),
         };
-        let apis = self.inner.apis.clone();
+        let apis = self.apis();
         let session = self.downgrade();
         let request = self.request_options();
         // pi's stream function throws for an invalid setting, which ends the run.
@@ -1766,17 +1884,16 @@ impl AgentSession {
         let cancel_token = cancel.clone();
         let hooks = Hooks {
             session: self.clone(),
-            steering_mode: settings.steering_mode,
-            follow_up_mode: settings.follow_up_mode,
             cancel: cancel_token,
             turn_index: std::sync::atomic::AtomicU64::new(0),
         };
         let prompts = match prompts {
             Some(prompts) => Some(prompts),
             None if matches!(context.messages.last(), Some(Message::Assistant(_))) => {
-                let steering = drain(&self.inner.steering, settings.steering_mode);
+                let (steering_all, follow_up_all) = self.drains_all();
+                let steering = drain(&self.inner.steering, steering_all);
                 let queued = if steering.is_empty() {
-                    drain(&self.inner.follow_up, settings.follow_up_mode)
+                    drain(&self.inner.follow_up, follow_up_all)
                 } else {
                     steering
                 };
@@ -2126,8 +2243,6 @@ impl AgentSession {
         let started = nested.start(caller, &mut call);
         let hooks = Hooks {
             session: self.clone(),
-            steering_mode: None,
-            follow_up_mode: None,
             cancel: cancel.clone(),
             turn_index: std::sync::atomic::AtomicU64::new(0),
         };
@@ -2294,11 +2409,12 @@ pub fn failed(message: &yapi_types::message::AssistantMessage) -> bool {
     matches!(message.stop_reason, StopReason::Error | StopReason::Aborted)
 }
 
-fn drain(queue: &Mutex<VecDeque<Message>>, mode: Option<QueueMode>) -> Vec<Message> {
+fn drain(queue: &Mutex<VecDeque<Message>>, all: bool) -> Vec<Message> {
     let mut queue = lock(queue);
-    match mode {
-        Some(QueueMode::All) => queue.drain(..).collect(),
-        _ => queue.pop_front().into_iter().collect(),
+    if all {
+        queue.drain(..).collect()
+    } else {
+        queue.pop_front().into_iter().collect()
     }
 }
 

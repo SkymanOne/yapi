@@ -72,7 +72,6 @@ Extensions run in WebAssembly instances with memory and compute limits, and the 
 - Project manifests (`yapi.toml`) that pin the packages and skills a project uses
 - A registry for yapi packages
 - A stable native extension API in yapi 1.0
-- The Pi features not yet ported, listed in [Differences from Pi](https://skymanone.github.io/yapi/compat.html#open-gaps)
 
 The [Roadmap](https://skymanone.github.io/yapi/roadmap.html) has the details.
 
