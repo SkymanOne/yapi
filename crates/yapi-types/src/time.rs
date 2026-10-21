@@ -178,17 +178,6 @@ mod tests {
     }
 
     #[test]
-    fn random_fails_closed() {
-        NO_RANDOM.set(true);
-        assert!(try_random_bytes::<16>().is_err());
-        assert!(try_uuid_v4().is_err());
-        assert!(std::panic::catch_unwind(uuid_v4).is_err());
-        assert!(std::panic::catch_unwind(|| random_hex(8)).is_err());
-        NO_RANDOM.set(false);
-        assert_ne!(random_hex(8), random_hex(8));
-    }
-
-    #[test]
     fn round_trips_iso() {
         let ms = 1_790_952_595_641;
         assert_eq!(iso(ms), "2026-10-02T14:49:55.641Z");
@@ -205,5 +194,13 @@ mod tests {
         assert_eq!(&v7[14..15], "7");
         assert_eq!(&uuid_v4()[14..15], "4");
         assert_eq!(&try_uuid_v4().unwrap()[14..15], "4");
+        assert_ne!(random_hex(8), random_hex(8));
+        // Without the OS generator, ids fail rather than repeat.
+        NO_RANDOM.set(true);
+        assert!(try_random_bytes::<16>().is_err());
+        assert!(try_uuid_v4().is_err());
+        assert!(std::panic::catch_unwind(uuid_v4).is_err());
+        assert!(std::panic::catch_unwind(|| random_hex(8)).is_err());
+        NO_RANDOM.set(false);
     }
 }
