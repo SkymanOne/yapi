@@ -469,12 +469,29 @@ pub fn factory(
             *lock(&current) = Arc::clone(&extensions);
             let preloaded = Some((run.settings, run.trusted));
             let (session, _) = build(&args, session, false, &extensions, preloaded)?;
+            sync_runtime_key(&args, &session).await;
             for (path, error) in extensions.failures() {
                 session.add_extension_load_error(path, error);
             }
             Ok(session)
         })
     })
+}
+
+/// pi's `setRuntimeApiKey` for `--api-key`: an offline refresh of the
+/// session model's provider, so its availability is checked with the key.
+pub async fn sync_runtime_key(args: &Args, session: &AgentSession) {
+    let (Some(_), Some(model)) = (&args.api_key, session.model()) else {
+        return;
+    };
+    use yapi_ai::model_catalog::{REFRESH_TIMEOUT, RefreshOptions, cancel_after};
+    let options = RefreshOptions {
+        providers: Some(vec![model.provider]),
+        allow_network: false,
+        cancel: cancel_after(REFRESH_TIMEOUT),
+        ..RefreshOptions::default()
+    };
+    session.refresh_model_catalogs(options).await;
 }
 
 /// Builds a session around `session` in its working directory, with the

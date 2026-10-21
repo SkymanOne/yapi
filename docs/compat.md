@@ -25,6 +25,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
 | Codemode scripts | May compute without limit | Stop after 60 seconds of computing without awaiting a call. |
+| Model availability of extension providers | `getAvailableOfType` runs a pi-ai `Provider`'s API key `check`, `filterModels` and `filterAllModels` on each call | `getAvailableOfType` returns what they kept at the last refresh. They run in the extension's runtime instance as extensions load, on `/login`, `/logout` and `--api-key`, when the model selector opens, on `/reload` and on `ctx.modelRegistry.refresh`. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them. |
 | Native extensions | None | WebAssembly components written in Rust. See [Native extensions](native-extensions.md). Unstable until 1.0. |
 
 ## Packages and installation

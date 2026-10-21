@@ -1221,6 +1221,18 @@ impl ModelRegistry {
         self.store.get(provider)
     }
 
+    /// `provider`'s credential as pi's `RuntimeCredentials.read` gives it to
+    /// providers: a runtime key as an API key credential, else the stored one.
+    pub fn read_credential(&self, provider: &str) -> Option<Credential> {
+        match self.runtime_keys.get(provider) {
+            Some(key) => Some(Credential::ApiKey(ApiKeyCredential {
+                key: Some(key.clone()),
+                env: None,
+            })),
+            None => self.credential(provider),
+        }
+    }
+
     /// The credential store behind this registry.
     pub fn store(&self) -> &Arc<CredentialStore> {
         &self.store

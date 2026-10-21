@@ -484,7 +484,8 @@ pub trait Extension: Send + Sync {
 
     /// Refreshes the model lists of the providers it registered with
     /// `refreshModels` that `options` selects, as pi does: first offline
-    /// with the stored credential, then, when `options` allow the network
+    /// with the registry's runtime key or stored credential
+    /// ([`ModelRegistry::read_credential`]), then, when `options` allow the network
     /// and a credential resolves, online with it. Then those with the legacy
     /// `oauth.modifyModels` project their models for the stored credential,
     /// and pi-ai `Provider`s check their API key and filter their models for

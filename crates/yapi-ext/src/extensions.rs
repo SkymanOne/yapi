@@ -1119,7 +1119,7 @@ impl JsExtension {
         options: &RefreshOptions,
         lists: &mut Vec<ModelList>,
     ) {
-        let credential = registry.store().get(provider);
+        let credential = registry.read_credential(provider);
         let offline = self
             .refresh_phase(provider, registry, credential, false, options)
             .await;
@@ -1192,7 +1192,7 @@ impl JsExtension {
         registry: &ModelRegistry,
         lists: &[ModelList],
     ) -> Result<Option<Vec<Model>>, String> {
-        let Some(Credential::OAuth(credential)) = registry.store().get(provider) else {
+        let Some(Credential::OAuth(credential)) = registry.read_credential(provider) else {
             return Ok(None);
         };
         let mut own = registry.clone();
@@ -1445,7 +1445,7 @@ impl Extension for JsExtension {
                 }
                 // pi refreshes availability after the models.
                 if checks_availability(config) && !options.cancel.is_cancelled() {
-                    let credential = registry.store().get(&name);
+                    let credential = registry.read_credential(&name);
                     let found = self.shared.availability(&name, credential).await;
                     let found = found.and_then(|found| {
                         serde_json::from_value(found)
