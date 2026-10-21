@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1b7eb4bd.js";
+            window.path_to_searchindex_js = "searchindex-8726a58e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -1705,7 +1705,6 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
 <tr><td>Mouse in fullscreen mode</td><td>Extension editors and components get mouse events.</td><td>Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus.</td></tr>
-<tr><td>RPC settings commands</td><td><code>set_thinking_level</code>, <code>set_steering_mode</code>, <code>set_follow_up_mode</code>, <code>set_auto_compaction</code> and <code>set_auto_retry</code> take a value of any type and save it in the settings.</td><td>A value of the wrong type fails the command and changes nothing, so it never reaches <code>settings.json</code>. Other malformed commands get Pi’s errors.</td></tr>
 </tbody>
 </table>
 </div>
