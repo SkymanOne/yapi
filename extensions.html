@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-078e28ab.js";
+            window.path_to_searchindex_js = "searchindex-db591939.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -301,6 +301,9 @@ export default function (pi: ExtensionAPI) {
 <li>A provider with its own <code>streamSimple</code> can implement an API yapi does not have, or hand requests to pi-ai’s built-in APIs, such as <code>anthropicMessagesApi()</code>. A stream registered with pi-ai’s <code>registerApiProvider</code> serves every model of its API, including ones from <code>models.json</code>. Provider hooks such as <code>before_provider_request</code> run either way.</li>
 <li>A provider with <code>oauth</code> adds its sign-in to <code>/login</code>. yapi stores its credentials in <code>auth.json</code> and refreshes them before they expire.</li>
 <li>A provider with <code>refreshModels</code> updates its model list whenever yapi refreshes model catalogs.</li>
+<li>A provider with the legacy <code>oauth.modifyModels</code> adjusts its models for the signed-in account whenever yapi refreshes model catalogs.</li>
+<li>Image and classifier models run through the provider’s <code>images</code> and <code>classifiers</code> implementations for their <code>api</code>. Codemode scripts and extensions use them with <code>generateImages</code> and <code>classify</code>.</li>
+<li>A complete pi-ai <code>Provider</code>, such as one <code>createProvider</code> builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh.</li>
 </ul>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider documentation</a> describes the configuration.</p>
 
