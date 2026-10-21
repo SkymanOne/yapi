@@ -336,3 +336,35 @@ async fn nested_call_options() {
         [json!({"updated": true, "isError": true, "quick": true})]
     );
 }
+
+/// `pi.exec` and the local bash operations resolve once the process exits,
+/// without waiting for a descendant that holds its output open (#209).
+#[tokio::test(flavor = "multi_thread")]
+async fn exec_ignores_descendants() {
+    let dir = scratch("api-exec-exit");
+    let host = load(
+        &dir,
+        r#"import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
+export default function (pi) {
+	pi.registerCommand("probe", {
+		handler: async (_args, ctx) => {
+			let started = Date.now();
+			const result = await pi.exec("sh", ["-c", "sleep 3 & echo started"]);
+			const exec = Date.now() - started;
+			started = Date.now();
+			let output = "";
+			const bash = await createLocalBashOperations().exec("sleep 3 & echo started", ctx.cwd, { onData: (data) => (output += data) });
+			const operations = Date.now() - started;
+			pi.appendEntry("exec", { stdout: result.stdout, code: result.code, output, exitCode: bash.exitCode, quick: exec < 2000 && operations < 2000 });
+		},
+	});
+}"#,
+    )
+    .await;
+    let session = common::session(&Faux::new([]), &dir, host.for_session());
+    bind(&session).await;
+    assert_eq!(
+        probe(&session, "/probe", "exec").await,
+        json!({"stdout": "started\n", "code": 0, "output": "started\n", "exitCode": 0, "quick": true})
+    );
+}

@@ -348,10 +348,59 @@
 				options.signal?.removeEventListener("abort", killProcess);
 				resolve({ stdout, stderr, code, killed });
 			};
-			proc.on("close", (code) => finish(code ?? 0));
-			proc.on("error", () => finish(1));
+			yapi.waitForChild(proc).then(
+				(code) => finish(code ?? 0),
+				() => finish(1),
+			);
 		});
 	}
+
+	/**
+	 * pi's `waitForChildProcess`: `child`'s exit code once it has exited and
+	 * its output has ended or been quiet for 100 ms, so a descendant that
+	 * holds the output open does not hold the caller.
+	 */
+	yapi.waitForChild = (child) =>
+		new Promise((resolve, reject) => {
+			let settled = false;
+			let exited = false;
+			let exitCode = null;
+			let ended = 0;
+			let idle;
+			const finish = (code) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				resolve(code);
+			};
+			const quiet = () => {
+				clearTimeout(idle);
+				idle = setTimeout(() => finish(exitCode), 100);
+			};
+			const end = () => {
+				if (++ended === 2 && exited) finish(exitCode);
+			};
+			const data = () => {
+				if (exited && !settled) quiet();
+			};
+			for (const stream of [child.stdout, child.stderr]) {
+				stream.once("end", end);
+				stream.on("data", data);
+			}
+			child.once("error", (error) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				reject(error);
+			});
+			child.once("exit", (code) => {
+				exited = true;
+				exitCode = code;
+				if (ended === 2) finish(code);
+				else quiet();
+			});
+			child.once("close", finish);
+		});
 
 	// ----- descriptions sent to the host -----------------------------------------------
 	function describeTool(tool) {

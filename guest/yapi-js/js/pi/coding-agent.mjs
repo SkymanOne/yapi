@@ -106,10 +106,7 @@ export function createLocalBashOperations() {
 			child.stderr.on("data", onData);
 			signal?.addEventListener("abort", kill, { once: true });
 			try {
-				const exitCode = await new Promise((resolve, reject) => {
-					child.on("error", reject);
-					child.on("close", resolve);
-				});
+				const exitCode = await yapi.waitForChild(child);
 				if (signal?.aborted) throw new Error("aborted");
 				if (timedOut) throw new Error(`timeout:${timeout}`);
 				// A shell a signal ended reports 128 plus the signal's number, as in pi.
