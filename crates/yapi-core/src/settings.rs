@@ -220,6 +220,36 @@ fn resolve_default_tools(entries: &[&str]) -> Vec<String> {
     tools
 }
 
+/// Whether [`Settings`] reads `value` at `path`.
+fn reads_at(path: &[String], value: &Value) -> bool {
+    let nested = path.iter().rev().fold(value.clone(), |inner, key| {
+        Value::Object(Map::from_iter([(key.clone(), inner)]))
+    });
+    Settings::deserialize(nested).is_ok()
+}
+
+/// The fields of `object`, found at `path` in the settings, that [`Settings`]
+/// reads: a field of the wrong type is left out alone, also inside an object,
+/// as pi reads each field on its own.
+fn valid_fields(path: &mut Vec<String>, object: Map<String, Value>) -> Map<String, Value> {
+    let mut valid = Map::new();
+    for (key, value) in object {
+        path.push(key.clone());
+        let kept = match value {
+            value if reads_at(path, &value) => Some(value),
+            Value::Object(inner) => {
+                Some(Value::Object(valid_fields(path, inner))).filter(|inner| reads_at(path, inner))
+            }
+            _ => None,
+        };
+        path.pop();
+        if let Some(value) = kept {
+            valid.insert(key, value);
+        }
+    }
+    valid
+}
+
 impl SettingsManager {
     /// Loads both scopes, the project's from `project_dir`, and that only
     /// when `project_trusted`.
@@ -286,15 +316,9 @@ impl SettingsManager {
             merged.insert("defaultTools".into(), tools);
         }
         // Unknown or invalid fields are ignored, as in pi.
-        self.merged = serde_json::from_value(Value::Object(merged.clone())).unwrap_or_else(|_| {
-            let valid: Map<String, Value> = merged
-                .into_iter()
-                .filter(|(key, value)| {
-                    let single = Map::from_iter([(key.clone(), value.clone())]);
-                    serde_json::from_value::<Settings>(Value::Object(single)).is_ok()
-                })
-                .collect();
-            serde_json::from_value(Value::Object(valid)).unwrap_or_default()
+        self.merged = Settings::deserialize(Value::Object(merged.clone())).unwrap_or_else(|_| {
+            let valid = Value::Object(valid_fields(&mut Vec::new(), merged));
+            Settings::deserialize(valid).unwrap_or_default()
         });
     }
 
@@ -598,6 +622,9 @@ mod tests {
             "retry": "often",
             "steeringMode": "all",
             "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
+            "compaction": {"enabled": false, "reserveTokens": "16384"},
+            "branchSummary": {"skipPrompt": true, "reserveTokens": 1.5e5},
+            "modelThinkingLevels": {"a/b": "high", "a/c": "extreme"},
         })
         .as_object()
         .unwrap()
@@ -606,6 +633,17 @@ mod tests {
         let settings = manager.settings();
         assert_eq!(settings.theme.as_deref(), Some("dark"));
         assert!(settings.retry.is_none());
+        // A wrongly typed nested field drops alone.
+        let compaction = settings.compaction.as_ref().unwrap();
+        assert_eq!(
+            (compaction.enabled, compaction.reserve_tokens),
+            (Some(false), None)
+        );
+        assert_eq!(
+            settings.branch_summary.as_ref().unwrap().skip_prompt,
+            Some(true)
+        );
+        assert_eq!(settings.model_thinking_levels.as_ref().unwrap().len(), 1);
         assert_eq!(
             settings.steering_mode,
             Some(yapi_types::settings::QueueMode::All)
