@@ -6,6 +6,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Additions
 
+- Add `--enable-logging`, which appends a log of extension output, runtime restarts, crashes and library warnings to `~/.yapi/agent/yapi.log` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Add `/bug`, which saves a bug report as a zip file and can post it as a public issue on SkymanOne/yapi with the GitHub CLI ([#192](https://github.com/SkymanOne/yapi/pull/192)).
 - Add complete pi-ai `Provider` objects, image and classifier models with their implementations, and the legacy `oauth.modifyModels` to extensions' `registerProvider` ([#191](https://github.com/SkymanOne/yapi/pull/191)).
 - Add `ctx.modelRegistry.getProviderAuth` and `getApiKeyAndHeaders`, which give extensions a provider's or a model's API key and headers as in Pi. They need the network grant ([#189](https://github.com/SkymanOne/yapi/pull/189)).

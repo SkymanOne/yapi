@@ -100,7 +100,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Wasm host | `wasmtime` with the component model |
 | Guest JS engine | `rquickjs` (QuickJS-NG) |
 | TypeScript and resolution | `oxc_transformer`, `oxc_resolver` |
-| Errors | `thiserror`, `anyhow` |
+| Logging, errors | `tracing`, which `--enable-logging` writes to a file through a subscriber in `crates/yapi`; `thiserror`, `anyhow` |
 | Tests | pi goldens, `yapi-mock` (on `hyper`), `portable-pty` and `vt100` for terminal scenarios |
 
 ## Extension system
@@ -211,7 +211,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `thiserror` in libraries; `anyhow` only in `yapi` and `xtask`.
   - No `unwrap` or `expect` outside tests unless the invariant is stated at the call site.
 - `#![forbid(unsafe_code)]` in every crate except `yapi-ext` and `guest/*`.
-- Stdout belongs to print, JSON and RPC output. Diagnostics go to stderr until a mode draws on the terminal, and to the extension output buffer after that.
+- Log through `tracing`. `--enable-logging` appends the events to `yapi.log` in the agent directory. Stdout belongs to print, JSON and RPC output.
 - Async on tokio:
   - no lock held across `.await`;
   - no blocking calls on async threads;

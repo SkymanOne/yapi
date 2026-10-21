@@ -13,6 +13,7 @@ mod help;
 mod import;
 mod interactive;
 mod list_models;
+mod log;
 mod mcp_command;
 mod modes;
 mod new_command;
@@ -124,6 +125,12 @@ fn main() -> ExitCode {
     if failed {
         return ExitCode::FAILURE;
     }
+    if parsed.enable_logging {
+        let path = yapi_core::config::agent_dir().join("yapi.log");
+        if let Err(err) = log::enable(&path) {
+            eprintln!("Warning: Could not open {}: {err}", path.display());
+        }
+    }
     if let Some(input) = parsed.export.clone() {
         return match export_html::export_file(&input, parsed.messages.first().map(String::as_str)) {
             Ok(path) => {
@@ -199,6 +206,7 @@ async fn survive_crash(run: impl std::future::Future<Output = u8>) -> u8 {
                 .ok()
                 .and_then(|mut slot| slot.take())
                 .unwrap_or_else(|| "unknown panic".to_owned());
+            tracing::error!("yapi crashed: {message}");
             eprintln!("yapi crashed: {message}");
             eprintln!("To resume, run `yapi -c`.");
             1

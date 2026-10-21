@@ -1593,7 +1593,8 @@ static OUTPUT: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 
 /// Keeps extension output off the terminal from now on, for a mode that draws
 /// on it: the last 200 messages stay for [`extension_output`], each cut to
-/// 4 KiB. Until then, extension output goes to stderr.
+/// 4 KiB. Until then, extension output goes to stderr. Either way, each
+/// message also goes to `tracing` at its level.
 pub fn capture_output() {
     lock(&OUTPUT).get_or_insert_default();
 }
@@ -2163,11 +2164,17 @@ fn setup(owner: Weak<ExtensionHost>, id: u64) -> Setup {
 
 impl Bridge for SessionBridge {
     fn log(&self, level: &str, message: &str) {
+        let extension = &self.name;
+        match level {
+            "error" => tracing::error!(%extension, "{message}"),
+            "warn" => tracing::warn!(%extension, "{message}"),
+            "debug" => tracing::debug!(%extension, "{message}"),
+            _ => tracing::info!(%extension, "{message}"),
+        }
         if lock(&OUTPUT).is_none() {
             let _ = writeln!(std::io::stderr(), "{message}");
             return;
         }
-        let extension = &self.name;
         let mut line = format!(
             "{} [{extension}] {level} {message}",
             yapi_types::time::now_iso()

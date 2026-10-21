@@ -165,6 +165,31 @@ fn help_despite_extension_errors() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("--mood"));
 }
 
+/// `--enable-logging` appends extension messages to `yapi.log` in the agent
+/// directory; without it, yapi writes no log.
+#[test]
+fn logging_flag() {
+    let home = common::scratch("logging");
+    std::fs::write(
+        home.join("ext.ts"),
+        "export default function () {\n\tconsole.error(\"loaded\");\n}\n",
+    )
+    .unwrap();
+    let log = home.join("agent/yapi.log");
+    let run = |args: &[&str]| {
+        let output = common::yapi(&home).args(args).output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+    };
+    run(&["--help", "-e", "ext.ts"]);
+    assert!(!log.exists());
+    run(&["--enable-logging", "--help", "-e", "ext.ts"]);
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        text.contains(" ERROR yapi_ext::extensions: loaded extension="),
+        "{text}"
+    );
+}
+
 /// pi's RPC mode starts without any model, reporting pi-agent-core's
 /// placeholder, and exits with 143 on SIGTERM even while its input stays
 /// open.

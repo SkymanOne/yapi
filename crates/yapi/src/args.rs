@@ -79,6 +79,8 @@ pub struct Args {
     pub project_trust_override: Option<bool>,
     /// yapi's `--project-dir`; absolute once `main` has checked it.
     pub project_dir: Option<std::path::PathBuf>,
+    /// yapi's `--enable-logging`.
+    pub enable_logging: bool,
     pub messages: Vec<String>,
     pub file_args: Vec<String>,
     pub unknown_flags: IndexMap<String, FlagValue>,
@@ -264,6 +266,7 @@ pub fn parse(args: &[String]) -> Args {
             }
             // `main` reads it from the raw arguments, as pi does.
             "--offline" => {}
+            "--enable-logging" => result.enable_logging = true,
             _ if arg.starts_with('@') => result.file_args.push(arg[1..].to_owned()),
             _ if arg.starts_with("--") => {
                 let flag = &arg[2..];
@@ -347,5 +350,9 @@ mod tests {
             parsed.diagnostics[0].message,
             "--project-dir requires a directory"
         );
+
+        let parsed = args(&["--enable-logging", "hi"]);
+        assert!(parsed.enable_logging && parsed.diagnostics.is_empty());
+        assert_eq!(parsed.messages, ["hi"]);
     }
 }
