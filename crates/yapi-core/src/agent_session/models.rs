@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use yapi_ai::api::Apis;
 use yapi_ai::registry::ModelRegistry;
 use yapi_types::event::AgentEvent;
 use yapi_types::extension_event::ExtensionEvent;
@@ -248,6 +249,37 @@ impl AgentSession {
     /// The model registry; credentials it reads stay current with `auth.json`.
     pub fn registry(&self) -> Arc<ModelRegistry> {
         Arc::clone(&read(&self.inner.registry))
+    }
+
+    /// The wire APIs requests stream through.
+    pub fn apis(&self) -> Apis {
+        read(&self.inner.apis).clone()
+    }
+
+    /// Applies `change`, a provider that an extension registers or
+    /// unregisters after extensions load, to the model registry and the wire
+    /// APIs. The current model takes the registry's new definition of it,
+    /// as in pi.
+    pub fn update_providers<T>(
+        &self,
+        change: impl FnOnce(&mut ModelRegistry, &mut Apis) -> T,
+    ) -> T {
+        let result = {
+            let mut slot = write(&self.inner.registry);
+            let mut next = (**slot).clone();
+            let result = change(&mut next, &mut write(&self.inner.apis));
+            *slot = Arc::new(next);
+            result
+        };
+        let registry = self.registry();
+        let mut state = lock(&self.inner.state);
+        if let Some(current) = &state.model
+            && let Some(model) = registry.find(&current.provider, &current.id)
+            && model != current
+        {
+            state.model = Some(model.clone());
+        }
+        result
     }
 
     /// Refreshes the model catalogs that change between releases: restores

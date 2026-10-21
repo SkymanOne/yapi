@@ -64,6 +64,12 @@
 		throw new Error("Extension runtime not initialized. Action methods cannot be called during extension loading.");
 	};
 	const action = (kind) => (payload) => (bound ? yapi.request(kind, payload) : notInitialized());
+	/** Whether the host has the descriptions of the latest run of the factories. */
+	let described = false;
+	// Provider changes made since then reach the session as it binds, as pi
+	// applies them once its runner binds.
+	const unboundChanges = [];
+	const providerChange = (change) => (bound ? change() : unboundChanges.push(change));
 	// The requests behind `sendMessage` and `sendUserMessage`.
 	const messageRequest = (message, options) => ({ message: plain(message), options: plain(options) });
 	const userMessageRequest = (content, options) => ({ content: plain(content), options: plain(options) });
@@ -228,9 +234,25 @@
 				// The code stays here; the host gets the description.
 				Object.defineProperty(provider, "implementation", { value: config ?? nameOrProvider });
 				extension.providers.push(provider);
+				if (!described) return;
+				providerChange(() => {
+					if (provider.native) provider.config = describeNative(provider.implementation);
+					try {
+						yapi.request("providers.register", { extension: extension.id, provider });
+					} catch (error) {
+						extension.providers = extension.providers.filter((entry) => entry !== provider);
+						throw error;
+					}
+				});
 			},
 			unregisterProvider(name) {
 				extension.providers = extension.providers.filter((provider) => provider.name !== name);
+				if (!described) return;
+				providerChange(() => {
+					// pi removes the provider whichever extension registered it.
+					for (const other of extensions.values()) other.providers = other.providers.filter((provider) => provider.name !== name);
+					yapi.request("providers.unregister", { name });
+				});
 			},
 			registerMcpServer(name, config) {
 				// The host checks the config, the grant its transport needs and
@@ -1433,11 +1455,19 @@
 			for (const [name, value] of Object.entries(payload.flags ?? {})) flagValues.set(name, value);
 			const results = [];
 			for (const entry of payload.extensions) results.push(await loadOne(entry));
+			described = true;
 			// Wire APIs registered with pi-ai's `registerApiProvider`.
 			return { extensions: results, apis: [...(yapi.apiProviders?.keys() ?? [])] };
 		},
 		async bind() {
 			bound = true;
+			for (const change of unboundChanges.splice(0)) {
+				try {
+					change();
+				} catch (error) {
+					console.error(error);
+				}
+			}
 			// The servers registered while loading. After a restart, the
 			// session drops the servers registered since.
 			try {
@@ -1479,6 +1509,8 @@
 		/** Runs the extensions of `{ extensions }`, entries as `load` takes them, for the next session. */
 		async reload(payload) {
 			bound = false;
+			described = false;
+			unboundChanges.length = 0;
 			generation.stale = true;
 			generation = { stale: false };
 			// pi drops the stale extensions' `pi.events` listeners.
@@ -1498,6 +1530,7 @@
 			extensions.clear();
 			const results = [];
 			for (const entry of payload.extensions) results.push(await loadOne(entry));
+			described = true;
 			return { extensions: results, apis: [...(yapi.apiProviders?.keys() ?? [])] };
 		},
 		flags(payload) {

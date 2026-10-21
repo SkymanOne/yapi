@@ -271,7 +271,7 @@ struct Inner {
     registry: RwLock<Arc<ModelRegistry>>,
     /// Serializes model catalog refreshes.
     catalog_refresh: tokio::sync::Mutex<()>,
-    apis: Apis,
+    apis: RwLock<Apis>,
     state: Mutex<State>,
     /// The models cycling moves through; empty means every available one.
     scoped_models: Mutex<Vec<crate::model_resolver::ScopedModel>>,
@@ -521,7 +521,7 @@ impl AgentSession {
                 settings: Mutex::new(settings),
                 registry: RwLock::new(Arc::new(registry)),
                 catalog_refresh: tokio::sync::Mutex::new(()),
-                apis,
+                apis: RwLock::new(apis),
                 state: Mutex::new(State {
                     session,
                     model,
@@ -1739,7 +1739,7 @@ impl AgentSession {
             session_file,
             auto_resize_images: settings.image_auto_resize(),
         };
-        let apis = self.inner.apis.clone();
+        let apis = self.apis();
         let session = self.downgrade();
         let request = self.request_options();
         // pi's stream function throws for an invalid setting, which ends the run.

@@ -217,6 +217,9 @@ pub struct ModelRegistry {
     extension_keys: HashSet<String>,
     /// Providers extensions register.
     extension_providers: HashSet<String>,
+    /// The `models.json` entries extension providers replaced, by provider;
+    /// `None` where there was none.
+    replaced: HashMap<String, Option<ProviderConfig>>,
     error: Option<String>,
     /// Classifier models, built-in and refreshed.
     classifiers: Vec<ClassifierModel>,
@@ -1061,7 +1064,10 @@ impl ModelRegistry {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
         }
-        self.extension_providers.insert(provider.to_owned());
+        if self.extension_providers.insert(provider.to_owned()) {
+            let replaced = self.config.providers.get(provider).cloned();
+            self.replaced.insert(provider.to_owned(), replaced);
+        }
         match config.models.as_mut() {
             Some(models) => {
                 let typed = models.extract_if(.., |model| is_typed(model)).collect();
@@ -1072,6 +1078,29 @@ impl ModelRegistry {
             }
         }
         self.config.providers.insert(provider.to_owned(), config);
+        self.rebuild();
+    }
+
+    /// Removes the provider an extension registered as `provider`, with its
+    /// sign-ins, availability and implementations, and restores the
+    /// built-in or `models.json` provider it replaced; pi's
+    /// `unregisterProvider`. Does nothing for a provider no extension
+    /// registered.
+    pub fn unregister_provider(&mut self, provider: &str) {
+        if !self.extension_providers.remove(provider) {
+            return;
+        }
+        self.extension_keys.remove(provider);
+        self.extension_typed.shift_remove(provider);
+        self.extension_models.shift_remove(provider);
+        self.oauth.shift_remove(provider);
+        self.key_auths.shift_remove(provider);
+        self.filters.shift_remove(provider);
+        self.operations.retain(|(owner, _), _| owner != provider);
+        match self.replaced.remove(provider).flatten() {
+            Some(config) => self.config.providers.insert(provider.to_owned(), config),
+            None => self.config.providers.shift_remove(provider),
+        };
         self.rebuild();
     }
 

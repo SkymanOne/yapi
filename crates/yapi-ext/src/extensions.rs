@@ -302,65 +302,68 @@ impl ExtensionHost {
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| list(&extension["providers"]))
-            .filter_map(|provider| {
-                let name = text(&provider["name"]);
-                let mut config = provider["config"].as_object()?.clone();
-                let streams = list(&config.remove("streamApis").unwrap_or_default())
-                    .iter()
-                    .map(|api| self.js_stream(&text(api)))
-                    .collect();
-                for flag in ["hasRefreshModels", "hasModifyModels", "hasFilter"] {
-                    config.remove(flag);
-                }
-                let key_auth = config
-                    .remove("keyAuth")
-                    .filter(Value::is_object)
-                    .map(|auth| {
-                        Arc::new(JsKeyAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                            name: text(&auth["name"]),
-                            has_login: auth["login"] == true,
-                        }) as Arc<dyn KeyAuth>
-                    });
-                let availability = config
-                    .remove("availability")
-                    .and_then(|found| serde_json::from_value(found).ok());
-                let oauth = config
-                    .remove("oauth")
-                    .filter(Value::is_object)
-                    .map(|oauth| {
-                        Arc::new(JsOAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                            name: text(&oauth["name"]),
-                            subscription: oauth["isSubscription"] == true,
-                        }) as Arc<dyn OAuthProvider>
-                    });
-                // Image and classifier implementations, by API, are code.
-                let mut apis = Vec::new();
-                for key in ["images", "classifiers"] {
-                    if let Some(Value::Object(own)) = config.remove(key) {
-                        apis.extend(own.keys().cloned());
-                    }
-                }
-                let operations = (!apis.is_empty()).then(|| {
-                    let own = Arc::new(JsOperations {
-                        host: Arc::downgrade(self),
-                    }) as Arc<dyn ModelOperations>;
-                    (apis, own)
-                });
-                Some(RegisteredProvider {
-                    name,
-                    config: Value::Object(config),
-                    streams,
-                    oauth,
-                    key_auth,
-                    availability,
-                    operations,
-                })
-            })
+            .filter_map(|provider| self.provider(provider))
             .collect()
+    }
+
+    /// The provider the guest describes as `provider`, `{ name, config }`.
+    fn provider(self: &Arc<Self>, provider: &Value) -> Option<RegisteredProvider> {
+        let name = text(&provider["name"]);
+        let mut config = provider["config"].as_object()?.clone();
+        let streams = list(&config.remove("streamApis").unwrap_or_default())
+            .iter()
+            .map(|api| self.js_stream(&text(api)))
+            .collect();
+        for flag in ["hasRefreshModels", "hasModifyModels", "hasFilter"] {
+            config.remove(flag);
+        }
+        let key_auth = config
+            .remove("keyAuth")
+            .filter(Value::is_object)
+            .map(|auth| {
+                Arc::new(JsKeyAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&auth["name"]),
+                    has_login: auth["login"] == true,
+                }) as Arc<dyn KeyAuth>
+            });
+        let availability = config
+            .remove("availability")
+            .and_then(|found| serde_json::from_value(found).ok());
+        let oauth = config
+            .remove("oauth")
+            .filter(Value::is_object)
+            .map(|oauth| {
+                Arc::new(JsOAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&oauth["name"]),
+                    subscription: oauth["isSubscription"] == true,
+                }) as Arc<dyn OAuthProvider>
+            });
+        // Image and classifier implementations, by API, are code.
+        let mut apis = Vec::new();
+        for key in ["images", "classifiers"] {
+            if let Some(Value::Object(own)) = config.remove(key) {
+                apis.extend(own.keys().cloned());
+            }
+        }
+        let operations = (!apis.is_empty()).then(|| {
+            let own = Arc::new(JsOperations {
+                host: Arc::downgrade(self),
+            }) as Arc<dyn ModelOperations>;
+            (apis, own)
+        });
+        Some(RegisteredProvider {
+            name,
+            config: Value::Object(config),
+            streams,
+            oauth,
+            key_auth,
+            availability,
+            operations,
+        })
     }
 
     /// The wire APIs extensions implement with pi-ai's `registerApiProvider`
@@ -1065,6 +1068,19 @@ enum Fetched {
 const COMPLETIONS_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl JsExtension {
+    /// `read` of what the guest last reported for this extension, or of
+    /// its description once the factories ran for a later session.
+    fn latest<T>(&self, read: impl FnOnce(&Value) -> T) -> T {
+        let loaded = lock(&self.shared.loaded);
+        let latest = loaded
+            .iter()
+            .find(|description| description["id"].as_u64() == Some(self.id))
+            // A later run of the factories reported for a later session.
+            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
+            .unwrap_or(&self.description);
+        read(latest)
+    }
+
     async fn call(
         &self,
         ctx: &Context,
@@ -1351,14 +1367,7 @@ impl Extension for JsExtension {
     /// What the guest last reported: renderers registered once the session
     /// started draw too, as pi looks them up as it draws.
     fn renderers(&self) -> Renderers {
-        let loaded = lock(&self.shared.loaded);
-        let latest = loaded
-            .iter()
-            .find(|description| description["id"].as_u64() == Some(self.id))
-            // A later run of the factories reported for a later session.
-            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
-            .unwrap_or(&self.description);
-        Renderers {
+        self.latest(|latest| Renderers {
             tools: list(&self.description["tools"])
                 .iter()
                 .filter(|tool| tool["hasRenderCall"] == true || tool["hasRenderResult"] == true)
@@ -1375,7 +1384,7 @@ impl Extension for JsExtension {
             entries: list(&latest["entryRenderers"]).iter().map(text).collect(),
             markdown: latest["markdownTransformer"] == true,
             code: latest["codeRenderer"] == true,
-        }
+        })
     }
 
     fn transform_markdown<'a>(
@@ -1425,7 +1434,9 @@ impl Extension for JsExtension {
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
             let mut lists = Vec::new();
-            for provider in list(&self.description["providers"]) {
+            // Providers registered once the session started refresh too.
+            let providers = self.latest(|latest| list(&latest["providers"]).to_vec());
+            for provider in &providers {
                 let (name, config) = (text(&provider["name"]), &provider["config"]);
                 if options
                     .providers
@@ -2182,6 +2193,17 @@ async fn reporting(session: AgentSession, work: impl Future<Output = Result<(), 
     }
 }
 
+/// Refreshes every provider's models and availability offline, as pi does
+/// after a provider is registered or unregistered. Failures go unreported,
+/// as in pi.
+async fn refresh_offline(session: AgentSession) {
+    let options = RefreshOptions {
+        allow_network: false,
+        ..RefreshOptions::default()
+    };
+    session.refresh_model_catalogs(options).await;
+}
+
 fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
@@ -2483,6 +2505,41 @@ impl Bridge for SessionBridge {
                 for tool in list(&payload["tools"]) {
                     session.tools().register(js_tool(&owner, extension, tool));
                 }
+                Ok(Value::Null)
+            }
+            // pi applies providers registered and unregistered once extensions
+            // have loaded at once, then refreshes models offline.
+            "providers.register" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let described = &payload["provider"];
+                let provider = owner.provider(described).ok_or("Invalid provider")?;
+                session
+                    .update_providers(|registry, apis| provider.install(registry, apis))
+                    .map_err(|err| err.to_string())?;
+                let extension = payload["extension"].as_u64();
+                if let Some(Value::Array(providers)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == extension)
+                    .map(|description| &mut description["providers"])
+                {
+                    providers.push(described.clone());
+                }
+                self.spawn(refresh_offline(session));
+                Ok(Value::Null)
+            }
+            "providers.unregister" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let name = text(&payload["name"]);
+                for description in lock(&owner.loaded).iter_mut() {
+                    if let Value::Array(providers) = &mut description["providers"] {
+                        providers.retain(|provider| provider["name"] != name.as_str());
+                    }
+                }
+                session.update_providers(|registry, apis| {
+                    registry.unregister_provider(&name);
+                    apis.unregister_for(&name);
+                });
+                self.spawn(refresh_offline(session));
                 Ok(Value::Null)
             }
             "commands.list" => Ok(Value::Array(

@@ -197,6 +197,23 @@ export default function (pi: ExtensionAPI) {
 			filterAllModels: (models, credential) => (pro(credential) ? models : models.filter((entry) => entry.id !== "paint")),
 		}),
 	);
+	// Providers registered and unregistered once the session runs.
+	pi.registerCommand("late", {
+		handler: async () => {
+			pi.registerProvider("late", { baseUrl: "http://127.0.0.1:9", apiKey: "late-key", api: "echo-api", models: [model("late-1", "Late")], streamSimple });
+			pi.registerProvider(
+				createProvider({
+					id: "checked",
+					name: "Checked",
+					auth: { apiKey: { name: "Checked key", check: async () => ({ type: "api_key", source: "late check" }), resolve: async () => ({ auth: { apiKey: "k" } }) } },
+					models: [{ ...model("checked-1", "Checked 1"), api: "checked-api", provider: "checked", baseUrl: "http://127.0.0.1:9" }],
+					api: { stream: streamSimple, streamSimple },
+				}),
+			);
+		},
+	});
+	pi.registerCommand("proxy", { handler: async () => pi.registerProvider("anthropic", { baseUrl: "http://proxy.example" }) });
+	pi.registerCommand("drop", { handler: async (name) => pi.unregisterProvider(name) });
 }
 "#;
 
@@ -876,6 +893,123 @@ async fn provider_login_prompt() {
     assert_eq!(ui.await.unwrap(), [secret]);
     assert_eq!(json!(credential), json!({"type": "api_key", "key": "pro"}));
     assert_eq!(registry.store().get("tiered"), Some(credential));
+}
+
+/// A session on the test extension's providers, bound to its extensions.
+async fn bound_session(config: SessionConfig) -> AgentSession {
+    let session = AgentSession::new(config);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    session
+}
+
+/// The ids of `provider`'s available models.
+fn available(session: &AgentSession, provider: &str) -> Vec<String> {
+    session
+        .available_models()
+        .into_iter()
+        .filter(|model| model.provider == provider)
+        .map(|model| model.id)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn registers_after_load() {
+    let dir = scratch("provider-late");
+    let host = load(&dir).await;
+    let session = bound_session(session_config(&host, &dir)).await;
+
+    // A command's providers apply at once. A pi-ai provider's key check
+    // runs in the refresh that follows.
+    session.prompt("/late", Vec::new()).await.unwrap();
+    eventually("the late providers", || {
+        available(&session, "late") == ["late-1"] && available(&session, "checked") == ["checked-1"]
+    })
+    .await;
+    let status = session.registry().login_status("checked");
+    assert_eq!(status.as_deref(), Some("late check"));
+    // Its own stream serves its models.
+    let model = session.registry().find("late", "late-1").unwrap().clone();
+    let reply = session
+        .apis()
+        .stream(request(model, CancellationToken::new()))
+        .result()
+        .await
+        .unwrap();
+    assert_eq!(reply.error_message, None);
+
+    session.prompt("/drop late", Vec::new()).await.unwrap();
+    eventually("the provider to go", || {
+        session.registry().find("late", "late-1").is_none()
+    })
+    .await;
+    assert!(available(&session, "late").is_empty());
+}
+
+const SETUP_EXTENSION: &str = r#"
+import { writeFileSync } from "node:fs";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+	// A setup that ends once the extension has loaded, before its session starts.
+	setTimeout(() => {
+		const model = { id: "setup-1", name: "Setup", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 };
+		pi.registerProvider("setup", { baseUrl: "http://127.0.0.1:9", apiKey: "setup-key", api: "openai-completions", models: [model] });
+		writeFileSync(`${process.cwd()}/registered`, "");
+	}, 0);
+}
+"#;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn registers_before_bind() {
+    let dir = scratch("provider-setup");
+    let path = dir.join("setup.ts");
+    std::fs::write(&path, SETUP_EXTENSION).unwrap();
+    let host = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
+    eventually("the setup", || dir.join("registered").exists()).await;
+    // The session gets it as it starts.
+    let session = bound_session(session_config(&host, &dir)).await;
+    eventually("the provider", || {
+        available(&session, "setup") == ["setup-1"]
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unregister_restores_builtin() {
+    let dir = scratch("provider-restore");
+    let host = load(&dir).await;
+    let config = session_config(&host, &dir);
+    let builtin = config
+        .registry
+        .models()
+        .iter()
+        .find(|model| model.provider == "anthropic")
+        .unwrap()
+        .clone();
+    let session = bound_session(SessionConfig {
+        model: Some(builtin.clone()),
+        ..config
+    })
+    .await;
+    let base_url = |session: &AgentSession| session.model().unwrap().base_url;
+
+    // An override applies to the current model too, as in pi.
+    session.prompt("/proxy", Vec::new()).await.unwrap();
+    eventually("the override", || {
+        base_url(&session) == "http://proxy.example"
+    })
+    .await;
+
+    session.prompt("/drop anthropic", Vec::new()).await.unwrap();
+    eventually("the built-in", || base_url(&session) == builtin.base_url).await;
+    assert_eq!(
+        session.registry().find("anthropic", &builtin.id),
+        Some(&builtin)
+    );
 }
 
 const AUTH_EXTENSION: &str = r#"
