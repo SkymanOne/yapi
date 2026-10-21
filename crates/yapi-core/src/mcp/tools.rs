@@ -200,9 +200,7 @@ async fn block_content(server: &str, block: &Value, readable_resources: bool) ->
             let resource = &block["resource"];
             let uri = field(resource, "uri").unwrap_or_default();
             let mime = field(resource, "mimeType");
-            let data = base64::engine::general_purpose::STANDARD
-                .decode(field(resource, "blob").unwrap_or_default())
-                .unwrap_or_default();
+            let data = node_base64(field(resource, "blob").unwrap_or_default());
             if is_text_mime(mime) {
                 return ContentBlock::text(String::from_utf8_lossy(&data));
             }
@@ -223,6 +221,32 @@ async fn block_content(server: &str, block: &Value, readable_resources: bool) ->
         }
         _ => block_to_llm(block),
     }
+}
+
+/// Node's `Buffer.from(text, "base64")`: characters outside the base64 and
+/// base64url alphabets are skipped and decoding stops at the first `=`.
+fn node_base64(text: &str) -> Vec<u8> {
+    const LENIENT: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        base64::engine::GeneralPurposeConfig::new()
+            .with_decode_padding_mode(base64::engine::DecodePaddingMode::RequireNone)
+            .with_decode_allow_trailing_bits(true),
+    );
+    let mut digits: Vec<u8> = text
+        .bytes()
+        .take_while(|&byte| byte != b'=')
+        .filter_map(|byte| match byte {
+            b'-' => Some(b'+'),
+            b'_' => Some(b'/'),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'+' | b'/' => Some(byte),
+            _ => None,
+        })
+        .collect();
+    // A lone final digit holds too few bits for a byte.
+    if digits.len() % 4 == 1 {
+        digits.pop();
+    }
+    LENIENT.decode(digits).unwrap_or_default()
 }
 
 /// `server`'s content blocks for the model, before the output limit.
@@ -824,5 +848,26 @@ mod tests {
         assert!(is_app_resource(
             &json!({"uri": "a", "mimeType": "text/html;profile=mcp-app"})
         ));
+    }
+
+    #[tokio::test]
+    async fn lenient_resource_blob() {
+        let text = |blob: &str| {
+            let block = json!({
+                "type": "resource",
+                "resource": {"uri": "file:///a.txt", "mimeType": "text/plain", "blob": blob},
+            });
+            async move { block_content("docs", &block, false).await }
+        };
+        // Unpadded, wrapped as Python's `base64.encodebytes` writes it, and
+        // base64url, as Node's `Buffer.from` reads them.
+        let wrapped = "aGVsbG8g".repeat(10) + "\n" + &"aGVsbG8g".repeat(2) + "\n";
+        for (blob, expected) in [
+            ("aGVsbG8", "hello".to_owned()),
+            (&wrapped, "hello ".repeat(12)),
+            ("_-8=QQ==", "\u{fffd}\u{fffd}".to_owned()),
+        ] {
+            assert_eq!(text(blob).await, ContentBlock::text(expected), "{blob:?}");
+        }
     }
 }

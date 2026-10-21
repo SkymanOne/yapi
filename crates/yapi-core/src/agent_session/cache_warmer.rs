@@ -625,7 +625,7 @@ impl AgentSession {
         let auth = self.registry().auth(&request.model).await;
         auth.apply(&mut request).ok()?;
         yapi_ai::stream::RequestHooks::prepare(&mut request).await;
-        self.inner.apis.stream(request).result().await
+        self.apis().stream(request).result().await
     }
 }
 

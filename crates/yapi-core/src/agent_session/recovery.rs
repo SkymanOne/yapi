@@ -341,7 +341,7 @@ impl AgentSession {
     ) -> Summarizer<'a> {
         Summarizer {
             model,
-            apis: &self.inner.apis,
+            apis: self.apis(),
             auth: self.registry().auth(model).await,
             thinking_level,
             retry: self.retry_policy(),

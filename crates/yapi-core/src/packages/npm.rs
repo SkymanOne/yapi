@@ -665,15 +665,24 @@ impl Installer<'_> {
                 }
                 None => (name.to_owned(), range.to_owned()),
             };
-            let nested = dependent.join("node_modules").join(name);
-            if installed_version(&nested).is_some_and(|version| satisfies(&version, &range)) {
-                return Ok(());
-            }
-            let hoisted = self.root_modules.join(name);
-            let target = match installed_version(&hoisted) {
+            // Node resolves `name` from the first `node_modules` up from
+            // `dependent` that holds it.
+            let resolved = std::iter::once(dependent.join("node_modules"))
+                .chain(
+                    dependent
+                        .ancestors()
+                        .filter(|dir| {
+                            dir.file_name() == Some("node_modules".as_ref())
+                                && dir.starts_with(&self.root_modules)
+                        })
+                        .map(Path::to_path_buf),
+                )
+                .find_map(|modules| installed_version(&modules.join(name)));
+            let target = match resolved {
                 Some(version) if satisfies(&version, &range) => return Ok(()),
-                Some(_) => nested,
-                None => hoisted,
+                // Nested, it shadows the other version for `dependent` alone.
+                Some(_) => dependent.join("node_modules").join(name),
+                None => self.root_modules.join(name),
             };
             let manifest = self.npm.pick(&package, &range).await?;
             if manifest.get("os").is_some() || manifest.get("cpu").is_some() {

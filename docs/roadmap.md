@@ -2,10 +2,6 @@
 
 yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The [issue tracker](https://github.com/SkymanOne/yapi/issues) tracks individual work.
 
-## Pi features not yet ported
-
-Some Pi features are missing or incomplete, such as complete provider objects from extensions. [Differences from Pi](compat.md#open-gaps) lists each gap with its issue.
-
 ## Capability-based sandboxing
 
 In v0.1, every package receives Pi's default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:

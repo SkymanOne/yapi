@@ -122,6 +122,58 @@ fn describe_failure(status: u16, body: &str) -> String {
     }
 }
 
+/// Node's `TypeError`, which pi's transport treats as a network failure.
+fn type_error(message: String) -> McpError {
+    McpError::Network(message)
+}
+
+/// Checks `text` as Node's `Headers` converts it to a `ByteString`.
+fn byte_string(text: &str) -> Result<(), McpError> {
+    match text
+        .encode_utf16()
+        .enumerate()
+        .find(|(_, unit)| *unit > 255)
+    {
+        Some((index, unit)) => Err(type_error(format!(
+            "Cannot convert argument to a ByteString because the character at index {index} has a value of {unit} which is greater than 255."
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// `value` as Node's `Headers.<method>` stores it: trimmed of HTTP
+/// whitespace, and refused with a line break or NUL left inside.
+fn header_value<'v>(method: &str, value: &'v str) -> Result<&'v str, McpError> {
+    byte_string(value)?;
+    let value = value.trim_matches([' ', '\t', '\r', '\n']);
+    if value.contains(['\r', '\n', '\0']) {
+        return Err(type_error(format!(
+            "Headers.{method}: \"{value}\" is an invalid header value."
+        )));
+    }
+    Ok(value)
+}
+
+/// The configured headers as pi's `new Headers(headers)` takes them: every
+/// name and value is checked as a byte string first, then each name as a
+/// token and each value as [`header_value`] does.
+fn configured_headers(headers: &[(String, String)]) -> Result<Vec<(HeaderName, String)>, McpError> {
+    for text in headers.iter().flat_map(|(name, value)| [name, value]) {
+        byte_string(text)?;
+    }
+    headers
+        .iter()
+        .map(|(name, value)| {
+            let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+                type_error(format!(
+                    "Headers.append: \"{name}\" is an invalid header name."
+                ))
+            })?;
+            Ok((name, header_value("append", value)?.to_owned()))
+        })
+        .collect()
+}
+
 /// Where a stream is, for resuming it with `Last-Event-ID`.
 #[derive(Default)]
 struct Cursor {
@@ -269,15 +321,13 @@ impl HttpTransport {
             return Err(McpError::closed());
         }
         let body = yapi_types::json::stringify(message);
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            reqwest::header::ACCEPT,
-            HeaderValue::from_static("application/json, text/event-stream"),
-        );
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        let headers = vec![
+            (
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream".to_owned(),
+            ),
+            (reqwest::header::CONTENT_TYPE, "application/json".to_owned()),
+        ];
         let response = self
             .authorized(reqwest::Method::POST, Some(body), headers)
             .await?;
@@ -343,13 +393,19 @@ impl HttpTransport {
         self.inner.cancel.cancel();
         if self.inner.started.load(Ordering::SeqCst) && self.session_id().is_some() {
             let request = async {
+                let Ok(configured) = configured_headers(&self.inner.options.headers) else {
+                    return;
+                };
                 // Without a token, the session expires on the server.
                 let Ok(token) = self.token().await else {
                     return;
                 };
+                let Ok(headers) = self.headers(configured, &[], token.as_deref()) else {
+                    return;
+                };
                 let _ = yapi_ai::http::client()
                     .delete(&self.inner.options.url)
-                    .headers(self.headers(&HeaderMap::new(), token.as_deref()))
+                    .headers(headers)
                     .send()
                     .await;
             };
@@ -365,35 +421,43 @@ impl HttpTransport {
         }
     }
 
-    fn headers(&self, extra: &HeaderMap, token: Option<&str>) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        for (name, value) in &self.inner.options.headers {
-            if let (Ok(name), Ok(value)) = (
-                HeaderName::from_bytes(name.as_bytes()),
-                HeaderValue::from_str(value),
-            ) {
-                headers.insert(name, value);
-            }
-        }
+    /// A request's headers as pi builds them with Node's `Headers` and
+    /// `fetch` sends them: the `configured` ones, then `extra`, the session,
+    /// the protocol version and the bearer `token`, each replacing its name.
+    fn headers(
+        &self,
+        mut entries: Vec<(HeaderName, String)>,
+        extra: &[(HeaderName, String)],
+        token: Option<&str>,
+    ) -> Result<HeaderMap, McpError> {
+        let mut set = |name: HeaderName, value: &str| {
+            let value = header_value("set", value)?.to_owned();
+            entries.retain(|(other, _)| *other != name);
+            entries.push((name, value));
+            Ok::<_, McpError>(())
+        };
         for (name, value) in extra {
-            headers.insert(name, value.clone());
+            set(name.clone(), value)?;
         }
-        if let Some(session) = self.session_id()
-            && let Ok(value) = HeaderValue::from_str(&session)
-        {
-            headers.insert("mcp-session-id", value);
+        if let Some(session) = self.session_id() {
+            set(HeaderName::from_static("mcp-session-id"), &session)?;
         }
-        if let Some(version) = lock(&self.inner.protocol_version).clone()
-            && let Ok(value) = HeaderValue::from_str(&version)
-        {
-            headers.insert("mcp-protocol-version", value);
+        if let Some(version) = lock(&self.inner.protocol_version).clone() {
+            set(HeaderName::from_static("mcp-protocol-version"), &version)?;
         }
-        if let Some(token) = token.filter(|token| !token.is_empty())
-            && let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}"))
-        {
-            headers.insert(reqwest::header::AUTHORIZATION, value);
+        if let Some(token) = token.filter(|token| !token.is_empty()) {
+            set(reqwest::header::AUTHORIZATION, &format!("Bearer {token}"))?;
         }
-        headers
+        // `fetch` sends a byte per character and fails on other control
+        // characters.
+        let mut headers = HeaderMap::new();
+        for (name, value) in entries {
+            let bytes: Vec<u8> = value.chars().filter_map(|c| u8::try_from(c).ok()).collect();
+            let value = HeaderValue::from_bytes(&bytes)
+                .map_err(|_| McpError::Network("fetch failed".to_owned()))?;
+            headers.append(name, value);
+        }
+        Ok(headers)
     }
 
     /// Sends a request with the auth headers. A 401, or a 403 asking for more
@@ -403,14 +467,15 @@ impl HttpTransport {
         &self,
         method: reqwest::Method,
         body: Option<String>,
-        extra: HeaderMap,
+        extra: Vec<(HeaderName, String)>,
     ) -> Result<reqwest::Response, McpError> {
         let mut attempt = 0;
         loop {
+            let configured = configured_headers(&self.inner.options.headers)?;
             let token = self.token().await?;
             let mut request = yapi_ai::http::client()
                 .request(method.clone(), &self.inner.options.url)
-                .headers(self.headers(&extra, token.as_deref()));
+                .headers(self.headers(configured, &extra, token.as_deref())?);
             if let Some(body) = &body {
                 request = request.body(body.clone());
             }
@@ -651,15 +716,9 @@ impl HttpTransport {
         &self,
         last_event_id: Option<String>,
     ) -> Result<Option<reqwest::Response>, McpError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            reqwest::header::ACCEPT,
-            HeaderValue::from_static("text/event-stream"),
-        );
-        if let Some(id) = last_event_id
-            && let Ok(value) = HeaderValue::from_str(&id)
-        {
-            headers.insert("last-event-id", value);
+        let mut headers = vec![(reqwest::header::ACCEPT, "text/event-stream".to_owned())];
+        if let Some(id) = last_event_id {
+            headers.push((HeaderName::from_static("last-event-id"), id));
         }
         let response = self.authorized(reqwest::Method::GET, None, headers).await?;
         if response.status().as_u16() == 405 {

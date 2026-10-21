@@ -18,11 +18,12 @@ use yapi_ai::api::classify::ClassifyOptions;
 use yapi_ai::api::images::ImagesOptions;
 use yapi_ai::api::{Apis, ModelOperations};
 use yapi_ai::auth::{
-    AuthError, AuthEvent, AuthPrompt, Interaction, KeyAuth, LoginOptions, OAuthAuth, OAuthProvider,
+    AuthError, AuthEvent, AuthPrompt, CredentialStore, Interaction, KeyAuth, LoginOptions,
+    OAuthAuth, OAuthProvider,
 };
 use yapi_ai::key_auth::Resolved;
 use yapi_ai::model_catalog::RefreshOptions;
-use yapi_ai::registry::ModelRegistry;
+use yapi_ai::registry::{Availability, ModelRegistry};
 use yapi_ai::stream::{
     EventSender, EventStream, Provider, ProviderResponse, Request, RequestHooks, StreamEvent,
     new_output, now_ms, send_error,
@@ -104,6 +105,9 @@ pub struct ExtensionHost {
     /// Whether events for the guest are being dropped, so that each run of
     /// drops is reported once.
     dropping: AtomicBool,
+    /// Where `auth.json` keeps the credentials providers are checked for as
+    /// the extensions load.
+    auth: PathBuf,
 }
 
 /// The extension hosts that share `pi.events`.
@@ -189,11 +193,53 @@ impl ExtensionHost {
             terminal: Mutex::new(None),
             events,
             dropping: AtomicBool::new(false),
+            auth: options.agent_dir.join("auth.json"),
         });
         let _ = extensions.bridge.owner.set(Arc::downgrade(&extensions));
         extensions.forward_events(queued);
         lock(&extensions.bridge.bus).push(Arc::downgrade(&extensions));
+        extensions.check_providers().await;
         Ok(extensions)
+    }
+
+    /// Checks the API key and filters the models of each pi-ai `Provider`
+    /// with API-key auth or model filters for its stored credential, as pi
+    /// does once a provider registers. A provider whose check fails finds
+    /// no key and keeps every model.
+    async fn check_providers(&self) {
+        let mut store = None;
+        let mut loaded = lock(&self.loaded).clone();
+        for extension in &mut loaded {
+            let Some(providers) = extension["providers"].as_array_mut() else {
+                continue;
+            };
+            for provider in providers {
+                if !checks_availability(&provider["config"]) {
+                    continue;
+                }
+                let name = text(&provider["name"]);
+                let store = store.get_or_insert_with(|| CredentialStore::open(&self.auth));
+                match self.availability(&name, store.get(&name)).await {
+                    Ok(found) => provider["config"]["availability"] = found,
+                    Err(err) => self.bridge.log("error", &err),
+                }
+            }
+        }
+        *lock(&self.loaded) = loaded;
+    }
+
+    /// What pi-ai `Provider` `provider` makes available for `credential`:
+    /// the guest's answer, or why it failed.
+    async fn availability(
+        &self,
+        provider: &str,
+        credential: Option<Credential>,
+    ) -> Result<Value, String> {
+        let payload = json!({"provider": provider, "credential": credential});
+        self.instance
+            .call("availability", &payload)
+            .await
+            .map_err(|err| format!("Availability check failed for provider {provider}: {err}"))
     }
 
     /// The files that failed to load in the latest run of the factories:
@@ -235,6 +281,7 @@ impl ExtensionHost {
                 *lock(&self.loaded) = loaded;
                 *lock(&self.errors) = errors;
                 *lock(&self.apis) = list(&result["apis"]).iter().map(text).collect();
+                self.check_providers().await;
             }
             Err(err) => self.bridge.log(
                 "error",
@@ -255,60 +302,68 @@ impl ExtensionHost {
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| list(&extension["providers"]))
-            .filter_map(|provider| {
-                let name = text(&provider["name"]);
-                let mut config = provider["config"].as_object()?.clone();
-                let streams = list(&config.remove("streamApis").unwrap_or_default())
-                    .iter()
-                    .map(|api| self.js_stream(&text(api)))
-                    .collect();
-                for flag in ["hasRefreshModels", "hasModifyModels"] {
-                    config.remove(flag);
-                }
-                let key_auth = config
-                    .remove("keyAuth")
-                    .filter(Value::is_object)
-                    .map(|auth| {
-                        let own = Arc::new(JsKeyAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                        }) as Arc<dyn KeyAuth>;
-                        (own, auth["source"].as_str().map(str::to_owned))
-                    });
-                let oauth = config
-                    .remove("oauth")
-                    .filter(Value::is_object)
-                    .map(|oauth| {
-                        Arc::new(JsOAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                            name: text(&oauth["name"]),
-                            subscription: oauth["isSubscription"] == true,
-                        }) as Arc<dyn OAuthProvider>
-                    });
-                // Image and classifier implementations, by API, are code.
-                let mut apis = Vec::new();
-                for key in ["images", "classifiers"] {
-                    if let Some(Value::Object(own)) = config.remove(key) {
-                        apis.extend(own.keys().cloned());
-                    }
-                }
-                let operations = (!apis.is_empty()).then(|| {
-                    let own = Arc::new(JsOperations {
-                        host: Arc::downgrade(self),
-                    }) as Arc<dyn ModelOperations>;
-                    (apis, own)
-                });
-                Some(RegisteredProvider {
-                    name,
-                    config: Value::Object(config),
-                    streams,
-                    oauth,
-                    key_auth,
-                    operations,
-                })
-            })
+            .filter_map(|provider| self.provider(provider))
             .collect()
+    }
+
+    /// The provider the guest describes as `provider`, `{ name, config }`.
+    fn provider(self: &Arc<Self>, provider: &Value) -> Option<RegisteredProvider> {
+        let name = text(&provider["name"]);
+        let mut config = provider["config"].as_object()?.clone();
+        let streams = list(&config.remove("streamApis").unwrap_or_default())
+            .iter()
+            .map(|api| self.js_stream(&text(api)))
+            .collect();
+        for flag in ["hasRefreshModels", "hasModifyModels", "hasFilter"] {
+            config.remove(flag);
+        }
+        let key_auth = config
+            .remove("keyAuth")
+            .filter(Value::is_object)
+            .map(|auth| {
+                Arc::new(JsKeyAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&auth["name"]),
+                    has_login: auth["login"] == true,
+                }) as Arc<dyn KeyAuth>
+            });
+        let availability = config
+            .remove("availability")
+            .and_then(|found| serde_json::from_value(found).ok());
+        let oauth = config
+            .remove("oauth")
+            .filter(Value::is_object)
+            .map(|oauth| {
+                Arc::new(JsOAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&oauth["name"]),
+                    subscription: oauth["isSubscription"] == true,
+                }) as Arc<dyn OAuthProvider>
+            });
+        // Image and classifier implementations, by API, are code.
+        let mut apis = Vec::new();
+        for key in ["images", "classifiers"] {
+            if let Some(Value::Object(own)) = config.remove(key) {
+                apis.extend(own.keys().cloned());
+            }
+        }
+        let operations = (!apis.is_empty()).then(|| {
+            let own = Arc::new(JsOperations {
+                host: Arc::downgrade(self),
+            }) as Arc<dyn ModelOperations>;
+            (apis, own)
+        });
+        Some(RegisteredProvider {
+            name,
+            config: Value::Object(config),
+            streams,
+            oauth,
+            key_auth,
+            availability,
+            operations,
+        })
     }
 
     /// The wire APIs extensions implement with pi-ai's `registerApiProvider`
@@ -557,9 +612,11 @@ pub struct RegisteredProvider {
     pub streams: Vec<Arc<dyn Provider>>,
     /// Its `oauth` sign-in.
     pub oauth: Option<Arc<dyn OAuthProvider>>,
-    /// A pi-ai `Provider`'s API-key auth, with where its credential comes
-    /// from when nothing is stored, as it checked while the extension loaded.
-    pub key_auth: Option<(Arc<dyn KeyAuth>, Option<String>)>,
+    /// A pi-ai `Provider`'s API-key auth.
+    pub key_auth: Option<Arc<dyn KeyAuth>>,
+    /// What a pi-ai `Provider` with API-key auth or model filters made
+    /// available for the stored credential once the extension loaded.
+    pub availability: Option<Availability>,
     /// Its classifier and image implementations, with their APIs.
     pub operations: Option<(Vec<String>, Arc<dyn ModelOperations>)>,
 }
@@ -579,8 +636,11 @@ impl RegisteredProvider {
         if let Some(oauth) = self.oauth {
             registry.register_oauth(&self.name, oauth);
         }
-        if let Some((auth, source)) = self.key_auth {
-            registry.register_key_auth(&self.name, auth, source);
+        if let Some(auth) = self.key_auth {
+            registry.register_key_auth(&self.name, auth);
+        }
+        if let Some(availability) = self.availability {
+            registry.set_availability(&self.name, availability);
         }
         if let Some((apis, own)) = self.operations {
             registry.register_operations(&self.name, apis, own);
@@ -607,37 +667,37 @@ struct JsOAuth {
     subscription: bool,
 }
 
-impl JsOAuth {
-    /// Runs guest call `kind` for this provider with `payload`, as an
-    /// operation that `cancel` aborts and whose prompts go to `interaction`.
-    async fn call(
-        &self,
-        kind: &str,
-        mut payload: Value,
-        interaction: Option<&Interaction>,
-        cancel: &CancellationToken,
-    ) -> Result<Value, AuthError> {
-        let host = self
-            .host
-            .upgrade()
-            .ok_or_else(|| AuthError::Failed(Error::Stopped.to_string()))?;
-        let id = host.next_id();
-        payload["provider"] = json!(self.provider);
-        payload["id"] = json!(id);
-        if let Some(interaction) = interaction {
-            lock(&host.bridge.logins).insert(id, interaction.clone());
-        }
-        let result = host.call_abortable(kind, &payload, cancel).await;
-        lock(&host.bridge.logins).remove(&id);
-        result.map_err(|err| {
-            if cancel.is_cancelled() {
-                AuthError::Cancelled
-            } else {
-                AuthError::Failed(err.to_string())
-            }
-        })
+/// Runs guest call `kind` for `provider`'s sign-in with `payload`, as an
+/// operation that `cancel` aborts and whose prompts go to `interaction`.
+async fn auth_call(
+    host: &Weak<ExtensionHost>,
+    provider: &str,
+    kind: &str,
+    mut payload: Value,
+    interaction: Option<&Interaction>,
+    cancel: &CancellationToken,
+) -> Result<Value, AuthError> {
+    let host = host
+        .upgrade()
+        .ok_or_else(|| AuthError::Failed(Error::Stopped.to_string()))?;
+    let id = host.next_id();
+    payload["provider"] = json!(provider);
+    payload["id"] = json!(id);
+    if let Some(interaction) = interaction {
+        lock(&host.bridge.logins).insert(id, interaction.clone());
     }
+    let result = host.call_abortable(kind, &payload, cancel).await;
+    lock(&host.bridge.logins).remove(&id);
+    result.map_err(|err| {
+        if cancel.is_cancelled() {
+            AuthError::Cancelled
+        } else {
+            AuthError::Failed(err.to_string())
+        }
+    })
+}
 
+impl JsOAuth {
     async fn credential(
         &self,
         kind: &str,
@@ -645,7 +705,15 @@ impl JsOAuth {
         interaction: Option<&Interaction>,
         cancel: &CancellationToken,
     ) -> Result<OAuthCredential, AuthError> {
-        let value = self.call(kind, payload, interaction, cancel).await?;
+        let call = auth_call(
+            &self.host,
+            &self.provider,
+            kind,
+            payload,
+            interaction,
+            cancel,
+        );
+        let value = call.await?;
         let mut credential: OAuthCredential = serde_json::from_value(value)
             .map_err(|err| AuthError::Failed(format!("Invalid OAuth credentials: {err}")))?;
         credential.extra.remove("type");
@@ -693,14 +761,17 @@ impl OAuthProvider for JsOAuth {
         credential: &'a OAuthCredential,
     ) -> BoxFuture<'a, Result<OAuthAuth, AuthError>> {
         Box::pin(async move {
-            let auth = self
-                .call(
-                    "oauthApiKey",
-                    json!({"credential": credential}),
-                    None,
-                    &CancellationToken::new(),
-                )
-                .await?;
+            let payload = json!({"credential": credential});
+            let cancel = CancellationToken::new();
+            let call = auth_call(
+                &self.host,
+                &self.provider,
+                "oauthApiKey",
+                payload,
+                None,
+                &cancel,
+            );
+            let auth = call.await?;
             // The legacy `getApiKey` returns the key, pi-ai's `toAuth` the credentials.
             let auth = match auth {
                 Value::String(key) => ModelAuth {
@@ -718,13 +789,44 @@ impl OAuthProvider for JsOAuth {
     }
 }
 
-/// A pi-ai `Provider`'s `auth.apiKey`, whose `resolve` runs in the guest.
+/// A pi-ai `Provider`'s `auth.apiKey`, whose `login` and `resolve` run in
+/// the guest.
 struct JsKeyAuth {
     host: Weak<ExtensionHost>,
     provider: String,
+    name: String,
+    has_login: bool,
 }
 
 impl KeyAuth for JsKeyAuth {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn has_login(&self) -> bool {
+        self.has_login
+    }
+
+    fn login<'a>(
+        &'a self,
+        interaction: &'a Interaction,
+    ) -> BoxFuture<'a, Result<ApiKeyCredential, AuthError>> {
+        Box::pin(async move {
+            let cancel = interaction.cancel();
+            let payload = json!({});
+            let call = auth_call(
+                &self.host,
+                &self.provider,
+                "keyLogin",
+                payload,
+                Some(interaction),
+                cancel,
+            );
+            serde_json::from_value(call.await?)
+                .map_err(|err| AuthError::Failed(format!("Invalid API key credentials: {err}")))
+        })
+    }
+
     fn resolve<'a>(
         &'a self,
         credential: Option<&'a ApiKeyCredential>,
@@ -888,6 +990,12 @@ fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
 }
 
+/// Whether a provider described as `config` is a pi-ai `Provider` whose API
+/// key check or model filters decide what is available.
+fn checks_availability(config: &Value) -> bool {
+    config["keyAuth"].is_object() || config["hasFilter"] == true
+}
+
 fn mode_name(mode: Mode) -> &'static str {
     match mode {
         Mode::Tui => "tui",
@@ -960,6 +1068,19 @@ enum Fetched {
 const COMPLETIONS_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl JsExtension {
+    /// `read` of what the guest last reported for this extension, or of
+    /// its description once the factories ran for a later session.
+    fn latest<T>(&self, read: impl FnOnce(&Value) -> T) -> T {
+        let loaded = lock(&self.shared.loaded);
+        let latest = loaded
+            .iter()
+            .find(|description| description["id"].as_u64() == Some(self.id))
+            // A later run of the factories reported for a later session.
+            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
+            .unwrap_or(&self.description);
+        read(latest)
+    }
+
     async fn call(
         &self,
         ctx: &Context,
@@ -1014,7 +1135,7 @@ impl JsExtension {
         options: &RefreshOptions,
         lists: &mut Vec<ModelList>,
     ) {
-        let credential = registry.store().get(provider);
+        let credential = registry.read_credential(provider);
         let offline = self
             .refresh_phase(provider, registry, credential, false, options)
             .await;
@@ -1087,7 +1208,7 @@ impl JsExtension {
         registry: &ModelRegistry,
         lists: &[ModelList],
     ) -> Result<Option<Vec<Model>>, String> {
-        let Some(Credential::OAuth(credential)) = registry.store().get(provider) else {
+        let Some(Credential::OAuth(credential)) = registry.read_credential(provider) else {
             return Ok(None);
         };
         let mut own = registry.clone();
@@ -1246,14 +1367,7 @@ impl Extension for JsExtension {
     /// What the guest last reported: renderers registered once the session
     /// started draw too, as pi looks them up as it draws.
     fn renderers(&self) -> Renderers {
-        let loaded = lock(&self.shared.loaded);
-        let latest = loaded
-            .iter()
-            .find(|description| description["id"].as_u64() == Some(self.id))
-            // A later run of the factories reported for a later session.
-            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
-            .unwrap_or(&self.description);
-        Renderers {
+        self.latest(|latest| Renderers {
             tools: list(&self.description["tools"])
                 .iter()
                 .filter(|tool| tool["hasRenderCall"] == true || tool["hasRenderResult"] == true)
@@ -1270,7 +1384,7 @@ impl Extension for JsExtension {
             entries: list(&latest["entryRenderers"]).iter().map(text).collect(),
             markdown: latest["markdownTransformer"] == true,
             code: latest["codeRenderer"] == true,
-        }
+        })
     }
 
     fn transform_markdown<'a>(
@@ -1320,7 +1434,9 @@ impl Extension for JsExtension {
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
             let mut lists = Vec::new();
-            for provider in list(&self.description["providers"]) {
+            // Providers registered once the session started refresh too.
+            let providers = self.latest(|latest| list(&latest["providers"]).to_vec());
+            for provider in &providers {
                 let (name, config) = (text(&provider["name"]), &provider["config"]);
                 if options
                     .providers
@@ -1337,6 +1453,16 @@ impl Extension for JsExtension {
                 if config["hasModifyModels"] == true && !options.cancel.is_cancelled() {
                     let modified = self.modify_models(&name, registry, &own).await;
                     own.push(modified.map(ModelUpdate::Modified));
+                }
+                // pi refreshes availability after the models.
+                if checks_availability(config) && !options.cancel.is_cancelled() {
+                    let credential = registry.read_credential(&name);
+                    let found = self.shared.availability(&name, credential).await;
+                    let found = found.and_then(|found| {
+                        serde_json::from_value(found)
+                            .map_err(|err| format!("Invalid availability from {name}: {err}"))
+                    });
+                    own.push(found.map(ModelUpdate::Availability));
                 }
                 lists.extend(own.into_iter().map(|list| (name.clone(), list)));
             }
@@ -2067,6 +2193,17 @@ async fn reporting(session: AgentSession, work: impl Future<Output = Result<(), 
     }
 }
 
+/// Refreshes every provider's models and availability offline, as pi does
+/// after a provider is registered or unregistered. Failures go unreported,
+/// as in pi.
+async fn refresh_offline(session: AgentSession) {
+    let options = RefreshOptions {
+        allow_network: false,
+        ..RefreshOptions::default()
+    };
+    session.refresh_model_catalogs(options).await;
+}
+
 fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
@@ -2368,6 +2505,41 @@ impl Bridge for SessionBridge {
                 for tool in list(&payload["tools"]) {
                     session.tools().register(js_tool(&owner, extension, tool));
                 }
+                Ok(Value::Null)
+            }
+            // pi applies providers registered and unregistered once extensions
+            // have loaded at once, then refreshes models offline.
+            "providers.register" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let described = &payload["provider"];
+                let provider = owner.provider(described).ok_or("Invalid provider")?;
+                session
+                    .update_providers(|registry, apis| provider.install(registry, apis))
+                    .map_err(|err| err.to_string())?;
+                let extension = payload["extension"].as_u64();
+                if let Some(Value::Array(providers)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == extension)
+                    .map(|description| &mut description["providers"])
+                {
+                    providers.push(described.clone());
+                }
+                self.spawn(refresh_offline(session));
+                Ok(Value::Null)
+            }
+            "providers.unregister" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let name = text(&payload["name"]);
+                for description in lock(&owner.loaded).iter_mut() {
+                    if let Value::Array(providers) = &mut description["providers"] {
+                        providers.retain(|provider| provider["name"] != name.as_str());
+                    }
+                }
+                session.update_providers(|registry, apis| {
+                    registry.unregister_provider(&name);
+                    apis.unregister_for(&name);
+                });
+                self.spawn(refresh_offline(session));
                 Ok(Value::Null)
             }
             "commands.list" => Ok(Value::Array(

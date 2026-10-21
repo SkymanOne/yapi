@@ -220,6 +220,115 @@ async fn installs_npm_dependencies() {
     server.finish().unwrap();
 }
 
+/// A dependency already resolvable through any `node_modules` up from its
+/// dependent is checked there, as Node resolves it: a different version in
+/// between gets a nested copy, and a cycle ends at its ancestor's copy.
+#[tokio::test(flavor = "multi_thread")]
+async fn ancestor_node_modules() {
+    let dir = scratch("npm-ancestors");
+    let versions = |name: &str, versions: &[(&str, Value)]| -> Vec<(String, Value, Vec<u8>)> {
+        versions
+            .iter()
+            .map(|(version, dependencies)| {
+                let manifest = json!({"name": name, "version": version});
+                let bytes = tarball(&[("package.json", &manifest.to_string())]);
+                let manifest = json!({ "dependencies": dependencies });
+                ((*version).to_owned(), manifest, bytes)
+            })
+            .collect()
+    };
+    let packages = [
+        (
+            "ext",
+            versions(
+                "ext",
+                &[(
+                    "1.0.0",
+                    json!({"x": "^1", "d": "^2", "b": "^1", "p": "^1", "q": "^1", "c": "^1"}),
+                )],
+            ),
+        ),
+        (
+            "x",
+            versions("x", &[("1.0.0", json!({})), ("2.0.0", json!({}))]),
+        ),
+        (
+            "d",
+            versions("d", &[("1.0.0", json!({"x": "^1"})), ("2.0.0", json!({}))]),
+        ),
+        (
+            "b",
+            versions("b", &[("1.0.0", json!({"x": "^2", "d": "^1"}))]),
+        ),
+        (
+            "p",
+            versions("p", &[("1.0.0", json!({})), ("2.0.0", json!({"q": "^2"}))]),
+        ),
+        (
+            "q",
+            versions("q", &[("1.0.0", json!({})), ("2.0.0", json!({"p": "^2"}))]),
+        ),
+        ("c", versions("c", &[("1.0.0", json!({"p": "^2"}))])),
+    ];
+    let server = registry(|base| {
+        let fetch = |name: &str, version: &str| {
+            let (_, versions) = packages.iter().find(|(n, _)| *n == name).unwrap();
+            let versions: Vec<(&str, Value, Vec<u8>)> = versions
+                .iter()
+                .map(|(v, manifest, bytes)| (v.as_str(), manifest.clone(), bytes.clone()))
+                .collect();
+            publish(base, name, &versions, version)
+        };
+        // The packument is fetched once per name.
+        let cached = |name: &str, version: &str| fetch(name, version).split_off(1);
+        [
+            fetch("ext", "1.0.0"),
+            fetch("x", "1.0.0"),
+            fetch("d", "2.0.0"),
+            fetch("b", "1.0.0"),
+            cached("x", "2.0.0"),
+            cached("d", "1.0.0"),
+            // d@1 resolves `x` to b's x@2, so it gets its own x@1.
+            cached("x", "1.0.0"),
+            fetch("p", "1.0.0"),
+            fetch("q", "1.0.0"),
+            fetch("c", "1.0.0"),
+            cached("p", "2.0.0"),
+            // q@2 finds p@2 two levels up and the cycle ends.
+            cached("q", "2.0.0"),
+        ]
+        .concat()
+    })
+    .await;
+    let mut packages = manager(&dir, &server.url());
+    packages.install("npm:ext", false).await.unwrap();
+    server.finish().unwrap();
+
+    let modules = dir.join("agent/npm/node_modules");
+    let version = |path: &str| {
+        let text = std::fs::read_to_string(modules.join(path).join("package.json")).unwrap();
+        serde_json::from_str::<Value>(&text).unwrap()["version"].clone()
+    };
+    for (path, expected) in [
+        ("x", "1.0.0"),
+        ("d", "2.0.0"),
+        ("b/node_modules/x", "2.0.0"),
+        ("b/node_modules/d", "1.0.0"),
+        ("b/node_modules/d/node_modules/x", "1.0.0"),
+        ("p", "1.0.0"),
+        ("q", "1.0.0"),
+        ("c/node_modules/p", "2.0.0"),
+        ("c/node_modules/p/node_modules/q", "2.0.0"),
+    ] {
+        assert_eq!(version(path), expected, "{path}");
+    }
+    assert!(
+        !modules
+            .join("c/node_modules/p/node_modules/q/node_modules")
+            .exists()
+    );
+}
+
 /// Writes the agent's `settings.json` with `packages`.
 fn configure(dir: &Path, packages: Value) {
     let agent = dir.join("agent");
