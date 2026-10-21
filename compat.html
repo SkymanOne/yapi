@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -217,9 +217,12 @@
 </thead>
 <tbody>
 <tr><td>Directories</td><td><code>~/.pi/agent</code>, project <code>.pi/</code>, <code>PI_CODING_AGENT_DIR</code></td><td><code>~/.yapi/agent</code>, project <code>.yapi/</code>, <code>YAPI_CODING_AGENT_DIR</code>, and <code>YAPI_</code> in place of <code>PI_</code> for the session directory variable. Same formats, and <code>yapi import pi</code> copies Pi’s state.</td></tr>
-<tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only.</td></tr>
+<tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output.</td></tr>
+<tr><td>Git sources</td><td>A host or ref may start with <code>-</code></td><td>A host or ref that starts with <code>-</code> is refused, because git would read it as an option. Clones run as <code>git clone -- &lt;repo&gt;</code>.</td></tr>
+<tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
+<tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="troubleshooting.html#logs">Logs</a>.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
 <tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="install.html#upgrade">Install</a>.</td></tr>
@@ -244,6 +247,20 @@
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
 <tr><td>Mouse in fullscreen mode</td><td>Extension editors and components get mouse events.</td><td>Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="tools-and-sessions"><a class="header" href="#tools-and-sessions">Tools and sessions</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
+</thead>
+<tbody>
+<tr><td><code>edit</code> on a file that is not UTF-8</td><td>Reads it as UTF-8 and writes every invalid byte back as U+FFFD</td><td>Refuses the edit with “File is not valid UTF-8.”, so bytes outside the edit never change.</td></tr>
+<tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
+<tr><td>Session lines with an unpaired surrogate</td><td>Text cut inside an emoji is written as an unpaired UTF-16 escape, such as <code>\ud83d</code></td><td>The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one.</td></tr>
+<tr><td>Failed session writes</td><td>Later entries can point to an entry that is missing from the file</td><td>yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole.</td></tr>
 </tbody>
 </table>
 </div>

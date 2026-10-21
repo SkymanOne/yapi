@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -183,8 +183,9 @@
 <p>yapi reads Pi’s formats but keeps its own folders, so the two never write the same files. To copy an existing Pi setup, run:</p>
 <pre><code class="language-sh">yapi import pi
 </code></pre>
-<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
+<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, API keys, models, key bindings, MCP servers, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
 <p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
+<p>Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
 <div class="table-wrapper">

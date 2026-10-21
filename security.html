@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -210,9 +210,9 @@
 <p>Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from yapi’s own memory. The sandbox limits what extension code can do directly. It does not restrict the built-in tools, child processes or MCP servers.</p>
 <h3 id="instances-and-limits"><a class="header" href="#instances-and-limits">Instances and limits</a></h3>
 <p>An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
-<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.</p>
+<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.</p>
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
-<p>The host checks every file, process, network and environment access against the extension’s grants. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="roadmap.html#capability-based-sandboxing">Roadmap</a> describes.</p>
+<p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="roadmap.html#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
 <p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code> only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
@@ -223,6 +223,7 @@
 <p>The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.</p>
 <ul>
 <li>yapi saves the decision in <code>~/.yapi/agent/trust.json</code>. <code>/trust</code> changes it later.</li>
+<li>If <code>trust.json</code> cannot be read or is not a JSON object, yapi reports the error and does not start in a project that needs trust, as Pi does, unless <code>--approve</code> or <code>--no-approve</code> decides. It never overwrites that file.</li>
 <li><code>--approve</code> and <code>--no-approve</code> decide for one run.</li>
 <li><code>"defaultProjectTrust"</code> in global settings set to <code>"always"</code> or <code>"never"</code> decides without asking.</li>
 </ul>

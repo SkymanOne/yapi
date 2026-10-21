@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -349,8 +349,9 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <p>yapi reads Pi’s formats but keeps its own folders, so the two never write the same files. To copy an existing Pi setup, run:</p>
 <pre><code class="language-sh">yapi import pi
 </code></pre>
-<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, credentials, models, key bindings, MCP servers and their sign-ins, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
+<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, API keys, models, key bindings, MCP servers, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
 <p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
+<p>Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
 <div class="table-wrapper">
@@ -457,7 +458,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </table>
 </div>
 <p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
-<p><code>/bug</code> writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, <code>/bug</code> then offers to post a public issue with your description, the summary and <code>report.json</code>, never the transcript. See <a href="#reporting-a-problem">Reporting a problem</a>.</p>
+<p><code>/bug</code> writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, <code>/bug</code> then offers to post a public issue with your description, the summary and <code>report.json</code> without your settings’ values, never the transcript. See <a href="#reporting-a-problem">Reporting a problem</a>.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status
@@ -597,9 +598,9 @@ yapi --no-session            # do not save this run
 <p>Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from yapi’s own memory. The sandbox limits what extension code can do directly. It does not restrict the built-in tools, child processes or MCP servers.</p>
 <h3 id="instances-and-limits"><a class="header" href="#instances-and-limits">Instances and limits</a></h3>
 <p>An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
-<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.</p>
+<p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.</p>
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
-<p>The host checks every file, process, network and environment access against the extension’s grants. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
+<p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
 <p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code> only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
@@ -610,6 +611,7 @@ yapi --no-session            # do not save this run
 <p>The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.</p>
 <ul>
 <li>yapi saves the decision in <code>~/.yapi/agent/trust.json</code>. <code>/trust</code> changes it later.</li>
+<li>If <code>trust.json</code> cannot be read or is not a JSON object, yapi reports the error and does not start in a project that needs trust, as Pi does, unless <code>--approve</code> or <code>--no-approve</code> decides. It never overwrites that file.</li>
 <li><code>--approve</code> and <code>--no-approve</code> decide for one run.</li>
 <li><code>"defaultProjectTrust"</code> in global settings set to <code>"always"</code> or <code>"never"</code> decides without asking.</li>
 </ul>
@@ -650,6 +652,7 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td><code>--no-tools</code></td><td>Disable all tools</td></tr>
 <tr><td><code>-ne</code></td><td>Start without extensions, including the built-in MCP and llama.cpp extensions</td></tr>
 <tr><td><code>--offline</code></td><td>Skip startup network work</td></tr>
+<tr><td><code>--enable-logging</code></td><td>Append a log to <code>~/.yapi/agent/yapi.log</code>. See <a href="#logs">Logs</a>.</td></tr>
 <tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="#project-trust">Project trust</a>.</td></tr>
 </tbody>
 </table>
@@ -1672,9 +1675,12 @@ api.on("session_start", |_event, ctx| async move {
 </thead>
 <tbody>
 <tr><td>Directories</td><td><code>~/.pi/agent</code>, project <code>.pi/</code>, <code>PI_CODING_AGENT_DIR</code></td><td><code>~/.yapi/agent</code>, project <code>.yapi/</code>, <code>YAPI_CODING_AGENT_DIR</code>, and <code>YAPI_</code> in place of <code>PI_</code> for the session directory variable. Same formats, and <code>yapi import pi</code> copies Pi’s state.</td></tr>
-<tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only.</td></tr>
+<tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output.</td></tr>
+<tr><td>Git sources</td><td>A host or ref may start with <code>-</code></td><td>A host or ref that starts with <code>-</code> is refused, because git would read it as an option. Clones run as <code>git clone -- &lt;repo&gt;</code>.</td></tr>
+<tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
+<tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="#logs">Logs</a>.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
 <tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="#upgrade">Install</a>.</td></tr>
@@ -1699,6 +1705,20 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
 <tr><td>Mouse in fullscreen mode</td><td>Extension editors and components get mouse events.</td><td>Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="tools-and-sessions"><a class="header" href="#tools-and-sessions">Tools and sessions</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
+</thead>
+<tbody>
+<tr><td><code>edit</code> on a file that is not UTF-8</td><td>Reads it as UTF-8 and writes every invalid byte back as U+FFFD</td><td>Refuses the edit with “File is not valid UTF-8.”, so bytes outside the edit never change.</td></tr>
+<tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
+<tr><td>Session lines with an unpaired surrogate</td><td>Text cut inside an emoji is written as an unpaired UTF-16 escape, such as <code>\ud83d</code></td><td>The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one.</td></tr>
+<tr><td>Failed session writes</td><td>Later entries can point to an entry that is missing from the file</td><td>yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1832,8 +1852,10 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <li>Without the transcript, the current model can write a summary instead. yapi sends the transcript to the model’s provider with your credentials and keeps only the summary.</li>
 </ol>
 <p>yapi writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its <code>report.json</code> leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.</p>
-<p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>, with your home folder written as <code>~</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
+<p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>, with the names of your settings but not their values, and with your home folder written as <code>~</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
 <p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
+<h2 id="logs"><a class="header" href="#logs">Logs</a></h2>
+<p>Start yapi with <code>--enable-logging</code> to append its log to <code>~/.yapi/agent/yapi.log</code>, or <code>yapi.log</code> in <code>YAPI_CODING_AGENT_DIR</code>. Each line holds the time, the process ID, the level, where the message comes from, and the message. The log has extension output, extension runtime restarts and crashes, and warnings from yapi’s libraries. Only you can read the file, as extension output can hold private data. yapi never shortens or removes it, so delete it when you no longer need it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
 <p>yapi is a Cargo workspace whose crates mirror Pi’s packages. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> describes the architecture, the design decisions and the rules for changes.</p>
