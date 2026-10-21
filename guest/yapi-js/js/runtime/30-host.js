@@ -1069,7 +1069,6 @@
 			getProviderDisplayName: (provider) => yapi.request("models.providerName", { provider }) ?? provider,
 			getModelsOfType: (type, provider) => yapi.request("models.ofType", { type, provider }) ?? [],
 			getModelOfType: (type, provider, id) => ofType(type, provider, id),
-			// shortcut: getProvider gives a provider's names, models and streams, not the rest of pi-ai's Provider; add members as extensions need them.
 			getProvider: registryProvider,
 			getProviderAuthStatus: (provider) => yapi.request("models.authStatus", { provider }),
 			stream: registryStream,
@@ -1115,7 +1114,10 @@
 			result: async () => (await stream).result(),
 		};
 	}
-	/** pi-ai's `Provider` `provider` as extensions read it: its names, models and streams. */
+	/**
+	 * pi-ai's `Provider` `provider` as yapi gives it: its names, models and
+	 * streams, as `docs/compat.md` lists.
+	 */
 	function registryProvider(provider) {
 		const all = () => ["chat", "image", "classifier"].flatMap((type) => yapi.request("models.ofType", { type, provider }) ?? []);
 		if (all().length === 0) return undefined;
