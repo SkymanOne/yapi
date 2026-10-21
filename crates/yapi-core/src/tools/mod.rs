@@ -59,6 +59,10 @@ pub struct Runtime {
     pub session_file: Option<PathBuf>,
     /// The `images.autoResize` setting.
     pub auto_resize_images: bool,
+    /// The `shellPath` setting, for `bash`.
+    pub shell_path: Option<String>,
+    /// The `shellCommandPrefix` setting, for `bash`.
+    pub shell_command_prefix: Option<String>,
 }
 
 impl Default for Runtime {
@@ -70,6 +74,8 @@ impl Default for Runtime {
             session_id: None,
             session_file: None,
             auto_resize_images: true,
+            shell_path: None,
+            shell_command_prefix: None,
         }
     }
 }

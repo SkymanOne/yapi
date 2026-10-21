@@ -152,7 +152,9 @@ impl AgentSession {
         waited
     }
 
-    pub(super) async fn handle_post_run(&self, cancel: &CancellationToken) -> bool {
+    /// pi's post-run step: whether to run the agent again, or the error of
+    /// an invalid compaction setting, which ends the prompt.
+    pub(super) async fn handle_post_run(&self, cancel: &CancellationToken) -> Result<bool, String> {
         let (last, tool_results) = {
             let mut recovery = lock(&self.inner.recovery);
             (
@@ -162,19 +164,19 @@ impl AgentSession {
         };
         if cancel.is_cancelled() {
             self.finish_cancelled_retry();
-            return false;
+            return Ok(false);
         }
         let Some((message, entry_id)) = last else {
-            return self.has_queued();
+            return Ok(self.has_queued());
         };
         if self.is_retryable(&message)
             && self.prepare_retry(&message, entry_id.clone(), cancel).await
         {
-            return !cancel.is_cancelled();
+            return Ok(!cancel.is_cancelled());
         }
         if cancel.is_cancelled() {
             self.finish_cancelled_retry();
-            return false;
+            return Ok(false);
         }
         if message.stop_reason == StopReason::Error {
             let attempt = std::mem::take(&mut lock(&self.inner.recovery).retry_attempt);
@@ -188,28 +190,33 @@ impl AgentSession {
         }
         if self
             .check_compaction(&message, entry_id, tool_results, cancel)
-            .await
+            .await?
         {
-            return !cancel.is_cancelled();
+            return Ok(!cancel.is_cancelled());
         }
-        !cancel.is_cancelled() && self.has_queued()
+        Ok(!cancel.is_cancelled() && self.has_queued())
     }
 
-    /// pi's `_checkCompaction`: overflow recovery, then threshold compaction.
+    /// pi's `_checkCompaction`: overflow recovery, then threshold compaction,
+    /// or the error of an invalid compaction setting.
     async fn check_compaction(
         &self,
         message: &AssistantMessage,
         entry_id: Option<String>,
         tool_results: Vec<String>,
         cancel: &CancellationToken,
-    ) -> bool {
-        let Some(model) = self.model() else {
-            return false;
+    ) -> Result<bool, String> {
+        let model = self.model();
+        if let Some(error) = lock(&self.inner.settings).compaction_error(model.as_ref()) {
+            return Err(error);
+        }
+        let Some(model) = model else {
+            return Ok(false);
         };
         let settings =
             CompactionSettings::resolve(lock(&self.inner.settings).settings(), Some(&model));
         if !settings.enabled || message.stop_reason == StopReason::Aborted {
-            return false;
+            return Ok(false);
         }
         let message_model = self.model_for_message(message);
         let context_window = message_model.as_ref().unwrap_or(&model).context_window;
@@ -306,7 +313,7 @@ impl AgentSession {
                 CompactionCheck::None
             }
         });
-        match check {
+        Ok(match check {
             CompactionCheck::None => false,
             CompactionCheck::Threshold => {
                 self.run_auto_compaction(CompactionReason::Threshold, false, cancel)
@@ -326,7 +333,7 @@ impl AgentSession {
                 self.run_auto_compaction(CompactionReason::Overflow, will_retry, cancel)
                     .await
             }
-        }
+        })
     }
 
     /// A summarizer for `model` with the session's credentials and retry

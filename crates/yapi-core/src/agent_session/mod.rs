@@ -823,10 +823,8 @@ impl AgentSession {
         let cancel = CancellationToken::new();
         lock(&self.inner.bash).push((token, cancel.clone()));
         let settings = self.settings();
-        let resolved = match settings.shell_command_prefix.as_deref() {
-            Some(prefix) if !prefix.is_empty() => format!("{prefix}\n{command}"),
-            _ => command.to_owned(),
-        };
+        let resolved =
+            crate::tools::bash::with_prefix(settings.shell_command_prefix.as_deref(), command);
         let cwd = self.with_session(|session| session.cwd().to_path_buf());
         let on_chunk = |delta: &str| {
             on_chunk(delta);
@@ -1038,7 +1036,9 @@ impl AgentSession {
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
             let session = self.clone();
-            return Some(async move { session.run(vec![message]).await });
+            return Some(async move {
+                let _ = session.run(vec![message]).await;
+            });
         } else if self.is_streaming() {
             lock(&self.inner.pending_custom).push(message);
         } else {
@@ -1563,19 +1563,27 @@ impl AgentSession {
         prompts.append(&mut lock(&self.inner.next_turn));
         prompts.extend(custom);
         preflight(PromptDisposition::Started);
-        self.run(prompts).await;
-        Ok(())
+        self.run(prompts).await
     }
 
     /// Runs prompts, then pi's post-run loop: retries, overflow recovery and
-    /// compaction, and queued messages, until the agent settles.
-    async fn run(&self, prompts: Vec<Message>) {
+    /// compaction, and queued messages, until the agent settles. An invalid
+    /// compaction setting ends the loop with its error once the agent settles.
+    async fn run(&self, prompts: Vec<Message>) -> Result<(), String> {
         let cancel = CancellationToken::new();
         *lock(&self.inner.cancel) = Some(cancel.clone());
         lock(&self.inner.state).streaming = true;
         self.run_agent(Some(prompts), &cancel).await;
+        let mut result = Ok(());
         while !cancel.is_cancelled() {
-            if self.handle_post_run(&cancel).await {
+            let again = match self.handle_post_run(&cancel).await {
+                Ok(again) => again,
+                Err(error) => {
+                    result = Err(error);
+                    break;
+                }
+            };
+            if again {
                 if cancel.is_cancelled() {
                     break;
                 }
@@ -1613,6 +1621,7 @@ impl AgentSession {
             }
         }
         self.inner.idle.notify_waiters();
+        result
     }
 
     fn has_queued(&self) -> bool {
@@ -1779,6 +1788,8 @@ impl AgentSession {
             session_id: Some(session_id.clone()),
             session_file,
             auto_resize_images: settings.image_auto_resize(),
+            shell_path: settings.shell_path.clone(),
+            shell_command_prefix: settings.shell_command_prefix.clone(),
         };
         let apis = self.apis();
         let session = self.downgrade();

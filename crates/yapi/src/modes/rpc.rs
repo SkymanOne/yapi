@@ -784,7 +784,7 @@ pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
         shutdown: AtomicBool::new(false),
         exit: tokio::sync::Notify::new(),
         theme: Mutex::new(crate::interactive::extension_theme(
-            session.settings().theme.as_deref(),
+            &session.settings(),
             &yapi_core::config::agent_dir(),
         )),
     });

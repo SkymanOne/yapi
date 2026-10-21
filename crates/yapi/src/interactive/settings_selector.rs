@@ -873,9 +873,7 @@ impl SettingsSelector {
                 "show-hardware-cursor",
                 "Show hardware cursor",
                 "Show the terminal cursor while still positioning it for IME support",
-                settings
-                    .show_hardware_cursor
-                    .unwrap_or_else(|| std::env::var("PI_HARDWARE_CURSOR").as_deref() == Ok("1")),
+                super::setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR"),
             ),
             item(
                 "editor-padding",
@@ -907,9 +905,7 @@ impl SettingsSelector {
                 "clear-on-shrink",
                 "Clear on shrink",
                 "Clear empty rows when content shrinks (may cause flicker)",
-                terminal
-                    .clear_on_shrink
-                    .unwrap_or_else(|| std::env::var("PI_CLEAR_ON_SHRINK").as_deref() == Ok("1")),
+                super::setting_or_env(terminal.clear_on_shrink, "PI_CLEAR_ON_SHRINK"),
             ),
             bool_item(
                 "terminal-progress",
@@ -1623,25 +1619,29 @@ impl super::App {
         level: Option<ThinkingLevel>,
     ) {
         let key = format!("{provider}/{id}");
-        let mut levels = self
-            .session
-            .settings()
-            .model_thinking_levels
-            .unwrap_or_default();
+        // As pi, only the global levels change, so a project's stay in it.
+        let manager = self.session.settings_manager();
+        let global = manager
+            .document(yapi_core::settings::Scope::Global)
+            .get("modelThinkingLevels");
+        let mut levels = match global {
+            Some(serde_json::Value::Object(levels)) => levels.clone(),
+            _ => serde_json::Map::new(),
+        };
         match level {
             Some(level) => {
-                levels.insert(key, level);
+                levels.insert(key, level.as_str().into());
             }
             None => {
                 levels.shift_remove(&key);
             }
         }
-        let value = (!levels.is_empty())
-            .then(|| serde_json::to_value(&levels).ok())
-            .flatten();
-        let _ = self
-            .session
-            .set_global_setting("modelThinkingLevels", value);
+        if level.is_some() || global.is_some() {
+            let value = (!levels.is_empty()).then_some(serde_json::Value::Object(levels));
+            let _ = self
+                .session
+                .set_global_setting("modelThinkingLevels", value);
+        }
         let current = self
             .session
             .model()
