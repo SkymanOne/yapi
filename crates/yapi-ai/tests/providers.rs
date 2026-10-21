@@ -888,7 +888,7 @@ async fn aws_credential_chain() {
 }
 
 /// Streams "hi" to a built-in model at the mock server, retrying once.
-async fn retried(server: &MockServer, provider: &str, id: &str, path: &str) -> AssistantMessage {
+async fn ask_at(server: &MockServer, provider: &str, id: &str, path: &str) -> AssistantMessage {
     let mut model = builtin_models(provider)
         .into_iter()
         .find(|model| model.id == id)
@@ -930,7 +930,7 @@ async fn retry_delay_message() {
         )],
     })
     .await;
-    let message = retried(&server, "groq", "openai/gpt-oss-120b", "").await;
+    let message = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
     assert_eq!(
         message.error_message.as_deref(),
         Some("Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota")
@@ -954,8 +954,46 @@ async fn google_ignores_retry_after() {
         ),
     );
     let server = mock(cassette).await;
-    let message = retried(&server, "google", "gemini-2.5-flash", "/v1beta").await;
+    let message = ask_at(&server, "google", "gemini-2.5-flash", "/v1beta").await;
     assert_eq!(message.error_message, None);
     assert_eq!(message.stop_reason, StopReason::Stop);
     assert_eq!(server.finish().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn empty_finish_reason() {
+    let chunk = |delta: Value, reason: Value| {
+        let chunk = json!({"choices": [{"index": 0, "delta": delta, "finish_reason": reason}]});
+        format!("data: {chunk}\n\n")
+    };
+    let stream = |chunks: Vec<String>| {
+        let mut interaction = Interaction::json("POST", "/chat/completions", 200, &json!({}));
+        interaction.response.chunks = chunks;
+        interaction.response.headers["content-type"] = "text/event-stream".into();
+        interaction
+    };
+    let server = mock(Cassette {
+        interactions: vec![
+            stream(vec![
+                chunk(json!({"content": "Hi"}), json!("")),
+                chunk(json!({}), json!("stop")),
+                chunk(json!({}), json!("")),
+                "data: [DONE]\n\n".into(),
+            ]),
+            stream(vec![
+                chunk(json!({"content": "Hi"}), json!("")),
+                "data: [DONE]\n\n".into(),
+            ]),
+        ],
+    })
+    .await;
+    let finished = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
+    assert_eq!(finished.stop_reason, StopReason::Stop);
+    assert_eq!(finished.error_message, None);
+    let unfinished = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
+    assert_eq!(
+        unfinished.error_message.as_deref(),
+        Some("Stream ended without finish_reason")
+    );
+    server.finish().unwrap();
 }

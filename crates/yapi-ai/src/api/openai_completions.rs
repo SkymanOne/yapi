@@ -1318,7 +1318,11 @@ impl State {
         if !chunk["usage"].is_object() && choice["usage"].is_object() {
             self.output.usage = parse_usage(&choice["usage"], model);
         }
-        if let Some(reason) = choice["finish_reason"].as_str() {
+        // pi skips a falsy finish_reason, such as `""` on chunks that do not end the message.
+        if let Some(reason) = choice["finish_reason"]
+            .as_str()
+            .filter(|reason| !reason.is_empty())
+        {
             self.output.raw_stop_reason = Some(reason.to_owned());
             let (stop, message) = map_stop_reason(reason);
             self.output.stop_reason = stop;
