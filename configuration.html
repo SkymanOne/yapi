@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c775475d.js";
+            window.path_to_searchindex_js = "searchindex-3cb7a343.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -189,7 +189,7 @@
 <tbody>
 <tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code></td></tr>
 <tr><td>Project instructions</td><td><code>AGENTS.override.md</code>, <code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
-<tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code></td></tr>
+<tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code>. <code>--append-system-prompt</code> extends it in place of <code>APPEND_SYSTEM.md</code>.</td></tr>
 <tr><td>Skills</td><td><code>~/.yapi/agent/skills</code>, <code>~/.agents/skills</code>, <code>.yapi/skills</code> and <code>.agents/skills</code></td></tr>
 <tr><td>Prompt templates</td><td><code>~/.yapi/agent/prompts</code> and <code>.yapi/prompts</code></td></tr>
 <tr><td>Themes</td><td><code>~/.yapi/agent/themes</code> and <code>.yapi/themes</code></td></tr>
@@ -203,7 +203,7 @@
 </div>
 <p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
-<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. Use them for build commands, conventions and anything else the agent should know about the project.</p>
+<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. In a git worktree inside its main checkout, such as <code>.worktrees/feature</code>, the worktree’s own file replaces the main checkout’s file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.</p>
 <h2 id="skills-and-prompt-templates"><a class="header" href="#skills-and-prompt-templates">Skills and prompt templates</a></h2>
 <p>Skills follow the <a href="https://agentskills.io/specification">Agent Skills specification</a>. Each skill is a folder with a <code>SKILL.md</code> file. yapi lists every skill’s name and description in the system prompt, and the model reads the full instructions when a task calls for them. <code>/skill:name</code> loads one directly.</p>
 <p>Prompt templates are Markdown files that become slash commands. Save this as <code>~/.yapi/agent/prompts/review.md</code>:</p>
@@ -234,6 +234,8 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 <h2 id="links"><a class="header" href="#links">Links</a></h2>
 <p>In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> calls link to their files. In other terminals, a Markdown link shows its URL after its text.</p>
 <p>yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set <code>"terminal": {"hyperlinks": true}</code> or <code>false</code> to override the detection. The <code>PI_HYPERLINKS</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
+<h2 id="colors"><a class="header" href="#colors">Colors</a></h2>
+<p>Themes use 24-bit color in terminals that support it, such as iTerm2, Ghostty, kitty, WezTerm, VS Code and JetBrains IDEs, or when <code>COLORTERM</code> is <code>truecolor</code> or <code>24bit</code>. Elsewhere, and in tmux or screen unless <code>COLORTERM</code> says so, they use 256 colors. Set <code>"terminal": {"trueColor": true}</code> or <code>false</code> to override the detection. The <code>PI_TRUE_COLOR</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
 
                     </main>
 
