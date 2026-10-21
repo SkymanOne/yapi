@@ -19,7 +19,6 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::SourceInfo;
 use yapi_types::rpc::StreamingBehavior;
-use yapi_types::settings::QueueMode;
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
@@ -32,8 +31,6 @@ use super::{AgentSession, InputSource, Replacement, SessionChange, drain};
 
 pub(super) struct Hooks {
     pub(super) session: AgentSession,
-    pub(super) steering_mode: Option<QueueMode>,
-    pub(super) follow_up_mode: Option<QueueMode>,
     pub(super) cancel: CancellationToken,
     /// pi's turn index for extension events: turns since `agent_start`.
     pub(super) turn_index: std::sync::atomic::AtomicU64,
@@ -431,13 +428,17 @@ impl AgentHooks for Hooks {
         Box::pin(async move { Some(messages) })
     }
 
+    // As pi's agent, each drain reads the current mode, so a change applies
+    // to the running agent.
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.steering, self.steering_mode);
+        let mode = lock(&self.session.inner.settings).settings().steering_mode;
+        let messages = drain(&self.session.inner.steering, mode);
         Box::pin(async move { messages })
     }
 
     fn follow_up_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.follow_up, self.follow_up_mode);
+        let mode = lock(&self.session.inner.settings).settings().follow_up_mode;
+        let messages = drain(&self.session.inner.follow_up, mode);
         Box::pin(async move { messages })
     }
 }

@@ -1786,8 +1786,6 @@ impl AgentSession {
         let cancel_token = cancel.clone();
         let hooks = Hooks {
             session: self.clone(),
-            steering_mode: settings.steering_mode,
-            follow_up_mode: settings.follow_up_mode,
             cancel: cancel_token,
             turn_index: std::sync::atomic::AtomicU64::new(0),
         };
@@ -2146,8 +2144,6 @@ impl AgentSession {
         let started = nested.start(caller, &mut call);
         let hooks = Hooks {
             session: self.clone(),
-            steering_mode: None,
-            follow_up_mode: None,
             cancel: cancel.clone(),
             turn_index: std::sync::atomic::AtomicU64::new(0),
         };

@@ -491,3 +491,54 @@ async fn skill_split_space() {
         )]
     );
 }
+
+/// The faux provider, queueing two steering messages and switching the
+/// steering mode to `all` while its first request streams.
+struct SteerOnce {
+    faux: Faux,
+    session: Arc<std::sync::OnceLock<AgentSession>>,
+    done: AtomicBool,
+}
+
+impl Provider for SteerOnce {
+    fn api(&self) -> &str {
+        "faux"
+    }
+
+    fn stream(&self, request: Request) -> EventStream {
+        if !self.done.swap(true, Ordering::SeqCst) {
+            let session = self.session.get().unwrap();
+            session.steer("s1", Vec::new());
+            session.steer("s2", Vec::new());
+            session
+                .set_steering_mode(yapi_types::settings::QueueMode::All)
+                .unwrap();
+        }
+        self.faux.stream(request)
+    }
+}
+
+/// A steering mode change applies to the running agent, as in pi.
+#[tokio::test]
+async fn steering_mode_live() {
+    let faux = Faux::new([
+        Response::tool_call("call-1", "missing", serde_json::json!({})),
+        Response::text("done"),
+    ]);
+    let cell = Arc::new(std::sync::OnceLock::new());
+    let session = session_with(Arc::new(SteerOnce {
+        faux: faux.clone(),
+        session: cell.clone(),
+        done: AtomicBool::new(false),
+    }));
+    let _ = cell.set(session.clone());
+    session.prompt("go", Vec::new()).await.unwrap();
+    let users: Vec<String> = faux.requests()[1]
+        .iter()
+        .filter_map(|message| match message {
+            Message::User(user) => Some(user.content.text("")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(users, ["go", "s1", "s2"]);
+}
