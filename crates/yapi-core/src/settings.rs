@@ -402,6 +402,50 @@ impl SettingsManager {
             .ok_or_else(|| format!("Invalid {key} setting: {}", js_string(value)))
     }
 
+    /// pi's `getCompactionTokenSetting` checks: the error for a
+    /// `compaction` token setting, or `model`'s override of one, that is not
+    /// a non-negative safe integer.
+    pub fn compaction_error(&self, model: Option<&yapi_types::model::Model>) -> Option<String> {
+        const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+        let merged = deep_merge(&self.global, &self.project);
+        let compaction = merged.get("compaction");
+        let key = model.map(|model| format!("{}/{}", model.provider, model.id));
+        let entry = key
+            .as_ref()
+            .and_then(|key| compaction?.get("modelOverrides")?.get(key));
+        let invalid = |value: &&Value| {
+            !value
+                .as_f64()
+                .is_some_and(|n| n.fract() == 0.0 && (0.0..=MAX_SAFE_INTEGER).contains(&n))
+        };
+        let expected = "Expected a non-negative safe integer.";
+        for field in ["reserveTokens", "keepRecentTokens"] {
+            if let Some(value) = compaction.and_then(|c| c.get(field)).filter(invalid) {
+                let value = js_string(value);
+                return Some(format!(
+                    "Invalid compaction.{field} setting: {value}. {expected}"
+                ));
+            }
+            let (Some(key), Some(entry)) = (&key, entry) else {
+                continue;
+            };
+            let name = format!("compaction.modelOverrides[\"{key}\"]");
+            if !entry.is_object() {
+                let entry = js_string(entry);
+                return Some(format!(
+                    "Invalid {name} setting: {entry}. Expected an object."
+                ));
+            }
+            if let Some(value) = entry.get(field).filter(invalid) {
+                let value = js_string(value);
+                return Some(format!(
+                    "Invalid {name}.{field} setting: {value}. {expected}"
+                ));
+            }
+        }
+        None
+    }
+
     /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
     /// only, because each refresh costs money; `streaming` when unset or
     /// invalid.
@@ -612,6 +656,18 @@ mod tests {
         manager.global = Map::new();
         assert_eq!(manager.http_idle_timeout_ms(), Ok(300_000));
         assert_eq!(manager.websocket_connect_timeout_ms(), Ok(None));
+        assert_eq!(manager.compaction_error(None), None);
+        // pi's compaction getters take whole numbers only.
+        manager.global = json!({"compaction": {"reserveTokens": 1.5e5, "keepRecentTokens": 1.5}})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            manager.compaction_error(None).as_deref(),
+            Some(
+                "Invalid compaction.keepRecentTokens setting: 1.5. Expected a non-negative safe integer."
+            )
+        );
     }
 
     #[test]
