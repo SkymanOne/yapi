@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-addd03ac.js";
+            window.path_to_searchindex_js = "searchindex-10011b2a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -579,7 +579,7 @@ yapi --no-session            # do not save this run
 </thead>
 <tbody>
 <tr><td>Built-in tools and <code>!</code> commands</td><td>yapi’s process and its child processes</td><td>Everything the user can access</td></tr>
-<tr><td>Extensions</td><td>WebAssembly instances</td><td>What their grants allow. In v0.1, Pi’s defaults: files, processes, network and environment.</td></tr>
+<tr><td>Extensions</td><td>WebAssembly instances</td><td>What their grants allow. For now, Pi’s defaults: files, processes, network and environment.</td></tr>
 <tr><td>Processes that extensions start, including subagents</td><td>Child processes, outside the sandbox</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over stdio</td><td>Child processes</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over HTTP</td><td>Remote services</td><td>What the server allows</td></tr>
@@ -600,7 +600,7 @@ yapi --no-session            # do not save this run
 <p>An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
 <p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.</p>
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
-<p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
+<p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. For now, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
 <p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code> only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
@@ -1740,7 +1740,7 @@ api.on("session_start", |_event, ctx| async move {
 <h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
 <p>Some Pi features are missing or incomplete, such as complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
-<p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
+<p>For now, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
 <li>A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.</li>
 <li>File grants can be limited to paths and to read-only access, and network grants to hosts.</li>
