@@ -1176,13 +1176,15 @@ impl AgentSession {
         expand_prompt_template(&text, &read(&self.inner.resources).templates)
     }
 
-    /// `/skill:name args` becomes the skill's content with the arguments.
+    /// `/skill:name args` becomes the skill's content with the arguments. The
+    /// name ends at the first space. A skill file that cannot be read is
+    /// reported as an extension error and leaves the text as typed.
     fn expand_skill(&self, text: &str) -> String {
         let Some(rest) = text.strip_prefix("/skill:") else {
             return text.to_owned();
         };
-        let (name, args) = match rest.find(char::is_whitespace) {
-            Some(index) => (&rest[..index], rest[index..].trim()),
+        let (name, args) = match rest.split_once(' ') {
+            Some((name, args)) => (name, args.trim()),
             None => (rest, ""),
         };
         let Some(skill) = read(&self.inner.resources)
@@ -1193,15 +1195,27 @@ impl AgentSession {
         else {
             return text.to_owned();
         };
-        let Ok(content) = std::fs::read_to_string(&skill.file_path) else {
-            return text.to_owned();
+        let content = match std::fs::read_to_string(&skill.file_path) {
+            Ok(content) => content,
+            Err(error) => {
+                let error = crate::tools::node_error(&error, "open", &skill.file_path);
+                let ui = lock(&self.inner.binding).0.clone();
+                ui.extension_error(
+                    &skill.file_path.to_string_lossy(),
+                    "skill_expansion",
+                    &error,
+                    None,
+                );
+                return text.to_owned();
+            }
         };
         let (_, body) = crate::resources::split_frontmatter(&content);
         let mut expanded = format!(
-            "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{body}\n</skill>",
+            "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{}\n</skill>",
             skill.name,
             skill.file_path.display(),
-            skill.base_dir.display()
+            skill.base_dir.display(),
+            body.trim()
         );
         if !args.is_empty() {
             expanded += &format!("\n\n{args}");

@@ -36,6 +36,10 @@ fn session(faux: &Faux) -> AgentSession {
 }
 
 fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
+    session_resources(provider, Resources::default())
+}
+
+fn session_resources(provider: Arc<dyn Provider>, resources: Resources) -> AgentSession {
     let model = faux_model();
     let mut registry = ModelRegistry::builtin();
     registry.register_provider("faux", vec![model.clone()]);
@@ -56,7 +60,7 @@ fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
         include_extension_tools: false,
         allowed_tools: None,
         excluded_tools: Vec::new(),
-        resources: Resources::default(),
+        resources,
         docs: yapi_core::docs::Locations::default(),
     })
 }
@@ -396,4 +400,94 @@ async fn last_text_after_error() {
     assert_eq!(session.last_assistant_text().as_deref(), Some("one"));
     session.prompt("second", Vec::new()).await.unwrap();
     assert_eq!(session.last_assistant_text(), None);
+}
+
+/// Records the extension errors reported to it.
+#[derive(Default)]
+struct Errors(std::sync::Mutex<Vec<String>>);
+
+impl yapi_core::extensions::ExtensionUi for Errors {
+    fn has_ui(&self) -> bool {
+        false
+    }
+    fn notify(&self, _message: &str, _kind: yapi_core::extensions::NotifyKind) {}
+    fn extension_error(&self, path: &str, event: &str, error: &str, _stack: Option<&str>) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("{event} {path}: {error}"));
+    }
+}
+
+/// A `/skill:` name ends at a space only; an unreadable skill file is
+/// reported and leaves the prompt as typed, as in pi.
+#[tokio::test]
+async fn skill_split_space() {
+    let dir = std::env::temp_dir().join(format!("yapi-skill-split-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("SKILL.md");
+    std::fs::write(&file, "---\nname: review\ndescription: d\n---\nBody\n").unwrap();
+    let skill = |name: &str, file_path: &Path| yapi_types::system_prompt::Skill {
+        name: name.into(),
+        file_path: file_path.to_path_buf(),
+        base_dir: dir.clone(),
+        ..Default::default()
+    };
+    let faux = Faux::new([
+        Response::text("a"),
+        Response::text("b"),
+        Response::text("c"),
+    ]);
+    let resources = Resources {
+        skills: vec![skill("review", &file), skill("gone", &dir.join("gone.md"))],
+        ..Resources::default()
+    };
+    let session = session_resources(Arc::new(faux.clone()), resources);
+    let errors = Arc::new(Errors::default());
+    session
+        .bind_extensions(
+            errors.clone(),
+            yapi_core::extensions::Mode::Print,
+            None,
+            None,
+        )
+        .await;
+    for prompt in [
+        "/skill:review\tfocus",
+        "/skill:review  focus ",
+        "/skill:gone x",
+    ] {
+        session.prompt(prompt, Vec::new()).await.unwrap();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let sent: Vec<String> = faux
+        .requests()
+        .iter()
+        .map(|messages| match messages.last().unwrap() {
+            Message::User(user) => user.content.text(""),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let block = format!(
+        "<skill name=\"review\" location=\"{}\">\nReferences are relative to {}.\n\nBody\n</skill>",
+        file.display(),
+        dir.display()
+    );
+    assert_eq!(
+        sent,
+        [
+            "/skill:review\tfocus".to_owned(),
+            format!("{block}\n\nfocus"),
+            "/skill:gone x".to_owned(),
+        ]
+    );
+    let gone = dir.join("gone.md");
+    assert_eq!(
+        *errors.0.lock().unwrap(),
+        [format!(
+            "skill_expansion {}: ENOENT: no such file or directory, open '{}'",
+            gone.display(),
+            gone.display()
+        )]
+    );
 }
