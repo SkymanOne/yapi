@@ -11,7 +11,7 @@ Treat the commands and code the model generates as untrusted. Files, comments an
 | Component | Runs as | Access |
 |---|---|---|
 | Built-in tools and `!` commands | yapi's process and its child processes | Everything the user can access |
-| Extensions | WebAssembly instances | What their grants allow. In v0.1, Pi's defaults: files, processes, network and environment. |
+| Extensions | WebAssembly instances | What their grants allow. For now, Pi's defaults: files, processes, network and environment. |
 | Processes that extensions start, including subagents | Child processes, outside the sandbox | Everything the user can access |
 | MCP servers over stdio | Child processes | Everything the user can access |
 | MCP servers over HTTP | Remote services | What the server allows |
@@ -36,7 +36,7 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 ### Grants
 
-The host checks every file, process, network and environment access against the extension's grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks every file, process, network and environment access against the extension's grants. Without the file grant, an extension cannot import modules from files either. For now, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
 A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
