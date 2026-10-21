@@ -311,9 +311,15 @@ pub struct Options {
     pub model_network: bool,
 }
 
-/// The color mode for this terminal: truecolor when it advertises it.
-fn color_mode() -> ColorMode {
-    if true_color() {
+/// The color mode for this terminal: truecolor when it supports it, or when
+/// `settings` force it with `terminal.trueColor`.
+fn color_mode(settings: Option<&yapi_types::settings::Settings>) -> ColorMode {
+    let setting =
+        match settings.and_then(|settings| settings.terminal.as_ref()?.true_color.as_ref()) {
+            Some(BoolOr::Bool(on)) => Some(*on),
+            _ => None,
+        };
+    if true_color(setting, |name| std::env::var(name).unwrap_or_default()) {
         ColorMode::TrueColor
     } else {
         ColorMode::Ansi256
@@ -372,29 +378,52 @@ fn decode_input(
     keys
 }
 
-fn true_color() -> bool {
-    let env = |name: &str| std::env::var(name).unwrap_or_default();
-    match env("PI_TRUE_COLOR").as_str() {
+/// pi-tui's `trueColor` capability: the `terminal.trueColor` setting when
+/// true or false, else `PI_TRUE_COLOR` as `1` or `0`, else whether the
+/// terminal the environment names shows 24-bit color, as pi-tui detects it.
+fn true_color(setting: Option<bool>, var: impl Fn(&str) -> String) -> bool {
+    if let Some(on) = setting {
+        return on;
+    }
+    match var("PI_TRUE_COLOR").as_str() {
         "1" => return true,
         "0" => return false,
         _ => {}
     }
-    let colorterm = env("COLORTERM").to_lowercase();
-    if colorterm == "truecolor" || colorterm == "24bit" {
-        return true;
+    let set = |name: &str| !var(name).is_empty();
+    let (program, term, colorterm) = (
+        var("TERM_PROGRAM").to_lowercase(),
+        var("TERM").to_lowercase(),
+        var("COLORTERM").to_lowercase(),
+    );
+    let hint = colorterm == "truecolor" || colorterm == "24bit" || term.ends_with("-direct");
+    if set("TMUX") || term.starts_with("tmux") || term.starts_with("screen") {
+        return hint;
     }
-    let term = env("TERM");
-    if term.ends_with("-direct") || term == "xterm-kitty" || term == "xterm-ghostty" {
-        return true;
-    }
-    if term.starts_with("screen") || term.starts_with("tmux") || !env("TMUX").is_empty() {
-        return false;
-    }
-    matches!(
-        env("TERM_PROGRAM").as_str(),
-        "iTerm.app" | "WezTerm" | "vscode" | "ghostty" | "WarpTerminal" | "zed" | "Alacritty"
-    ) || !env("WT_SESSION").is_empty()
-        || !env("KITTY_WINDOW_ID").is_empty()
+    let known = [
+        "KITTY_WINDOW_ID",
+        "GHOSTTY_RESOURCES_DIR",
+        "WEZTERM_PANE",
+        "WARP_SESSION_ID",
+        "WARP_TERMINAL_SESSION_UUID",
+        "ITERM_SESSION_ID",
+        "WT_SESSION",
+    ];
+    let programs = [
+        "kitty",
+        "ghostty",
+        "wezterm",
+        "warpterminal",
+        "iterm.app",
+        "alacritty",
+        "vscode",
+        "zed",
+    ];
+    hint || known.into_iter().any(set)
+        || term.contains("ghostty")
+        || programs.contains(&program.as_str())
+        || var("TERMINAL_EMULATOR").eq_ignore_ascii_case("jetbrains-jediterm")
+        || cfg!(windows)
 }
 
 /// pi-tui's `images` capability: the `terminal.images` setting when it names
@@ -751,13 +780,16 @@ pub(crate) fn export_theme(setting: Option<&str>, agent_dir: &Path) -> (Theme, A
 
 /// The configured theme as extensions see it outside the terminal UI, where
 /// no terminal colors are known.
-pub(crate) fn extension_theme(setting: Option<&str>, agent_dir: &Path) -> Value {
+pub(crate) fn extension_theme(
+    settings: &yapi_types::settings::Settings,
+    agent_dir: &Path,
+) -> Value {
     let (theme, _) = load_theme(
-        setting,
+        settings.theme.as_deref(),
         &themes::ThemeFiles::default(),
         agent_dir,
         &yapi_tui::terminal::TerminalColors::default(),
-        color_mode(),
+        color_mode(Some(settings)),
     );
     extension_ui::theme_json(&theme)
 }
@@ -4452,7 +4484,7 @@ impl App {
         colors: yapi_tui::terminal::TerminalColors,
         kitty: bool,
     ) -> (App, Option<String>) {
-        let mode = color_mode();
+        let mode = color_mode(Some(&session.settings()));
         let theme_files = themes::ThemeFiles::load(&session.resources().themes);
         let theme_override = options.use_theme.clone();
         let (theme, theme_error) = load_theme(
@@ -5663,6 +5695,32 @@ mod tests {
         assert_eq!(detect(Some(BoolOr::Bool(true)), &herdr), kitty);
         let kitty_setting = Some(BoolOr::Other(ImageProtocol::Kitty));
         assert_eq!(detect(kitty_setting, &none), kitty);
+    }
+
+    #[test]
+    fn detects_truecolor_terminals() {
+        let detect = |setting: Option<bool>, vars: &[(&str, &str)]| {
+            true_color(setting, |name| {
+                let value = vars.iter().find(|(key, _)| *key == name);
+                value
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_default()
+            })
+        };
+        assert!(detect(None, &[("TERMINAL_EMULATOR", "JetBrains-JediTerm")]));
+        assert!(detect(None, &[("TERM_PROGRAM", "kitty")]));
+        assert!(detect(None, &[("GHOSTTY_RESOURCES_DIR", "/opt/ghostty")]));
+        assert!(!detect(None, &[("TERM_PROGRAM", "Apple_Terminal")]));
+        // tmux and screen go by `COLORTERM` alone.
+        assert!(!detect(
+            None,
+            &[("TMUX", "/tmp/t"), ("KITTY_WINDOW_ID", "1")]
+        ));
+        assert!(detect(None, &[("TERM", "screen"), ("COLORTERM", "24bit")]));
+        // The setting decides over `PI_TRUE_COLOR` and the terminal.
+        let truecolor = [("COLORTERM", "truecolor"), ("PI_TRUE_COLOR", "1")];
+        assert!(!detect(Some(false), &truecolor));
+        assert!(detect(Some(true), &[("PI_TRUE_COLOR", "0")]));
     }
 
     #[test]

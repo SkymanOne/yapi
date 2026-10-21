@@ -69,3 +69,7 @@ In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their imag
 In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in `read`, `write`, `edit` and `ls` calls link to their files. In other terminals, a Markdown link shows its URL after its text.
 
 yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set `"terminal": {"hyperlinks": true}` or `false` to override the detection. The `PI_HYPERLINKS` environment variable, `1` or `0`, does the same, and the setting takes precedence.
+
+## Colors
+
+Themes use 24-bit color in terminals that support it, such as iTerm2, Ghostty, kitty, WezTerm, VS Code and JetBrains IDEs, or when `COLORTERM` is `truecolor` or `24bit`. Elsewhere, and in tmux or screen unless `COLORTERM` says so, they use 256 colors. Set `"terminal": {"trueColor": true}` or `false` to override the detection. The `PI_TRUE_COLOR` environment variable, `1` or `0`, does the same, and the setting takes precedence.

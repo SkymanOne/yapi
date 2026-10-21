@@ -132,7 +132,8 @@ fn run_selector(
         &super::themes::ThemeFiles::default(),
         agent_dir,
         &query.colors(),
-        color_mode(),
+        // pi applies the trueColor setting after its startup prompts.
+        color_mode(None),
     );
     let mut keys = keybindings::load(agent_dir, Keys::detect(protocol.kitty));
     keys.set_kitty(protocol.kitty);
