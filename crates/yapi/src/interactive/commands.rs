@@ -947,6 +947,7 @@ impl super::App {
         self.hide_thinking = settings.hide_thinking_block.unwrap_or(false);
         self.output_pad = usize::from(settings.output_pad.unwrap_or(1).min(1));
         self.mermaid = super::mermaid_mode(&settings);
+        self.apply_screen_settings(&settings);
         self.use_theme(self.theme_override.clone().or(settings.theme).as_deref());
         if let Some(error) = self
             .session

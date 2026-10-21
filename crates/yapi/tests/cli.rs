@@ -473,7 +473,9 @@ fn no_service_commands() {
     pty.finish().unwrap();
 }
 
-/// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset.
+/// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset,
+/// and `/reload` applies the setting once it is set, as pi's
+/// `applyRuntimeSettings` does.
 #[test]
 fn hardware_cursor_env() {
     use std::time::Duration;
@@ -488,7 +490,7 @@ fn hardware_cursor_env() {
         ("PI_HARDWARE_CURSOR", "1".into()),
     ];
     let args = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"].map(str::to_owned);
-    let pty = yapi_mock::pty::Pty::spawn(
+    let mut pty = yapi_mock::pty::Pty::spawn(
         std::path::Path::new(env!("CARGO_BIN_EXE_yapi")),
         &args,
         &root,
@@ -501,6 +503,16 @@ fn hardware_cursor_env() {
     assert!(pty.wait_for(Duration::from_secs(20), painted).is_some());
     pty.settle();
     assert!(!pty.cursor_hidden());
+    std::fs::write(
+        root.join("agent/settings.json"),
+        r#"{"showHardwareCursor": false}"#,
+    )
+    .unwrap();
+    pty.write("/reload\r").unwrap();
+    let reloaded = |rows: &[String]| rows.iter().any(|row| row.contains("Reloaded keybindings"));
+    assert!(pty.wait_for(Duration::from_secs(20), reloaded).is_some());
+    pty.settle();
+    assert!(pty.cursor_hidden());
     pty.finish().unwrap();
 }
 

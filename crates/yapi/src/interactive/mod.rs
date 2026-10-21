@@ -4632,12 +4632,22 @@ impl App {
         };
         app.style_alt_screen();
         app.alt.bottom_key = keybindings::keys_display(&app.keys, "tui.altScreen.bottom");
-        app.main.show_hardware_cursor =
-            setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR");
-        app.alt.show_hardware_cursor = app.main.show_hardware_cursor;
-        app.main.clear_on_shrink = setting_or_env(terminal.clear_on_shrink, "PI_CLEAR_ON_SHRINK");
+        app.apply_screen_settings(&settings);
         app.alt.kitty_images = app.image_protocol == Some(Protocol::Kitty);
         (app, theme_error)
+    }
+
+    /// pi's screen settings of `applyRuntimeSettings`: the hardware cursor
+    /// and clearing on shrink.
+    fn apply_screen_settings(&mut self, settings: &yapi_types::settings::Settings) {
+        let clear = settings
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.clear_on_shrink);
+        self.main.show_hardware_cursor =
+            setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR");
+        self.alt.show_hardware_cursor = self.main.show_hardware_cursor;
+        self.main.clear_on_shrink = setting_or_env(clear, "PI_CLEAR_ON_SHRINK");
     }
 
     /// Starts the current session's extensions once the event that replaced
