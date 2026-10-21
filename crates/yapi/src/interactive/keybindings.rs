@@ -8,6 +8,7 @@ use std::path::Path;
 use serde_json::{Map, Value};
 use yapi_tui::keybindings::{Definition, Keybindings, UserBindings, tui_definitions};
 use yapi_tui::keys::Keys;
+use yapi_types::config::ConfigFile;
 
 /// WSL and Windows get different defaults for keys their consoles reserve.
 fn windows_keys() -> bool {
@@ -304,8 +305,8 @@ pub fn migrate_file(agent_dir: &Path) {
     if !migrated {
         return;
     }
-    if let Ok(text) = yapi_types::json::to_string_pretty(&Value::Object(config), "  ") {
-        let _ = std::fs::write(&path, format!("{text}\n"));
+    if let Ok(text) = ConfigFile::Keybindings.render(&config) {
+        let _ = yapi_ai::auth::lock::write_atomic(&path, text.as_bytes(), 0o666);
     }
 }
 

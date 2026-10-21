@@ -118,7 +118,8 @@ impl Read {
             Some(offset) if offset != 0.0 => (offset - 1.0).max(0.0) as usize,
             _ => 0,
         };
-        let start_display = start + 1;
+        // The model's offset and limit can be as large as 1e308.
+        let start_display = start.saturating_add(1);
         if start >= total {
             return Err(format!(
                 "Offset {} is beyond end of file ({total} lines total)",
@@ -127,7 +128,7 @@ impl Read {
         }
         let (selected, user_limited) = match limit {
             Some(limit) => {
-                let end = (start + limit.max(0.0) as usize).min(total);
+                let end = start.saturating_add(limit.max(0.0) as usize).min(total);
                 (lines[start..end].join("\n"), Some(end - start))
             }
             None => (lines[start..].join("\n"), None),

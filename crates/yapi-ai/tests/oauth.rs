@@ -547,6 +547,47 @@ async fn registry_refreshes_expired_tokens_and_persists_them() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// A refresh that waited for the `auth.json` lock uses the token another
+/// process refreshed meanwhile instead of refreshing it again.
+#[tokio::test]
+async fn refresh_rechecks_under_lock() {
+    let server = mock(Vec::new()).await;
+    let dir = agent_dir("refreshed-elsewhere");
+    let file = dir.join("auth.json");
+    std::fs::write(
+        &file,
+        r#"{"anthropic": {"type": "oauth", "refresh": "r-old", "access": "sk-ant-oat-old", "expires": 1}}"#,
+    )
+    .unwrap();
+    let mut registry = ModelRegistry::load(&dir);
+    registry.register_oauth(
+        "anthropic",
+        Arc::new(AnthropicOAuth {
+            token_url: format!("{}/v1/oauth/token", server.url()),
+            ..AnthropicOAuth::default()
+        }),
+    );
+    let model = registry
+        .find("anthropic", "claude-sonnet-4-5")
+        .unwrap()
+        .clone();
+    let lock = dir.join("auth.json.lock");
+    std::fs::create_dir(&lock).unwrap();
+    let other_process = async {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        std::fs::write(
+            &file,
+            r#"{"anthropic": {"type": "oauth", "refresh": "r-new", "access": "sk-ant-oat-fresh", "expires": 4102444800000}}"#,
+        )
+        .unwrap();
+        std::fs::remove_dir(&lock).unwrap();
+    };
+    let (auth, ()) = tokio::join!(registry.auth(&model), other_process);
+    assert_eq!(auth.api_key.as_deref(), Some("sk-ant-oat-fresh"));
+    assert!(server.finish().unwrap().is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[tokio::test]
 async fn registry_reports_refresh_failures_and_logs_in_with_keys() {
     let server = mock(vec![Exchange::json(

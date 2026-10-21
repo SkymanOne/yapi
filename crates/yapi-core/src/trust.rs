@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
+use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_types::settings::DefaultProjectTrust;
 
 use crate::config::PROJECT_DIR;
@@ -59,27 +60,45 @@ impl TrustStore {
         }
     }
 
-    fn read(&self) -> Map<String, Value> {
-        std::fs::read_to_string(&self.path)
-            .ok()
-            .and_then(|text| yapi_types::json::parse::<Value>(&text).ok())
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default()
+    /// The stored decisions; none when the file is missing, an error when it
+    /// cannot be read or is not a JSON object, as pi's `readTrustFile`.
+    fn read(&self) -> std::io::Result<Map<String, Value>> {
+        let failed = |message: String| {
+            std::io::Error::other(format!(
+                "Failed to read trust store {}: {message}",
+                self.path.display()
+            ))
+        };
+        let text = match std::fs::read_to_string(&self.path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
+            Err(err) => return Err(failed(err.to_string())),
+        };
+        match yapi_types::json::parse::<Value>(&text) {
+            Ok(Value::Object(data)) => Ok(data),
+            Ok(_) => Err(std::io::Error::other(format!(
+                "Invalid trust store {}: expected an object",
+                self.path.display()
+            ))),
+            Err(err) => Err(failed(err.to_string())),
+        }
     }
 
-    /// The decision for `cwd` from it or its nearest decided ancestor.
-    pub fn get(&self, cwd: &Path) -> Option<bool> {
-        self.entry(cwd).map(|(_, decision)| decision)
+    /// The decision for `cwd` from it or its nearest decided ancestor; an
+    /// error when the store cannot be read.
+    pub fn get(&self, cwd: &Path) -> std::io::Result<Option<bool>> {
+        Ok(self.entry(cwd)?.map(|(_, decision)| decision))
     }
 
-    /// The nearest decided directory at or above `cwd`, and its decision.
-    pub fn entry(&self, cwd: &Path) -> Option<(PathBuf, bool)> {
-        let data = self.read();
-        canonical(cwd).ancestors().find_map(|dir| {
+    /// The nearest decided directory at or above `cwd`, and its decision; an
+    /// error when the store cannot be read.
+    pub fn entry(&self, cwd: &Path) -> std::io::Result<Option<(PathBuf, bool)>> {
+        let data = self.read()?;
+        Ok(canonical(cwd).ancestors().find_map(|dir| {
             data.get(&*dir.to_string_lossy())
                 .and_then(Value::as_bool)
                 .map(|decision| (dir.to_path_buf(), decision))
-        })
+        }))
     }
 
     /// Records a decision for `cwd`; `None` clears it. Keys are written sorted.
@@ -87,9 +106,15 @@ impl TrustStore {
         self.set_many(&[(cwd.to_path_buf(), decision)])
     }
 
-    /// Records several decisions at once, as pi's `setMany`.
+    /// Records several decisions at once under the store's lock, as pi's
+    /// `setMany`. A store that cannot be read is left as it is and the error
+    /// returned.
     pub fn set_many(&self, updates: &[(PathBuf, Option<bool>)]) -> std::io::Result<()> {
-        let mut data = self.read();
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let _lock = FileLock::acquire_blocking(&self.path).map_err(std::io::Error::other)?;
+        let mut data = self.read()?;
         for (path, decision) in updates {
             let key = canonical(path).to_string_lossy().into_owned();
             match decision {
@@ -102,12 +127,9 @@ impl TrustStore {
             }
         }
         data.sort_keys();
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
         let text = yapi_types::json::to_string_pretty(&Value::Object(data), "  ")
             .map_err(std::io::Error::other)?;
-        std::fs::write(&self.path, text + "\n")
+        write_atomic(&self.path, (text + "\n").as_bytes(), 0o666)
     }
 }
 
@@ -177,41 +199,43 @@ pub fn prompt_title(cwd: &Path) -> String {
 
 /// Whether startup asks whether to trust `cwd`: it has resources needing
 /// trust and neither an override, a stored decision nor the
-/// `defaultProjectTrust` setting decides.
+/// `defaultProjectTrust` setting decides. An error when the store must be
+/// read and cannot be.
 pub fn needs_prompt(
     cwd: &Path,
     store: &TrustStore,
     override_: Option<bool>,
     default: Option<DefaultProjectTrust>,
-) -> bool {
-    override_.is_none()
+) -> std::io::Result<bool> {
+    Ok(override_.is_none()
         && requires_trust(cwd)
-        && store.get(cwd).is_none()
+        && store.get(cwd)?.is_none()
         && !matches!(
             default,
             Some(DefaultProjectTrust::Always | DefaultProjectTrust::Never)
-        )
+        ))
 }
 
 /// Resolves trust without a UI: an explicit override, no resources needing trust,
 /// a stored decision, then the `defaultProjectTrust` setting; `ask` without a UI
-/// means untrusted.
+/// means untrusted. A store that must be read and cannot be is an error, as in
+/// pi, never trust.
 pub fn resolve_trusted(
     cwd: &Path,
     store: &TrustStore,
     override_: Option<bool>,
     default: Option<DefaultProjectTrust>,
-) -> bool {
+) -> std::io::Result<bool> {
     if let Some(trusted) = override_ {
-        return trusted;
+        return Ok(trusted);
     }
     if !requires_trust(cwd) {
-        return true;
+        return Ok(true);
     }
-    if let Some(decision) = store.get(cwd) {
-        return decision;
+    if let Some(decision) = store.get(cwd)? {
+        return Ok(decision);
     }
-    matches!(default, Some(DefaultProjectTrust::Always))
+    Ok(matches!(default, Some(DefaultProjectTrust::Always)))
 }
 
 #[cfg(test)]
@@ -225,7 +249,7 @@ mod tests {
         let project = root.join("work").join("app");
         std::fs::create_dir_all(&project).unwrap();
         let store = TrustStore::new(&root.join("agent"));
-        assert_eq!(store.entry(&project), None);
+        assert_eq!(store.entry(&project).unwrap(), None);
 
         let parent = trust_options(&project, false)
             .into_iter()
@@ -234,7 +258,10 @@ mod tests {
         store.set(&project, Some(false)).unwrap();
         store.set_many(&parent.updates).unwrap();
         let parent_dir = canonical(&root.join("work"));
-        assert_eq!(store.entry(&project), Some((parent_dir.clone(), true)));
+        assert_eq!(
+            store.entry(&project).unwrap(),
+            Some((parent_dir.clone(), true))
+        );
         let text = std::fs::read_to_string(root.join("agent").join("trust.json")).unwrap();
         assert_eq!(
             text,
@@ -262,11 +289,38 @@ mod tests {
             .map(str::to_owned),
         );
         assert_eq!(labels, expected);
-        assert!(!needs_prompt(
-            Path::new("/"),
-            &TrustStore::new(Path::new("/nonexistent")),
-            Some(true),
-            None
-        ));
+        assert!(
+            !needs_prompt(
+                Path::new("/"),
+                &TrustStore::new(Path::new("/nonexistent")),
+                Some(true),
+                None
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn corrupt_store_untrusted() {
+        let root = std::env::temp_dir().join(format!("yapi-trust-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("app");
+        std::fs::create_dir_all(project.join(PROJECT_DIR).join("skills")).unwrap();
+        let agent = root.join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        let file = agent.join("trust.json");
+        let corrupt = format!("{{\n  \"{}\": false,\n", canonical(&project).display());
+        std::fs::write(&file, &corrupt).unwrap();
+        let store = TrustStore::new(&agent);
+
+        let always = Some(DefaultProjectTrust::Always);
+        let error = resolve_trusted(&project, &store, None, always).unwrap_err();
+        assert!(error.to_string().starts_with("Failed to read trust store"));
+        assert!(needs_prompt(&project, &store, None, None).is_err());
+        assert!(store.entry(&project).is_err());
+        assert!(store.set(&root, Some(true)).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), corrupt);
+        assert!(resolve_trusted(&project, &store, Some(true), always).unwrap());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

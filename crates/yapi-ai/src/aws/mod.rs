@@ -498,7 +498,6 @@ async fn credential_process(
         .arg("-c")
         .arg(command)
         .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
         .output();
     let Some(output) = cancel.run_until_cancelled(run).await else {
         return Err(crate::http::ABORTED_BEFORE_RESPONSE.into());
@@ -855,6 +854,15 @@ mod tests {
             Some("eu-west-3")
         );
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn credential_process_stderr() {
+        let command = "echo oops >&2; exit 1";
+        let error = credential_process("proc", command, &CancellationToken::new())
+            .await
+            .err();
+        assert_eq!(error, Some(format!("Command failed: {command}\noops\n")));
     }
 
     #[test]

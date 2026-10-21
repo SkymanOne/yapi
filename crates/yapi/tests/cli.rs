@@ -103,6 +103,44 @@ fn metadata_goes_to_stderr_in_print_and_modes() {
     assert!(stdout.contains("claude-sonnet-4-5"));
 }
 
+/// The question whether to fork another project's session, and its
+/// "Aborted.", go to stderr, so they never mix with JSON output.
+#[test]
+fn fork_question_on_stderr() {
+    let home = common::scratch("fork-question");
+    let other = home.join("agent/sessions/--tmp-yapi-pi-fixtures-project--");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::copy(
+        common::fixtures().join("pi/sessions/main.jsonl"),
+        other.join("main.jsonl"),
+    )
+    .unwrap();
+    let mut child = common::yapi(&home)
+        .args([
+            "--mode",
+            "json",
+            "--session",
+            "019a0000-0000-7000-8000-000000000001",
+            "hi",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::Write as _;
+    writeln!(child.stdin.take().unwrap(), "n").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("Fork this session into current directory? [y/N] "),
+        "{stderr}"
+    );
+    assert!(stderr.ends_with("Aborted.\n"), "{stderr}");
+}
+
 /// Help lists the flags of the extensions that loaded when another fails,
 /// without reporting the failure, as in pi.
 #[test]

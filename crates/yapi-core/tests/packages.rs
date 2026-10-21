@@ -9,11 +9,11 @@ use std::io::Write as _;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
+use aws_lc_rs::digest::{SHA512, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
-use sha2::Digest as _;
 use yapi_core::packages::PackageManager;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::MockServer;
@@ -82,7 +82,7 @@ fn publish(
         manifest["version"] = json!(version);
         manifest["dist"] = json!({
             "tarball": format!("{base}/{name}/-/{name}-{version}.tgz"),
-            "integrity": format!("sha512-{}", STANDARD.encode(sha2::Sha512::digest(bytes))),
+            "integrity": format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes))),
         });
         manifests.insert((*version).to_owned(), manifest);
         if *version == served {
@@ -829,4 +829,109 @@ async fn installs_an_autoload_delta_as_the_users_package() {
     assert!(dir.join("agent/npm/node_modules/ext-pkg").exists());
     assert!(!dir.join("project/.yapi/npm").exists());
     assert_eq!(server.finish().unwrap().len(), 2);
+}
+
+/// A dependency named by a path, absolute or climbing out of `node_modules`,
+/// fails the install before anything is written there, even when the
+/// registry serves a package for that name.
+#[tokio::test(flavor = "multi_thread")]
+async fn path_dependency_names_refused() {
+    let dir = scratch("dependency-paths");
+    let outside = dir.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("keep.txt"), "mine").unwrap();
+    let package = tarball(&[("package.json", r#"{"name": "evil-pkg"}"#)]);
+    let payload = tarball(&[("package.json", r#"{"name": "evil", "version": "1.0.0"}"#)]);
+    for name in [outside.to_str().unwrap(), "../../../outside"] {
+        let server = registry(|base| {
+            let manifest = json!({"dependencies": {name: "1.0.0"}});
+            let versions = [("1.0.0", manifest, package.clone())];
+            let mut all = publish(base, "evil-pkg", &versions, "1.0.0");
+            let mut evil = publish(
+                base,
+                "evil",
+                &[("1.0.0", json!({}), payload.clone())],
+                "1.0.0",
+            );
+            evil[0].request.path = format!("/{}", name.replace('/', "%2f"));
+            all.extend(evil);
+            all
+        })
+        .await;
+        let mut packages = manager(&dir, &server.url());
+        let error = packages.install("npm:evil-pkg", false).await.unwrap_err();
+        assert_eq!(error.to_string(), format!("Invalid package name: {name}"));
+        assert_eq!(
+            std::fs::read_to_string(outside.join("keep.txt")).unwrap(),
+            "mine"
+        );
+        assert!(!dir.join("agent/npm/node_modules/evil-pkg").exists());
+    }
+}
+
+/// Removing a package another installed package depends on keeps it, as
+/// npm does, until nothing needs it.
+#[tokio::test(flavor = "multi_thread")]
+async fn remove_keeps_shared_dependency() {
+    let dir = scratch("shared");
+    configure(&dir, json!(["npm:pi-a", "npm:pi-shared"]));
+    let a = installed(&dir, "pi-a", "1.0.0");
+    let manifest =
+        json!({"name": "pi-a", "version": "1.0.0", "dependencies": {"pi-shared": "^1.0.0"}});
+    std::fs::write(a.join("package.json"), manifest.to_string()).unwrap();
+    let shared = installed(&dir, "pi-shared", "1.0.0");
+    let root = json!({"dependencies": {"pi-a": "^1.0.0", "pi-shared": "^1.0.0"}});
+    std::fs::write(dir.join("agent/npm/package.json"), root.to_string()).unwrap();
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+
+    assert!(packages.remove("npm:pi-shared", false).await.unwrap());
+    assert!(shared.join("package.json").exists());
+    assert!(packages.remove("npm:pi-a", false).await.unwrap());
+    assert!(!a.exists());
+    assert!(!shared.exists());
+}
+
+/// An update whose new version's dependency fails leaves the working
+/// version in place, still out of range, so the next startup tries again.
+#[tokio::test(flavor = "multi_thread")]
+async fn failed_update_keeps_old_version() {
+    let dir = scratch("failed-update");
+    configure(&dir, json!(["npm:ext-pkg@^2.0.0"]));
+    let old = installed(&dir, "ext-pkg", "1.0.0");
+    std::fs::write(old.join("index.ts"), "1.0.0").unwrap();
+    let new = tarball(&[
+        ("package.json", r#"{"name": "ext-pkg", "version": "2.0.0"}"#),
+        ("index.ts", "2.0.0"),
+    ]);
+    let server = registry(|base| {
+        let manifest = json!({"dependencies": {"missing-dep": "^1.0.0"}});
+        let mut all = publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", manifest, new.clone())],
+            "2.0.0",
+        );
+        let mut missing = json_response(&json!({"error": "Not found"}));
+        missing.status = 404;
+        all.push(get("/missing-dep", missing));
+        all
+    })
+    .await;
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    let ControlFlow::Break(message) = outcome else {
+        panic!("the update succeeded");
+    };
+    assert!(
+        message.starts_with("Failed to install npm:ext-pkg@^2.0.0: "),
+        "{message}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(old.join("index.ts")).unwrap(),
+        "1.0.0"
+    );
+    let modules = std::fs::read_dir(dir.join("agent/npm/node_modules")).unwrap();
+    assert_eq!(modules.count(), 1, "no copy is left beside it");
+    server.finish().unwrap();
 }

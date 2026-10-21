@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use common::{engine, scratch};
 use serde_json::{Value, json};
-use yapi_ext::{Instance, NoBridge, Options};
+use yapi_ext::{Grants, Instance, NoBridge, Options};
 
 async fn load(dir: &Path, files: &[(&str, &str)]) -> (Instance, Value) {
     for (name, text) in files {
@@ -380,6 +380,113 @@ export default function (pi) {
         extension["commands"][0]["description"],
         format!("{main},{main},{}", dir.display())
     );
+}
+
+/// Without the filesystem grant, as codemode runs, the loader reads no files
+/// either: an import cannot read what `fs` cannot.
+#[tokio::test(flavor = "multi_thread")]
+async fn modules_need_filesystem_grant() {
+    let dir = scratch("modules-without-files");
+    let secret = dir.join("auth.json").display().to_string();
+    std::fs::write(&secret, r#"{"token": "s3cret"}"#).unwrap();
+    let main = dir.join("main.js");
+    std::fs::write(
+        &main,
+        format!(
+            "import auth from {secret:?};\nexport default function (pi) {{ pi.registerCommand(\"x\", {{ description: auth.token, handler() {{}} }}); }}\n"
+        ),
+    )
+    .unwrap();
+    let mut options = Options::new(dir.clone());
+    options.grants = Grants::none();
+    options.filesystem_roots = Vec::new();
+    let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
+        .await
+        .unwrap();
+    let loaded = instance
+        .call(
+            "load",
+            &json!({"cwd": dir, "extensions": [{"id": 1, "path": main}]}),
+        )
+        .await
+        .unwrap();
+    let extension = &loaded["extensions"][0];
+    assert!(!loaded.to_string().contains("s3cret"), "{loaded}");
+    assert!(
+        extension["error"]
+            .as_str()
+            .unwrap()
+            .contains("Loading modules is not permitted for this extension"),
+        "{extension}"
+    );
+}
+
+/// A bridge that keeps the runtime's log.
+#[derive(Default)]
+struct Log(std::sync::Mutex<Vec<String>>);
+
+impl yapi_ext::Bridge for Log {
+    fn log(&self, _level: &str, message: &str) {
+        self.0.lock().unwrap().push(message.to_owned());
+    }
+}
+
+/// Extensions that stop the runtime again as a restart loads them leave it
+/// stopped, instead of restarting it until the stack runs out: each call
+/// fails after one more restart, and the runtime recovers once they load.
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_trap_not_retried() {
+    let dir = scratch("restart-crash");
+    let marker = dir.join("marker").display().to_string();
+    let main = dir.join("main.ts");
+    std::fs::write(
+        &main,
+        format!(
+            "import fs from \"node:fs\";\nconst overflow = () => overflow();\nexport default function () {{ if (fs.existsSync({marker:?})) overflow(); }}\n"
+        ),
+    )
+    .unwrap();
+    let log = Arc::new(Log::default());
+    let instance = Instance::start(&engine(), Options::new(dir.clone()), log.clone())
+        .await
+        .unwrap();
+    let extensions = json!([{"id": 1, "path": main}]);
+    let loaded = instance
+        .call("load", &json!({"cwd": dir, "extensions": extensions}))
+        .await
+        .unwrap();
+    assert_eq!(loaded["extensions"][0].get("error"), None, "{loaded}");
+    std::fs::write(&marker, "").unwrap();
+    let reload = json!({ "extensions": extensions });
+    let stopped = |result: Result<Value, yapi_ext::Error>| {
+        assert!(
+            matches!(result, Err(yapi_ext::Error::Crashed(_))),
+            "{result:?}"
+        );
+    };
+    for _ in 0..2 {
+        stopped(instance.call("reload", &reload).await);
+        tokio::time::timeout(std::time::Duration::from_secs(30), instance.settle())
+            .await
+            .expect("the runtime takes calls again");
+        let log = std::mem::take(&mut *log.0.lock().unwrap());
+        let kinds: Vec<&str> = log
+            .iter()
+            .map(|line| line.split(':').next().unwrap())
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "Extension runtime stopped",
+                "Extension runtime stopped",
+                "Extension runtime cannot restart"
+            ],
+            "{log:?}"
+        );
+    }
+    std::fs::remove_file(&marker).unwrap();
+    stopped(instance.call("reload", &reload).await);
+    instance.call("reload", &reload).await.unwrap();
 }
 
 /// Node modules yapi has no sockets for still load, with the parts that need

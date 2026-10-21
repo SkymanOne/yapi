@@ -9,10 +9,10 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use aws_lc_rs::digest::{SHA256, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
-use sha2::Digest as _;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -76,7 +76,8 @@ async fn release(archive: &[u8], sums: &str) -> MockServer {
 }
 
 fn sums(archive: &[u8]) -> String {
-    let hex: String = sha2::Sha256::digest(archive)
+    let hex: String = digest(&SHA256, archive)
+        .as_ref()
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();

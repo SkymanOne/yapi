@@ -462,7 +462,7 @@ fn ask_project_trust(parsed: &mut args::Args) -> anyhow::Result<()> {
         &store,
         parsed.project_trust_override,
         view.default_project_trust,
-    ) {
+    )? {
         return Ok(());
     }
     let theme = parsed.use_theme.clone().or(view.theme.clone());

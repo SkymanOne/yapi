@@ -127,7 +127,12 @@ impl Tool for Edit {
                     .await
                     .map_err(|err| format!("Could not edit file: {path}. {}.", error_code(&err)))?;
                 check_abort(&cancel)?;
-                let raw = String::from_utf8_lossy(&raw).into_owned();
+                // Writing back a lossy decoding would change bytes the edit never touched.
+                let Ok(raw) = String::from_utf8(raw) else {
+                    return Err(format!(
+                        "Could not edit file: {path}. File is not valid UTF-8."
+                    ));
+                };
                 let (bom, content) = match raw.strip_prefix('\u{FEFF}') {
                     Some(rest) => ("\u{FEFF}", rest),
                     None => ("", raw.as_str()),
@@ -136,7 +141,8 @@ impl Tool for Edit {
                 let normalized = normalize_to_lf(content);
                 let new_content = apply_edits(&normalized, &edits, &path)?;
                 check_abort(&cancel)?;
-                let output = format!("{bom}{}", restore_line_endings(&new_content, ending));
+                let restored = restore_line_endings(content, &normalized, &new_content, ending);
+                let output = format!("{bom}{restored}");
                 tokio::fs::write(&absolute, output)
                     .await
                     .map_err(|err| format!("Could not edit file: {path}. {}.", error_code(&err)))?;

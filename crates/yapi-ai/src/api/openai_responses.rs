@@ -7,7 +7,7 @@
 //! `openai-responses-shared.ts` in pi `v1.0.0`. Not yet ported: service tier
 //! selection. Codex's WebSocket transport is in `codex_websocket.rs`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -899,7 +899,10 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
         match codex_websocket(&prepared, account, &mut state, &model, &sender, &options).await {
             Ok(true) => return sender.send(StreamEvent::Done(state.output)),
             Ok(false) => {}
-            Err(message) => return send_error(&sender, state.output, &options.cancel, message),
+            Err(message) => {
+                state.parse_partial_args();
+                return send_error(&sender, state.output, &options.cancel, message);
+            }
         }
     }
     let response = match send(&prepared, &model, &options, flavor).await {
@@ -914,7 +917,10 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
         .and_then(|()| check_complete(&state.output, &options.cancel, flavor.pending_message()));
     match result {
         Ok(()) => sender.send(StreamEvent::Done(state.output)),
-        Err(message) => send_error(&sender, state.output, &options.cancel, message),
+        Err(message) => {
+            state.parse_partial_args();
+            send_error(&sender, state.output, &options.cancel, message);
+        }
     }
 }
 
@@ -1452,6 +1458,8 @@ struct State {
     slots: IndexMap<u64, Slot>,
     /// Argument text of function calls still streaming, by content position.
     partial_args: IndexMap<usize, String>,
+    /// Positions in `partial_args` whose text changed since it was parsed.
+    unparsed: HashSet<usize>,
     /// Input of custom tool calls still streaming, by content position.
     custom_inputs: IndexMap<usize, GrammarInput>,
     reasoning_by_id: IndexMap<String, usize>,
@@ -1486,6 +1494,7 @@ impl State {
             grammar,
             slots: IndexMap::new(),
             partial_args: IndexMap::new(),
+            unparsed: HashSet::new(),
             custom_inputs: IndexMap::new(),
             reasoning_by_id: IndexMap::new(),
             terminal: false,
@@ -1496,6 +1505,7 @@ impl State {
 
     /// Forgets a failed attempt's stream before another, keeping the message.
     fn restart(&mut self) {
+        self.parse_partial_args();
         self.slots.clear();
         self.partial_args.clear();
         self.custom_inputs.clear();
@@ -1605,11 +1615,14 @@ impl State {
         }
     }
 
-    fn set_partial_args(&mut self, position: usize, partial: String) {
-        let arguments = parse_streaming_json(&partial);
-        self.partial_args.insert(position, partial);
-        if let Some(call) = self.tool_call(position) {
-            call.arguments = arguments;
+    /// Parses the changed argument text of function calls still streaming.
+    fn parse_partial_args(&mut self) {
+        for position in std::mem::take(&mut self.unparsed) {
+            if let Some(partial) = self.partial_args.get(&position)
+                && let Some(ContentBlock::ToolCall(call)) = self.output.content.get_mut(position)
+            {
+                call.arguments = parse_streaming_json(partial);
+            }
         }
     }
 
@@ -1953,16 +1966,17 @@ impl State {
             }
             "response.function_call_arguments.delta" => {
                 if let Some(position) = self.streaming_call(index) {
-                    let partial = format!("{}{delta}", self.partial_args[&position]);
-                    self.set_partial_args(position, partial);
+                    self.partial_args[&position].push_str(delta);
+                    self.unparsed.insert(position);
                     sender.delta(&mut self.output, position, delta);
                 }
             }
             "response.function_call_arguments.done" => {
                 if let Some(position) = self.streaming_call(index) {
-                    let previous = self.partial_args[&position].clone();
-                    let arguments = event["arguments"].as_str().unwrap_or_default().to_owned();
-                    self.set_partial_args(position, arguments.clone());
+                    let arguments = event["arguments"].as_str().unwrap_or_default();
+                    let previous =
+                        std::mem::replace(&mut self.partial_args[&position], arguments.to_owned());
+                    self.unparsed.insert(position);
                     if let Some(rest) = arguments
                         .strip_prefix(previous.as_str())
                         .filter(|rest| !rest.is_empty())
@@ -2088,7 +2102,8 @@ impl State {
 
     /// pi's checks once a stream ends: a terminal event arrived and every
     /// tool call finished.
-    fn finish(&self) -> Result<(), String> {
+    fn finish(&mut self) -> Result<(), String> {
+        self.parse_partial_args();
         if !self.terminal {
             return Err("OpenAI Responses stream ended before a terminal response event".into());
         }

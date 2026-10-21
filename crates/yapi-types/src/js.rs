@@ -112,6 +112,9 @@ pub fn errno(kind: std::io::ErrorKind) -> Option<(&'static str, &'static str)> {
         ErrorKind::AlreadyExists => ("EEXIST", "file already exists"),
         ErrorKind::IsADirectory => ("EISDIR", "illegal operation on a directory"),
         ErrorKind::NotADirectory => ("ENOTDIR", "not a directory"),
+        ErrorKind::DirectoryNotEmpty => ("ENOTEMPTY", "directory not empty"),
+        ErrorKind::InvalidInput => ("EINVAL", "invalid argument"),
+        ErrorKind::ReadOnlyFilesystem => ("EROFS", "read-only file system"),
         _ => return None,
     })
 }
@@ -156,6 +159,18 @@ mod tests {
         assert_eq!(
             node_error(&error(std::io::ErrorKind::AlreadyExists), "mkdir", path),
             "EEXIST: file already exists, mkdir '/a/b'"
+        );
+        assert_eq!(
+            node_error(&error(std::io::ErrorKind::ReadOnlyFilesystem), "open", path),
+            "EROFS: read-only file system, open '/a/b'"
+        );
+        assert_eq!(
+            node_error(&error(std::io::ErrorKind::DirectoryNotEmpty), "rmdir", path),
+            "ENOTEMPTY: directory not empty, rmdir '/a/b'"
+        );
+        assert_eq!(
+            errno(std::io::ErrorKind::InvalidInput),
+            Some(("EINVAL", "invalid argument"))
         );
         assert_eq!(errno(std::io::ErrorKind::Other), None);
     }

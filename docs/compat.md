@@ -32,7 +32,9 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Area | Pi | yapi |
 |---|---|---|
 | Directories | `~/.pi/agent`, project `.pi/`, `PI_CODING_AGENT_DIR` | `~/.yapi/agent`, project `.yapi/`, `YAPI_CODING_AGENT_DIR`, and `YAPI_` in place of `PI_` for the session directory variable. Same formats, and `yapi import pi` copies Pi's state. |
-| Package installs | `npm install`, with lifecycle scripts | A built-in npm client that skips lifecycle scripts. `npmCommand` applies to npm sources only. |
+| Package installs | `npm install`, with lifecycle scripts | A built-in npm client that skips lifecycle scripts. `npmCommand` applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output. |
+| Git sources | A host or ref may start with `-` | A host or ref that starts with `-` is refused, because git would read it as an option. Clones run as `git clone -- <repo>`. |
+| Sign-ins after `yapi import pi` | Pi keeps its sign-ins in its own `auth.json` and `mcp-auth.json` | `yapi import pi` copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with `/login` or `/mcp login`. |
 | Packages that fail to install | Pi exits at startup, and `/reload` or the session change fails | yapi warns at startup and lists the package under `[Extension issues]` after `/reload` or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others. |
 | npm configuration | npm reads all its configuration files and settings | Registries and credentials from `~/.npmrc`, or the file `npm_config_userconfig` names, and from `npm_config_*` variables. Other settings, such as `cafile`, are ignored. |
 | Project folder | The working folder | `--project-dir <dir>`, a yapi-only flag, takes the project's files, trust and `AGENTS.md` from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent's project. See [Project trust](security.md#project-trust). |
@@ -54,6 +56,15 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Markdown transformers | Change a message's Markdown before it shows | A message shows as written in its first frame, and each change while it streams shows transformed one frame late. |
 | Images in the terminal | A Herdr pane shows images when the outer terminal's variables reach it, such as Ghostty's. Image data reaches the terminal as written. | A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command. |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |
+
+## Tools and sessions
+
+| Area | Pi | yapi |
+|---|---|---|
+| `edit` on a file that is not UTF-8 | Reads it as UTF-8 and writes every invalid byte back as U+FFFD | Refuses the edit with "File is not valid UTF-8.", so bytes outside the edit never change. |
+| Line endings after `edit` | The whole file takes the line ending of its first line break | Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break. |
+| Session lines with an unpaired surrogate | Text cut inside an emoji is written as an unpaired UTF-16 escape, such as `\ud83d` | The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one. |
+| Failed session writes | Later entries can point to an entry that is missing from the file | yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole. |
 
 ## Open gaps
 

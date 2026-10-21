@@ -342,3 +342,47 @@ async fn prompt_and_tool_result_images_are_converted_as_pi() {
         [ContentBlock::Image(png.clone()), ContentBlock::text(note)]
     );
 }
+
+/// The first failed session write reaches the user once, however many follow.
+#[tokio::test]
+async fn write_error_reported_once() {
+    struct Notes(std::sync::Mutex<Vec<String>>);
+    impl yapi_core::extensions::ExtensionUi for Notes {
+        fn has_ui(&self) -> bool {
+            true
+        }
+        fn notify(&self, message: &str, _kind: yapi_core::extensions::NotifyKind) {
+            self.0.lock().unwrap().push(message.to_owned());
+        }
+    }
+    let dir = std::env::temp_dir().join(format!("yapi-write-error-{}", std::process::id()));
+    let session = session(&Faux::default());
+    let notes = Arc::new(Notes(std::sync::Mutex::default()));
+    session
+        .bind_extensions(notes.clone(), yapi_core::extensions::Mode::Tui, None, None)
+        .await;
+    let user = || {
+        Message::User(yapi_types::message::UserMessage {
+            content: Content::Text("hi".into()),
+            timestamp: 0,
+        })
+    };
+    let file = session.with_session(|file| {
+        *file = SessionManager::create(Path::new("/work"), &dir, None).unwrap();
+        file.append_message(user()).unwrap();
+        file.file().unwrap().to_path_buf()
+    });
+    // A directory in the file's place fails every write.
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    for _ in 0..2 {
+        let _ = session.with_session(|file| file.append_message(user()));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let notes = notes.0.lock().unwrap();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].starts_with("Failed to save session: "),
+        "{notes:?}"
+    );
+}

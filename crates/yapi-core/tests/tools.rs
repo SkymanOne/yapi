@@ -275,3 +275,136 @@ async fn bash_aborts_and_streams_updates() {
     assert!(seen.len() >= 2, "expected an initial and an output update");
     assert_eq!(text(&seen[1]), "partial\n");
 }
+
+#[tokio::test]
+async fn read_huge_offset_and_limit() {
+    let dir = Scratch::new("read-huge");
+    std::fs::write(dir.0.join("a.txt"), "1\n2\n3").unwrap();
+    let result = call(
+        &dir.0,
+        "read",
+        json!({"path": "a.txt", "offset": 2, "limit": 1e20}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(text(&result), "2\n3");
+    let err = call(&dir.0, "read", json!({"path": "a.txt", "offset": 1e20}))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err,
+        "Offset 100000000000000000000 is beyond end of file (3 lines total)"
+    );
+}
+
+#[tokio::test]
+async fn grep_huge_context() {
+    let dir = Scratch::new("grep-context");
+    std::fs::write(dir.0.join("a.txt"), "one\ntwo\nthree").unwrap();
+    let result = call(&dir.0, "grep", json!({"pattern": "two", "context": 1e20}))
+        .await
+        .unwrap();
+    assert_eq!(text(&result), "a.txt-1- one\na.txt:2: two\na.txt-3- three");
+}
+
+#[tokio::test]
+async fn edit_refuses_non_utf8() {
+    let dir = Scratch::new("edit-latin1");
+    let original = b"caf\xe9\nx = 1\n";
+    std::fs::write(dir.0.join("f.txt"), original).unwrap();
+    let err = call(
+        &dir.0,
+        "edit",
+        json!({"path": "f.txt", "edits": [{"oldText": "x = 1", "newText": "x = 2"}]}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, "Could not edit file: f.txt. File is not valid UTF-8.");
+    assert_eq!(std::fs::read(dir.0.join("f.txt")).unwrap(), original);
+}
+
+#[tokio::test]
+async fn edit_keeps_line_endings() {
+    let dir = Scratch::new("edit-endings");
+    let file = dir.0.join("f.txt");
+    for (before, old, new, after) in [
+        ("a\nb\r\nc\r\n", "a", "A", "A\nb\r\nc\r\n"),
+        ("s = \"x\ry\"\nz\n", "z", "Z", "s = \"x\ry\"\nZ\n"),
+        // A fuzzy match: curly quotes and trailing spaces in the file.
+        (
+            "\u{feff}say \u{201C}hi\u{201D}  \r\nkeep \r\n",
+            "say \"hi\"",
+            "say \"bye\"",
+            "\u{feff}say \"bye\"\r\nkeep \r\n",
+        ),
+    ] {
+        std::fs::write(&file, before).unwrap();
+        call(
+            &dir.0,
+            "edit",
+            json!({"path": "f.txt", "edits": [{"oldText": old, "newText": new}]}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), after, "{before:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn parallel_edits() {
+    let dir = Scratch::new("edit-parallel");
+    let file = dir.0.join("f.txt");
+    let edit = |old: &str, new: &str| {
+        call(
+            &dir.0,
+            "edit",
+            json!({"path": "f.txt", "edits": [{"oldText": old, "newText": new}]}),
+        )
+    };
+    for round in 0..20 {
+        std::fs::write(&file, "top\nbottom\n").unwrap();
+        let (top, bottom) = tokio::join!(edit("top", "TOP"), edit("bottom", "BOTTOM"));
+        top.unwrap();
+        bottom.unwrap();
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "TOP\nBOTTOM\n", "round {round}");
+    }
+}
+
+#[tokio::test]
+async fn bash_long_output() {
+    let dir = Scratch::new("bash-long");
+    let result = call(&dir.0, "bash", json!({"command": "seq 1 300000"}))
+        .await
+        .unwrap();
+    let path = result.details.as_ref().unwrap()["fullOutputPath"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(text(&result).ends_with(&format!(
+        "\n[Showing lines 298001-300000 of 300000. Full output: {path}]"
+    )));
+    let structured = result.structured_content.as_ref().unwrap();
+    assert_eq!(structured["truncated"], true);
+    assert_eq!(structured["full_output_path"], path);
+    let full = structured["output"].as_str().unwrap();
+    // `seq 1 300000` prints 1,988,895 bytes; the first and last 512 KiB stay.
+    let omitted = 1_988_895 - 1024 * 1024;
+    assert!(full.starts_with("1\n2\n3\n"));
+    assert!(full.contains(&format!("\n\n[... {omitted} bytes omitted ...]\n\n")));
+    assert!(full.ends_with("\n299999\n300000\n"));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[tokio::test]
+async fn bash_timeout_while_flooding() {
+    let dir = Scratch::new("bash-flood");
+    let run = call(&dir.0, "bash", json!({"command": "yes", "timeout": 0.5}));
+    let err = tokio::time::timeout(std::time::Duration::from_secs(3), run)
+        .await
+        .expect("the timeout ends a flooding command")
+        .unwrap_err();
+    assert!(err.ends_with("\n\nCommand timed out after 0.5 seconds"));
+    let log = err.split("Full output: ").nth(1).unwrap();
+    std::fs::remove_file(log.split(']').next().unwrap()).unwrap();
+}

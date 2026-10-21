@@ -456,15 +456,26 @@ impl Report {
         }
     }
 
-    /// The issue body: the description, the summary and `report.json`,
-    /// within GitHub's limit, with `home` written as `~`. The transcript and
-    /// the diagnostics, which can quote tool output, stay out.
+    /// The issue body: the description, the summary and `report.json` with
+    /// only the names of the settings, within GitHub's limit, with `home`
+    /// written as `~`. The transcript and the diagnostics, which can quote
+    /// tool output, stay out.
     pub fn issue_body(&self, home: &Path) -> String {
         let mut head = self.hint().unwrap_or("No description given.").to_owned();
         if let Some(summary) = &self.summary {
             head.push_str(&format!("\n\n## Summary\n\n{summary}"));
         }
-        let report = pretty(&self.metadata);
+        let mut metadata = self.metadata.clone();
+        // Redaction goes by key name, and a value such as `shellCommandPrefix`
+        // can hold a token under any name.
+        if let Some(scopes) = metadata["settings"].as_object_mut() {
+            for scope in scopes.values_mut() {
+                if let Some(settings) = scope.as_object() {
+                    *scope = settings.keys().cloned().collect();
+                }
+            }
+        }
+        let report = pretty(&metadata);
         let longest = report.split(|c| c != '`').map(str::len).max().unwrap_or(0);
         let fence = "`".repeat(longest.max(2) + 1);
         let open = format!("\n\n## Report\n\n{fence}json\n");
@@ -824,6 +835,28 @@ mod tests {
             "{body}"
         );
         assert_eq!(tilde("/a/b", Path::new("/")), "/a/b");
+    }
+
+    #[test]
+    fn issue_body_omits_setting_values() {
+        let mut report = report(None, None);
+        report.metadata["settings"] = json!({
+            "global": {"shellCommandPrefix": "export GITHUB_TOKEN=ghp_secret", "apiKey": "sk-1"},
+            "project": {},
+        });
+        redact(&mut report.metadata);
+        let body = report.issue_body(Path::new("/home/me"));
+        assert!(body.contains("\"shellCommandPrefix\""), "{body}");
+        assert!(
+            !body.contains("ghp_secret") && !body.contains("<redacted>"),
+            "{body}"
+        );
+        let zipped = &report.files()[0].1;
+        assert!(
+            zipped.contains("export GITHUB_TOKEN=ghp_secret"),
+            "{zipped}"
+        );
+        assert!(zipped.contains("\"apiKey\": \"<redacted>\""), "{zipped}");
     }
 
     #[test]

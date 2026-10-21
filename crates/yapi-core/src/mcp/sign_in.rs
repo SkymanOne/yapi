@@ -15,10 +15,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use aws_lc_rs::digest::{SHA256, digest};
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 use serde_json::Value;
-use sha2::Digest as _;
 use tokio_util::sync::CancellationToken;
 use yapi_ai::auth::AuthError;
 use yapi_ai::auth::callback::{Reply, Server, error_page, query, success_page};
@@ -189,8 +189,8 @@ impl ServerStore {
         &self,
         run: impl Future<Output = Result<T, McpError>>,
     ) -> Result<T, McpError> {
-        let digest = sha2::Sha256::digest(self.key.as_bytes());
-        let hash = yapi_types::time::hex(&digest[..8]);
+        let digest = digest(&SHA256, self.key.as_bytes());
+        let hash = yapi_types::time::hex(&digest.as_ref()[..8]);
         let _lock = FileLock::acquire(
             &self
                 .store

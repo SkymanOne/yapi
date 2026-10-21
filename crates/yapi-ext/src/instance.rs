@@ -17,9 +17,11 @@ use std::time::{Duration, Instant};
 use futures_util::future::BoxFuture;
 use serde_json::Value;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 use wasmtime::component::{Component, ResourceTable};
 use wasmtime::{Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxView, WasiView};
+use yapi_agent::tool::UpdateSink;
 
 use crate::Error;
 use crate::engine::{Engine, Extension, yapi as wit};
@@ -98,6 +100,13 @@ pub trait Bridge: Send + Sync {
     /// load again, without the components they showed. Runs on the
     /// instance's thread before the extensions load.
     fn restarted(&self, _reason: &str) {}
+
+    /// The update sink and cancellation of running extension tool call
+    /// `tool_call_id`, for the built-in tools it runs; `None` when no such
+    /// call runs.
+    fn caller(&self, _tool_call_id: &str) -> Option<(UpdateSink, CancellationToken)> {
+        None
+    }
 
     /// The request hooks of running extension stream `id`, for the requests
     /// it makes through yapi's wire APIs.
@@ -433,6 +442,8 @@ struct Actor {
     pending: HashMap<u64, oneshot::Sender<Result<Value, Error>>>,
     /// Calls that shape the instance's state, replayed after a restart.
     replay: Vec<(String, String)>,
+    /// Set while a restart replays `replay`.
+    replaying: bool,
     interrupt: Arc<AtomicBool>,
 }
 
@@ -458,6 +469,7 @@ impl Actor {
             next_id: 1,
             pending: HashMap::new(),
             replay: Vec::new(),
+            replaying: false,
             interrupt,
         })
     }
@@ -473,12 +485,14 @@ impl Actor {
                     let id = self.next_id;
                     self.next_id += 1;
                     self.pending.insert(id, reply);
-                    record(&mut self.replay, &kind, &payload);
-                    self.guest(|bindings, store| {
+                    // A call that stops the instance is not replayed.
+                    if self.guest(|bindings, store| {
                         bindings
                             .yapi_extension_guest()
                             .call_dispatch(store, id, &kind, &payload)
-                    });
+                    }) {
+                        record(&mut self.replay, &kind, &payload);
+                    }
                 }
                 Command::Resolve {
                     generation,
@@ -504,11 +518,13 @@ impl Actor {
                 } => {
                     let _ = reply.send(self.render(handle, width));
                 }
-                Command::Input { handle, data } => self.guest(|bindings, store| {
-                    bindings
-                        .yapi_extension_guest()
-                        .call_input(store, handle, &data)
-                }),
+                Command::Input { handle, data } => {
+                    self.guest(|bindings, store| {
+                        bindings
+                            .yapi_extension_guest()
+                            .call_input(store, handle, &data)
+                    });
+                }
                 Command::Settle(done) => {
                     let _ = done.send(self.next_id);
                 }
@@ -544,14 +560,15 @@ impl Actor {
     }
 
     /// Runs one guest export, then delivers its outcomes and starts the
-    /// operations it began.
+    /// operations it began. Whether the export ran without stopping the
+    /// instance.
     fn guest(
         &mut self,
         call: impl FnOnce(
             &Extension,
             &mut Store<State>,
         ) -> wasmtime::Result<Vec<wit::extension::types::Outcome>>,
-    ) {
+    ) -> bool {
         self.start_call();
         let result = call(&self.bindings, &mut self.store);
         let started = std::mem::take(&mut self.store.data_mut().started);
@@ -575,8 +592,12 @@ impl Actor {
                         let _ = reply.send(result);
                     }
                 }
+                true
             }
-            Err(trap) => self.restart(&trap),
+            Err(trap) => {
+                self.restart(&trap);
+                false
+            }
         }
     }
 
@@ -597,7 +618,8 @@ impl Actor {
 
     /// Replaces an instance stopped by `trap` with a fresh one and replays
     /// the calls that loaded and configured its extensions. Calls in flight
-    /// fail.
+    /// fail. An instance that the replay stops stays stopped until the next
+    /// call, which restarts it again.
     fn restart(&mut self, trap: &wasmtime::Error) {
         if self.interrupt.load(Ordering::Relaxed) {
             for (_, reply) in self.pending.drain() {
@@ -610,10 +632,18 @@ impl Actor {
             .bridge
             .log("error", &format!("Extension runtime stopped: {reason}"));
         self.host.streams.clear();
+        self.host.ai_streams.clear();
         for (_, reply) in self.pending.drain() {
             let _ = reply.send(Err(Error::Crashed(reason.clone())));
         }
         self.generation += 1;
+        if self.replaying {
+            self.host.bridge.log(
+                "error",
+                "Extension runtime cannot restart: replaying the extensions stopped it again",
+            );
+            return;
+        }
         self.host.bridge.restarted(&trap.root_cause().to_string());
         match instantiate(&self.engine, &self.component, &self.host, &self.interrupt) {
             Ok((store, bindings)) => {
@@ -627,15 +657,19 @@ impl Actor {
                 return;
             }
         }
+        self.replaying = true;
         for (kind, payload) in self.replay.clone() {
             let id = self.next_id;
             self.next_id += 1;
-            self.guest(|bindings, store| {
+            if !self.guest(|bindings, store| {
                 bindings
                     .yapi_extension_guest()
                     .call_dispatch(store, id, &kind, &payload)
-            });
+            }) {
+                break;
+            }
         }
+        self.replaying = false;
     }
 }
 

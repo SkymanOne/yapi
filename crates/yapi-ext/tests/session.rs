@@ -10,7 +10,9 @@ mod common;
 use std::path::Path;
 use std::sync::Arc;
 
-use common::{cli_source, custom_entries, engine, options, scratch, session, text_of};
+use common::{
+    cli_source, custom_entries, engine, options, scratch, session, session_with_tools, text_of,
+};
 use serde_json::{Value, json};
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::{AgentSession, Replacement};
@@ -908,6 +910,64 @@ async fn a_factory_that_fails_in_a_later_session_fails_that_load() {
         assert!(later.extension_commands().is_empty());
         later.shutdown().await;
     }
+}
+
+/// A built-in tool that an extension registers again, as pi's
+/// `built-in-tool-renderer.ts` does with bash, stops when its call is
+/// aborted and reports its output as it runs.
+#[tokio::test(flavor = "multi_thread")]
+async fn wrapped_builtin_aborts() {
+    let dir = scratch("wrapped-bash");
+    let path = dir.join("bash.ts");
+    std::fs::write(
+        &path,
+        r#"import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+export default function (pi) {
+	pi.registerTool({ ...createBashToolDefinition(process.cwd()) });
+}
+"#,
+    )
+    .unwrap();
+    let host = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    let session = session_with_tools(&Faux::new([]), &dir, host.for_session(), &["bash"]);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    let tool = session
+        .callable_tools()
+        .into_iter()
+        .find(|tool| tool.name() == "bash")
+        .unwrap();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (output, mut updates) = tokio::sync::mpsc::unbounded_channel();
+    let run = tool.tool.execute(
+        "call-1".into(),
+        json!({"command": "echo started; sleep 20"}),
+        cancel.clone(),
+        Arc::new(move |partial| {
+            let _ = output.send(partial);
+        }),
+    );
+    let started = std::time::Instant::now();
+    let abort = async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        cancel.cancel();
+    };
+    let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        tokio::join!(run, abort)
+    })
+    .await
+    .expect("the aborted tool ends");
+    assert!(result.unwrap_err().contains("Command aborted"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    let mut output = String::new();
+    while let Ok(partial) = updates.try_recv() {
+        output += &yapi_types::message::blocks_text(&partial.content, "|");
+    }
+    assert!(output.contains("started"), "{output}");
 }
 
 /// A tool's updates and the calls it makes through `ctx.executeTool()` report

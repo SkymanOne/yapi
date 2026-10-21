@@ -74,7 +74,6 @@ pub struct Args {
     pub no_themes: bool,
     pub no_context_files: bool,
     pub list_models: Option<Option<String>>,
-    pub offline: bool,
     pub tui_mode: Option<String>,
     pub verbose: bool,
     pub project_trust_override: Option<bool>,
@@ -263,7 +262,8 @@ pub fn parse(args: &[String]) -> Args {
                     error(&mut result, "--project-dir requires a directory".into());
                 }
             }
-            "--offline" => result.offline = true,
+            // `main` reads it from the raw arguments, as pi does.
+            "--offline" => {}
             _ if arg.starts_with('@') => result.file_args.push(arg[1..].to_owned()),
             _ if arg.starts_with("--") => {
                 let flag = &arg[2..];

@@ -180,7 +180,13 @@ pub async fn run(args: &[String]) -> u8 {
         "remove" => return remove(rest, &project_config, &cwd, &agent_dir),
         _ => {}
     }
-    let trusted = TrustStore::new(&agent_dir).get(&cwd) == Some(true);
+    let trusted = match TrustStore::new(&agent_dir).get(&cwd) {
+        Ok(decision) => decision == Some(true),
+        Err(error) => {
+            err(&format!("Error: {error}"));
+            return 1;
+        }
+    };
     let loaded = load(&agent_dir, &cwd, trusted);
     let untrusted_note = (!trusted && project_config.exists()).then(|| {
         format!(
@@ -563,7 +569,7 @@ fn add(args: &[String], project_config: &Path, cwd: &Path, agent_dir: &Path) -> 
         "{verb} {scope} MCP server \"{name}\" in {}.",
         path.display()
     ));
-    if project && TrustStore::new(agent_dir).get(cwd) != Some(true) {
+    if project && !matches!(TrustStore::new(agent_dir).get(cwd), Ok(Some(true))) {
         out(&format!(
             "The project is not trusted, so {} is ignored until you start {APP_NAME} in the project and trust it.",
             path.display()

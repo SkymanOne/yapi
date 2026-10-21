@@ -1,13 +1,15 @@
 //! Settings: global `settings.json` merged with the trusted project's.
 //!
 //! Port of `packages/coding-agent/src/core/settings-manager.ts` in pi `v1.0.0`.
-//! Each scope is an order-preserving document; edits change it in place and write
-//! it back the way pi does. Readers use the typed view of the merged document.
+//! Each scope is an order-preserving document; edits re-read its file under the
+//! file's lock, change it and write it back the way pi does. Readers use the
+//! typed view of the merged document.
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize as _;
 use serde_json::{Map, Value};
+use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_types::config::ConfigFile;
 use yapi_types::settings::{CacheWarming, Settings};
 
@@ -367,38 +369,14 @@ impl SettingsManager {
         key: &str,
         value: Option<Value>,
     ) -> Result<(), SettingsError> {
-        let (document, path, broken) = match scope {
-            Scope::Global => (&mut self.global, &self.global_path, self.broken[0]),
-            Scope::Project => (&mut self.project, &self.project_path, self.broken[1]),
-        };
-        match value {
+        self.update(scope, |document| match &value {
             Some(value) => {
-                document.insert(key.to_owned(), value);
+                document.insert(key.to_owned(), value.clone());
             }
             None => {
                 document.shift_remove(key);
             }
-        }
-        if !path.as_os_str().is_empty() && !broken {
-            if let Some(dir) = path.parent() {
-                std::fs::create_dir_all(dir).map_err(|source| SettingsError::Io {
-                    path: dir.to_path_buf(),
-                    source,
-                })?;
-            }
-            let text = ConfigFile::Settings
-                .render(&Value::Object(document.clone()))
-                .map_err(|err| SettingsError::Parse {
-                    path: path.clone(),
-                    message: err.to_string(),
-                })?;
-            std::fs::write(path, text).map_err(|source| SettingsError::Io {
-                path: path.clone(),
-                source,
-            })?;
-        }
-        self.remerge();
-        Ok(())
+        })
     }
 
     /// Sets `key` inside the object setting `field` of `scope`, keeping its
@@ -410,16 +388,60 @@ impl SettingsManager {
         key: &str,
         value: Value,
     ) -> Result<(), SettingsError> {
-        let document = match scope {
-            Scope::Global => &self.global,
-            Scope::Project => &self.project,
+        self.update(scope, |document| {
+            let mut object = match document.get(field) {
+                Some(Value::Object(object)) => object.clone(),
+                _ => Map::new(),
+            };
+            object.insert(key.to_owned(), value.clone());
+            document.insert(field.to_owned(), Value::Object(object));
+        })
+    }
+
+    /// Applies `change` to `scope` and writes its file as pi does: under the
+    /// file's lock, to the file as it is now, so keys other processes changed
+    /// since loading are kept. The scope then holds the file's document.
+    fn update(
+        &mut self,
+        scope: Scope,
+        change: impl Fn(&mut Map<String, Value>),
+    ) -> Result<(), SettingsError> {
+        let (document, path, broken) = match scope {
+            Scope::Global => (&mut self.global, &self.global_path, self.broken[0]),
+            Scope::Project => (&mut self.project, &self.project_path, self.broken[1]),
         };
-        let mut object = match document.get(field) {
-            Some(Value::Object(object)) => object.clone(),
-            _ => Map::new(),
-        };
-        object.insert(key.to_owned(), value);
-        self.set(scope, field, Some(Value::Object(object)))
+        let mut written = None;
+        if !path.as_os_str().is_empty() && !broken {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir).map_err(|source| SettingsError::Io {
+                    path: dir.to_path_buf(),
+                    source,
+                })?;
+            }
+            let failed = |source: std::io::Error| SettingsError::Io {
+                path: path.clone(),
+                source,
+            };
+            let _lock = FileLock::acquire_blocking(path)
+                .map_err(|err| failed(std::io::Error::other(err)))?;
+            let mut current = read_document(path)?;
+            change(&mut current);
+            let text = ConfigFile::Settings
+                .render(&Value::Object(current.clone()))
+                .map_err(|err| SettingsError::Parse {
+                    path: path.clone(),
+                    message: err.to_string(),
+                })?;
+            write_atomic(path, text.as_bytes(), 0o666).map_err(failed)?;
+            written = Some(current);
+        }
+        match written {
+            // An untrusted project's other settings stay unloaded.
+            Some(current) if scope == Scope::Global || self.project_trusted => *document = current,
+            _ => change(document),
+        }
+        self.remerge();
+        Ok(())
     }
 }
 
@@ -546,5 +568,31 @@ mod tests {
             .unwrap()
             .clone();
         assert_eq!(manager.cache_warming_mode(), CacheWarming::Streaming);
+    }
+
+    /// Two processes that loaded the same file keep each other's changes.
+    #[test]
+    fn concurrent_writes_keep_keys() {
+        let dir = std::env::temp_dir().join(format!("yapi-settings-two-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut first = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        let mut second = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        second
+            .set(Scope::Global, "packages", Some(json!(["npm:foo"])))
+            .unwrap();
+        first
+            .set(Scope::Global, "defaultModel", Some(json!("m")))
+            .unwrap();
+        first
+            .set_nested(Scope::Global, "retry", "enabled", json!(false))
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("settings.json")).unwrap(),
+            "{\n  \"packages\": [\n    \"npm:foo\"\n  ],\n  \"defaultModel\": \"m\",\n  \"retry\": {\n    \"enabled\": false\n  }\n}"
+        );
+        assert_eq!(first.document(Scope::Global).len(), 3);
+        assert!(!dir.join("settings.json.lock").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

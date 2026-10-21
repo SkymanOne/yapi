@@ -139,6 +139,14 @@ pub struct SessionManager {
     cwd: PathBuf,
     persist: bool,
     flushed: bool,
+    /// The first entry a failed write left off the file; the next write
+    /// appends it and those after it.
+    unsaved: Option<usize>,
+    /// The session's first failed write, until
+    /// [`SessionManager::take_write_error`] returns it.
+    write_error: Option<String>,
+    /// A write failed since the session started.
+    write_failed: bool,
     entries: Vec<Entry>,
     by_id: HashMap<String, usize>,
     labels: HashMap<String, (String, String)>,
@@ -170,7 +178,11 @@ fn load_docs(path: &Path) -> Result<Vec<Value>> {
     let docs: Vec<Value> = text
         .split('\n')
         .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter_map(|line| {
+            serde_json::from_str(line)
+                .or_else(|_| serde_json::from_str(&repair_surrogates(line)))
+                .ok()
+        })
         .collect();
     let valid = docs
         .first()
@@ -186,6 +198,35 @@ fn load_docs(path: &Path) -> Result<Vec<Value>> {
             .map_err(io(path))?;
     }
     Ok(docs)
+}
+
+/// `line` with each `\u` escape of an unpaired UTF-16 surrogate replaced by
+/// one of U+FFFD. pi writes them for text cut inside a surrogate pair, which
+/// serde_json rejects.
+fn repair_surrogates(line: &str) -> String {
+    let unit = |text: &str| u16::from_str_radix(text.strip_prefix("\\u")?.get(..4)?, 16).ok();
+    let mut repaired = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find('\\') {
+        repaired.push_str(&rest[..at]);
+        let escape = &rest[at..];
+        // A parsed `\uXXXX` is six ASCII bytes.
+        let (text, len) = match unit(escape) {
+            Some(0xD800..=0xDBFF) if matches!(unit(&escape[6..]), Some(0xDC00..=0xDFFF)) => {
+                (&escape[..12], 12)
+            }
+            Some(0xD800..=0xDFFF) => ("\\ufffd", 6),
+            // Any other escape, `\\` included, is copied whole.
+            _ => {
+                let len = 1 + escape[1..].chars().next().map_or(0, char::len_utf8);
+                (&escape[..len], len)
+            }
+        };
+        repaired.push_str(text);
+        rest = &escape[len..];
+    }
+    repaired.push_str(rest);
+    repaired
 }
 
 fn short_id(taken: &dyn Fn(&str) -> bool) -> String {
@@ -259,6 +300,9 @@ impl SessionManager {
             cwd: cwd.to_path_buf(),
             persist,
             flushed: false,
+            unsaved: None,
+            write_error: None,
+            write_failed: false,
             entries: Vec::new(),
             by_id: HashMap::new(),
             labels: HashMap::new(),
@@ -405,6 +449,8 @@ impl SessionManager {
         self.labels.clear();
         self.leaf = None;
         self.flushed = false;
+        self.unsaved = None;
+        self.write_failed = false;
         if self.persist {
             let file_timestamp = timestamp.replace([':', '.'], "-");
             self.file = Some(
@@ -433,7 +479,8 @@ impl SessionManager {
         })
     }
 
-    fn persist_entry(&mut self, doc: &Value) -> Result<()> {
+    /// Writes the newest entry, after those a failed write left off the file.
+    fn persist_entry(&mut self) -> Result<()> {
         let (true, Some(file)) = (self.persist, self.file.clone()) else {
             return Ok(());
         };
@@ -448,11 +495,13 @@ impl SessionManager {
             write_new(&file, &text)?;
             self.flushed = true;
         } else {
-            OpenOptions::new()
-                .append(true)
-                .open(&file)
-                .and_then(|mut handle| handle.write_all(line(doc).as_bytes()))
-                .map_err(io(&file))?;
+            // `append` pushed the newest entry, so the vector is not empty.
+            let from = self.unsaved.unwrap_or(self.entries.len() - 1);
+            let text: String = self.entries[from..]
+                .iter()
+                .map(|entry| line(&entry.doc))
+                .collect();
+            append_text(&file, &text)?;
         }
         Ok(())
     }
@@ -465,17 +514,34 @@ impl SessionManager {
         }
     }
 
+    /// Records `entry` and writes it. When the write fails the entry stays,
+    /// as in pi, and the next write appends it first, so the file never holds
+    /// an entry whose parent it lacks.
     fn append(&mut self, entry: FileEntry) -> Result<String> {
         let id = entry.meta().map(|meta| meta.id.clone()).unwrap_or_default();
-        let doc = to_doc(&entry);
         self.entries.push(Entry {
-            doc: doc.clone(),
+            doc: to_doc(&entry),
             view: Some(entry),
         });
         self.by_id.insert(id.clone(), self.entries.len() - 1);
         self.leaf = Some(id.clone());
-        self.persist_entry(&doc)?;
+        if let Err(error) = self.persist_entry() {
+            // Before the first flush every entry is written anyway.
+            if self.flushed {
+                self.unsaved.get_or_insert(self.entries.len() - 1);
+            }
+            if !std::mem::replace(&mut self.write_failed, true) {
+                self.write_error = Some(error.to_string());
+            }
+            return Err(error);
+        }
+        self.unsaved = None;
         Ok(id)
+    }
+
+    /// The error of the session's first failed write, returned once.
+    pub fn take_write_error(&mut self) -> Option<String> {
+        self.write_error.take()
     }
 
     /// Appends a message on the current branch; returns its entry id.
@@ -658,11 +724,12 @@ impl SessionManager {
         }
         let meta = self.new_meta();
         let timestamp = meta.timestamp.clone();
-        let id = self.append(FileEntry::Label(LabelEntry {
+        // A failed write keeps the entry, so the label applies either way.
+        let appended = self.append(FileEntry::Label(LabelEntry {
             meta,
             target_id: target_id.to_owned(),
             label: label.clone(),
-        }))?;
+        }));
         match label.filter(|label| !label.is_empty()) {
             Some(label) => {
                 self.labels.insert(target_id.to_owned(), (label, timestamp));
@@ -671,7 +738,7 @@ impl SessionManager {
                 self.labels.remove(target_id);
             }
         }
-        Ok(id)
+        appended
     }
 
     /// The latest session name.
@@ -1254,14 +1321,32 @@ fn cwd_matches(recorded: &str, cwd: &Path) -> bool {
     !recorded.is_empty() && crate::tools::path::resolve_lexically(cwd, Path::new(recorded)) == cwd
 }
 
-/// Writes `text` to a new file at `path`, failing when one exists.
+/// Writes `text` to a new file at `path`, failing when one exists. A failed
+/// write removes the file again, so the write can be retried.
 fn write_new(path: &Path, text: &str) -> Result<()> {
-    OpenOptions::new()
+    let mut handle = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path)
-        .and_then(|mut handle| handle.write_all(text.as_bytes()))
-        .map_err(io(path))
+        .map_err(io(path))?;
+    handle.write_all(text.as_bytes()).map_err(|source| {
+        let _ = fs::remove_file(path);
+        io(path)(source)
+    })
+}
+
+/// Appends `text` to the file at `path`. A failed write is cut off again, so
+/// the next one does not continue a partial line.
+fn append_text(path: &Path, text: &str) -> Result<()> {
+    let mut handle = OpenOptions::new()
+        .append(true)
+        .open(path)
+        .map_err(io(path))?;
+    let len = handle.metadata().map_err(io(path))?.len();
+    handle.write_all(text.as_bytes()).map_err(|source| {
+        let _ = handle.set_len(len);
+        io(path)(source)
+    })
 }
 
 fn session_paths(dir: &Path) -> Vec<PathBuf> {

@@ -654,11 +654,7 @@ pub fn reset_signal_dispositions() {
 }
 
 fn spawn_error(command: &str, err: &std::io::Error) -> String {
-    let code = match err.kind() {
-        std::io::ErrorKind::NotFound => "ENOENT",
-        std::io::ErrorKind::PermissionDenied => "EACCES",
-        _ => "EIO",
-    };
+    let code = yapi_types::js::errno(err.kind()).map_or("EIO", |(code, _)| code);
     format!("spawn {command} {code}")
 }
 

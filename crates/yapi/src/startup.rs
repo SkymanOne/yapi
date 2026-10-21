@@ -145,10 +145,11 @@ fn resolve_session(
     }
 }
 
-/// Asks a yes/no question on the terminal; anything but `y` is no.
+/// Asks a yes/no question on the terminal; anything but `y` is no. Asks on
+/// stderr, as stdout carries print, JSON and RPC output.
 fn confirm(question: &str) -> bool {
     use std::io::{BufRead, Write};
-    let mut out = std::io::stdout();
+    let mut out = std::io::stderr();
     let _ = write!(out, "{question} [y/N] ");
     let _ = out.flush();
     let mut answer = String::new();
@@ -199,7 +200,7 @@ fn open_session(
                     "Session found in different project: {other}\nFork this session into current directory?"
                 )) {
                     use std::io::Write;
-                    let _ = writeln!(std::io::stdout(), "Aborted.");
+                    let _ = writeln!(std::io::stderr(), "Aborted.");
                     std::process::exit(0);
                 }
                 SessionManager::fork_from(&path, cwd, &dir, None).map_err(fail)
@@ -297,12 +298,12 @@ pub fn load_settings(
     let trusted = if ask
         && std::io::stdin().is_terminal()
         && std::io::stdout().is_terminal()
-        && yapi_core::trust::needs_prompt(project, &store, override_, default)
+        && yapi_core::trust::needs_prompt(project, &store, override_, default)?
     {
         crate::interactive::picker::ask_project_trust(agent_dir, project, view.theme.as_deref())?
             .unwrap_or(false)
     } else {
-        resolve_trusted(project, &store, override_, default)
+        resolve_trusted(project, &store, override_, default)?
     };
     let settings = if trusted {
         SettingsManager::load(agent_dir, project, true)

@@ -81,7 +81,7 @@ Type `/` to list commands. Prompt templates, skills (`/skill:name`) and extensio
 
 `/llama` and `/mcp` come from built-in extensions, so `-ne` removes them. The `/debug` log can hold private data from messages and extension output. Read it before you attach it to a bug report.
 
-`/bug` writes `yapi-bug-report-<id>.zip` to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, `/bug` then offers to post a public issue with your description, the summary and `report.json`, never the transcript. See [Reporting a problem](troubleshooting.md#reporting-a-problem).
+`/bug` writes `yapi-bug-report-<id>.zip` to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, `/bug` then offers to post a public issue with your description, the summary and `report.json` without your settings' values, never the transcript. See [Reporting a problem](troubleshooting.md#reporting-a-problem).
 
 ## Run a shell command
 

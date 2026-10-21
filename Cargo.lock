@@ -4317,6 +4317,7 @@ dependencies = [
 name = "yapi-core"
 version = "0.2.0"
 dependencies = [
+ "aws-lc-rs",
  "base64",
  "flate2",
  "futures-util",
@@ -4328,8 +4329,6 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha1",
- "sha2 0.11.0",
  "similar",
  "tar",
  "thiserror 2.0.21",
@@ -4349,6 +4348,7 @@ dependencies = [
 name = "yapi-ext"
 version = "0.2.0"
 dependencies = [
+ "aws-lc-rs",
  "base64",
  "flate2",
  "futures-util",
@@ -4362,12 +4362,9 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
- "sha1",
- "sha2 0.11.0",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
- "tracing",
  "wasmtime",
  "wasmtime-wasi",
  "yapi-agent",

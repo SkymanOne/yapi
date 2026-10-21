@@ -9,7 +9,9 @@ protected resource and authorization server metadata, dynamic client
 registration, an authorization endpoint that approves at once by redirecting
 with a code, and a token endpoint for codes (PKCE S256) and rotating refresh
 tokens. `POST /test/expire` revokes the access tokens issued so far and
-`GET /test/stats` counts registrations and refreshes.
+`GET /test/stats` counts registrations and refreshes. `POST /test/forget`
+makes the server forget its session: requests that carry it get 404 until a
+client initializes a new one.
 
 Tools:
   echo      text content
@@ -216,6 +218,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     token = None
     oauth = None
+    forgotten = False
 
     def log_message(self, *args):
         pass
@@ -332,12 +335,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlsplit(self.path)
+        if url.path == "/test/forget":
+            Handler.forgotten = True
+            return self.reply(204)
         if self.oauth is not None and url.path != "/mcp":
             return self.oauth_post(url)
         if not self.authorized():
             self.body()
             return
         message = json.loads(self.body())
+        if self.headers.get("Mcp-Session-Id") is None:
+            Handler.forgotten = False
+        elif Handler.forgotten:
+            return self.reply(404, b"Session not found", "text/plain")
         notes = []
         response = handle(message, notes.append)
         if response is None:

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use aws_lc_rs::digest::{Context, SHA256};
 use oxc::allocator::Allocator;
 use oxc::codegen::Codegen;
 use oxc::parser::Parser;
@@ -17,7 +18,6 @@ use oxc::span::SourceType;
 use oxc::transformer::{TransformOptions, Transformer};
 use oxc_resolver::{ResolveOptions, Resolver};
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 /// Bumped when the output of [`Loader::transpile`] changes for the same input.
 const TRANSPILE_VERSION: &str = "4";
@@ -185,12 +185,12 @@ impl Loader {
         let Some(dir) = &self.cache_dir else {
             return transpile(path, text);
         };
-        let mut digest = Sha256::new();
+        let mut digest = Context::new(&SHA256);
         for part in [TRANSPILE_VERSION, &path.to_string_lossy(), text] {
             digest.update(part.as_bytes());
-            digest.update([0]);
+            digest.update(&[0]);
         }
-        let hex = yapi_types::time::hex(&digest.finalize()[..16]);
+        let hex = yapi_types::time::hex(&digest.finish().as_ref()[..16]);
         let cached = dir.join(format!("{hex}.js"));
         if let Ok(source) = std::fs::read_to_string(&cached)
             && let Some((tag, source)) = source.split_once('\n')

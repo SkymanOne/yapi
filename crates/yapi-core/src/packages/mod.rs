@@ -13,10 +13,10 @@ pub mod source;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
+use aws_lc_rs::digest::{SHA256, digest};
 use futures_util::StreamExt as _;
 use futures_util::future::Either;
 use serde_json::Value;
-use sha2::Digest as _;
 use yapi_types::settings::FilteredPackage;
 
 use crate::config::PROJECT_DIR;
@@ -396,12 +396,16 @@ impl PackageManager {
             let spec =
                 version.map_or_else(|| name.to_owned(), |version| format!("{name}@{version}"));
             std::fs::create_dir_all(root).map_err(|err| PackageError::Message(err.to_string()))?;
+            // As pi when stdout carries JSON or RPC: npm's output goes to
+            // stderr, and npm never reads the client's input.
             let status = std::process::Command::new(program)
                 .envs(crate::config::child_env())
                 .args(args)
                 .args(["install", &spec, "--prefix"])
                 .arg(root)
                 .arg("--legacy-peer-deps")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::io::stderr())
                 .status()
                 .map_err(|err| PackageError::Message(format!("{program}: {err}")))?;
             if !status.success() {
@@ -416,31 +420,35 @@ impl PackageManager {
         Ok(())
     }
 
+    /// pi's `installGit`: clones `repo` into `dir` at `reference` and installs
+    /// its dependencies, removing the clone when any step fails. An existing
+    /// checkout is updated in place instead and kept when that fails.
     async fn install_git(
         &mut self,
         repo: &str,
         reference: Option<&str>,
         dir: &Path,
     ) -> Result<(), PackageError> {
-        if !dir.exists() {
-            if let Some(parent) = dir.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| PackageError::Message(err.to_string()))?;
-            }
-            let target = dir.to_string_lossy().into_owned();
-            if let Err(err) = run_git(&["clone", repo, &target], None) {
-                self.remove_dir(dir);
-                return Err(err);
-            }
+        if dir.exists() {
+            return self.update_git(dir, reference).await;
         }
-        if let Some(reference) = reference
-            && let Err(err) = run_git(&["checkout", reference], Some(dir))
-        {
+        if let Some(parent) = dir.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| PackageError::Message(err.to_string()))?;
+        }
+        let target = dir.to_string_lossy().into_owned();
+        let installed: Result<(), PackageError> = async {
+            run_git(&["clone", "--", repo, &target], None)?;
+            if let Some(reference) = reference {
+                run_git(&["checkout", reference], Some(dir))?;
+            }
+            Ok(npm::install_dependencies(&mut self.npm, dir).await?)
+        }
+        .await;
+        if installed.is_err() {
             self.remove_dir(dir);
-            return Err(err);
         }
-        npm::install_dependencies(&mut self.npm, dir).await?;
-        Ok(())
+        installed
     }
 
     /// Moves the checkout in `dir` to the latest commit of `reference`, else
@@ -830,7 +838,7 @@ impl PackageManager {
             Some(reference) => format!("{prefix}-{suffix}@{reference}"),
             None => format!("{prefix}-{suffix}"),
         };
-        let hash = crate::time::hex(&sha2::Sha256::digest(key));
+        let hash = crate::time::hex(digest(&SHA256, key.as_ref()).as_ref());
         let root = managed_path(&folder, Path::new(prefix))?;
         managed_path(&root, &Path::new(&hash[..8]).join(suffix))
     }
@@ -926,5 +934,119 @@ mod tests {
         let escape = dir("git-github.com", "../../../outside", None).unwrap_err();
         assert!(escape.starts_with("Refusing to use path outside package install root: "));
         std::fs::remove_dir_all(&agent).unwrap();
+    }
+
+    /// A fresh directory for test `name`, and a manager whose agent
+    /// directory is in it and whose registry refuses connections.
+    fn git_scratch(name: &str) -> (PathBuf, PackageManager) {
+        let dir = std::env::temp_dir().join(format!("yapi-git-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let registry = [("registry".to_owned(), "http://127.0.0.1:9/".to_owned())];
+        let manager = PackageManager::new(
+            dir.clone(),
+            dir.join("agent"),
+            SettingsManager::in_memory(),
+            registry.into(),
+        );
+        (dir, manager)
+    }
+
+    /// Commits everything in the repository `repo` and tags the commit.
+    fn commit(repo: &Path, tag: &str) {
+        let git = |args: &[&str]| {
+            let config = ["-c", "user.name=yapi", "-c", "user.email=yapi@example.com"];
+            let signing = ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"];
+            run_git(&[&config[..], &signing[..], args].concat(), Some(repo)).unwrap();
+        };
+        git(&["add", "-A"]);
+        git(&["commit", "--allow-empty", "-m", tag]);
+        git(&["tag", tag]);
+    }
+
+    fn head(repo: &Path, reference: &str) -> String {
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", reference])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    /// pi's `installGit` on an existing checkout fetches the new ref, and
+    /// keeps the checkout when that fails.
+    #[tokio::test]
+    async fn install_new_ref_updates_checkout() {
+        let (dir, mut manager) = git_scratch("existing");
+        let origin = dir.join("origin");
+        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
+        commit(&origin, "v1");
+        let checkout = dir.join("agent/git/github.com/user/repo");
+        let repo = origin.to_str().unwrap();
+        manager.install_git(repo, None, &checkout).await.unwrap();
+        commit(&origin, "v2");
+
+        manager
+            .install_git(repo, Some("v2"), &checkout)
+            .await
+            .unwrap();
+        assert_eq!(head(&checkout, "HEAD"), head(&origin, "v2"));
+        let missing = manager.install_git(repo, Some("v3"), &checkout).await;
+        assert!(missing.is_err());
+        assert_eq!(head(&checkout, "HEAD"), head(&origin, "v2"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// pi removes a clone whose dependencies fail to install.
+    #[tokio::test]
+    async fn failed_clone_removed() {
+        let (dir, mut manager) = git_scratch("dependencies");
+        let origin = dir.join("origin");
+        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
+        let manifest = r#"{"name": "repo", "dependencies": {"left-pad": "^1.0.0"}}"#;
+        std::fs::write(origin.join("package.json"), manifest).unwrap();
+        commit(&origin, "v1");
+        let checkout = dir.join("agent/git/github.com/user/repo");
+        let installed = manager
+            .install_git(origin.to_str().unwrap(), None, &checkout)
+            .await;
+        assert!(installed.is_err());
+        assert!(!checkout.exists());
+        assert!(dir.join("agent/git").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A checkout that links `node_modules`, or a scope in it, elsewhere gets
+    /// no dependencies, so nothing is written through the link.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn linked_node_modules_refused() {
+        for link in ["node_modules", "node_modules/@scope"] {
+            let (dir, mut manager) = git_scratch("linked");
+            let outside = dir.join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            let origin = dir.join("origin");
+            run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
+            let manifest = r#"{"name": "repo", "dependencies": {"@scope/dep": "^1.0.0"}}"#;
+            std::fs::write(origin.join("package.json"), manifest).unwrap();
+            let link = origin.join(link);
+            std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            commit(&origin, "v1");
+            let checkout = dir.join("agent/git/github.com/user/repo");
+            let error = manager
+                .install_git(origin.to_str().unwrap(), None, &checkout)
+                .await
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .starts_with("Refusing to install dependencies through the link "),
+                "{}: {error}",
+                link.display()
+            );
+            assert!(!checkout.exists());
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
     }
 }

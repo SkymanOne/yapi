@@ -11,11 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
 use yapi_core::mcp::config::{Scope, ServerEntry, validate_server};
 use yapi_core::mcp::connection::{Connection, State};
 use yapi_core::mcp::http::{HttpOptions, HttpTransport};
 use yapi_core::mcp::sign_in::SignInPrompt;
 use yapi_core::mcp::stdio::{StdioOptions, StdioTransport};
+use yapi_core::mcp::transport::Event;
 use yapi_core::mcp::{
     ClientOptions, McpClient, McpError, RequestOptions, ResourceKind, Root, Transport,
 };
@@ -181,6 +183,62 @@ async fn stdio_server_that_exits_closes_the_client() {
 }
 
 #[tokio::test]
+async fn stdio_timeout_unread() {
+    let client = McpClient::connect(options(), stdio(Vec::new()))
+        .await
+        .unwrap();
+    // The fixture reads no input while a tool runs.
+    let busy = client.clone();
+    tokio::spawn(async move {
+        busy.call_tool("sleep", json!({"seconds": 30}), RequestOptions::default())
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    // More than a pipe holds, so the write waits for the server.
+    let text = "x".repeat(4 << 20);
+    let bound = Duration::from_secs(5);
+    let timeout = tokio::time::timeout(
+        bound,
+        client.call_tool(
+            "echo",
+            json!({ "text": text }),
+            RequestOptions {
+                timeout: Some(Duration::from_millis(50)),
+                ..RequestOptions::default()
+            },
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(timeout.to_string(), "MCP request timed out after 50ms");
+    tokio::time::timeout(bound, client.close()).await.unwrap();
+}
+
+#[tokio::test]
+async fn stdio_oversized_lines() {
+    // Over twice the limit, so the rest is skipped in pieces, then a message.
+    let script = "import sys\nsys.stdout.write('x' * (40 << 20) + '\\n{\"jsonrpc\": \"2.0\", \"method\": \"after\"}\\n')";
+    let transport = StdioTransport::new(StdioOptions {
+        command: "python3".into(),
+        args: vec!["-c".into(), script.into()],
+        cwd: std::env::temp_dir(),
+        env: Vec::new(),
+    });
+    let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
+    transport.start(events).await.unwrap();
+    assert!(matches!(
+        received.recv().await,
+        Some(Event::Error(error)) if error == "MCP stdio message exceeds 16777216 bytes"
+    ));
+    assert!(matches!(
+        received.recv().await,
+        Some(Event::Message(message)) if message["method"] == "after"
+    ));
+    assert!(matches!(received.recv().await, Some(Event::Closed)));
+}
+
+#[tokio::test]
 async fn missing_command_fails_like_pi() {
     let transport = Transport::Stdio(Box::new(StdioTransport::new(StdioOptions {
         command: "yapi-no-such-command".into(),
@@ -208,6 +266,102 @@ async fn http_server() {
     exercise(&client).await;
     client.close().await;
     server.kill().await.unwrap();
+}
+
+/// The fixture answers a `sleep` call's POST only when it is done, so these
+/// requests wait on a server that has not answered at all.
+#[tokio::test]
+async fn http_timeout_and_abort() {
+    let (_server, url) = spawn_http(&[]).await;
+    let transport = HttpTransport::new(HttpOptions {
+        url,
+        ..HttpOptions::default()
+    });
+    let client = McpClient::connect(options(), Transport::Http(transport))
+        .await
+        .unwrap();
+    let bound = Duration::from_secs(5);
+    let sleep = json!({"seconds": 30});
+
+    let timeout = tokio::time::timeout(
+        bound,
+        client.call_tool(
+            "sleep",
+            sleep.clone(),
+            RequestOptions {
+                timeout: Some(Duration::from_millis(50)),
+                ..RequestOptions::default()
+            },
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(timeout.to_string(), "MCP request timed out after 50ms");
+
+    let cancel = CancellationToken::new();
+    let abort = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        abort.cancel();
+    });
+    let aborted = tokio::time::timeout(
+        bound,
+        client.call_tool(
+            "sleep",
+            sleep,
+            RequestOptions {
+                cancel: Some(cancel),
+                ..RequestOptions::default()
+            },
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert!(matches!(aborted, McpError::Aborted), "{aborted:?}");
+    client.close().await;
+}
+
+#[tokio::test]
+async fn expired_http_session_renewed() {
+    let (_server, url) = spawn_http(&[]).await;
+    let forget = || {
+        reqwest::Client::new()
+            .post(url.replace("/mcp", "/test/forget"))
+            .send()
+    };
+    let transport = HttpTransport::new(HttpOptions {
+        url: url.clone(),
+        ..HttpOptions::default()
+    });
+    let client = McpClient::connect(options(), Transport::Http(transport))
+        .await
+        .unwrap();
+    forget().await.unwrap();
+    let expired = client
+        .call_tool("echo", json!({"text": "hi"}), RequestOptions::default())
+        .await
+        .unwrap_err();
+    assert!(matches!(expired, McpError::SessionExpired), "{expired:?}");
+    client.close().await;
+
+    // A connection runs the request again on a new session.
+    let connection = http_connection(&url, json!({}), &scratch("session"), None);
+    assert_eq!(echo(&connection).await.unwrap()["content"][0]["text"], "hi");
+    forget().await.unwrap();
+    assert_eq!(echo(&connection).await.unwrap()["content"][0]["text"], "hi");
+    connection.close().await;
+}
+
+#[tokio::test]
+async fn huge_timeout() {
+    let (_server, url) = spawn_http(&[]).await;
+    let config = json!({"timeout": 1e20});
+    let connection = http_connection(&url, config, &scratch("huge-timeout"), None);
+    assert_eq!(connection.timeout(), Duration::MAX);
+    assert_eq!(echo(&connection).await.unwrap()["content"][0]["text"], "hi");
+    connection.close().await;
 }
 
 #[tokio::test]

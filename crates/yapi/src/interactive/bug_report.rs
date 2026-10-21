@@ -203,7 +203,7 @@ async fn file_issue(
     }
     let title = report.title();
     let note = format!(
-        "Title: {title}\n\nThe issue on {REPO} is public. It holds your description, the summary and report.json. The transcript is not posted."
+        "Title: {title}\n\nThe issue on {REPO} is public. It holds your description, the summary and report.json, with the names of your settings but not their values. The transcript is not posted."
     );
     let create = "Create a public GitHub issue?";
     if ask.confirm(create, &note, "Yes, create the issue").await != Some(true) {

@@ -149,7 +149,12 @@ impl ExtensionHost {
         options: Options,
         source: &SourceInfo,
     ) -> Result<Arc<ExtensionHost>, Error> {
-        let component = engine.native(std::path::Path::new(&source.path))?;
+        // A compile that misses the cache takes seconds.
+        let compiler = engine.clone();
+        let path = std::path::PathBuf::from(&source.path);
+        let component = tokio::task::spawn_blocking(move || compiler.native(&path))
+            .await
+            .map_err(|err| Error::Compile(err.to_string()))??;
         let bridge = SessionBridge::new(engine, source.path.clone(), &options);
         let instance =
             Instance::start_component(engine, component, options.clone(), bridge.clone()).await?;
@@ -1587,9 +1592,8 @@ const OUTPUT_LINE_BYTES: usize = 4096;
 static OUTPUT: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 
 /// Keeps extension output off the terminal from now on, for a mode that draws
-/// on it: each message goes to `tracing` at its level, and the last 200 stay
-/// for [`extension_output`], each cut to 4 KiB. Until then, extension output
-/// goes to stderr.
+/// on it: the last 200 messages stay for [`extension_output`], each cut to
+/// 4 KiB. Until then, extension output goes to stderr.
 pub fn capture_output() {
     lock(&OUTPUT).get_or_insert_default();
 }
@@ -2164,12 +2168,6 @@ impl Bridge for SessionBridge {
             return;
         }
         let extension = &self.name;
-        match level {
-            "error" => tracing::error!(%extension, "{message}"),
-            "warn" => tracing::warn!(%extension, "{message}"),
-            "debug" => tracing::debug!(%extension, "{message}"),
-            _ => tracing::info!(%extension, "{message}"),
-        }
         let mut line = format!(
             "{} [{extension}] {level} {message}",
             yapi_types::time::now_iso()
@@ -2489,6 +2487,12 @@ impl Bridge for SessionBridge {
                 self.spawn(job);
             }
         }
+    }
+
+    fn caller(&self, tool_call_id: &str) -> Option<(UpdateSink, CancellationToken)> {
+        lock(&self.updates)
+            .get(tool_call_id)
+            .map(|(updates, cancel, _)| (updates.clone(), cancel.clone()))
     }
 
     fn stream_hooks(&self, id: u64) -> RequestHooks {

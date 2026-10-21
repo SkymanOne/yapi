@@ -678,12 +678,17 @@ impl super::App {
             "/trust" => {
                 let store = yapi_core::trust::TrustStore::new(&self.agent_dir);
                 let project = self.session.project_dir();
-                let selector = super::selectors::TrustSelector::new(
-                    &project,
-                    store.entry(&project),
-                    self.session.project_trusted(),
-                );
-                self.selector = Some(super::Selector::Trust(Box::new(selector)));
+                match store.entry(&project) {
+                    Ok(saved) => {
+                        let selector = super::selectors::TrustSelector::new(
+                            &project,
+                            saved,
+                            self.session.project_trusted(),
+                        );
+                        self.selector = Some(super::Selector::Trust(Box::new(selector)));
+                    }
+                    Err(error) => self.error(error.to_string()),
+                }
             }
             "/clone" => {
                 let leaf = self
