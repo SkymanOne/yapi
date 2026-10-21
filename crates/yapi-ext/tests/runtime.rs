@@ -66,6 +66,15 @@ export function greeting(name: string, tone: string): string {
 }
 "#;
 
+/// The runtime reports yapi's own version in `process.versions.yapi`. The
+/// js-runtime check ties the built runtime to this source.
+#[test]
+fn runtime_version() {
+    let core = include_str!("../../../guest/yapi-js/js/runtime/00-core.js");
+    let expected = format!("yapi: \"{}\"", env!("CARGO_PKG_VERSION"));
+    assert!(core.contains(&expected), "00-core.js lacks {expected}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn runs_typescript_extension() {
     let dir = scratch("hello");
