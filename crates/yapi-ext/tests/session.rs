@@ -1217,7 +1217,7 @@ async fn extensions_see_editor_focus() {
     std::fs::write(
         &path,
         r#"
-import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, copyToClipboard, keyHint, keyText, rawKeyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Editor } from "@mariozechner/pi-tui";
 
 export default function (pi: ExtensionAPI) {
@@ -1235,6 +1235,15 @@ export default function (pi: ExtensionAPI) {
 		description: "Put an editor in place",
 		handler: async (_args, ctx) => {
 			ctx.ui.setEditorComponent((tui, theme, keybindings) => (editor = new CustomEditor(tui, theme, keybindings)));
+			// Copying elsewhere would replace the clipboard of whoever runs the tests.
+			const copied = process.platform === "linux" ? await copyToClipboard("yapi").then(() => "", (error) => error.message) : "";
+			pi.appendEntry("keys", {
+				bound: keyText("tui.editor.cursorLeft"),
+				unbound: keyText("app.tools.expand"),
+				hint: keyHint("tui.editor.cursorLeft", "back"),
+				raw: rawKeyHint("alt+x", "cut"),
+				copied: !copied.includes("not available"),
+			});
 		},
 	});
 }
@@ -1294,6 +1303,18 @@ export default function (pi: ExtensionAPI) {
     // An editor in the built-in one's place is the focused component.
     session.prompt("/own", Vec::new()).await.unwrap();
     shows("editor true own true").await;
+    // Key hints name the session's bindings as pi's do (#241).
+    let alt = if cfg!(target_os = "macos") {
+        "option"
+    } else {
+        "alt"
+    };
+    assert_eq!(
+        custom_entries(&session, "keys"),
+        [
+            json!({"bound": "left", "unbound": "", "hint": "left back", "raw": format!("{alt}+x cut"), "copied": true})
+        ]
+    );
 }
 
 /// A UI that counts how often a runtime restarted.

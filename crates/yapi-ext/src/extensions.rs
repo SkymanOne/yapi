@@ -3044,6 +3044,21 @@ impl Bridge for SessionBridge {
                         "env": auth.env,
                     })))
                 }
+                // pi's `copyToClipboard`. OSC 52 reaches the terminal only in
+                // interactive mode, where stdout is not the mode's output.
+                "clipboard.copy" => {
+                    let terminal = session.extension_binding().1 == Mode::Tui;
+                    let emit = |sequence: &str| {
+                        if terminal {
+                            let mut out = std::io::stdout().lock();
+                            let _ = out.write_all(sequence.as_bytes());
+                            let _ = out.flush();
+                        }
+                    };
+                    yapi_core::clipboard::copy(&text(&payload["text"]), emit)
+                        .await
+                        .map(|()| Value::Null)
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)

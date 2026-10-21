@@ -10,7 +10,6 @@ mod cache_notices;
 mod catalogs;
 mod changelog;
 mod chat;
-mod clipboard;
 mod commands;
 mod completions;
 pub mod config_selector;
@@ -46,6 +45,7 @@ use yapi_core::agent_session::{
     AgentSession, Replacement, SessionChange, TreeNavigation, TreeOutcome, UserBash,
 };
 use yapi_core::bash_executor::BashResult;
+use yapi_core::clipboard;
 use yapi_core::extensions::{BashOperations, SessionAction, Setup};
 use yapi_core::extensions::{Mode, NotifyKind};
 use yapi_core::session::SessionManager;
