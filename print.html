@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3cb7a343.js";
+            window.path_to_searchindex_js = "searchindex-bf28978e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -566,7 +566,7 @@ yapi --no-session            # do not save this run
 <p><code>/session</code> shows the next decision and the tokens billed again after cache misses. “Cache miss notices” in <code>/settings</code> shows refreshes and costly misses in the transcript.</p>
 <h2 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h2>
 <p><code>/export</code> writes the session to a standalone HTML file. <code>yapi --export &lt;file&gt;.jsonl [output.html]</code> does the same for a session file from the command line. <code>/export &lt;path&gt;.jsonl</code> writes the current branch as a new session file, without the other branches.</p>
-<p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it.</p>
+<p><code>/import &lt;path&gt;.jsonl</code> copies a session file into the project’s session folder and resumes it. When the session’s working folder no longer exists, yapi asks whether to resume it in the current folder instead.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="security-model-and-sandboxing"><a class="header" href="#security-model-and-sandboxing">Security model and sandboxing</a></h1>
 <p>yapi reads files, edits them and runs commands on your machine. This page describes what yapi protects, what it leaves to the operating system, and how extensions are isolated.</p>
