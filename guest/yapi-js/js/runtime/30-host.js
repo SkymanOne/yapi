@@ -1221,12 +1221,14 @@
 			case "before_agent_start": {
 				// As in pi, handlers share the live prompt options and may edit them; a
 				// returned `systemPrompt` forces the prompt through `forceSystemPrompt`.
+				// The prompt, and `ctx.getSystemPrompt()`, render the options as they are.
 				const messages = [];
 				const options = event.systemPromptOptions;
-				const rendered = event.systemPrompt;
-				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: () => options.forceSystemPrompt ?? rendered });
+				const render = () => options.forceSystemPrompt ?? yapi.request("agent.renderSystemPrompt", { options: plain(options) });
+				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: render });
+				const local = Object.create(ctx, { getSystemPrompt: { value: render } });
 				for (const handler of handlers) {
-					const handlerResult = await guard(() => handler(event, ctx));
+					const handlerResult = await guard(() => handler(event, local));
 					if (handlerResult?.message) messages.push(handlerResult.message);
 					if (handlerResult?.systemPrompt !== undefined) options.forceSystemPrompt = handlerResult.systemPrompt;
 				}

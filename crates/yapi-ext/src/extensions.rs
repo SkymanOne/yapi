@@ -2598,11 +2598,11 @@ impl Bridge for SessionBridge {
             "agent.contextUsage" => Ok(session.context_usage().map_or(Value::Null, |usage| {
                 json!({"tokens": usage.tokens, "contextWindow": usage.context_window, "percent": usage.percent()})
             })),
-            "agent.systemPrompt" => Ok(Value::String(
-                yapi_ai::transcript::current_system_message(&session.messages())
-                    .map(|system| system.text())
-                    .unwrap_or_default(),
-            )),
+            "agent.systemPrompt" => session.system_prompt().map(Value::String),
+            "agent.renderSystemPrompt" => {
+                let options = serde_json::from_value(payload["options"].clone()).map_err(|err| err.to_string())?;
+                session.render_prompt(&options).map(Value::String)
+            }
             "agent.shutdown" => {
                 session.extension_binding().0.shutdown();
                 Ok(Value::Null)

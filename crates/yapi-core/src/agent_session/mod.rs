@@ -1353,6 +1353,27 @@ impl AgentSession {
         self.prompt_text(&self.prompt_options(active))
     }
 
+    /// pi's `systemPrompt`: the prompt of the current run's options, as
+    /// the run sends it, or of the base options while no run is active.
+    pub fn system_prompt(&self) -> Result<String, String> {
+        if !self.is_streaming() {
+            return self.prompt_text(&self.base_prompt_options());
+        }
+        if let Some(forced) = lock(&self.inner.forced_prompt).clone() {
+            return Ok(forced);
+        }
+        self.system_prompt_text(&self.inner.tools.active())
+    }
+
+    /// pi's `buildSystemPrompt`: the system prompt `options` give, their
+    /// forced prompt if they have one.
+    pub fn render_prompt(&self, options: &SystemPromptOptions) -> Result<String, String> {
+        match &options.force_system_prompt {
+            Some(forced) => Ok(forced.clone()),
+            None => self.prompt_text(options),
+        }
+    }
+
     /// The system prompt `options` describe, as the model reads it.
     fn prompt_text(&self, options: &SystemPromptOptions) -> Result<String, String> {
         let sections = build_sections(options, &self.inner.docs)?;

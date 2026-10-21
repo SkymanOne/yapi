@@ -1017,10 +1017,7 @@ impl AgentSession {
         let selected = options.selected_tools.clone();
         let ctx = self.extension_context(CancellationToken::new());
         for extension in handlers {
-            let system_prompt = match &options.force_system_prompt {
-                Some(forced) => forced.clone(),
-                None => self.prompt_text(&options).unwrap_or_default(),
-            };
+            let system_prompt = self.render_prompt(&options).unwrap_or_default();
             let event = ExtensionEvent::BeforeAgentStart {
                 prompt,
                 images,

@@ -12,10 +12,11 @@ use std::sync::Arc;
 
 use common::{cli_source, custom_entries, engine, eventually, options, scratch};
 use serde_json::{Value, json};
-use yapi_ai::faux::Faux;
+use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::AgentSession;
 use yapi_core::extensions::{Mode, NoUi};
 use yapi_ext::ExtensionHost;
+use yapi_types::message::Message;
 
 /// Loads extension `source` from a file in `dir`.
 async fn load(dir: &Path, source: &str) -> Arc<ExtensionHost> {
@@ -96,5 +97,70 @@ async fn commands_list_resources() {
             ["hello", "prompt", "hello.md"],
             ["skill:foo", "skill", "foo/SKILL.md"],
         ])
+    );
+}
+
+/// The request's system prompt, as the model reads it.
+fn request_prompt(faux: &Faux) -> String {
+    let requests = faux.requests();
+    let Some(Message::System(system)) = requests[0].first() else {
+        panic!("no system message: {:?}", requests[0]);
+    };
+    system.text()
+}
+
+/// `ctx.getSystemPrompt()` gives the full prompt before the first request:
+/// the base options' while idle, the run's once it starts (#202).
+#[tokio::test(flavor = "multi_thread")]
+async fn system_prompt_before_request() {
+    let dir = scratch("api-system-prompt");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.on("session_start", (_event, ctx) => pi.appendEntry("prompt", ctx.getSystemPrompt()));
+	pi.on("agent_start", (_event, ctx) => pi.appendEntry("prompt", ctx.getSystemPrompt()));
+}"#,
+    )
+    .await;
+    let faux = Faux::new([Response::text("done")]);
+    let session = common::session(&faux, &dir, host.for_session());
+    bind(&session).await;
+    session.prompt("hi", Vec::new()).await.unwrap();
+    let sent = request_prompt(&faux);
+    assert!(sent.contains("- read:"), "{sent}");
+    assert_eq!(
+        custom_entries(&session, "prompt"),
+        [json!(sent), json!(sent)]
+    );
+}
+
+/// `before_agent_start`'s `systemPrompt` and `ctx.getSystemPrompt()` render
+/// the options as handlers have edited them so far (#203).
+#[tokio::test(flavor = "multi_thread")]
+async fn before_agent_start_rerenders() {
+    let dir = scratch("api-rerender");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.on("before_agent_start", (event, ctx) => {
+		event.systemPromptOptions.appendSystemPrompt += "\nMARKER";
+		pi.appendEntry("seen", { event: event.systemPrompt.includes("MARKER"), ctx: ctx.getSystemPrompt().includes("MARKER") });
+	});
+	pi.on("before_agent_start", (event) => ({ systemPrompt: `${event.systemPrompt}\nSECOND` }));
+}"#,
+    )
+    .await;
+    let faux = Faux::new([Response::text("done")]);
+    let session = common::session(&faux, &dir, host.for_session());
+    bind(&session).await;
+    session.prompt("hi", Vec::new()).await.unwrap();
+    assert_eq!(
+        custom_entries(&session, "seen"),
+        [json!({"event": true, "ctx": true})]
+    );
+    let sent = request_prompt(&faux);
+    assert!(
+        sent.contains("MARKER") && sent.ends_with("\nSECOND"),
+        "{sent}"
     );
 }
