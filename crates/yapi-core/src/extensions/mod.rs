@@ -25,7 +25,7 @@ use indexmap::IndexMap;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use yapi_ai::model_catalog::RefreshOptions;
-use yapi_ai::registry::ModelRegistry;
+use yapi_ai::registry::{Availability, ModelRegistry};
 use yapi_types::autocomplete::ArgumentCompletions;
 use yapi_types::model::Model;
 use yapi_types::models::ModelDefinition;
@@ -486,8 +486,9 @@ pub trait Extension: Send + Sync {
     /// `refreshModels` that `options` selects, as pi does: first offline
     /// with the stored credential, then, when `options` allow the network
     /// and a credential resolves, online with it. Then those with the legacy
-    /// `oauth.modifyModels` project their models for the stored credential.
-    /// Returns each step's update, or why it failed, by provider in order.
+    /// `oauth.modifyModels` project their models for the stored credential,
+    /// and pi-ai `Provider`s check their API key and filter their models for
+    /// it. Returns each step's update, or why it failed, by provider in order.
     fn refresh_models<'a>(
         &'a self,
         _registry: &'a ModelRegistry,
@@ -564,6 +565,9 @@ pub enum ModelUpdate {
     /// Its chat models as its legacy `oauth.modifyModels` made them for the
     /// stored OAuth credential; `None` without one.
     Modified(Option<Vec<Model>>),
+    /// What its API key `check`, `filterModels` and `filterAllModels` make
+    /// available for the stored credential.
+    Availability(Availability),
 }
 
 /// The built-in extensions each session starts with.

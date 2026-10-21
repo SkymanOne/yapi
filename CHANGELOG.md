@@ -14,6 +14,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
+- Fix pi-ai providers from extensions ignoring `filterModels` and `filterAllModels`, checking their API key only once, and `/login` asking for their key with yapi's prompt instead of the provider's own.
 - Fix Mistral responses that contain non-ASCII text ending with "Provider stream ended without a result" ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix high CPU use while a model streams large tool-call arguments ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix package installs writing outside `node_modules` when a dependency is named by a path or a git package links its `node_modules` elsewhere. Git sources whose host or ref starts with `-` are refused, as git would read them as options ([#195](https://github.com/SkymanOne/yapi/pull/195)).

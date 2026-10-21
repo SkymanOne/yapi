@@ -281,6 +281,10 @@ impl AgentSession {
                     next.modify_models(&provider, models);
                     Ok(())
                 }
+                ModelUpdate::Availability(availability) => {
+                    next.set_availability(&provider, availability);
+                    Ok(())
+                }
             });
             if let Err(error) = applied
                 && !options.cancel.is_cancelled()

@@ -382,26 +382,19 @@
 			return fs.existsSync(path.startsWith("~") ? os.homedir() + path.slice(1) : path);
 		},
 	};
+	/** pi-ai's `isModelType`. */
+	const isType = (model, type) => (model.type ?? "chat") === type;
 	/**
 	 * A pi-ai `Provider` described as `describeProvider` describes a
 	 * configuration: its models, the APIs its streams and operations serve,
-	 * and where its API key comes from now when none is stored, as pi's
-	 * availability check finds it.
+	 * its API key method, and whether its API key check or model filters
+	 * decide what is available. The host asks `availability` for that.
 	 */
-	async function describeNative(provider) {
+	function describeNative(provider) {
 		const models = providerModels(provider);
-		const apis = (type) => [...new Set(models.filter((model) => (model.type ?? "chat") === type).map((model) => model.api))];
+		const apis = (type) => [...new Set(models.filter((model) => isType(model, type)).map((model) => model.api))];
 		const byApi = (implemented, type) => (implemented ? Object.fromEntries(apis(type).map((api) => [api, true])) : undefined);
 		const { apiKey, oauth } = provider.auth ?? {};
-		let keyAuth;
-		if (apiKey) {
-			// shortcut: the check runs once as the extension loads, not on each availability refresh as in pi; recheck on refresh once credentials can appear later.
-			const input = { ctx: authContext, signal: new AbortController().signal };
-			const found = await Promise.resolve()
-				.then(() => (apiKey.check ? apiKey.check(input) : apiKey.resolve(input)))
-				.catch(() => undefined);
-			keyAuth = { source: found ? (found.source ?? "configured provider") : null };
-		}
 		return {
 			name: provider.name,
 			baseUrl: provider.baseUrl,
@@ -409,12 +402,13 @@
 			headers: provider.headers && Object.fromEntries(Object.entries(provider.headers).filter(([, value]) => value != null)),
 			models: plain(models),
 			oauth: oauth && { name: oauth.name, isSubscription: oauth.isSubscription },
-			keyAuth,
+			keyAuth: apiKey && { name: apiKey.name, login: typeof apiKey.login === "function" },
 			// shortcut: an API only refreshed models use streams through yapi's API of that name; describe the APIs again after a refresh once providers add some.
 			streamApis: apis("chat"),
 			images: byApi(typeof provider.generateImages === "function", "image"),
 			classifiers: byApi(typeof provider.classify === "function", "classifier"),
 			hasRefreshModels: typeof provider.refreshModels === "function",
+			hasFilter: typeof provider.filterModels === "function" || typeof provider.filterAllModels === "function",
 		};
 	}
 	/** The configuration of provider `name` as last registered, with its code. */
@@ -512,7 +506,7 @@
 			return { id, path, error: `Failed to load extension: ${errorMessage(error)}` };
 		}
 		extensions.set(id, extension);
-		for (const provider of extension.providers) if (provider.native) provider.config = await describeNative(provider.implementation);
+		for (const provider of extension.providers) if (provider.native) provider.config = describeNative(provider.implementation);
 		return describe(extension);
 	}
 
@@ -1388,6 +1382,11 @@
 		if (!oauth) throw new Error(`Provider ${payload.provider} has no OAuth sign-in`);
 		return abortable(payload.id, async (signal) => plain(await run(oauth, signal, isProvider(config))) ?? null);
 	}
+	/** pi-ai's `AuthInteraction` whose prompts and events reach the host's sign-in `payload.id`. */
+	const signInInteraction = (payload) => ({
+		notify: (event) => yapi.request("oauth.notify", { id: payload.id, event }),
+		prompt: (question) => yapi.op("oauth.prompt", { id: payload.id, prompt: question }),
+	});
 	/** Classifies or generates images with `payload.model` through its provider's code, as pi's provider composer picks it. */
 	function operate(payload, kind, method) {
 		const { model, options } = payload;
@@ -1700,8 +1699,7 @@
 		 * the host's sign-in `id`.
 		 */
 		oauthLogin(payload) {
-			const notify = (event) => yapi.request("oauth.notify", { id: payload.id, event });
-			const prompt = (question) => yapi.op("oauth.prompt", { id: payload.id, prompt: question });
+			const { notify, prompt } = signInInteraction(payload);
 			return withOAuth(payload, (oauth, signal, canonical) =>
 				canonical
 					? oauth.login({ prompt, notify, signal })
@@ -1730,6 +1728,42 @@
 			const oauth = providerConfig(payload.provider)?.oauth;
 			if (typeof oauth?.modifyModels !== "function") throw new Error(`Provider ${payload.provider} has no modifyModels`);
 			return plain(oauth.modifyModels(payload.models, { type: "oauth", ...payload.credential }));
+		},
+		/** Runs provider `provider`'s pi-ai `auth.apiKey.login` with an interaction that reaches the host's sign-in `id`. */
+		keyLogin(payload) {
+			const apiKey = providerConfig(payload.provider)?.auth?.apiKey;
+			if (typeof apiKey?.login !== "function") throw new Error(`Provider ${payload.provider} has no API key login`);
+			return abortable(payload.id, async (signal) => plain(await apiKey.login({ ...signInInteraction(payload), signal })) ?? null);
+		},
+		/**
+		 * What provider `provider`, a pi-ai `Provider`, makes available for
+		 * the stored `credential`, as pi's `Models` checks it: where its API
+		 * key `check`, else its `resolve`, finds a key (`null` for none), and
+		 * the ids of the chat models `filterModels` keeps and of the models
+		 * of each type `getAllAvailable` keeps (`null` to keep every one).
+		 */
+		async availability(payload) {
+			const provider = providerConfig(payload.provider);
+			const credential = payload.credential ?? undefined;
+			const apiKey = provider.auth?.apiKey;
+			let source = null;
+			// pi checks no key while an OAuth credential is stored.
+			if (apiKey && credential?.type !== "oauth") {
+				const input = { ctx: authContext, credential, signal: new AbortController().signal };
+				const found = await (apiKey.check ? apiKey.check(input) : apiKey.resolve(input));
+				source = found ? (found.source ?? "configured provider") : null;
+			}
+			const models = providerModels(provider);
+			const chat = provider.filterModels?.(models.filter((model) => isType(model, "chat")), credential).map((model) => model.id) ?? null;
+			let kept = null;
+			if (provider.filterAllModels) kept = provider.filterAllModels(models, credential);
+			else if (chat) kept = models.filter((model) => !isType(model, "chat") || chat.includes(model.id));
+			let all = null;
+			if (kept) {
+				all = {};
+				for (const model of kept) (all[model.type ?? "chat"] ??= []).push(model.id);
+			}
+			return { source, chat, all };
 		},
 		/** Provider `provider`'s pi-ai `auth.apiKey.resolve` with the stored `credential`: its result, or `null`. */
 		async keyResolve(payload) {

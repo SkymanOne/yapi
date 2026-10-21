@@ -166,6 +166,37 @@ export default function (pi: ExtensionAPI) {
 			fetchModels: async (context) => [{ ...model("n2", `Fetched ${context.credential.key}`), api: "native-api", provider: "native", baseUrl: "http://127.0.0.1:9" }],
 		}),
 	);
+	// A pi-ai provider whose models depend on the account, with its own key prompt.
+	let checks = 0;
+	const tiered = (entry) => ({ ...entry, provider: "tiered", baseUrl: "http://127.0.0.1:9" });
+	const pro = (credential) => credential?.key === "pro";
+	pi.registerProvider(
+		createProvider({
+			id: "tiered",
+			name: "Tiered",
+			auth: {
+				apiKey: {
+					name: "Tiered key",
+					async login(interaction) {
+						const key = await interaction.prompt({ type: "secret", message: "Tiered token:" });
+						return { type: "api_key", key };
+					},
+					check: async ({ credential }) => ({ type: "api_key", source: `check ${++checks} ${credential?.key ?? "ambient"}` }),
+					resolve: async ({ credential }) => ({ auth: { apiKey: credential?.key ?? "ambient" } }),
+				},
+			},
+			models: [
+				tiered({ ...model("basic", "Basic"), api: "tiered-api" }),
+				tiered({ ...model("pro", "Pro"), api: "tiered-api" }),
+				tiered({ type: "image", id: "sketch", name: "Sketch", api: "tiered-images", input: ["text"], output: ["image"], cost }),
+				tiered({ type: "image", id: "paint", name: "Paint", api: "tiered-images", input: ["text"], output: ["image"], cost }),
+			],
+			api: { stream: streamSimple, streamSimple },
+			images: { "tiered-images": { generateImages: async (model) => generated(model, "drawn") } },
+			filterModels: (models, credential) => (pro(credential) ? models : models.filter((entry) => entry.id === "basic")),
+			filterAllModels: (models, credential) => (pro(credential) ? models : models.filter((entry) => entry.id !== "paint")),
+		}),
+	);
 }
 "#;
 
@@ -733,6 +764,118 @@ async fn modify_models_per_account() {
     store.delete("corp", &cancel).await.unwrap();
     session.refresh_model_catalogs(only_corp).await;
     assert_eq!(names(&session), ["Corp 1"]);
+}
+
+/// An offline refresh of the `tiered` provider only.
+fn only_tiered() -> RefreshOptions {
+    RefreshOptions {
+        providers: Some(vec!["tiered".into()]),
+        allow_network: false,
+        ..RefreshOptions::default()
+    }
+}
+
+/// The ids of the `tiered` provider's available models: chat models as
+/// pi's `getAvailable` and `getAvailableOfType("chat")` list them, then
+/// image models.
+fn tiered(registry: &ModelRegistry) -> [Vec<String>; 3] {
+    let ids = |models: Vec<(&String, &String)>| -> Vec<String> {
+        models
+            .into_iter()
+            .filter(|(provider, _)| *provider == "tiered")
+            .map(|(_, id)| id.clone())
+            .collect()
+    };
+    let chat = |models: Vec<&Model>| ids(models.iter().map(|m| (&m.provider, &m.id)).collect());
+    let images = registry.available_image_models();
+    [
+        chat(registry.available()),
+        chat(registry.available_of_all_types()),
+        ids(images.iter().map(|m| (&m.provider, &m.id)).collect()),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn filters_models_per_credential() {
+    let dir = scratch("provider-filter");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    // Without the account's key its filters keep the basic models.
+    // `filterAllModels` decides every type, `filterModels` the model list.
+    assert_eq!(
+        tiered(&session.registry()),
+        [vec!["basic"], vec!["basic", "pro"], vec!["sketch"]]
+    );
+
+    // A refresh filters them for the key stored since.
+    let credential = serde_json::from_value(json!({"type": "api_key", "key": "pro"})).unwrap();
+    let store = Arc::clone(session.registry().store());
+    store
+        .set("tiered", credential, &CancellationToken::new())
+        .await
+        .unwrap();
+    let result = session.refresh_model_catalogs(only_tiered()).await;
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let all = [
+        vec!["basic", "pro"],
+        vec!["basic", "pro"],
+        vec!["sketch", "paint"],
+    ];
+    assert_eq!(tiered(&session.registry()), all);
+
+    // Extensions that load with the key stored filter for it at once, as
+    // `--list-models` lists them.
+    let host = load(&dir).await;
+    assert_eq!(tiered(&registry_and_apis(&host, &dir).0), all);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn check_on_refresh() {
+    let dir = scratch("provider-check");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    let status = |session: &AgentSession| session.registry().login_status("tiered");
+    // The API key check runs as the extension loads, and again with each refresh.
+    assert_eq!(status(&session).as_deref(), Some("check 1 ambient"));
+    session.refresh_model_catalogs(only_tiered()).await;
+    assert_eq!(status(&session).as_deref(), Some("check 2 ambient"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_login_prompt() {
+    let dir = scratch("provider-key-login");
+    let host = load(&dir).await;
+    let (registry, _) = registry_and_apis(&host, &dir);
+    assert_eq!(registry.key_auth("tiered").unwrap().name(), "Tiered key");
+
+    // An API key sign-in asks the provider's own questions.
+    let (interaction, mut requests) = Interaction::new(CancellationToken::new());
+    let ui = tokio::spawn(async move {
+        let mut prompts = Vec::new();
+        while let Some(request) = requests.recv().await {
+            if let AuthRequest::Prompt { prompt, reply, .. } = request {
+                prompts.push(prompt);
+                let _ = reply.send("pro".to_owned());
+            }
+        }
+        prompts
+    });
+    let credential = registry
+        .login(
+            "tiered",
+            LoginKind::ApiKey,
+            &interaction,
+            &LoginOptions::default(),
+        )
+        .await
+        .unwrap();
+    drop(interaction);
+    let secret = AuthPrompt::Secret {
+        message: "Tiered token:".into(),
+    };
+    assert_eq!(ui.await.unwrap(), [secret]);
+    assert_eq!(json!(credential), json!({"type": "api_key", "key": "pro"}));
+    assert_eq!(registry.store().get("tiered"), Some(credential));
 }
 
 const AUTH_EXTENSION: &str = r#"
