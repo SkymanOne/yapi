@@ -271,7 +271,7 @@ struct Inner {
     registry: RwLock<Arc<ModelRegistry>>,
     /// Serializes model catalog refreshes.
     catalog_refresh: tokio::sync::Mutex<()>,
-    apis: Apis,
+    apis: RwLock<Apis>,
     state: Mutex<State>,
     /// The models cycling moves through; empty means every available one.
     scoped_models: Mutex<Vec<crate::model_resolver::ScopedModel>>,
@@ -537,7 +537,7 @@ impl AgentSession {
                 settings: Mutex::new(settings),
                 registry: RwLock::new(Arc::new(registry)),
                 catalog_refresh: tokio::sync::Mutex::new(()),
-                apis,
+                apis: RwLock::new(apis),
                 state: Mutex::new(State {
                     session,
                     model,
@@ -868,10 +868,8 @@ impl AgentSession {
         let cancel = CancellationToken::new();
         lock(&self.inner.bash).push((token, cancel.clone()));
         let settings = self.settings();
-        let resolved = match settings.shell_command_prefix.as_deref() {
-            Some(prefix) if !prefix.is_empty() => format!("{prefix}\n{command}"),
-            _ => command.to_owned(),
-        };
+        let resolved =
+            crate::tools::bash::with_prefix(settings.shell_command_prefix.as_deref(), command);
         let cwd = self.with_session(|session| session.cwd().to_path_buf());
         let on_chunk = |delta: &str| {
             on_chunk(delta);
@@ -1041,6 +1039,12 @@ impl AgentSession {
         (!text.is_empty()).then(|| text.to_owned())
     }
 
+    /// What [`AgentSession::abort`] cancels: the current run's token, or
+    /// `None` while no run is active, as pi's `agent.signal`.
+    pub fn run_cancel(&self) -> Option<CancellationToken> {
+        lock(&self.inner.cancel).clone()
+    }
+
     /// Cancels the current run.
     pub fn abort(&self) {
         if let Some(cancel) = lock(&self.inner.cancel).as_ref() {
@@ -1083,7 +1087,9 @@ impl AgentSession {
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
             let session = self.clone();
-            return Some(async move { session.run(vec![message]).await });
+            return Some(async move {
+                let _ = session.run(vec![message]).await;
+            });
         } else if self.is_streaming() {
             lock(&self.inner.pending_custom).push(message);
         } else {
@@ -1348,6 +1354,18 @@ impl AgentSession {
         options
     }
 
+    /// Has the extensions' loadout hooks that answer later look at the
+    /// `declared` tools, before a request presents them.
+    pub(super) async fn refresh_loadouts(&self, declared: Vec<RegisteredTool>) {
+        let loadout = Loadout {
+            declared,
+            callable: self.callable_tools(),
+        };
+        for extension in &self.inner.extensions {
+            extension.refresh_loadout(&loadout).await;
+        }
+    }
+
     /// The extensions' loadout hooks' changes for `declared` tools, with the
     /// loadout they saw.
     fn loadout_changes(&self, declared: Vec<RegisteredTool>) -> (Loadout, LoadoutChanges) {
@@ -1416,6 +1434,27 @@ impl AgentSession {
     /// The system prompt for `active` tools as the model reads it.
     fn system_prompt_text(&self, active: &[String]) -> Result<String, String> {
         self.prompt_text(&self.prompt_options(active))
+    }
+
+    /// pi's `systemPrompt`: the prompt of the current run's options, as
+    /// the run sends it, or of the base options while no run is active.
+    pub fn system_prompt(&self) -> Result<String, String> {
+        if !self.is_streaming() {
+            return self.prompt_text(&self.base_prompt_options());
+        }
+        if let Some(forced) = lock(&self.inner.forced_prompt).clone() {
+            return Ok(forced);
+        }
+        self.system_prompt_text(&self.inner.tools.active())
+    }
+
+    /// pi's `buildSystemPrompt`: the system prompt `options` give, their
+    /// forced prompt if they have one.
+    pub fn render_prompt(&self, options: &SystemPromptOptions) -> Result<String, String> {
+        match &options.force_system_prompt {
+            Some(forced) => Ok(forced.clone()),
+            None => self.prompt_text(options),
+        }
     }
 
     /// The system prompt `options` describe, as the model reads it.
@@ -1539,7 +1578,7 @@ impl AgentSession {
                 &self.inner.docs,
             ));
         }
-        self.compact_before_prompt().await;
+        self.compact_before_prompt().await?;
         let mut sections = self.base_prompt_options().sections;
         let ctx = self.extension_context(CancellationToken::new());
         for extension in &self.inner.extensions {
@@ -1580,6 +1619,8 @@ impl AgentSession {
             format!("{expanded}\n\n{}", hints.join("\n"))
         };
         let messages = self.messages();
+        // The prompt leaves out the snippets of tools the hooks hide.
+        self.refresh_loadouts(self.active_tools(&active)).await;
         let mut prompts = Vec::new();
         if let Some(update) = self.system_update(&messages, &active)? {
             prompts.push(update);
@@ -1588,19 +1629,27 @@ impl AgentSession {
         prompts.append(&mut lock(&self.inner.next_turn));
         prompts.extend(custom);
         preflight(PromptDisposition::Started);
-        self.run(prompts).await;
-        Ok(())
+        self.run(prompts).await
     }
 
     /// Runs prompts, then pi's post-run loop: retries, overflow recovery and
-    /// compaction, and queued messages, until the agent settles.
-    async fn run(&self, prompts: Vec<Message>) {
+    /// compaction, and queued messages, until the agent settles. An invalid
+    /// compaction setting ends the loop with its error once the agent settles.
+    async fn run(&self, prompts: Vec<Message>) -> Result<(), String> {
         let cancel = CancellationToken::new();
         *lock(&self.inner.cancel) = Some(cancel.clone());
         lock(&self.inner.state).streaming = true;
         self.run_agent(Some(prompts), &cancel).await;
+        let mut result = Ok(());
         while !cancel.is_cancelled() {
-            if self.handle_post_run(&cancel).await {
+            let again = match self.handle_post_run(&cancel).await {
+                Ok(again) => again,
+                Err(error) => {
+                    result = Err(error);
+                    break;
+                }
+            };
+            if again {
                 if cancel.is_cancelled() {
                     break;
                 }
@@ -1638,6 +1687,7 @@ impl AgentSession {
             }
         }
         self.inner.idle.notify_waiters();
+        result
     }
 
     fn has_queued(&self) -> bool {
@@ -1804,8 +1854,10 @@ impl AgentSession {
             session_id: Some(session_id.clone()),
             session_file,
             auto_resize_images: settings.image_auto_resize(),
+            shell_path: settings.shell_path.clone(),
+            shell_command_prefix: settings.shell_command_prefix.clone(),
         };
-        let apis = self.inner.apis.clone();
+        let apis = self.apis();
         let session = self.downgrade();
         let request = self.request_options();
         // pi's stream function throws for an invalid setting, which ends the run.

@@ -175,21 +175,82 @@ fn deep_merge(base: &Map<String, Value>, overrides: &Map<String, Value>) -> Map<
     result
 }
 
-/// `defaultTools`: a list of plain names replaces the inherited one; a list of
-/// only `+name` and `-name` entries is appended to it.
+fn is_tool_modifier(entry: &str) -> bool {
+    entry.starts_with('+') || entry.starts_with('-')
+}
+
+/// `defaultTools`: a list of plain names, or any other value, replaces the
+/// inherited one; a list of only `+name` and `-name` entries is appended to it.
 fn merge_default_tools(base: Option<&Value>, overrides: Option<&Value>) -> Option<Value> {
-    let overrides = overrides?.as_array()?;
-    let modifiers_only = overrides.iter().all(|entry| {
-        entry
-            .as_str()
-            .is_some_and(|name| name.starts_with('+') || name.starts_with('-'))
-    });
-    if !modifiers_only {
-        return Some(Value::Array(overrides.clone()));
+    let Some(overrides) = overrides else {
+        return base.cloned();
+    };
+    match (base.and_then(Value::as_array), overrides.as_array()) {
+        (Some(base), Some(list))
+            if list
+                .iter()
+                .all(|entry| entry.as_str().is_some_and(is_tool_modifier)) =>
+        {
+            Some(Value::Array(base.iter().chain(list).cloned().collect()))
+        }
+        _ => Some(overrides.clone()),
     }
-    let mut merged = base.and_then(Value::as_array).cloned().unwrap_or_default();
-    merged.extend(overrides.iter().cloned());
-    Some(Value::Array(merged))
+}
+
+/// pi's `resolveDefaultTools`: the plain names, or the default tools when a
+/// list has only modifiers, then each `+name` adds and `-name` removes a tool
+/// in list order.
+fn resolve_default_tools(entries: &[&str]) -> Vec<String> {
+    let mut tools: Vec<String> = entries
+        .iter()
+        .filter(|entry| !is_tool_modifier(entry))
+        .map(|&entry| entry.to_owned())
+        .collect();
+    if tools.is_empty() && !entries.is_empty() {
+        tools = crate::tools::DEFAULT_TOOLS.map(str::to_owned).to_vec();
+    }
+    for entry in entries.iter().filter(|entry| is_tool_modifier(entry)) {
+        let name = &entry[1..];
+        let index = tools.iter().position(|tool| tool == name);
+        match index {
+            None if entry.starts_with('+') && !name.is_empty() => tools.push(name.to_owned()),
+            Some(index) if entry.starts_with('-') => {
+                tools.remove(index);
+            }
+            _ => {}
+        }
+    }
+    tools
+}
+
+/// Whether [`Settings`] reads `value` at `path`.
+fn reads_at(path: &[String], value: &Value) -> bool {
+    let nested = path.iter().rev().fold(value.clone(), |inner, key| {
+        Value::Object(Map::from_iter([(key.clone(), inner)]))
+    });
+    Settings::deserialize(nested).is_ok()
+}
+
+/// The fields of `object`, found at `path` in the settings, that [`Settings`]
+/// reads: a field of the wrong type is left out alone, also inside an object,
+/// as pi reads each field on its own.
+fn valid_fields(path: &mut Vec<String>, object: Map<String, Value>) -> Map<String, Value> {
+    let mut valid = Map::new();
+    for (key, value) in object {
+        path.push(key.clone());
+        let kept = match value {
+            value if reads_at(path, &value) => Some(value),
+            Value::Object(inner) => {
+                Some(Value::Object(valid_fields(path, inner))).filter(|inner| reads_at(path, inner))
+            }
+            _ => None,
+        };
+        path.pop();
+        if let Some(value) = kept {
+            valid.insert(key, value);
+        }
+    }
+    valid
 }
 
 impl SettingsManager {
@@ -272,21 +333,30 @@ impl SettingsManager {
             }
         }
         // Unknown or invalid fields are ignored, as in pi.
-        self.merged = serde_json::from_value(Value::Object(merged.clone())).unwrap_or_else(|_| {
-            let valid: Map<String, Value> = merged
-                .into_iter()
-                .filter(|(key, value)| {
-                    let single = Map::from_iter([(key.clone(), value.clone())]);
-                    serde_json::from_value::<Settings>(Value::Object(single)).is_ok()
-                })
-                .collect();
-            serde_json::from_value(Value::Object(valid)).unwrap_or_default()
+        self.merged = Settings::deserialize(Value::Object(merged.clone())).unwrap_or_else(|_| {
+            let valid = Value::Object(valid_fields(&mut Vec::new(), merged));
+            Settings::deserialize(valid).unwrap_or_default()
         });
     }
 
     /// The merged settings.
     pub fn settings(&self) -> &Settings {
         &self.merged
+    }
+
+    /// pi's `getDefaultTools`: the tools the merged `defaultTools` enables, or
+    /// `None` when no scope sets it. A value that is not a list enables none,
+    /// and entries that are not strings are skipped.
+    pub fn default_tools(&self) -> Option<Vec<String>> {
+        let merged = merge_default_tools(
+            self.global.get("defaultTools"),
+            self.project.get("defaultTools"),
+        )?;
+        let entries: Vec<&str> = match &merged {
+            Value::Array(entries) => entries.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        Some(resolve_default_tools(&entries))
     }
 
     /// Both scopes merged as written, values of any type included: pi's
@@ -353,6 +423,50 @@ impl SettingsManager {
             .filter(|ms| ms.is_finite() && *ms >= 0.0)
             .map(|ms| Some(ms.floor() as u64))
             .ok_or_else(|| format!("Invalid {key} setting: {}", js_string(value)))
+    }
+
+    /// pi's `getCompactionTokenSetting` checks: the error for a
+    /// `compaction` token setting, or `model`'s override of one, that is not
+    /// a non-negative safe integer.
+    pub fn compaction_error(&self, model: Option<&yapi_types::model::Model>) -> Option<String> {
+        const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+        let merged = deep_merge(&self.global, &self.project);
+        let compaction = merged.get("compaction");
+        let key = model.map(|model| format!("{}/{}", model.provider, model.id));
+        let entry = key
+            .as_ref()
+            .and_then(|key| compaction?.get("modelOverrides")?.get(key));
+        let invalid = |value: &&Value| {
+            !value
+                .as_f64()
+                .is_some_and(|n| n.fract() == 0.0 && (0.0..=MAX_SAFE_INTEGER).contains(&n))
+        };
+        let expected = "Expected a non-negative safe integer.";
+        for field in ["reserveTokens", "keepRecentTokens"] {
+            if let Some(value) = compaction.and_then(|c| c.get(field)).filter(invalid) {
+                let value = js_string(value);
+                return Some(format!(
+                    "Invalid compaction.{field} setting: {value}. {expected}"
+                ));
+            }
+            let (Some(key), Some(entry)) = (&key, entry) else {
+                continue;
+            };
+            let name = format!("compaction.modelOverrides[\"{key}\"]");
+            if !entry.is_object() {
+                let entry = js_string(entry);
+                return Some(format!(
+                    "Invalid {name} setting: {entry}. Expected an object."
+                ));
+            }
+            if let Some(value) = entry.get(field).filter(invalid) {
+                let value = js_string(value);
+                return Some(format!(
+                    "Invalid {name}.{field} setting: {value}. {expected}"
+                ));
+            }
+        }
+        None
     }
 
     /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
@@ -495,6 +609,26 @@ mod tests {
             merge_default_tools(Some(&json!(["read"])), Some(&json!(["ls"]))),
             Some(json!(["ls"]))
         );
+        // pi's getDefaultTools resolves the merged list.
+        let resolved = |global: &Value, project: &Value| {
+            let mut manager = SettingsManager::in_memory();
+            manager.global = Map::from_iter([("defaultTools".to_owned(), global.clone())]);
+            manager.project = Map::from_iter([("defaultTools".to_owned(), project.clone())]);
+            manager.default_tools().unwrap()
+        };
+        let (global, project) = (&global["defaultTools"], &project["defaultTools"]);
+        assert_eq!(resolved(global, project), ["read", "grep"]);
+        let plain = json!(["read", "+ls"]);
+        assert_eq!(resolved(&plain, &json!(["+find"])), ["read", "ls", "find"]);
+        let modifiers = json!(["-bash"]);
+        assert_eq!(
+            resolved(&modifiers, &json!(["+grep"])),
+            ["read", "edit", "write", "grep"]
+        );
+        // An empty list, or a value that is not a list, enables no tool.
+        assert!(resolved(&json!([]), &json!([])).is_empty());
+        assert!(resolved(&plain, &json!("read")).is_empty());
+        assert_eq!(SettingsManager::in_memory().default_tools(), None);
     }
 
     /// pi's legacy setting forms, migrated as pi writes them back.
@@ -524,8 +658,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[test]
-    fn invalid_timeouts_fail() {
+    #[tokio::test]
+    async fn invalid_timeouts_fail() {
         let mut manager = SettingsManager::in_memory();
         manager.global =
             json!({"httpIdleTimeoutMs": " 1500.7 ", "websocketConnectTimeoutMs": "soon"})
@@ -549,6 +683,64 @@ mod tests {
         manager.global = Map::new();
         assert_eq!(manager.http_idle_timeout_ms(), Ok(300_000));
         assert_eq!(manager.websocket_connect_timeout_ms(), Ok(None));
+        assert_eq!(manager.compaction_error(None), None);
+        // pi's compaction getters take whole numbers only.
+        manager.global = json!({"compaction": {"reserveTokens": 1.5e5, "keepRecentTokens": 1.5}})
+            .as_object()
+            .unwrap()
+            .clone();
+        let error = "Invalid compaction.keepRecentTokens setting: 1.5. Expected a non-negative safe integer.";
+        assert_eq!(manager.compaction_error(None).as_deref(), Some(error));
+
+        // As pi's next-turn hook throws it, the run ends between turns with a
+        // failed response; as its check before a prompt throws it, the next
+        // prompt fails before its request.
+        use yapi_ai::faux::{Faux, Response};
+        use yapi_types::message::{Message, StopReason};
+        let faux = Faux::new([
+            Response::tool_call("t", "missing", json!({})),
+            Response::text("unused"),
+        ]);
+        let model: yapi_types::model::Model = serde_json::from_value(json!({
+            "id": "m", "name": "M", "api": "faux", "provider": "p", "baseUrl": "",
+            "reasoning": false, "input": ["text"],
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000, "maxTokens": 100,
+        }))
+        .unwrap();
+        let mut registry = yapi_ai::registry::ModelRegistry::builtin();
+        registry.register_provider("p", vec![model.clone()]);
+        registry.set_runtime_key("p", "key".into());
+        let mut apis = yapi_ai::api::Apis::default();
+        apis.register(std::sync::Arc::new(faux.clone()));
+        let session =
+            crate::agent_session::AgentSession::new(crate::agent_session::SessionConfig {
+                cwd: "/work".into(),
+                agent_dir: "/agent".into(),
+                settings: manager,
+                registry,
+                apis,
+                session: crate::session::SessionManager::in_memory(Path::new("/work")),
+                model: Some(model),
+                thinking_level: yapi_types::message::ThinkingLevel::Off,
+                tools: Vec::new(),
+                extensions: Vec::new(),
+                include_extension_tools: false,
+                allowed_tools: None,
+                excluded_tools: Vec::new(),
+                resources: crate::agent_session::Resources::default(),
+                docs: crate::docs::Locations::default(),
+            });
+        assert_eq!(session.prompt("go", Vec::new()).await, Err(error.into()));
+        let Some(Message::Assistant(failed)) = session.messages().pop() else {
+            panic!("no failed response");
+        };
+        assert_eq!(
+            (failed.stop_reason, failed.error_message.as_deref()),
+            (StopReason::Error, Some(error))
+        );
+        assert_eq!(session.prompt("again", Vec::new()).await, Err(error.into()));
+        assert_eq!(faux.requests().len(), 1);
     }
 
     #[test]
@@ -559,7 +751,11 @@ mod tests {
             "retry": "often",
             "steeringMode": "all",
             "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
-            "compaction": {"enabled": "", "reserveTokens": 7},
+            "compaction": {"enabled": "", "reserveTokens": "16384", "keepRecentTokens": 2e4},
+            "branchSummary": {"skipPrompt": true, "reserveTokens": 1.5e5},
+            "modelThinkingLevels": {"a/b": "high", "a/c": "extreme"},
+            "terminal": {"imageWidthCells": 40.7},
+            "outputPad": 0.5,
         })
         .as_object()
         .unwrap()
@@ -568,12 +764,27 @@ mod tests {
         let settings = manager.settings();
         assert_eq!(settings.theme.as_deref(), Some("dark"));
         assert!(settings.retry.is_none());
-        // pi reads a switch of another type by truthiness.
+        // A wrongly typed nested field drops alone, and pi reads a switch of
+        // another type by truthiness.
         let compaction = settings.compaction.as_ref().unwrap();
+        let tokens = (compaction.reserve_tokens, compaction.keep_recent_tokens);
         assert_eq!(
-            (compaction.enabled, compaction.reserve_tokens),
-            (Some(false), Some(7))
+            (compaction.enabled, tokens),
+            (Some(false), (None, Some(20000)))
         );
+        // A whole float is its integer; pi rounds a fraction down where it
+        // counts cells, and reads any output padding but 0 as 1.
+        let summary = settings.branch_summary.as_ref().unwrap();
+        assert_eq!(
+            (summary.skip_prompt, summary.reserve_tokens),
+            (Some(true), Some(150_000))
+        );
+        let terminal = settings.terminal.as_ref().unwrap();
+        assert_eq!(
+            (terminal.image_width_cells, settings.output_pad),
+            (Some(40), None)
+        );
+        assert_eq!(settings.model_thinking_levels.as_ref().unwrap().len(), 1);
         assert_eq!(
             settings.steering_mode,
             Some(yapi_types::settings::QueueMode::All)

@@ -94,7 +94,7 @@ impl MetaOAuth {
         Ok(OAuthCredential {
             access: key.to_owned(),
             refresh: identity.to_owned(),
-            expires: now_ms() + API_KEY_LIFETIME_MS,
+            expires: (now_ms() + API_KEY_LIFETIME_MS) as f64,
             extra: Map::new(),
         })
     }

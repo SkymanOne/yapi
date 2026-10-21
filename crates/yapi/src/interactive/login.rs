@@ -92,10 +92,13 @@ pub fn login_options(registry: &ModelRegistry, kind: Option<LoginKind>) -> Vec<P
             });
         }
         // Custom providers take a key; OAuth-only built-ins do not, nor
-        // custom ones with a sign-in and no configured key.
+        // custom ones with a sign-in and no configured key. A pi-ai
+        // `Provider` names its own API key method.
+        let key_method = registry.key_auth(&id).map(|auth| auth.name().to_owned());
         let api_key = match info {
             Some(info) => info.api_key.map(|method| method.name.to_owned()),
             None if id == llama => Some("llama.cpp server".to_owned()),
+            None if key_method.is_some() => key_method,
             None if flow.is_some() && !registry.configures_api_key(&id) => None,
             None => Some("API key".to_owned()),
         };
@@ -485,6 +488,18 @@ impl LoginDialog {
         }
     }
 
+    /// pi's `showAmbientAuthDialog`: provider `name`'s API key `method` is
+    /// set up outside yapi, and escape closes the dialog.
+    pub fn ambient(name: &str, method: &str, ui: &Ui<'_>) -> LoginDialog {
+        let mut dialog = LoginDialog::new(name);
+        dialog.title = format!("{name} setup");
+        let app = yapi_core::config::APP_NAME;
+        dialog.show_info(&format!("{method} is configured outside {app}."), ui);
+        dialog.rows.push(Row::Spacer);
+        dialog.text(Self::cancel_hint(ui, "to close"));
+        dialog
+    }
+
     fn text(&mut self, line: StyledLine) {
         self.rows.push(Row::Text(line));
     }
@@ -842,10 +857,24 @@ impl super::App {
     pub(super) fn provider_chosen(&mut self, option: ProviderOption) {
         match self.dialog.take() {
             Some(super::Dialog::Logout) => {
-                let registry = self.session.registry();
+                let session = self.session.clone();
                 let tx = self.tx.clone();
                 tokio::spawn(async move {
-                    let result = registry.logout(&option.id).await;
+                    let result = session.registry().logout(&option.id).await;
+                    // pi refreshes the provider offline, which checks its
+                    // availability again without the credential.
+                    if result.is_ok() {
+                        use yapi_ai::model_catalog::{
+                            REFRESH_TIMEOUT, RefreshOptions, cancel_after,
+                        };
+                        let options = RefreshOptions {
+                            providers: Some(vec![option.id.clone()]),
+                            allow_network: false,
+                            cancel: cancel_after(REFRESH_TIMEOUT),
+                            ..RefreshOptions::default()
+                        };
+                        session.refresh_model_catalogs(options).await;
+                    }
                     let _ = tx.send(super::Event::LogoutDone(Box::new(option), result));
                 });
             }
@@ -863,11 +892,35 @@ impl super::App {
         }
     }
 
-    /// pi's `startProviderLogin`: the login dialog. Every method yapi offers
-    /// signs in, so pi's notice for providers configured outside it never shows.
+    /// pi's `startProviderLogin`: the login dialog, or pi's notice for an
+    /// extension provider's API key that is set up outside yapi.
     pub(super) fn start_login(&mut self, option: ProviderOption, back: Back) {
         self.next_login += 1;
         let id = self.next_login;
+        let had_model = self.session.model().is_some();
+        let ambient = option.kind == LoginKind::ApiKey
+            && self
+                .session
+                .registry()
+                .key_auth(&option.id)
+                .is_some_and(|auth| !auth.has_login());
+        if ambient {
+            let ui = super::selectors::Ui {
+                theme: &self.theme,
+                keys: &self.keys,
+            };
+            let dialog = LoginDialog::ambient(&option.name, &option.method, &ui);
+            self.selector = Some(super::selectors::Selector::Login(Box::new(dialog)));
+            self.login = Some(LoginRun {
+                id,
+                option,
+                back,
+                parked: None,
+                select: None,
+                had_model,
+            });
+            return;
+        }
         let mut dialog = LoginDialog::new(&option.name);
         if option.id == "amazon-bedrock" && option.kind == LoginKind::ApiKey {
             let theme = &self.theme;
@@ -917,7 +970,7 @@ impl super::App {
             back,
             parked: None,
             select: None,
-            had_model: self.session.model().is_some(),
+            had_model,
         });
     }
 
@@ -1321,6 +1374,89 @@ mod tests {
             .map(|option| option.kind)
             .collect();
         assert_eq!(kinds, [LoginKind::OAuth, LoginKind::ApiKey]);
+    }
+
+    /// A pi-ai provider's API key, set up outside yapi.
+    struct Ambient;
+
+    impl yapi_ai::auth::KeyAuth for Ambient {
+        fn name(&self) -> &str {
+            "Corp credentials"
+        }
+
+        fn has_login(&self) -> bool {
+            false
+        }
+
+        fn login<'a>(
+            &'a self,
+            _interaction: &'a yapi_ai::auth::Interaction,
+        ) -> futures_util::future::BoxFuture<
+            'a,
+            Result<yapi_types::auth::ApiKeyCredential, yapi_ai::auth::AuthError>,
+        > {
+            Box::pin(async { Err(yapi_ai::auth::AuthError::Cancelled) })
+        }
+
+        fn resolve<'a>(
+            &'a self,
+            _credential: Option<&'a yapi_types::auth::ApiKeyCredential>,
+        ) -> futures_util::future::BoxFuture<'a, Result<Option<yapi_ai::key_auth::Resolved>, String>>
+        {
+            Box::pin(async { Ok(None) })
+        }
+    }
+
+    /// A pi-ai provider offers its API key method beside its sign-in, and pi's
+    /// notice when the key is set up outside yapi.
+    #[test]
+    fn provider_key_method() {
+        let config = serde_json::json!({
+            "baseUrl": "http://127.0.0.1:9", "api": "corp-api", "models": [{"id": "corp-1"}],
+        });
+        let mut registry = ModelRegistry::builtin();
+        registry.register_config("corp", serde_json::from_value(config).unwrap());
+        registry.register_oauth("corp", std::sync::Arc::new(Sso));
+        registry.register_key_auth("corp", std::sync::Arc::new(Ambient));
+        let methods: Vec<(LoginKind, String)> = find_options(&registry, "corp")
+            .into_iter()
+            .map(|option| (option.kind, option.method))
+            .collect();
+        assert_eq!(
+            methods,
+            [
+                (LoginKind::OAuth, "Corp SSO".to_owned()),
+                (LoginKind::ApiKey, "Corp credentials".to_owned())
+            ]
+        );
+
+        let theme =
+            yapi_tui::theme::Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
+        let keys = yapi_tui::keybindings::Keybindings::new(
+            yapi_tui::keys::Keys::default(),
+            super::super::keybindings::definitions(),
+            &yapi_tui::keybindings::UserBindings::new(),
+        );
+        let ui = Ui {
+            theme: &theme,
+            keys: &keys,
+        };
+        let rows: Vec<String> = LoginDialog::ambient("Corp", "Corp credentials", &ui)
+            .render(60, &ui)
+            .0
+            .iter()
+            .map(|row| lines::plain(row).trim_end().to_owned())
+            .collect();
+        assert_eq!(
+            rows[1..rows.len() - 1],
+            [
+                " Corp setup",
+                "",
+                " Corp credentials is configured outside yapi.",
+                "",
+                " (escape/ctrl+c to close)"
+            ]
+        );
     }
 
     #[test]

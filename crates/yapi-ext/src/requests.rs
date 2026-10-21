@@ -95,9 +95,14 @@ impl AiStreams {
             }
             None => Apis::default().stream(request),
         };
+        Ok(self.insert(events, cancel))
+    }
+
+    /// Keeps `events`, which `cancel` aborts, for `ai.next`; the stream's id.
+    fn insert(&self, events: EventStream, cancel: CancellationToken) -> Value {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         lock(&self.running).insert(id, (Some(events), cancel));
-        Ok(json!(id))
+        json!(id)
     }
 
     /// The events of stream `id` that have arrived, waiting for at least
@@ -394,6 +399,14 @@ impl Host {
                 Box::pin(async move { streams.start(&payload, env_keys, hooks) })
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
+            // The session's requests, which `ai.next` reads as it reads `ai.stream`'s.
+            "models.stream" if self.options.grants.network => {
+                let streams = self.ai_streams.clone();
+                let cancel = CancellationToken::new();
+                let started = self.bridge.stream_model(payload, cancel.clone());
+                Box::pin(async move { Ok(streams.insert(started.await?, cancel)) })
+            }
+            "models.stream" => Box::pin(async { Err(denied("Network access")) }),
             // Credentials are only good for requests, so they need the network grant.
             "models.auth" | "models.requestAuth" if !self.options.grants.network => {
                 Box::pin(async { Err(denied("Network access")) })

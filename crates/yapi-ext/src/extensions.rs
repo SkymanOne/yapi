@@ -18,20 +18,21 @@ use yapi_ai::api::classify::ClassifyOptions;
 use yapi_ai::api::images::ImagesOptions;
 use yapi_ai::api::{Apis, ModelOperations};
 use yapi_ai::auth::{
-    AuthError, AuthEvent, AuthPrompt, Interaction, KeyAuth, LoginOptions, OAuthAuth, OAuthProvider,
+    AuthError, AuthEvent, AuthPrompt, CredentialStore, Interaction, KeyAuth, LoginOptions,
+    OAuthAuth, OAuthProvider,
 };
 use yapi_ai::key_auth::Resolved;
 use yapi_ai::model_catalog::RefreshOptions;
-use yapi_ai::registry::ModelRegistry;
+use yapi_ai::registry::{Availability, ModelRegistry};
 use yapi_ai::stream::{
     EventSender, EventStream, Provider, ProviderResponse, Request, RequestHooks, StreamEvent,
     new_output, now_ms, send_error,
 };
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
-    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup,
-    TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
+    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
+    LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
+    Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -46,6 +47,7 @@ use yapi_types::message::{
 use yapi_types::model::{ClassifierModel, ImageModel, Model};
 use yapi_types::models::ModelDefinition;
 use yapi_types::rpc::{SourceInfo, StreamingBehavior};
+use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
 use crate::{Bridge, Engine, Error, Instance, Options};
@@ -104,6 +106,9 @@ pub struct ExtensionHost {
     /// Whether events for the guest are being dropped, so that each run of
     /// drops is reported once.
     dropping: AtomicBool,
+    /// Where `auth.json` keeps the credentials providers are checked for as
+    /// the extensions load.
+    auth: PathBuf,
 }
 
 /// The extension hosts that share `pi.events`.
@@ -189,11 +194,53 @@ impl ExtensionHost {
             terminal: Mutex::new(None),
             events,
             dropping: AtomicBool::new(false),
+            auth: options.agent_dir.join("auth.json"),
         });
         let _ = extensions.bridge.owner.set(Arc::downgrade(&extensions));
         extensions.forward_events(queued);
         lock(&extensions.bridge.bus).push(Arc::downgrade(&extensions));
+        extensions.check_providers().await;
         Ok(extensions)
+    }
+
+    /// Checks the API key and filters the models of each pi-ai `Provider`
+    /// with API-key auth or model filters for its stored credential, as pi
+    /// does once a provider registers. A provider whose check fails finds
+    /// no key and keeps every model.
+    async fn check_providers(&self) {
+        let mut store = None;
+        let mut loaded = lock(&self.loaded).clone();
+        for extension in &mut loaded {
+            let Some(providers) = extension["providers"].as_array_mut() else {
+                continue;
+            };
+            for provider in providers {
+                if !checks_availability(&provider["config"]) {
+                    continue;
+                }
+                let name = text(&provider["name"]);
+                let store = store.get_or_insert_with(|| CredentialStore::open(&self.auth));
+                match self.availability(&name, store.get(&name)).await {
+                    Ok(found) => provider["config"]["availability"] = found,
+                    Err(err) => self.bridge.log("error", &err),
+                }
+            }
+        }
+        *lock(&self.loaded) = loaded;
+    }
+
+    /// What pi-ai `Provider` `provider` makes available for `credential`:
+    /// the guest's answer, or why it failed.
+    async fn availability(
+        &self,
+        provider: &str,
+        credential: Option<Credential>,
+    ) -> Result<Value, String> {
+        let payload = json!({"provider": provider, "credential": credential});
+        self.instance
+            .call("availability", &payload)
+            .await
+            .map_err(|err| format!("Availability check failed for provider {provider}: {err}"))
     }
 
     /// The files that failed to load in the latest run of the factories:
@@ -235,6 +282,7 @@ impl ExtensionHost {
                 *lock(&self.loaded) = loaded;
                 *lock(&self.errors) = errors;
                 *lock(&self.apis) = list(&result["apis"]).iter().map(text).collect();
+                self.check_providers().await;
             }
             Err(err) => self.bridge.log(
                 "error",
@@ -255,60 +303,68 @@ impl ExtensionHost {
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| list(&extension["providers"]))
-            .filter_map(|provider| {
-                let name = text(&provider["name"]);
-                let mut config = provider["config"].as_object()?.clone();
-                let streams = list(&config.remove("streamApis").unwrap_or_default())
-                    .iter()
-                    .map(|api| self.js_stream(&text(api)))
-                    .collect();
-                for flag in ["hasRefreshModels", "hasModifyModels"] {
-                    config.remove(flag);
-                }
-                let key_auth = config
-                    .remove("keyAuth")
-                    .filter(Value::is_object)
-                    .map(|auth| {
-                        let own = Arc::new(JsKeyAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                        }) as Arc<dyn KeyAuth>;
-                        (own, auth["source"].as_str().map(str::to_owned))
-                    });
-                let oauth = config
-                    .remove("oauth")
-                    .filter(Value::is_object)
-                    .map(|oauth| {
-                        Arc::new(JsOAuth {
-                            host: Arc::downgrade(self),
-                            provider: name.clone(),
-                            name: text(&oauth["name"]),
-                            subscription: oauth["isSubscription"] == true,
-                        }) as Arc<dyn OAuthProvider>
-                    });
-                // Image and classifier implementations, by API, are code.
-                let mut apis = Vec::new();
-                for key in ["images", "classifiers"] {
-                    if let Some(Value::Object(own)) = config.remove(key) {
-                        apis.extend(own.keys().cloned());
-                    }
-                }
-                let operations = (!apis.is_empty()).then(|| {
-                    let own = Arc::new(JsOperations {
-                        host: Arc::downgrade(self),
-                    }) as Arc<dyn ModelOperations>;
-                    (apis, own)
-                });
-                Some(RegisteredProvider {
-                    name,
-                    config: Value::Object(config),
-                    streams,
-                    oauth,
-                    key_auth,
-                    operations,
-                })
-            })
+            .filter_map(|provider| self.provider(provider))
             .collect()
+    }
+
+    /// The provider the guest describes as `provider`, `{ name, config }`.
+    fn provider(self: &Arc<Self>, provider: &Value) -> Option<RegisteredProvider> {
+        let name = text(&provider["name"]);
+        let mut config = provider["config"].as_object()?.clone();
+        let streams = list(&config.remove("streamApis").unwrap_or_default())
+            .iter()
+            .map(|api| self.js_stream(&text(api)))
+            .collect();
+        for flag in ["hasRefreshModels", "hasModifyModels", "hasFilter"] {
+            config.remove(flag);
+        }
+        let key_auth = config
+            .remove("keyAuth")
+            .filter(Value::is_object)
+            .map(|auth| {
+                Arc::new(JsKeyAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&auth["name"]),
+                    has_login: auth["login"] == true,
+                }) as Arc<dyn KeyAuth>
+            });
+        let availability = config
+            .remove("availability")
+            .and_then(|found| serde_json::from_value(found).ok());
+        let oauth = config
+            .remove("oauth")
+            .filter(Value::is_object)
+            .map(|oauth| {
+                Arc::new(JsOAuth {
+                    host: Arc::downgrade(self),
+                    provider: name.clone(),
+                    name: text(&oauth["name"]),
+                    subscription: oauth["isSubscription"] == true,
+                }) as Arc<dyn OAuthProvider>
+            });
+        // Image and classifier implementations, by API, are code.
+        let mut apis = Vec::new();
+        for key in ["images", "classifiers"] {
+            if let Some(Value::Object(own)) = config.remove(key) {
+                apis.extend(own.keys().cloned());
+            }
+        }
+        let operations = (!apis.is_empty()).then(|| {
+            let own = Arc::new(JsOperations {
+                host: Arc::downgrade(self),
+            }) as Arc<dyn ModelOperations>;
+            (apis, own)
+        });
+        Some(RegisteredProvider {
+            name,
+            config: Value::Object(config),
+            streams,
+            oauth,
+            key_auth,
+            availability,
+            operations,
+        })
     }
 
     /// The wire APIs extensions implement with pi-ai's `registerApiProvider`
@@ -454,6 +510,7 @@ impl ExtensionHost {
                     description: description.clone(),
                     completions: Arc::default(),
                     crashed: Mutex::default(),
+                    loadout: Mutex::default(),
                 }) as Arc<dyn Extension>
             })
             .collect()
@@ -557,9 +614,11 @@ pub struct RegisteredProvider {
     pub streams: Vec<Arc<dyn Provider>>,
     /// Its `oauth` sign-in.
     pub oauth: Option<Arc<dyn OAuthProvider>>,
-    /// A pi-ai `Provider`'s API-key auth, with where its credential comes
-    /// from when nothing is stored, as it checked while the extension loaded.
-    pub key_auth: Option<(Arc<dyn KeyAuth>, Option<String>)>,
+    /// A pi-ai `Provider`'s API-key auth.
+    pub key_auth: Option<Arc<dyn KeyAuth>>,
+    /// What a pi-ai `Provider` with API-key auth or model filters made
+    /// available for the stored credential once the extension loaded.
+    pub availability: Option<Availability>,
     /// Its classifier and image implementations, with their APIs.
     pub operations: Option<(Vec<String>, Arc<dyn ModelOperations>)>,
 }
@@ -579,8 +638,11 @@ impl RegisteredProvider {
         if let Some(oauth) = self.oauth {
             registry.register_oauth(&self.name, oauth);
         }
-        if let Some((auth, source)) = self.key_auth {
-            registry.register_key_auth(&self.name, auth, source);
+        if let Some(auth) = self.key_auth {
+            registry.register_key_auth(&self.name, auth);
+        }
+        if let Some(availability) = self.availability {
+            registry.set_availability(&self.name, availability);
         }
         if let Some((apis, own)) = self.operations {
             registry.register_operations(&self.name, apis, own);
@@ -607,37 +669,37 @@ struct JsOAuth {
     subscription: bool,
 }
 
-impl JsOAuth {
-    /// Runs guest call `kind` for this provider with `payload`, as an
-    /// operation that `cancel` aborts and whose prompts go to `interaction`.
-    async fn call(
-        &self,
-        kind: &str,
-        mut payload: Value,
-        interaction: Option<&Interaction>,
-        cancel: &CancellationToken,
-    ) -> Result<Value, AuthError> {
-        let host = self
-            .host
-            .upgrade()
-            .ok_or_else(|| AuthError::Failed(Error::Stopped.to_string()))?;
-        let id = host.next_id();
-        payload["provider"] = json!(self.provider);
-        payload["id"] = json!(id);
-        if let Some(interaction) = interaction {
-            lock(&host.bridge.logins).insert(id, interaction.clone());
-        }
-        let result = host.call_abortable(kind, &payload, cancel).await;
-        lock(&host.bridge.logins).remove(&id);
-        result.map_err(|err| {
-            if cancel.is_cancelled() {
-                AuthError::Cancelled
-            } else {
-                AuthError::Failed(err.to_string())
-            }
-        })
+/// Runs guest call `kind` for `provider`'s sign-in with `payload`, as an
+/// operation that `cancel` aborts and whose prompts go to `interaction`.
+async fn auth_call(
+    host: &Weak<ExtensionHost>,
+    provider: &str,
+    kind: &str,
+    mut payload: Value,
+    interaction: Option<&Interaction>,
+    cancel: &CancellationToken,
+) -> Result<Value, AuthError> {
+    let host = host
+        .upgrade()
+        .ok_or_else(|| AuthError::Failed(Error::Stopped.to_string()))?;
+    let id = host.next_id();
+    payload["provider"] = json!(provider);
+    payload["id"] = json!(id);
+    if let Some(interaction) = interaction {
+        lock(&host.bridge.logins).insert(id, interaction.clone());
     }
+    let result = host.call_abortable(kind, &payload, cancel).await;
+    lock(&host.bridge.logins).remove(&id);
+    result.map_err(|err| {
+        if cancel.is_cancelled() {
+            AuthError::Cancelled
+        } else {
+            AuthError::Failed(err.to_string())
+        }
+    })
+}
 
+impl JsOAuth {
     async fn credential(
         &self,
         kind: &str,
@@ -645,7 +707,15 @@ impl JsOAuth {
         interaction: Option<&Interaction>,
         cancel: &CancellationToken,
     ) -> Result<OAuthCredential, AuthError> {
-        let value = self.call(kind, payload, interaction, cancel).await?;
+        let call = auth_call(
+            &self.host,
+            &self.provider,
+            kind,
+            payload,
+            interaction,
+            cancel,
+        );
+        let value = call.await?;
         let mut credential: OAuthCredential = serde_json::from_value(value)
             .map_err(|err| AuthError::Failed(format!("Invalid OAuth credentials: {err}")))?;
         credential.extra.remove("type");
@@ -693,14 +763,17 @@ impl OAuthProvider for JsOAuth {
         credential: &'a OAuthCredential,
     ) -> BoxFuture<'a, Result<OAuthAuth, AuthError>> {
         Box::pin(async move {
-            let auth = self
-                .call(
-                    "oauthApiKey",
-                    json!({"credential": credential}),
-                    None,
-                    &CancellationToken::new(),
-                )
-                .await?;
+            let payload = json!({"credential": credential});
+            let cancel = CancellationToken::new();
+            let call = auth_call(
+                &self.host,
+                &self.provider,
+                "oauthApiKey",
+                payload,
+                None,
+                &cancel,
+            );
+            let auth = call.await?;
             // The legacy `getApiKey` returns the key, pi-ai's `toAuth` the credentials.
             let auth = match auth {
                 Value::String(key) => ModelAuth {
@@ -718,13 +791,44 @@ impl OAuthProvider for JsOAuth {
     }
 }
 
-/// A pi-ai `Provider`'s `auth.apiKey`, whose `resolve` runs in the guest.
+/// A pi-ai `Provider`'s `auth.apiKey`, whose `login` and `resolve` run in
+/// the guest.
 struct JsKeyAuth {
     host: Weak<ExtensionHost>,
     provider: String,
+    name: String,
+    has_login: bool,
 }
 
 impl KeyAuth for JsKeyAuth {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn has_login(&self) -> bool {
+        self.has_login
+    }
+
+    fn login<'a>(
+        &'a self,
+        interaction: &'a Interaction,
+    ) -> BoxFuture<'a, Result<ApiKeyCredential, AuthError>> {
+        Box::pin(async move {
+            let cancel = interaction.cancel();
+            let payload = json!({});
+            let call = auth_call(
+                &self.host,
+                &self.provider,
+                "keyLogin",
+                payload,
+                Some(interaction),
+                cancel,
+            );
+            serde_json::from_value(call.await?)
+                .map_err(|err| AuthError::Failed(format!("Invalid API key credentials: {err}")))
+        })
+    }
+
     fn resolve<'a>(
         &'a self,
         credential: Option<&'a ApiKeyCredential>,
@@ -888,6 +992,12 @@ fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
 }
 
+/// Whether a provider described as `config` is a pi-ai `Provider` whose API
+/// key check or model filters decide what is available.
+fn checks_availability(config: &Value) -> bool {
+    config["keyAuth"].is_object() || config["hasFilter"] == true
+}
+
 fn mode_name(mode: Mode) -> &'static str {
     match mode {
         Mode::Tui => "tui",
@@ -912,6 +1022,9 @@ fn ctx_data(
         "cwd": session.map(|session| session.cwd().to_path_buf()),
         "model": session.and_then(AgentSession::model),
         "thinkingLevel": session.map(|session| session.thinking_level().as_str()),
+        "scopedModels": session.map(|session| session.scoped_models().into_iter().map(|scoped| {
+            defined(json!({"model": scoped.model, "thinkingLevel": scoped.thinking_level.map(ThinkingLevel::as_str)}))
+        }).collect::<Vec<_>>()),
         "projectTrusted": trusted,
         "projectDir": session.map(AgentSession::project_dir),
         "aborted": cancel.is_cancelled(),
@@ -948,6 +1061,8 @@ struct JsExtension {
     completions: Arc<Mutex<HashMap<(String, String), Fetched>>>,
     /// The drawing requests that stopped the runtime, with their errors.
     crashed: Mutex<HashMap<String, String>>,
+    /// What its tools' `prepareLoadout` hooks made of the latest loadout.
+    loadout: Mutex<LoadoutChanges>,
 }
 
 /// An argument completion request: under way, or answered at a time.
@@ -960,6 +1075,19 @@ enum Fetched {
 const COMPLETIONS_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl JsExtension {
+    /// `read` of what the guest last reported for this extension, or of
+    /// its description once the factories ran for a later session.
+    fn latest<T>(&self, read: impl FnOnce(&Value) -> T) -> T {
+        let loaded = lock(&self.shared.loaded);
+        let latest = loaded
+            .iter()
+            .find(|description| description["id"].as_u64() == Some(self.id))
+            // A later run of the factories reported for a later session.
+            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
+            .unwrap_or(&self.description);
+        read(latest)
+    }
+
     async fn call(
         &self,
         ctx: &Context,
@@ -1014,7 +1142,7 @@ impl JsExtension {
         options: &RefreshOptions,
         lists: &mut Vec<ModelList>,
     ) {
-        let credential = registry.store().get(provider);
+        let credential = registry.read_credential(provider);
         let offline = self
             .refresh_phase(provider, registry, credential, false, options)
             .await;
@@ -1087,7 +1215,7 @@ impl JsExtension {
         registry: &ModelRegistry,
         lists: &[ModelList],
     ) -> Result<Option<Vec<Model>>, String> {
-        let Some(Credential::OAuth(credential)) = registry.store().get(provider) else {
+        let Some(Credential::OAuth(credential)) = registry.read_credential(provider) else {
             return Ok(None);
         };
         let mut own = registry.clone();
@@ -1246,14 +1374,7 @@ impl Extension for JsExtension {
     /// What the guest last reported: renderers registered once the session
     /// started draw too, as pi looks them up as it draws.
     fn renderers(&self) -> Renderers {
-        let loaded = lock(&self.shared.loaded);
-        let latest = loaded
-            .iter()
-            .find(|description| description["id"].as_u64() == Some(self.id))
-            // A later run of the factories reported for a later session.
-            .filter(|_| self.generation >= self.shared.serves.load(Ordering::SeqCst))
-            .unwrap_or(&self.description);
-        Renderers {
+        self.latest(|latest| Renderers {
             tools: list(&self.description["tools"])
                 .iter()
                 .filter(|tool| tool["hasRenderCall"] == true || tool["hasRenderResult"] == true)
@@ -1270,7 +1391,7 @@ impl Extension for JsExtension {
             entries: list(&latest["entryRenderers"]).iter().map(text).collect(),
             markdown: latest["markdownTransformer"] == true,
             code: latest["codeRenderer"] == true,
-        }
+        })
     }
 
     fn transform_markdown<'a>(
@@ -1320,7 +1441,9 @@ impl Extension for JsExtension {
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
             let mut lists = Vec::new();
-            for provider in list(&self.description["providers"]) {
+            // Providers registered once the session started refresh too.
+            let providers = self.latest(|latest| list(&latest["providers"]).to_vec());
+            for provider in &providers {
                 let (name, config) = (text(&provider["name"]), &provider["config"]);
                 if options
                     .providers
@@ -1338,9 +1461,89 @@ impl Extension for JsExtension {
                     let modified = self.modify_models(&name, registry, &own).await;
                     own.push(modified.map(ModelUpdate::Modified));
                 }
+                // pi refreshes availability after the models.
+                if checks_availability(config) && !options.cancel.is_cancelled() {
+                    let credential = registry.read_credential(&name);
+                    let found = self.shared.availability(&name, credential).await;
+                    let found = found.and_then(|found| {
+                        serde_json::from_value(found)
+                            .map_err(|err| format!("Invalid availability from {name}: {err}"))
+                    });
+                    own.push(found.map(ModelUpdate::Availability));
+                }
                 lists.extend(own.into_iter().map(|list| (name.clone(), list)));
             }
             lists
+        })
+    }
+
+    fn prepare_loadout(&self, _loadout: &Loadout) -> LoadoutChanges {
+        lock(&self.loadout).clone()
+    }
+
+    /// Runs the `prepareLoadout` hooks of its declared tools in the guest,
+    /// for [`Extension::prepare_loadout`] to give, and reports their errors
+    /// as pi does.
+    fn refresh_loadout<'a>(&'a self, loadout: &'a Loadout) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let hooked: Vec<String> = self.latest(|latest| {
+                list(&latest["tools"])
+                    .iter()
+                    .filter(|tool| tool["hasPrepareLoadout"] == true)
+                    .map(|tool| text(&tool["name"]))
+                    .collect()
+            });
+            let declares = loadout
+                .declared
+                .iter()
+                .any(|tool| hooked.iter().any(|name| name == tool.name()));
+            let session = self.shared.bridge.session();
+            let bound = *self.shared.bound.lock().await == self.generation + 1;
+            let (Some(session), true, true) = (session, declares, bound) else {
+                *lock(&self.loadout) = LoadoutChanges::default();
+                return;
+            };
+            let infos = |tools: &[RegisteredTool]| tools.iter().map(tool_info).collect::<Vec<_>>();
+            let registered = session.tools().with(|registry| registry.all());
+            let payload = json!({"extension": self.id, "loadout": {
+                "declared": infos(&loadout.declared),
+                "callable": infos(&loadout.callable),
+                "registered": infos(&registered),
+            }});
+            let (ui, _) = session.extension_binding();
+            let result = match self.shared.instance.call("loadout", &payload).await {
+                Ok(result) => result,
+                Err(err) => {
+                    ui.extension_error(
+                        &self.path_text(),
+                        "prepare_loadout",
+                        &err.to_string(),
+                        None,
+                    );
+                    Value::Null
+                }
+            };
+            for error in list(&result["errors"]) {
+                ui.extension_error(
+                    &self.path_text(),
+                    "prepare_loadout",
+                    &text(&error["error"]),
+                    error["stack"].as_str(),
+                );
+            }
+            let descriptions = result["descriptions"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, description)| {
+                    Some((name.clone(), description.as_str()?.to_owned()))
+                })
+                .collect();
+            let hidden = list(&result["hidden"]).iter().map(text).collect();
+            *lock(&self.loadout) = LoadoutChanges {
+                descriptions,
+                hidden,
+            };
         })
     }
 
@@ -1453,7 +1656,37 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         exposure,
         namespace,
         default_active: tool["defaultActive"] != false,
+        annotations: Some(tool["annotations"].clone()).filter(Value::is_object),
+        source: usize::try_from(extension)
+            .ok()
+            .and_then(|id| lock(&shared.sources).get(id).cloned()),
     }
+}
+
+/// pi's `ToolInfo` of `tool`, as `pi.getAllTools()` gives it.
+fn tool_info(tool: &RegisteredTool) -> Value {
+    let declaration = tool.tool.declaration();
+    let namespace = tool.namespace.as_ref().map(|namespace| {
+        defined(json!({
+            "name": namespace.name,
+            "description": namespace.description,
+            "instructions": namespace.instructions,
+        }))
+    });
+    let source = tool
+        .source
+        .clone()
+        .unwrap_or_else(|| yapi_core::extensions::builtin_source(&declaration.name));
+    defined(json!({
+        "name": declaration.name,
+        "description": declaration.description,
+        "parameters": declaration.parameters,
+        "promptGuidelines": Some(&tool.guidelines).filter(|guidelines| !guidelines.is_empty()),
+        "exposure": tool.exposure,
+        "namespace": namespace,
+        "annotations": tool.annotations,
+        "sourceInfo": source,
+    }))
 }
 
 /// A tool an extension registered; runs in the guest.
@@ -1642,6 +1875,14 @@ struct SessionBridge {
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
     /// The project directory of the sessions the factories run for.
     project_dir: PathBuf,
+    /// The run whose abort signal the guest holds, its id, and the task
+    /// that aborts it with the run.
+    run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
+    /// What cancels each running operation that a guest `signal` may
+    /// cancel, such as a dialog or a nested tool call, by the guest's id.
+    cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
+    /// The files `withFileMutationQueue` holds, by the host's id.
+    file_locks: Arc<Mutex<HashMap<u64, tokio::sync::OwnedMutexGuard<()>>>>,
 }
 
 fn not_bound() -> String {
@@ -1671,6 +1912,9 @@ impl SessionBridge {
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
+            run_signal: Mutex::default(),
+            cancels: Arc::default(),
+            file_locks: Arc::default(),
         })
     }
 
@@ -1774,6 +2018,36 @@ impl SessionBridge {
         Ok(())
     }
 
+    /// pi's `ctx.signal` for the guest: `{ id, aborted }` of the session's
+    /// current run, whose `abort` the guest gets as the run is aborted, or
+    /// `null` while no run is active.
+    fn run_signal(&self, session: &AgentSession) -> Value {
+        let Some(token) = session.run_cancel() else {
+            return Value::Null;
+        };
+        let mut watched = lock(&self.run_signal);
+        if let Some((current, id, _)) = &*watched
+            && *current == token
+        {
+            return json!({"id": id, "aborted": token.is_cancelled()});
+        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let owner = self.owner.get().cloned().unwrap_or_default();
+        let cancelled = token.clone();
+        let watch = self.runtime.spawn(async move {
+            cancelled.cancelled().await;
+            if let Some(host) = owner.upgrade() {
+                let _ = host.instance.call("abort", &json!({ "id": id })).await;
+            }
+        });
+        let aborted = token.is_cancelled();
+        // Only the latest run's signal can still abort.
+        if let Some((_, _, previous)) = watched.replace((token, id, watch)) {
+            previous.abort();
+        }
+        json!({"id": id, "aborted": aborted})
+    }
+
     /// Holds `job`, an update or a nested call of tool call `id` in the
     /// current guest step, until the step ends.
     fn hold(&self, id: &str, jobs: Jobs, job: crate::ops::Job, update: bool) {
@@ -1791,14 +2065,15 @@ impl SessionBridge {
     }
 }
 
-/// A dialog's `timeout` (milliseconds) from its request.
-fn dialog(payload: &Value) -> DialogOptions {
+/// A dialog's `timeout` (milliseconds) from its request, and what its
+/// `signal` cancels.
+fn dialog(payload: &Value, cancel: Option<CancellationToken>) -> DialogOptions {
     DialogOptions {
         timeout: payload["timeout"]
             .as_f64()
             .filter(|millis| *millis > 0.0)
             .map(|millis| std::time::Duration::from_millis(millis as u64)),
-        cancel: None,
+        cancel,
     }
 }
 
@@ -2013,6 +2288,7 @@ impl SessionBridge {
                     return terminal_json(&state.borrow());
                 }
             }
+
             // The working indicator's visibility and frames are not shown.
             _ => {}
         }
@@ -2067,6 +2343,17 @@ async fn reporting(session: AgentSession, work: impl Future<Output = Result<(), 
     }
 }
 
+/// Refreshes every provider's models and availability offline, as pi does
+/// after a provider is registered or unregistered. Failures go unreported,
+/// as in pi.
+async fn refresh_offline(session: AgentSession) {
+    let options = RefreshOptions {
+        allow_network: false,
+        ..RefreshOptions::default()
+    };
+    session.refresh_model_catalogs(options).await;
+}
+
 fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
@@ -2092,8 +2379,29 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
             "getEntry" => to_json(arg(0).and_then(|id| file.entry(&id).cloned())),
             "getLabel" => to_json(arg(0).and_then(|id| file.label(&id).map(str::to_owned))),
             "getBranch" => to_json(file.branch_path(arg(0).as_deref())),
-            "getHeader" => to_json(file.header()),
+            "getHeader" => to_json(file.header().cloned().map(FileEntry::Session)),
             "getEntries" => to_json(file.entries().collect::<Vec<_>>()),
+            "buildContextEntries" => to_json(
+                file.build_projection()
+                    .entries
+                    .iter()
+                    .map(|entry| entry.source)
+                    .collect::<Vec<_>>(),
+            ),
+            "buildSessionProjection" => {
+                let projection = file.build_projection();
+                let entries: Vec<Value> = projection
+                    .entries
+                    .iter()
+                    .map(|entry| json!({"sourceEntry": entry.source, "messages": entry.messages}))
+                    .collect();
+                json!({
+                    "entries": entries,
+                    "messages": projection.messages,
+                    "thinkingLevel": projection.thinking_level,
+                    "model": projection.model.map(|(provider, id)| json!({"provider": provider, "modelId": id})),
+                })
+            }
             "getSessionName" => to_json(file.name()),
             "isPersisted" => Value::Bool(file.is_persisted()),
             "getChildren" => {
@@ -2281,6 +2589,17 @@ impl Bridge for SessionBridge {
             }
             return Ok(Value::Null);
         }
+        if kind == "file.unlock" {
+            lock(&self.file_locks).remove(&payload["id"].as_u64().unwrap_or_default());
+            return Ok(Value::Null);
+        }
+        if kind == "op.cancel" {
+            let id = payload["id"].as_u64().unwrap_or_default();
+            if let Some(cancel) = lock(&self.cancels).remove(&id) {
+                cancel.cancel();
+            }
+            return Ok(Value::Null);
+        }
         if kind == "mcp.servers" {
             let servers = serde_json::from_value(payload["servers"].clone())
                 .map_err(|err| err.to_string())?;
@@ -2336,12 +2655,7 @@ impl Bridge for SessionBridge {
             "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
-                session
-                    .tools()
-                    .all()
-                    .into_iter()
-                    .map(|tool| json!({"name": tool.name, "description": tool.description, "parameters": tool.parameters}))
-                    .collect(),
+                session.tools().with(|registry| registry.all()).iter().map(tool_info).collect(),
             )),
             "tools.setActive" => {
                 let names = list(&payload["names"]).iter().map(text).collect();
@@ -2368,17 +2682,52 @@ impl Bridge for SessionBridge {
                 for tool in list(&payload["tools"]) {
                     session.tools().register(js_tool(&owner, extension, tool));
                 }
+                // Loadout hooks of tools registered since run too.
+                if let Some(Value::Array(tools)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == Some(extension))
+                    .map(|description| &mut description["tools"])
+                {
+                    tools.extend(list(&payload["tools"]).iter().cloned());
+                }
                 Ok(Value::Null)
             }
-            "commands.list" => Ok(Value::Array(
+            // pi applies providers registered and unregistered once extensions
+            // have loaded at once, then refreshes models offline.
+            "providers.register" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let described = &payload["provider"];
+                let provider = owner.provider(described).ok_or("Invalid provider")?;
                 session
-                    .extension_commands()
-                    .into_iter()
-                    .map(|resolved| {
-                        json!({"name": resolved.invocation, "description": resolved.command.description, "source": "extension", "sourceInfo": resolved.extension.source()})
-                    })
-                    .collect(),
-            )),
+                    .update_providers(|registry, apis| provider.install(registry, apis))
+                    .map_err(|err| err.to_string())?;
+                let extension = payload["extension"].as_u64();
+                if let Some(Value::Array(providers)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == extension)
+                    .map(|description| &mut description["providers"])
+                {
+                    providers.push(described.clone());
+                }
+                self.spawn(refresh_offline(session));
+                Ok(Value::Null)
+            }
+            "providers.unregister" => {
+                let owner = self.owner.get().and_then(Weak::upgrade).ok_or_else(not_bound)?;
+                let name = text(&payload["name"]);
+                for description in lock(&owner.loaded).iter_mut() {
+                    if let Value::Array(providers) = &mut description["providers"] {
+                        providers.retain(|provider| provider["name"] != name.as_str());
+                    }
+                }
+                session.update_providers(|registry, apis| {
+                    registry.unregister_provider(&name);
+                    apis.unregister_for(&name);
+                });
+                self.spawn(refresh_offline(session));
+                Ok(Value::Null)
+            }
+            "commands.list" => Ok(to_json(session.slash_commands())),
             "thinking.get" => Ok(Value::String(session.thinking_level().as_str().into())),
             "thinking.set" => {
                 if let Some(level) = payload["level"].as_str().and_then(ThinkingLevel::parse) {
@@ -2402,6 +2751,15 @@ impl Bridge for SessionBridge {
                     .is_using_oauth(&text(&payload["provider"])),
             )),
             "models.error" => Ok(to_json(session.registry().error())),
+            // pi's `AuthStatus`; `login_status` names the source or the
+            // environment it comes from.
+            "models.authStatus" => Ok(match session.registry().login_status(&text(&payload["provider"])) {
+                None => json!({"configured": false}),
+                Some(source) if matches!(source.as_str(), "runtime" | "stored" | "models_json_command" | "models_json_key" | "fallback") => {
+                    json!({"configured": true, "source": source})
+                }
+                Some(label) => json!({"configured": true, "source": "environment", "label": label}),
+            }),
             "models.providerName" => Ok(Value::String(
                 session.registry().provider_name(&text(&payload["provider"])),
             )),
@@ -2434,11 +2792,12 @@ impl Bridge for SessionBridge {
             "agent.contextUsage" => Ok(session.context_usage().map_or(Value::Null, |usage| {
                 json!({"tokens": usage.tokens, "contextWindow": usage.context_window, "percent": usage.percent()})
             })),
-            "agent.systemPrompt" => Ok(Value::String(
-                yapi_ai::transcript::current_system_message(&session.messages())
-                    .map(|system| system.text())
-                    .unwrap_or_default(),
-            )),
+            "agent.systemPrompt" => session.system_prompt().map(Value::String),
+            "agent.renderSystemPrompt" => {
+                let options = serde_json::from_value(payload["options"].clone()).map_err(|err| err.to_string())?;
+                session.render_prompt(&options).map(Value::String)
+            }
+            "agent.signal" => Ok(self.run_signal(&session)),
             "agent.shutdown" => {
                 session.extension_binding().0.shutdown();
                 Ok(Value::Null)
@@ -2461,6 +2820,8 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
+        // The stopped runtime's queued file mutations are over.
+        lock(&self.file_locks).clear();
         let Some(session) = self.session() else {
             return;
         };
@@ -2507,6 +2868,46 @@ impl Bridge for SessionBridge {
             .get(&id)
             .map(|stream| stream.hooks.clone())
             .unwrap_or_default()
+    }
+
+    fn stream_model(
+        &self,
+        payload: Value,
+        cancel: CancellationToken,
+    ) -> BoxFuture<'static, Result<EventStream, String>> {
+        let Some(session) = self.session() else {
+            return Box::pin(async { Err(not_bound()) });
+        };
+        Box::pin(async move {
+            let model: Model = serde_json::from_value(payload["model"].clone())
+                .map_err(|err| format!("Invalid model: {err}"))?;
+            let messages = serde_json::from_value(payload["context"]["messages"].clone())
+                .map_err(|err| format!("Invalid context: {err}"))?;
+            let options = crate::streams::options_from_json(&payload["options"], cancel);
+            let mut request = Request {
+                model,
+                messages,
+                options,
+            };
+            // pi's `prepareRequest`: the options' key and headers win over the registry's.
+            let key = request.options.api_key.take();
+            let headers = std::mem::take(&mut request.options.headers);
+            let auth = session.registry().auth(&request.model).await;
+            if let Err(message) = auth.apply(&mut request) {
+                let cancel = request.options.cancel.clone();
+                return Ok(yapi_ai::api::failed_stream(
+                    &request.model,
+                    &cancel,
+                    message,
+                ));
+            }
+            if key.is_some() {
+                request.options.api_key = key;
+            }
+            request.options.headers.extend(headers);
+            RequestHooks::prepare(&mut request).await;
+            Ok(session.apis().stream(request))
+        })
     }
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
@@ -2557,6 +2958,20 @@ impl Bridge for SessionBridge {
                     .map_err(|err| err.to_string())
             });
         }
+        // `withFileMutationQueue` holds the file until `file.unlock`, in the
+        // queue yapi's edit and write tools use, as pi's tools share it.
+        if kind == "file.lock" {
+            let (locks, id) = (
+                self.file_locks.clone(),
+                self.next_id.fetch_add(1, Ordering::Relaxed),
+            );
+            let path = PathBuf::from(text(&payload["path"]));
+            return Box::pin(async move {
+                let guard = yapi_core::tools::mutation::file_lock(&path).await;
+                lock(&locks).insert(id, guard);
+                Ok(json!(id))
+            });
+        }
         let Some(session) = self.session() else {
             return Box::pin(async { Err(not_bound()) });
         };
@@ -2586,6 +3001,24 @@ impl Bridge for SessionBridge {
         };
         let codemode = self.codemode.clone();
         let owner = self.owner.get().cloned().unwrap_or_default();
+        // The guest's `signal` cancels the operation through `op.cancel`,
+        // which may come as soon as this returns.
+        let signal = payload["signal"].as_u64().map(|id| {
+            let cancel = CancellationToken::new();
+            lock(&self.cancels).insert(id, cancel.clone());
+            (id, cancel)
+        });
+        let signal_cancel = signal.as_ref().map(|(_, cancel)| cancel.clone());
+        // `executeTool`'s `onUpdate` hears the nested tool's partial results.
+        let nested_updates = payload["updates"].as_u64().map(|id| {
+            let owner = owner.clone();
+            Arc::new(move |partial: ToolResult| {
+                if let Some(host) = owner.upgrade() {
+                    host.instance
+                        .post("nestedUpdate", &json!({"id": id, "partial": partial}));
+                }
+            }) as UpdateSink
+        });
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -2609,8 +3042,8 @@ impl Bridge for SessionBridge {
                             &text(&payload["toolCallId"]),
                             &text(&payload["name"]),
                             payload["args"].clone(),
-                            caller_cancel,
-                            None,
+                            signal_cancel.unwrap_or(caller_cancel),
+                            nested_updates,
                         )
                         .await;
                     Ok(
@@ -2764,6 +3197,21 @@ impl Bridge for SessionBridge {
                         "env": auth.env,
                     })))
                 }
+                // pi's `copyToClipboard`. OSC 52 reaches the terminal only in
+                // interactive mode, where stdout is not the mode's output.
+                "clipboard.copy" => {
+                    let terminal = session.extension_binding().1 == Mode::Tui;
+                    let emit = |sequence: &str| {
+                        if terminal {
+                            let mut out = std::io::stdout().lock();
+                            let _ = out.write_all(sequence.as_bytes());
+                            let _ = out.flush();
+                        }
+                    };
+                    yapi_core::clipboard::copy(&text(&payload["text"]), emit)
+                        .await
+                        .map(|()| Value::Null)
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)
@@ -2812,17 +3260,18 @@ impl Bridge for SessionBridge {
                     let title = text(&payload["title"]);
                     let dialog_kind = &kind["ui.".len()..];
                     session.ui_prompt_opened(dialog_kind, Some(&title));
+                    let options = dialog(&payload, signal_cancel);
                     let answer = match dialog_kind {
                         "select" => {
-                            let options = list(&payload["options"]).iter().map(text).collect();
-                            to_json(ui.select(&title, options, dialog(&payload)).await)
+                            let choices = list(&payload["options"]).iter().map(text).collect();
+                            to_json(ui.select(&title, choices, options).await)
                         }
                         "confirm" => Value::Bool(
-                            ui.confirm(&title, &text(&payload["message"]), dialog(&payload))
+                            ui.confirm(&title, &text(&payload["message"]), options)
                                 .await,
                         ),
                         "input" => to_json(
-                            ui.input(&title, payload["placeholder"].as_str(), dialog(&payload))
+                            ui.input(&title, payload["placeholder"].as_str(), options)
                                 .await,
                         ),
                         _ => to_json(ui.editor(&title, payload["prefill"].as_str()).await),
@@ -2835,6 +3284,17 @@ impl Bridge for SessionBridge {
                 other => Err(format!("{other} is not available in yapi extensions yet")),
             }
         });
+        let operation: BoxFuture<'static, Result<Value, String>> = match signal {
+            Some((id, _)) => {
+                let cancels = self.cancels.clone();
+                Box::pin(async move {
+                    let result = operation.await;
+                    lock(&cancels).remove(&id);
+                    result
+                })
+            }
+            None => operation,
+        };
         match caller_jobs {
             Some(jobs) => {
                 let (job, result) = crate::ops::job(operation);

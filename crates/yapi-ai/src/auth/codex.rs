@@ -81,7 +81,7 @@ fn credential(token: Token) -> Result<OAuthCredential, AuthError> {
     Ok(OAuthCredential {
         access: token.access,
         refresh: token.refresh,
-        expires: token.expires,
+        expires: token.expires as f64,
         extra,
     })
 }
@@ -160,8 +160,10 @@ impl CodexOAuth {
     }
 
     async fn login_browser(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
-        let state = yapi_types::time::random_hex(16);
+        let pkce = pkce::generate()?;
+        let state = yapi_types::time::try_random_bytes::<16>()
+            .map(|bytes| yapi_types::time::hex(&bytes))
+            .map_err(AuthError::random)?;
         // Port 1455 is shared with the Codex CLI; when it is taken, the pasted redirect URL is used.
         let mut server = start_code_server(
             "OpenAI",
@@ -169,6 +171,7 @@ impl CodexOAuth {
             self.callback_port,
             "/auth/callback",
             Some(state.clone()),
+            false,
             interaction.cancel(),
         )
         .await
@@ -184,9 +187,8 @@ impl CodexOAuth {
             &self.redirect_uri,
         )
         .await?;
-        drop(server);
         let code = match received {
-            Received::Callback(code) => Some(code),
+            Received::Callback((code, _)) => Some(code),
             Received::Manual(input) => {
                 let (code, pasted_state) = parse_authorization_input(&input);
                 if pasted_state.is_some_and(|pasted| pasted != state) {

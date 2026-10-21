@@ -191,6 +191,20 @@ pub enum LoginKind {
     ApiKey,
 }
 
+/// What a pi-ai `Provider` from an extension makes available for the stored
+/// credential, as pi's `Models` finds it each time availability refreshes.
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+pub struct Availability {
+    /// Where its API key `check` finds a key; `None` when it finds none.
+    pub source: Option<String>,
+    /// The ids of the chat models its `filterModels` keeps; `None` keeps
+    /// every one.
+    pub chat: Option<HashSet<String>>,
+    /// The ids of the models of each type kept across every type, as pi's
+    /// `getAllAvailable` keeps them; `None` keeps every one.
+    pub all: Option<HashMap<String, HashSet<String>>>,
+}
+
 /// All known models with their configuration.
 #[derive(Clone, Default)]
 pub struct ModelRegistry {
@@ -203,6 +217,9 @@ pub struct ModelRegistry {
     extension_keys: HashSet<String>,
     /// Providers extensions register.
     extension_providers: HashSet<String>,
+    /// The `models.json` entries extension providers replaced, by provider;
+    /// `None` where there was none.
+    replaced: HashMap<String, Option<ProviderConfig>>,
     error: Option<String>,
     /// Classifier models, built-in and refreshed.
     classifiers: Vec<ClassifierModel>,
@@ -224,6 +241,9 @@ pub struct ModelRegistry {
     /// API-key auth of extension providers, with where the credential
     /// comes from when nothing is stored, `None` when it is not configured.
     key_auths: IndexMap<String, (Arc<dyn KeyAuth>, Option<String>)>,
+    /// What extension providers' API key checks and model filters make
+    /// available for the stored credential, by provider.
+    filters: IndexMap<String, Availability>,
     /// Where refreshed catalogs persist.
     models_store: Option<ModelsStore>,
 }
@@ -897,14 +917,18 @@ impl ModelRegistry {
         &self.images
     }
 
-    /// Classifier models whose providers are configured.
+    /// Classifier models whose providers are configured and keep them.
     pub fn available_classifiers(&self) -> Vec<&ClassifierModel> {
-        self.configured(&self.classifiers, |model| &model.provider)
+        let mut models = self.configured(&self.classifiers, |model| &model.provider);
+        models.retain(|model| self.keeps(&model.provider, Some("classifier"), &model.id));
+        models
     }
 
-    /// Image models whose providers are configured.
+    /// Image models whose providers are configured and keep them.
     pub fn available_image_models(&self) -> Vec<&ImageModel> {
-        self.configured(&self.images, |model| &model.provider)
+        let mut models = self.configured(&self.images, |model| &model.provider);
+        models.retain(|model| self.keeps(&model.provider, Some("image"), &model.id));
+        models
     }
 
     /// The `models` whose providers are configured.
@@ -918,6 +942,21 @@ impl ModelRegistry {
                     .or_insert_with(|| self.has_auth(provider(model)))
             })
             .collect()
+    }
+
+    /// Whether `provider` keeps its model `id` for the stored credential: of
+    /// `kind` across every type, or as a chat model when `kind` is `None`.
+    fn keeps(&self, provider: &str, kind: Option<&str>, id: &str) -> bool {
+        let Some(filter) = self.filters.get(provider) else {
+            return true;
+        };
+        match kind {
+            None => filter.chat.as_ref().is_none_or(|ids| ids.contains(id)),
+            Some(kind) => filter
+                .all
+                .as_ref()
+                .is_none_or(|all| all.get(kind).is_some_and(|ids| ids.contains(id))),
+        }
     }
 
     /// Credentials for a provider-level request with `base_url`, `api` and
@@ -1025,7 +1064,10 @@ impl ModelRegistry {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
         }
-        self.extension_providers.insert(provider.to_owned());
+        if self.extension_providers.insert(provider.to_owned()) {
+            let replaced = self.config.providers.get(provider).cloned();
+            self.replaced.insert(provider.to_owned(), replaced);
+        }
         match config.models.as_mut() {
             Some(models) => {
                 let typed = models.extract_if(.., |model| is_typed(model)).collect();
@@ -1036,6 +1078,34 @@ impl ModelRegistry {
             }
         }
         self.config.providers.insert(provider.to_owned(), config);
+        self.rebuild();
+    }
+
+    /// Whether an extension registered `provider` and has not unregistered it.
+    pub fn is_extension_provider(&self, provider: &str) -> bool {
+        self.extension_providers.contains(provider)
+    }
+
+    /// Removes the provider an extension registered as `provider`, with its
+    /// sign-ins, availability and implementations, and restores the
+    /// built-in or `models.json` provider it replaced; pi's
+    /// `unregisterProvider`. Does nothing for a provider no extension
+    /// registered.
+    pub fn unregister_provider(&mut self, provider: &str) {
+        if !self.extension_providers.remove(provider) {
+            return;
+        }
+        self.extension_keys.remove(provider);
+        self.extension_typed.shift_remove(provider);
+        self.extension_models.shift_remove(provider);
+        self.oauth.shift_remove(provider);
+        self.key_auths.shift_remove(provider);
+        self.filters.shift_remove(provider);
+        self.operations.retain(|(owner, _), _| owner != provider);
+        match self.replaced.remove(provider).flatten() {
+            Some(config) => self.config.providers.insert(provider.to_owned(), config),
+            None => self.config.providers.shift_remove(provider),
+        };
         self.rebuild();
     }
 
@@ -1085,16 +1155,26 @@ impl ModelRegistry {
         }
     }
 
-    /// Resolves `provider`'s API key with `auth` instead of the environment.
-    /// `source` says where its credential comes from when nothing is stored,
-    /// `None` when it is not configured.
-    pub fn register_key_auth(
-        &mut self,
-        provider: &str,
-        auth: Arc<dyn KeyAuth>,
-        source: Option<String>,
-    ) {
-        self.key_auths.insert(provider.to_owned(), (auth, source));
+    /// Resolves `provider`'s API key with `auth` instead of the environment,
+    /// and signs in with its `login`. The provider is not configured without
+    /// a stored credential until [`ModelRegistry::set_availability`] finds a key.
+    pub fn register_key_auth(&mut self, provider: &str, auth: Arc<dyn KeyAuth>) {
+        self.key_auths.insert(provider.to_owned(), (auth, None));
+    }
+
+    /// `provider`'s API-key auth from an extension, if it has one.
+    pub fn key_auth(&self, provider: &str) -> Option<&Arc<dyn KeyAuth>> {
+        self.key_auths.get(provider).map(|(auth, _)| auth)
+    }
+
+    /// Applies what extension provider `provider` makes available for the
+    /// stored credential: where its key auth finds a key, and the models
+    /// its filters keep.
+    pub fn set_availability(&mut self, provider: &str, availability: Availability) {
+        if let Some((_, source)) = self.key_auths.get_mut(provider) {
+            source.clone_from(&availability.source);
+        }
+        self.filters.insert(provider.to_owned(), availability);
     }
 
     /// Uses `models` as `provider`'s chat models, as an extension's legacy
@@ -1173,6 +1253,18 @@ impl ModelRegistry {
 
     fn credential(&self, provider: &str) -> Option<Credential> {
         self.store.get(provider)
+    }
+
+    /// `provider`'s credential as pi's `RuntimeCredentials.read` gives it to
+    /// providers: a runtime key as an API key credential, else the stored one.
+    pub fn read_credential(&self, provider: &str) -> Option<Credential> {
+        match self.runtime_keys.get(provider) {
+            Some(key) => Some(Credential::ApiKey(ApiKeyCredential {
+                key: Some(key.clone()),
+                env: None,
+            })),
+            None => self.credential(provider),
+        }
     }
 
     /// The credential store behind this registry.
@@ -1322,19 +1414,34 @@ impl ModelRegistry {
         self.store.list()
     }
 
-    /// Models with credentials. A GitHub Copilot sign-in limits its models to
-    /// those the account enables.
+    /// Models with credentials, as pi's `getAvailable`. A GitHub Copilot
+    /// sign-in limits its models to those the account enables, and an
+    /// extension provider's `filterModels` to those it keeps.
     pub fn available(&self) -> Vec<&Model> {
+        self.available_chat(None)
+    }
+
+    /// Chat models with credentials as pi's `getAvailableOfType("chat")`
+    /// lists them, where a provider's `filterAllModels` decides over its
+    /// `filterModels`.
+    pub fn available_of_all_types(&self) -> Vec<&Model> {
+        self.available_chat(Some("chat"))
+    }
+
+    /// Chat models with credentials that their providers keep, as chat
+    /// models when `kind` is `None`, else across every type.
+    fn available_chat(&self, kind: Option<&str>) -> Vec<&Model> {
         let copilot_ids = match self.credential("github-copilot") {
             Some(Credential::OAuth(credential)) => copilot::available_model_ids(&credential),
             _ => None,
         };
         let mut models = self.configured(&self.models, |model| &model.provider);
         models.retain(|model| {
-            model.provider != "github-copilot"
+            (model.provider != "github-copilot"
                 || copilot_ids
                     .as_ref()
-                    .is_none_or(|ids| ids.contains(&model.id))
+                    .is_none_or(|ids| ids.contains(&model.id)))
+                && self.keeps(&model.provider, kind, &model.id)
         });
         models
     }
@@ -1384,12 +1491,14 @@ impl ModelRegistry {
     /// Credentials for a request to `model`, with its configured headers. A
     /// stored OAuth token about to expire is refreshed first.
     pub async fn auth(&self, model: &Model) -> Auth {
-        self.auth_valid_for(model, OAUTH_MINIMUM_VALIDITY_MS).await
+        self.auth_valid_for(model, None).await
     }
 
-    /// [`ModelRegistry::auth`], refreshing a stored OAuth token that is valid
-    /// for less than `min_validity_ms`, as pi's `minOAuthValidityMs`.
-    pub async fn auth_valid_for(&self, model: &Model, min_validity_ms: u64) -> Auth {
+    /// [`ModelRegistry::auth`] with pi's `minOAuthValidityMs`: a stored OAuth
+    /// token valid for less than five minutes or `min_validity_ms` is
+    /// refreshed first, and with `min_validity_ms` a refreshed token valid for
+    /// less than that is an error.
+    pub async fn auth_valid_for(&self, model: &Model, min_validity_ms: Option<u64>) -> Auth {
         let provider = model.provider.as_str();
         let mut auth = Auth {
             headers: self.headers(model).await,
@@ -1504,14 +1613,14 @@ impl ModelRegistry {
         auth
     }
 
-    /// Request credentials from a stored OAuth token, refreshed first when
-    /// it expires within `min_validity_ms`. `Ok(None)` means the provider was
-    /// logged out meanwhile.
+    /// Request credentials from a stored OAuth token, refreshed as
+    /// [`ModelRegistry::auth_valid_for`] says. `Ok(None)` means the provider
+    /// was logged out meanwhile.
     async fn oauth_auth(
         &self,
         provider: &str,
         stored: OAuthCredential,
-        min_validity_ms: u64,
+        min_validity_ms: Option<u64>,
     ) -> Result<Option<OAuthAuth>, String> {
         let Some(flow) = self.oauth_flow(provider) else {
             // yapi has no sign-in for this provider: use the token as stored.
@@ -1520,10 +1629,20 @@ impl ModelRegistry {
                 ..OAuthAuth::default()
             }));
         };
-        let refreshed = self.refreshed_oauth(provider, flow.as_ref(), stored, min_validity_ms);
+        let minimum = min_validity_ms.map_or(OAUTH_MINIMUM_VALIDITY_MS, |min| {
+            min.max(OAUTH_MINIMUM_VALIDITY_MS)
+        });
+        let refreshed = self.refreshed_oauth(provider, flow.as_ref(), stored, minimum);
         let Some(credential) = refreshed.await? else {
             return Ok(None);
         };
+        if min_validity_ms.is_some()
+            && (crate::auth::now_ms() + minimum) as f64 >= credential.expires
+        {
+            return Err(format!(
+                "OAuth refresh returned a token that expires too soon for {provider}"
+            ));
+        }
         flow.to_auth(&credential)
             .await
             .map(Some)
@@ -1542,7 +1661,7 @@ impl ModelRegistry {
         min_validity_ms: u64,
     ) -> Result<Option<OAuthCredential>, String> {
         let expires_soon = |credential: &OAuthCredential| {
-            crate::auth::now_ms() + min_validity_ms >= credential.expires
+            (crate::auth::now_ms() + min_validity_ms) as f64 >= credential.expires
         };
         if !expires_soon(&stored) {
             return Ok(Some(stored));
@@ -1623,7 +1742,8 @@ impl ModelRegistry {
     }
 
     /// Runs a sign-in and stores the credential. An API key login asks for the
-    /// key; an OAuth login runs the provider's flow.
+    /// key, with an extension provider's own `login` when it has one; an
+    /// OAuth login runs the provider's flow.
     pub async fn login(
         &self,
         provider: &str,
@@ -1632,8 +1752,8 @@ impl ModelRegistry {
         options: &LoginOptions,
     ) -> Result<Credential, AuthError> {
         interaction.check()?;
-        let credential = match kind {
-            LoginKind::OAuth => {
+        let credential = match (kind, self.key_auth(provider)) {
+            (LoginKind::OAuth, _) => {
                 let flow = self.oauth_flow(provider).ok_or_else(|| {
                     AuthError::Failed(format!(
                         "{} does not support oauth login",
@@ -1642,12 +1762,13 @@ impl ModelRegistry {
                 })?;
                 Credential::OAuth(flow.login(interaction, options).await?)
             }
-            LoginKind::ApiKey if key_auth::is_custom(provider) => Credential::ApiKey(
+            (LoginKind::ApiKey, Some(own)) => Credential::ApiKey(own.login(interaction).await?),
+            (LoginKind::ApiKey, None) if key_auth::is_custom(provider) => Credential::ApiKey(
                 key_auth::login(provider, interaction)
                     .await
                     .unwrap_or_else(|| Err(AuthError::failed("No login for provider")))?,
             ),
-            LoginKind::ApiKey => {
+            (LoginKind::ApiKey, None) => {
                 let name = providers::info(provider)
                     .and_then(|info| info.api_key)
                     .map_or("API key", |method| method.name);

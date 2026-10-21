@@ -22,8 +22,8 @@ fn parse(text: &str) -> IndexMap<String, IndexMap<String, String>> {
     let mut current: Option<String> = None;
     let mut parent: Option<String> = None;
     for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+        let trimmed = without_comment(line).trim();
+        if trimmed.is_empty() {
             continue;
         }
         if let Some(header) = trimmed
@@ -55,6 +55,19 @@ fn parse(text: &str) -> IndexMap<String, IndexMap<String, String>> {
         }
     }
     sections
+}
+
+/// The text before a comment, which starts with `#` or `;` at the start of
+/// the line or after whitespace.
+fn without_comment(line: &str) -> &str {
+    let mut after_space = true;
+    for (index, c) in line.char_indices() {
+        if after_space && matches!(c, '#' | ';') {
+            return &line[..index];
+        }
+        after_space = c.is_whitespace();
+    }
+    line
 }
 
 /// A path setting, with a leading `~` as the home directory.
@@ -151,7 +164,7 @@ mod tests {
             "[default]\nregion = us-west-2\n\n[profile dev]\nrole_arn = arn:aws:iam::1:role/r\nsource_profile = default\ns3 =\n  max_concurrent_requests = 10\n[sso-session corp]\nsso_region = eu-west-1\n[ignored]\nx = 1\n",
         );
         let credentials = parse(
-            "# keys\n[default]\naws_access_key_id = AKID\naws_secret_access_key = secret\nregion = eu-central-1\n",
+            "# keys\n[default]\naws_access_key_id = AKID\naws_secret_access_key = secret\nregion = eu-central-1\n[prod] # production account\nregion = eu-west-1 # Ireland\nsecret = a#b;c\n  ; indented\n",
         );
         let profiles = merge(config, credentials);
         let default = &profiles.profiles["default"];
@@ -160,6 +173,9 @@ mod tests {
         assert_eq!(profiles.profiles["dev"]["source_profile"], "default");
         assert_eq!(profiles.profiles["dev"]["s3.max_concurrent_requests"], "10");
         assert_eq!(profiles.sso_sessions["corp"]["sso_region"], "eu-west-1");
+        // A comment starts at `#` or `;` after whitespace, as in smithy.
+        assert_eq!(profiles.profiles["prod"]["region"], "eu-west-1");
+        assert_eq!(profiles.profiles["prod"]["secret"], "a#b;c");
         assert!(!profiles.profiles.contains_key("ignored"));
     }
 }

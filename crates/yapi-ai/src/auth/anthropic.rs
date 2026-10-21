@@ -58,7 +58,7 @@ fn credential(token: Token) -> OAuthCredential {
     OAuthCredential {
         access: token.access,
         refresh: token.refresh,
-        expires: expiry(token.expires_in, EXPIRY_MARGIN_MS),
+        expires: expiry(token.expires_in, EXPIRY_MARGIN_MS) as f64,
         extra: Map::new(),
     }
 }
@@ -152,13 +152,14 @@ impl AnthropicOAuth {
     }
 
     async fn login_browser(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
+        let pkce = pkce::generate()?;
         let mut server = start_code_server(
             "Anthropic",
             &callback_host(),
             self.callback_port,
             "/callback",
             Some(pkce.verifier.clone()),
+            false,
             interaction.cancel(),
         )
         .await
@@ -174,9 +175,8 @@ impl AnthropicOAuth {
             &self.redirect_uri,
         )
         .await?;
-        drop(server);
         let (code, state) = match received {
-            Received::Callback(code) => (Some(code), pkce.verifier.clone()),
+            Received::Callback((code, _)) => (Some(code), pkce.verifier.clone()),
             Received::Manual(input) => {
                 let (code, state) = parse_authorization_input(&input);
                 if state.as_ref().is_some_and(|state| *state != pkce.verifier) {
@@ -203,7 +203,7 @@ impl AnthropicOAuth {
         &self,
         interaction: &Interaction,
     ) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
+        let pkce = pkce::generate()?;
         interaction.notify(AuthEvent::AuthUrl {
             url: self.authorize_url(&pkce.challenge, &pkce.verifier, &self.copy_code_redirect_uri),
             instructions: Some(

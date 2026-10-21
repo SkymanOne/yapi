@@ -6,6 +6,7 @@ pub mod auth_guidance;
 pub mod bash_executor;
 pub mod bug_report;
 pub mod cache_stats;
+pub mod clipboard;
 pub mod compaction;
 pub mod config;
 pub mod docs;

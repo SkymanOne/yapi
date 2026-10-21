@@ -225,6 +225,11 @@ impl Apis {
         self.providers.insert(key, implementation);
     }
 
+    /// Drops the streams [`Apis::register_for`] added for `provider`.
+    pub fn unregister_for(&mut self, provider: &str) {
+        self.providers.retain(|(owner, _), _| owner != provider);
+    }
+
     /// The implementation for an API id.
     pub fn get(&self, api: &str) -> Option<Arc<dyn Provider>> {
         self.registered.get(api).cloned().or_else(|| builtin(api))

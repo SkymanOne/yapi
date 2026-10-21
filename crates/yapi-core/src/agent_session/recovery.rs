@@ -152,7 +152,9 @@ impl AgentSession {
         waited
     }
 
-    pub(super) async fn handle_post_run(&self, cancel: &CancellationToken) -> bool {
+    /// pi's post-run step: whether to run the agent again, or the error of
+    /// an invalid compaction setting, which ends the prompt.
+    pub(super) async fn handle_post_run(&self, cancel: &CancellationToken) -> Result<bool, String> {
         let (last, tool_results) = {
             let mut recovery = lock(&self.inner.recovery);
             (
@@ -162,19 +164,19 @@ impl AgentSession {
         };
         if cancel.is_cancelled() {
             self.finish_cancelled_retry();
-            return false;
+            return Ok(false);
         }
         let Some((message, entry_id)) = last else {
-            return self.has_queued();
+            return Ok(self.has_queued());
         };
         if self.is_retryable(&message)
             && self.prepare_retry(&message, entry_id.clone(), cancel).await
         {
-            return !cancel.is_cancelled();
+            return Ok(!cancel.is_cancelled());
         }
         if cancel.is_cancelled() {
             self.finish_cancelled_retry();
-            return false;
+            return Ok(false);
         }
         if message.stop_reason == StopReason::Error {
             let attempt = std::mem::take(&mut lock(&self.inner.recovery).retry_attempt);
@@ -188,18 +190,19 @@ impl AgentSession {
         }
         if self
             .check_compaction(&message, entry_id, tool_results, cancel, true)
-            .await
+            .await?
         {
-            return !cancel.is_cancelled();
+            return Ok(!cancel.is_cancelled());
         }
-        !cancel.is_cancelled() && self.has_queued()
+        Ok(!cancel.is_cancelled() && self.has_queued())
     }
 
     /// pi's check before a prompt is sent: [`Self::check_compaction`] for
     /// the context's last response, aborted ones included. It catches
     /// aborted responses and sessions resumed above the threshold. An abort
-    /// stops the compaction, not the prompt.
-    pub(super) async fn compact_before_prompt(&self) {
+    /// stops the compaction, not the prompt. An invalid compaction setting
+    /// fails the prompt with its error, as pi's check throws.
+    pub(super) async fn compact_before_prompt(&self) -> Result<(), String> {
         let last = self.with_session(|session| {
             let branch = session.branch_path(None);
             build_projection(&branch)
@@ -220,22 +223,31 @@ impl AgentSession {
                 })
         });
         let Some((message, entry_id)) = last else {
-            return;
+            return Ok(());
         };
         let cancel = CancellationToken::new();
         *lock(&self.inner.cancel) = Some(cancel.clone());
-        self.check_compaction(&message, entry_id, Vec::new(), &cancel, false)
+        let checked = self
+            .check_compaction(&message, entry_id, Vec::new(), &cancel, false)
             .await;
         *lock(&self.inner.cancel) = None;
+        checked.map(drop)
     }
 
     /// pi's `_compactBeforeNextAssistantResponse`, before each turn of a run
     /// after the first: threshold compaction when the context the next
-    /// request would send exceeds the threshold.
-    pub(super) async fn compact_before_next_response(&self, cancel: &CancellationToken) {
+    /// request would send exceeds the threshold. An invalid compaction
+    /// setting is the error that ends the run, as pi's hook throws.
+    pub(super) async fn compact_before_next_response(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<(), String> {
         let Some(model) = self.model().filter(|model| model.context_window > 0) else {
-            return;
+            return Ok(());
         };
+        if let Some(error) = lock(&self.inner.settings).compaction_error(Some(&model)) {
+            return Err(error);
+        }
         let settings =
             CompactionSettings::resolve(lock(&self.inner.settings).settings(), Some(&model));
         let tokens = self.with_session(|session| {
@@ -246,10 +258,12 @@ impl AgentSession {
             self.run_auto_compaction(CompactionReason::Threshold, false, cancel)
                 .await;
         }
+        Ok(())
     }
 
-    /// pi's `_checkCompaction`: overflow recovery, then threshold compaction.
-    /// An aborted `message` is skipped when `skip_aborted`.
+    /// pi's `_checkCompaction`: overflow recovery, then threshold compaction,
+    /// or the error of an invalid compaction setting. An aborted `message` is
+    /// skipped when `skip_aborted`.
     async fn check_compaction(
         &self,
         message: &AssistantMessage,
@@ -257,14 +271,18 @@ impl AgentSession {
         tool_results: Vec<String>,
         cancel: &CancellationToken,
         skip_aborted: bool,
-    ) -> bool {
-        let Some(model) = self.model() else {
-            return false;
+    ) -> Result<bool, String> {
+        let model = self.model();
+        if let Some(error) = lock(&self.inner.settings).compaction_error(model.as_ref()) {
+            return Err(error);
+        }
+        let Some(model) = model else {
+            return Ok(false);
         };
         let settings =
             CompactionSettings::resolve(lock(&self.inner.settings).settings(), Some(&model));
         if !settings.enabled || (skip_aborted && message.stop_reason == StopReason::Aborted) {
-            return false;
+            return Ok(false);
         }
         let message_model = self.model_for_message(message);
         let context_window = message_model.as_ref().unwrap_or(&model).context_window;
@@ -361,7 +379,7 @@ impl AgentSession {
                 CompactionCheck::None
             }
         });
-        match check {
+        Ok(match check {
             CompactionCheck::None => false,
             CompactionCheck::Threshold => {
                 self.run_auto_compaction(CompactionReason::Threshold, false, cancel)
@@ -381,7 +399,7 @@ impl AgentSession {
                 self.run_auto_compaction(CompactionReason::Overflow, will_retry, cancel)
                     .await
             }
-        }
+        })
     }
 
     /// A summarizer for `model` with the session's credentials and retry
@@ -396,7 +414,7 @@ impl AgentSession {
     ) -> Summarizer<'a> {
         Summarizer {
             model,
-            apis: &self.inner.apis,
+            apis: self.apis(),
             auth: self.registry().auth(model).await,
             thinking_level,
             retry: self.retry_policy(),

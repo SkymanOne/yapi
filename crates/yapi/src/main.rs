@@ -361,7 +361,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
             Some(_) => Some(yapi_types::settings::TuiMode::Fullscreen),
             None => None,
         };
-        let startup = match start(parsed, None, &extensions, true, run_settings) {
+        let startup = match start(parsed, None, &extensions, true, run_settings).await {
             Ok(startup) => startup,
             Err(code) => return code,
         };
@@ -395,7 +395,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
     } else {
         startup::read_piped_stdin()
     };
-    let startup = match start(parsed, stdin, &extensions, false, run_settings) {
+    let startup = match start(parsed, stdin, &extensions, false, run_settings).await {
         Ok(startup) => startup,
         Err(code) => return code,
     };
@@ -431,21 +431,24 @@ async fn run(parsed: &mut args::Args) -> u8 {
 }
 
 /// [`startup::start`], or the exit code once its error is printed; a
-/// cancelled prompt exits quietly.
-fn start(
+/// cancelled prompt exits quietly. `--api-key` then applies as in pi.
+async fn start(
     parsed: &mut args::Args,
     stdin: Option<String>,
     extensions: &startup::Extensions,
     interactive: bool,
     run_settings: startup::RunSettings,
 ) -> Result<startup::Startup, u8> {
-    startup::start(parsed, stdin, extensions, interactive, run_settings).map_err(|err| {
-        if err.is::<startup::Cancelled>() {
-            return 0;
-        }
-        eprintln!("{err}");
-        1
-    })
+    let startup =
+        startup::start(parsed, stdin, extensions, interactive, run_settings).map_err(|err| {
+            if err.is::<startup::Cancelled>() {
+                return 0;
+            }
+            eprintln!("{err}");
+            1
+        })?;
+    startup::sync_runtime_key(parsed, &startup.session).await;
+    Ok(startup)
 }
 
 /// Asks whether to trust the project when its resources need trust and

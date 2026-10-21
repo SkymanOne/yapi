@@ -8,7 +8,6 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use yapi_tui::input::{Input, InputBuffer, escape_timeout};
 use yapi_tui::keys::Keys;
 use yapi_tui::screen::MainScreen;
 use yapi_tui::terminal::{ColorQuery, KeyboardProtocol};
@@ -17,7 +16,7 @@ use super::config_selector::ConfigSelector;
 use super::selectors::{Action, ChoiceDialog, Outcome, Selector, Ui};
 use super::session_selector::{SessionSelector, Sources};
 use super::{
-    COLOR_QUERY_TIMEOUT, color_mode, decode_input, emit, home_dir, keybindings, load_theme,
+    COLOR_QUERY_TIMEOUT, TerminalInput, color_mode, emit, home_dir, keybindings, load_theme,
     terminal_enter, terminal_leave,
 };
 
@@ -105,9 +104,9 @@ fn run_selector(
     let mut protocol = KeyboardProtocol::default();
     let mut query = ColorQuery::new();
     emit(&terminal_enter(&mut protocol));
-    let mut buffer = InputBuffer::new();
+    let mut input = TerminalInput::new();
     let mut keys_in: Vec<String> = Vec::new();
-    let read = |buffer: &mut InputBuffer,
+    let read = |input: &mut TerminalInput,
                 protocol: &mut KeyboardProtocol,
                 query: &mut ColorQuery,
                 timeout: Duration|
@@ -118,26 +117,26 @@ fn run_selector(
         }
         let mut bytes = [0u8; 4096];
         let count = std::io::Read::read(&mut std::io::stdin(), &mut bytes).unwrap_or(0);
-        let mut keys = decode_input(buffer, protocol, &bytes[..count]);
+        let mut keys = input.decode(protocol, &bytes[..count]);
         keys.retain(|key| !query.consume(key));
         keys
     };
     let deadline = Instant::now() + COLOR_QUERY_TIMEOUT;
     while !query.is_done() && Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
-        keys_in.extend(read(&mut buffer, &mut protocol, &mut query, remaining));
+        keys_in.extend(read(&mut input, &mut protocol, &mut query, remaining));
     }
     let (theme, _) = load_theme(
         theme_setting,
         &super::themes::ThemeFiles::default(),
         agent_dir,
         &query.colors(),
-        color_mode(),
+        // pi applies the trueColor setting after its startup prompts.
+        color_mode(None),
     );
     let mut keys = keybindings::load(agent_dir, Keys::detect(protocol.kitty));
     keys.set_kitty(protocol.kitty);
     let mut screen = MainScreen::new();
-    let escape_wait = escape_timeout(|name| std::env::var(name).ok());
     let mut chosen = None;
     'outer: loop {
         let ui = Ui {
@@ -160,17 +159,9 @@ fn run_selector(
                 _ => {}
             }
         }
-        let wait = buffer
-            .timeout(escape_wait)
-            .unwrap_or(Duration::from_millis(250));
-        keys_in = read(&mut buffer, &mut protocol, &mut query, wait);
-        if keys_in.is_empty() {
-            keys_in.extend(buffer.flush().into_iter().filter_map(|input| match input {
-                Input::Key(key) => Some(key),
-                Input::Paste(_) => None,
-            }));
-            keys_in.extend(protocol.flush());
-        }
+        let wait = input.wait().unwrap_or(Duration::from_millis(250));
+        keys_in = read(&mut input, &mut protocol, &mut query, wait);
+        keys_in.extend(input.expire(&mut protocol));
         keys.set_kitty(protocol.kitty);
     }
     if clear {

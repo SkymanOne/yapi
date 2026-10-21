@@ -435,6 +435,8 @@ impl McpExtension {
                 exposure: entry.config.tool_exposure(&tool.name).tool_exposure(),
                 namespace: Some(namespace.clone()),
                 default_active: true,
+                annotations: super::tools::annotations(tool),
+                source: Some(builtin_source("mcp")),
             };
             shared.definitions.insert(name, definition.clone());
             registered.push(definition);
@@ -522,6 +524,8 @@ impl McpExtension {
                 exposure: next.tool_exposure(),
                 namespace: None,
                 default_active: true,
+                annotations: Some(serde_json::json!({"readOnlyHint": true})),
+                source: Some(builtin_source("mcp")),
             });
         }
         if previous == Some(McpExposure::Direct) {

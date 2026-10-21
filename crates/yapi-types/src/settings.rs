@@ -98,13 +98,25 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_budgets: Option<ThinkingBudgets>,
     /// 0 to 3.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub editor_padding_x: Option<u8>,
     /// 0 or 1.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "whole",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub output_pad: Option<u8>,
     /// 3 to 20.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub autocomplete_max_visible: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_hardware_cursor: Option<bool>,
@@ -148,6 +160,39 @@ impl Settings {
     }
 }
 
+/// A count or size in milliseconds, tokens, cells or lines, as pi reads a
+/// JSON number: a whole float such as `1.5e5` is that integer, and a
+/// fraction is rounded down, as pi's consumers of these settings count.
+fn floored<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<u64>,
+{
+    let number = serde_json::Number::deserialize(deserializer)?;
+    let whole = number.as_u64().or_else(|| {
+        let value = number.as_f64()?.floor();
+        // `u64::MAX as f64` rounds up to 2^64, which `as u64` would saturate.
+        (value >= 0.0 && value < u64::MAX as f64).then_some(value as u64)
+    });
+    whole
+        .and_then(|whole| T::try_from(whole).ok())
+        .map(Some)
+        .ok_or_else(|| serde::de::Error::custom(format!("invalid count: {number}")))
+}
+
+/// [`floored`] for a value that must be whole: a fraction is invalid.
+fn whole<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<u64>,
+{
+    let number = serde_json::Number::deserialize(deserializer)?;
+    if number.as_f64().is_some_and(|value| value.fract() != 0.0) {
+        return Err(serde::de::Error::custom(format!("not whole: {number}")));
+    }
+    floored(serde_json::Value::Number(number)).map_err(serde::de::Error::custom)
+}
+
 /// A boolean or a specific alternative value.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -160,8 +205,14 @@ pub enum BoolOr<T> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOr<T> {
+    #[serde(deserialize_with = "number")]
     Number(u64),
     Other(T),
+}
+
+/// [`floored`] for [`NumberOr::Number`].
+fn number<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    floored(deserializer)?.ok_or_else(|| serde::de::Error::custom("no number"))
 }
 
 /// The literal `"auto"`.
@@ -199,9 +250,17 @@ pub enum QueueMode {
 pub struct CompactionSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "whole",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub reserve_tokens: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "whole",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub keep_recent_tokens: Option<u64>,
     /// Keyed by `provider/modelId`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -211,16 +270,28 @@ pub struct CompactionSettings {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionModelOverride {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "whole",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub reserve_tokens: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "whole",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub keep_recent_tokens: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummarySettings {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub reserve_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_prompt: Option<bool>,
@@ -231,11 +302,23 @@ pub struct BranchSummarySettings {
 pub struct RetrySettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_retries: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub base_delay_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_agent_delay_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ProviderRetrySettings>,
@@ -244,11 +327,23 @@ pub struct RetrySettings {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRetrySettings {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub timeout_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_retries: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_retry_delay_ms: Option<u64>,
 }
 
@@ -290,7 +385,11 @@ pub struct FilteredPackage {
 pub struct TerminalSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_images: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub image_width_cells: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_on_shrink: Option<bool>,
@@ -343,13 +442,29 @@ pub enum TreeFilterMode {
 /// Thinking token budgets for providers that take a budget instead of a level.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ThinkingBudgets {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub minimal: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub low: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub medium: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub high: Option<u64>,
 }
 
@@ -395,7 +510,11 @@ pub struct WarningSettings {
 pub struct CodemodeSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<CodemodeMode>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "floored",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub inline_budget: Option<u64>,
 }
 
