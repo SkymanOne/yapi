@@ -11,7 +11,6 @@ use serde_json::Value;
 
 use crate::message::{ImageContent, ThinkingLevel};
 use crate::session::FileEntry;
-use crate::settings::QueueMode;
 
 /// How a prompt sent while the agent runs is queued.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,26 +72,39 @@ pub enum RpcCommand {
     },
     CycleModel,
     GetAvailableModels,
+    /// pi takes any `level`: one it does not know becomes the model's
+    /// first level.
     SetThinkingLevel {
-        level: ThinkingLevel,
+        #[serde(default)]
+        level: Value,
     },
     CycleThinkingLevel,
     GetAvailableThinkingLevels,
+    /// pi saves `mode` as given, `null` included; an absent one removes the
+    /// setting.
     SetSteeringMode {
-        mode: QueueMode,
+        #[serde(default, deserialize_with = "crate::present")]
+        mode: Option<Value>,
     },
+    /// As [`RpcCommand::SetSteeringMode`].
     SetFollowUpMode {
-        mode: QueueMode,
+        #[serde(default, deserialize_with = "crate::present")]
+        mode: Option<Value>,
     },
     Compact {
         #[serde(default)]
         custom_instructions: Option<String>,
     },
+    /// pi saves `enabled` as given, `null` included, and reads it by
+    /// truthiness; an absent one removes the setting.
     SetAutoCompaction {
-        enabled: bool,
+        #[serde(default, deserialize_with = "crate::present")]
+        enabled: Option<Value>,
     },
+    /// As [`RpcCommand::SetAutoCompaction`].
     SetAutoRetry {
-        enabled: bool,
+        #[serde(default, deserialize_with = "crate::present")]
+        enabled: Option<Value>,
     },
     AbortRetry,
     Bash {
@@ -177,14 +189,18 @@ pub struct SessionState {
     pub thinking_level: ThinkingLevel,
     pub is_streaming: bool,
     pub is_compacting: bool,
-    pub steering_mode: QueueMode,
-    pub follow_up_mode: QueueMode,
+    /// The agent's mode as last set, any value; absent when set to nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steering_mode: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub follow_up_mode: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_file: Option<String>,
     pub session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,
-    pub auto_compaction_enabled: bool,
+    /// The setting as saved, any value; `true` when unset or `null`.
+    pub auto_compaction_enabled: Value,
     pub message_count: usize,
     pub pending_message_count: usize,
 }
@@ -381,9 +397,11 @@ mod tests {
         assert_eq!(
             mode,
             RpcCommand::SetSteeringMode {
-                mode: QueueMode::OneAtATime
+                mode: Some("one-at-a-time".into())
             }
         );
+        let unset: RpcCommand = serde_json::from_str(r#"{"type":"set_auto_retry"}"#).unwrap();
+        assert_eq!(unset, RpcCommand::SetAutoRetry { enabled: None });
         let unknown: RpcCommand = serde_json::from_str(r#"{"type":"dance"}"#).unwrap();
         assert_eq!(unknown, RpcCommand::Unknown);
     }

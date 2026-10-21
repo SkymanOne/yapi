@@ -132,8 +132,10 @@ async fn run_loop(
         let mut more_tool_calls = true;
         while more_tool_calls || !pending.is_empty() {
             if !first_turn {
-                if let Some(messages) = hooks.next_turn_messages().await {
-                    context.messages = messages;
+                match hooks.next_turn_messages().await {
+                    Ok(Some(messages)) => context.messages = messages,
+                    Ok(None) => {}
+                    Err(error) => return fail_run(context, &config, hooks, error).await,
                 }
                 if pending.is_empty() {
                     pending = hooks.steering_messages().await;

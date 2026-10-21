@@ -19,7 +19,6 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::StreamingBehavior;
 use yapi_types::rpc::{CommandSource, SlashCommand, SourceInfo};
-use yapi_types::settings::QueueMode;
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
@@ -32,8 +31,6 @@ use super::{AgentSession, InputSource, Replacement, SessionChange, drain};
 
 pub(super) struct Hooks {
     pub(super) session: AgentSession,
-    pub(super) steering_mode: Option<QueueMode>,
-    pub(super) follow_up_mode: Option<QueueMode>,
     pub(super) cancel: CancellationToken,
     /// pi's turn index for extension events: turns since `agent_start`.
     pub(super) turn_index: std::sync::atomic::AtomicU64,
@@ -426,21 +423,28 @@ impl AgentHooks for Hooks {
         }
     }
 
-    fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
+    fn next_turn_messages(&self) -> BoxFuture<'_, Result<Option<Vec<Message>>, String>> {
         // As in pi, each turn continues from the session's transcript, with
         // what the session recorded since the last, such as custom messages
-        // held while it ran and entries turn_end handlers committed.
-        let messages = self.session.messages();
-        Box::pin(async move { Some(messages) })
+        // held while it ran and entries turn_end handlers committed, once a
+        // context over the threshold is compacted.
+        Box::pin(async move {
+            self.session
+                .compact_before_next_response(&self.cancel)
+                .await?;
+            Ok(Some(self.session.messages()))
+        })
     }
 
+    // As pi's agent, each drain reads the current mode, so a change applies
+    // to the running agent.
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.steering, self.steering_mode);
+        let messages = drain(&self.session.inner.steering, self.session.drains_all().0);
         Box::pin(async move { messages })
     }
 
     fn follow_up_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let messages = drain(&self.session.inner.follow_up, self.follow_up_mode);
+        let messages = drain(&self.session.inner.follow_up, self.session.drains_all().1);
         Box::pin(async move { messages })
     }
 }

@@ -458,7 +458,7 @@ pub async fn next_openai_chunk(
 }
 
 /// JavaScript truthiness of a JSON value.
-pub(crate) fn is_truthy(value: &Value) -> bool {
+pub fn is_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(value) => *value,

@@ -934,10 +934,6 @@ pub fn normalize(run: &Run) -> Value {
                     Some("session") => {
                         event = json!({"type": "session", "version": event["version"]});
                     }
-                    // JSON parser messages differ between implementations.
-                    Some("response") if event["command"] == "parse" => {
-                        event["error"] = json!("<parse error>");
-                    }
                     _ => {}
                 }
                 normalizer.value(&event)

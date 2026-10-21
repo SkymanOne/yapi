@@ -136,9 +136,10 @@ pub trait AgentHooks: Send + Sync {
 
     /// The transcript the next turn continues from, read before each turn
     /// after the first; pi's `prepareNextTurn` context. `None` keeps the
-    /// loop's own.
-    fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
-        Box::pin(async { None })
+    /// loop's own. An error ends the run with it, as pi's agent ends a run
+    /// whose hook throws.
+    fn next_turn_messages(&self) -> BoxFuture<'_, Result<Option<Vec<Message>>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// The tools for the next request, read before each turn; `None` keeps

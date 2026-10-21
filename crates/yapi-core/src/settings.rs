@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize as _;
 use serde_json::{Map, Value};
 use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_ai::http::is_truthy;
 use yapi_types::config::ConfigFile;
 use yapi_types::settings::{CacheWarming, Settings};
 
@@ -54,6 +55,8 @@ pub struct SettingsManager {
     global: Map<String, Value>,
     project: Map<String, Value>,
     project_trusted: bool,
+    /// Both scopes merged as written, as pi's `settings`.
+    document: Map<String, Value>,
     merged: Settings,
     /// Files that failed to load, by scope; they read as empty and are never
     /// written, so a broken file is not overwritten.
@@ -289,6 +292,7 @@ impl SettingsManager {
             global,
             project,
             project_trusted,
+            document: Map::new(),
             merged: Settings::default(),
             broken,
             errors,
@@ -315,6 +319,19 @@ impl SettingsManager {
         ) {
             merged.insert("defaultTools".into(), tools);
         }
+        self.document = merged.clone();
+        // pi reads these switches by truthiness, so a value of another type
+        // keeps the rest of its object; `null` reads as unset.
+        for field in ["compaction", "retry"] {
+            if let Some(Value::Object(object)) = merged.get_mut(field)
+                && let Some(enabled) = object.get("enabled").filter(|value| !value.is_boolean())
+            {
+                match enabled {
+                    Value::Null => object.shift_remove("enabled"),
+                    value => object.insert("enabled".into(), is_truthy(value).into()),
+                };
+            }
+        }
         // Unknown or invalid fields are ignored, as in pi.
         self.merged = Settings::deserialize(Value::Object(merged.clone())).unwrap_or_else(|_| {
             let valid = Value::Object(valid_fields(&mut Vec::new(), merged));
@@ -340,6 +357,12 @@ impl SettingsManager {
             _ => Vec::new(),
         };
         Some(resolve_default_tools(&entries))
+    }
+
+    /// Both scopes merged as written, values of any type included: pi's
+    /// `settings`.
+    pub fn merged_document(&self) -> &Map<String, Value> {
+        &self.document
     }
 
     /// `defaultThinkingLevel`, if set: a value that names no level becomes
@@ -494,20 +517,24 @@ impl SettingsManager {
     }
 
     /// Sets `key` inside the object setting `field` of `scope`, keeping its
-    /// other keys, and writes that scope's file.
+    /// other keys, and writes that scope's file. `None` removes the key and
+    /// keeps the object.
     pub fn set_nested(
         &mut self,
         scope: Scope,
         field: &str,
         key: &str,
-        value: Value,
+        value: Option<Value>,
     ) -> Result<(), SettingsError> {
         self.update(scope, |document| {
             let mut object = match document.get(field) {
                 Some(Value::Object(object)) => object.clone(),
                 _ => Map::new(),
             };
-            object.insert(key.to_owned(), value.clone());
+            match &value {
+                Some(value) => object.insert(key.to_owned(), value.clone()),
+                None => object.shift_remove(key),
+            };
             document.insert(field.to_owned(), Value::Object(object));
         })
     }
@@ -631,8 +658,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[test]
-    fn invalid_timeouts_fail() {
+    #[tokio::test]
+    async fn invalid_timeouts_fail() {
         let mut manager = SettingsManager::in_memory();
         manager.global =
             json!({"httpIdleTimeoutMs": " 1500.7 ", "websocketConnectTimeoutMs": "soon"})
@@ -662,12 +689,58 @@ mod tests {
             .as_object()
             .unwrap()
             .clone();
+        let error = "Invalid compaction.keepRecentTokens setting: 1.5. Expected a non-negative safe integer.";
+        assert_eq!(manager.compaction_error(None).as_deref(), Some(error));
+
+        // As pi's next-turn hook throws it, the run ends between turns with a
+        // failed response; as its check before a prompt throws it, the next
+        // prompt fails before its request.
+        use yapi_ai::faux::{Faux, Response};
+        use yapi_types::message::{Message, StopReason};
+        let faux = Faux::new([
+            Response::tool_call("t", "missing", json!({})),
+            Response::text("unused"),
+        ]);
+        let model: yapi_types::model::Model = serde_json::from_value(json!({
+            "id": "m", "name": "M", "api": "faux", "provider": "p", "baseUrl": "",
+            "reasoning": false, "input": ["text"],
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+            "contextWindow": 1000, "maxTokens": 100,
+        }))
+        .unwrap();
+        let mut registry = yapi_ai::registry::ModelRegistry::builtin();
+        registry.register_provider("p", vec![model.clone()]);
+        registry.set_runtime_key("p", "key".into());
+        let mut apis = yapi_ai::api::Apis::default();
+        apis.register(std::sync::Arc::new(faux.clone()));
+        let session =
+            crate::agent_session::AgentSession::new(crate::agent_session::SessionConfig {
+                cwd: "/work".into(),
+                agent_dir: "/agent".into(),
+                settings: manager,
+                registry,
+                apis,
+                session: crate::session::SessionManager::in_memory(Path::new("/work")),
+                model: Some(model),
+                thinking_level: yapi_types::message::ThinkingLevel::Off,
+                tools: Vec::new(),
+                extensions: Vec::new(),
+                include_extension_tools: false,
+                allowed_tools: None,
+                excluded_tools: Vec::new(),
+                resources: crate::agent_session::Resources::default(),
+                docs: crate::docs::Locations::default(),
+            });
+        assert_eq!(session.prompt("go", Vec::new()).await, Err(error.into()));
+        let Some(Message::Assistant(failed)) = session.messages().pop() else {
+            panic!("no failed response");
+        };
         assert_eq!(
-            manager.compaction_error(None).as_deref(),
-            Some(
-                "Invalid compaction.keepRecentTokens setting: 1.5. Expected a non-negative safe integer."
-            )
+            (failed.stop_reason, failed.error_message.as_deref()),
+            (StopReason::Error, Some(error))
         );
+        assert_eq!(session.prompt("again", Vec::new()).await, Err(error.into()));
+        assert_eq!(faux.requests().len(), 1);
     }
 
     #[test]
@@ -678,7 +751,7 @@ mod tests {
             "retry": "often",
             "steeringMode": "all",
             "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
-            "compaction": {"enabled": false, "reserveTokens": "16384", "keepRecentTokens": 2e4},
+            "compaction": {"enabled": "", "reserveTokens": "16384", "keepRecentTokens": 2e4},
             "branchSummary": {"skipPrompt": true, "reserveTokens": 1.5e5},
             "modelThinkingLevels": {"a/b": "high", "a/c": "extreme"},
             "terminal": {"imageWidthCells": 40.7},
@@ -691,7 +764,8 @@ mod tests {
         let settings = manager.settings();
         assert_eq!(settings.theme.as_deref(), Some("dark"));
         assert!(settings.retry.is_none());
-        // A wrongly typed nested field drops alone.
+        // A wrongly typed nested field drops alone, and pi reads a switch of
+        // another type by truthiness.
         let compaction = settings.compaction.as_ref().unwrap();
         let tokens = (compaction.reserve_tokens, compaction.keep_recent_tokens);
         assert_eq!(
@@ -756,7 +830,7 @@ mod tests {
             .set(Scope::Global, "defaultModel", Some(json!("m")))
             .unwrap();
         first
-            .set_nested(Scope::Global, "retry", "enabled", json!(false))
+            .set_nested(Scope::Global, "retry", "enabled", Some(json!(false)))
             .unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.join("settings.json")).unwrap(),

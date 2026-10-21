@@ -192,6 +192,8 @@ async fn survive_crash(run: impl std::future::Future<Output = u8>) -> u8 {
     match outcome {
         Ok(code) => code,
         Err(_) => {
+            // Running commands would outlive yapi in their own process groups.
+            yapi_core::tools::bash::kill_tracked_children();
             use yapi_tui::terminal::{
                 BRACKETED_PASTE_DISABLE, KITTY_DISABLE, MODIFY_OTHER_KEYS_DISABLE,
             };
@@ -420,22 +422,12 @@ async fn run(parsed: &mut args::Args) -> u8 {
         // then fail with the missing-key message.
         return modes::rpc::run(startup.session, startup::factory(parsed, extensions, false)).await;
     }
-    // pi's print mode kills running commands and exits with the signal's
-    // code on SIGTERM and SIGHUP. The run stays alive until they are killed:
-    // dropping it would stop tracking its commands without killing them.
-    let print = modes::print::run(
+    modes::print::run(
         startup,
         parsed.mode == Some(Mode::Json),
         startup::factory(parsed, extensions, false),
-    );
-    tokio::pin!(print);
-    tokio::select! {
-        code = &mut print => code,
-        code = modes::rpc::termination() => {
-            yapi_core::tools::bash::kill_tracked_children();
-            code
-        }
-    }
+    )
+    .await
 }
 
 /// [`startup::start`], or the exit code once its error is printed; a
@@ -498,4 +490,42 @@ fn pick_session(
         sources,
         parsed.use_theme.as_deref().or(theme.as_deref()),
     )?)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    /// A crash kills the commands still running, as pi's crash handler does.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn crash_kills_commands() {
+        let running = || {
+            std::process::Command::new("pgrep")
+                .args(["-f", r"^sleep 32\.3$"])
+                .output()
+                .is_ok_and(|output| !output.stdout.is_empty())
+        };
+        let command = tokio::spawn(yapi_core::bash_executor::execute(
+            "sleep 32.3",
+            std::path::Path::new("/"),
+            None,
+            std::path::Path::new("/nonexistent"),
+            tokio_util::sync::CancellationToken::new(),
+            |_| {},
+        ));
+        let started = std::time::Instant::now();
+        while !running() {
+            assert!(started.elapsed() < std::time::Duration::from_secs(10));
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let code = super::survive_crash(async { panic!("boom") }).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let left = running();
+        command.abort();
+        if left {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", r"^sleep 32\.3$"])
+                .status();
+        }
+        assert_eq!(code, 1);
+        assert!(!left, "the command outlived the crash");
+    }
 }

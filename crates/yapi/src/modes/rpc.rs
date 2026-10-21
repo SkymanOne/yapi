@@ -364,6 +364,69 @@ fn command_name(value: &Value) -> Option<String> {
     }
 }
 
+/// pi hands commands to its handlers untyped. Fails with pi's error for a
+/// field its handler cannot read, and otherwise rewrites fields to what pi's
+/// handler makes of them, so the typed command takes what pi takes.
+fn as_pi_reads(name: &str, command: &mut Map<String, Value>) -> Result<(), String> {
+    // A string method called on another value, as `expression.method()`.
+    let call = |key: &str, expression: &str, method: &str| match command.get(key) {
+        Some(Value::String(_)) => Ok(()),
+        None => Err(format!(
+            "Cannot read properties of undefined (reading '{method}')"
+        )),
+        Some(Value::Null) => Err(format!(
+            "Cannot read properties of null (reading '{method}')"
+        )),
+        Some(_) => Err(format!("{expression}.{method} is not a function")),
+    };
+    let js = |key: &str| {
+        command
+            .get(key)
+            .map_or("undefined".into(), yapi_core::settings::js_string)
+    };
+    let string = |key: &str| command.get(key).is_some_and(Value::is_string);
+    match name {
+        "prompt" | "steer" | "follow_up" => call("message", "text", "startsWith")?,
+        "switch_session" => call("sessionPath", "normalized", "startsWith")?,
+        "set_session_name" => call("name", "command.name", "trim")?,
+        "set_model" => {
+            if !string("provider") || !string("modelId") {
+                return Err(format!(
+                    "Model not found: {}/{}",
+                    js("provider"),
+                    js("modelId")
+                ));
+            }
+        }
+        "fork" if !string("entryId") => {
+            return Err("Invalid entry ID for forking".into());
+        }
+        "get_entries" if command.get("since").is_some_and(|since| !since.is_string()) => {
+            return Err(format!("Entry not found: {}", js("since")));
+        }
+        // The command runs as its string form, `undefined` included.
+        "bash" if !string("command") => {
+            let text = js("command");
+            command.insert("command".into(), text.into());
+        }
+        _ => {}
+    }
+    // Read only while streaming: `followUp` queues a follow-up and any other
+    // truthy value steers.
+    if name == "prompt"
+        && let Some(behavior) = command.remove("streamingBehavior")
+        && yapi_ai::http::is_truthy(&behavior)
+    {
+        let behavior = if behavior == "followUp" {
+            "followUp"
+        } else {
+            "steer"
+        };
+        command.insert("streamingBehavior".into(), behavior.into());
+    }
+    Ok(())
+}
+
 /// Waits until the extensions have finished the code they are running, as pi
 /// runs extension code to completion before it reads more input. Returns a
 /// count that grows with every call into extension code.
@@ -377,9 +440,10 @@ async fn settle(session: &AgentSession) -> u64 {
 
 /// Runs command `line`; `unanswered` counts it until its response is out.
 async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
-    let parsed: Value = match serde_json::from_str(&line) {
+    let mut parsed: Value = match serde_json::from_str(&line) {
         Ok(parsed) => parsed,
         Err(error) => {
+            let error = yapi_ai::json_parse::js_parse_error(&line).unwrap_or(error.to_string());
             rpc.reply(
                 None,
                 Some("parse"),
@@ -416,6 +480,12 @@ async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
     // command to pi.
     if name.is_none() {
         rpc.reply(id.as_ref(), None, Err("Unknown command: undefined".into()));
+        return;
+    }
+    if let Some(command) = parsed.as_object_mut()
+        && let Err(error) = as_pi_reads(name.as_deref().unwrap_or_default(), command)
+    {
+        rpc.reply(id.as_ref(), name.as_deref(), Err(error));
         return;
     }
     let command = match serde_json::from_value::<RpcCommand>(parsed) {
@@ -535,6 +605,14 @@ async fn handle(rpc: &Rpc, id: Option<&Value>, command: RpcCommand) -> Reply {
             data(&json!({ "models": value(&session.available_models())? }))
         }
         RpcCommand::SetThinkingLevel { level } => {
+            // pi clamps a level it does not know to the model's first one.
+            let level = serde_json::from_value(level).unwrap_or_else(|_| {
+                session
+                    .available_thinking_levels()
+                    .first()
+                    .copied()
+                    .unwrap_or(yapi_types::message::ThinkingLevel::Off)
+            });
             session.set_thinking_level(level);
             Ok(None)
         }
@@ -885,24 +963,65 @@ pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
     code
 }
 
-/// Resolves to pi's exit code for SIGTERM (143) or SIGHUP (129).
-pub(crate) async fn termination() -> u8 {
+/// Resolves to pi's exit code for SIGTERM (143) or SIGHUP (129). The
+/// signals are caught from the call on, before the future is polled.
+pub(crate) fn termination() -> impl std::future::Future<Output = u8> {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let (Ok(mut term), Ok(mut hup)) = (
+        let signals = (
             signal(SignalKind::terminate()),
             signal(SignalKind::hangup()),
-        ) else {
-            return std::future::pending().await;
-        };
-        tokio::select! {
-            _ = term.recv() => 143,
-            _ = hup.recv() => 129,
+        );
+        async move {
+            let (Ok(mut term), Ok(mut hup)) = signals else {
+                return std::future::pending().await;
+            };
+            tokio::select! {
+                _ = term.recv() => 143,
+                _ = hup.recv() => 129,
+            }
         }
     }
     #[cfg(not(unix))]
     {
-        std::future::pending().await
+        std::future::pending()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read(name: &str, command: Value) -> Result<Value, String> {
+        let Value::Object(mut command) = command else {
+            return Err("not an object".into());
+        };
+        as_pi_reads(name, &mut command).map(|()| Value::Object(command))
+    }
+
+    /// Fields rewritten as pi's handlers read them.
+    #[test]
+    fn untyped_fields() {
+        assert_eq!(
+            read("bash", json!({"command": null})),
+            Ok(json!({"command": "null"}))
+        );
+        assert_eq!(read("bash", json!({})), Ok(json!({"command": "undefined"})));
+        let prompt = |behavior: Value| {
+            read(
+                "prompt",
+                json!({"message": "hi", "streamingBehavior": behavior}),
+            )
+        };
+        assert_eq!(
+            prompt(json!("later")),
+            Ok(json!({"message": "hi", "streamingBehavior": "steer"}))
+        );
+        assert_eq!(
+            prompt(json!("followUp")),
+            Ok(json!({"message": "hi", "streamingBehavior": "followUp"}))
+        );
+        assert_eq!(prompt(json!("")), Ok(json!({"message": "hi"})));
     }
 }

@@ -13,7 +13,6 @@ use yapi_core::agent_session::{
     AgentSession, Replacement, SessionChange, format_cache_warming_status,
 };
 use yapi_core::cache_stats::compute_cache_waste;
-use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::{CombinedProvider, SlashCommand};
 use yapi_tui::fuzzy::fuzzy_filter;
 use yapi_tui::keybindings::Keybindings;
@@ -816,8 +815,9 @@ impl super::App {
     }
 
     /// `/import`, confirmed: copies the file into the session directory unless
-    /// it is already there, then resumes it.
-    pub(super) fn import(&mut self, path: &str) {
+    /// it is already there, then resumes it, in `cwd_override` when given. A
+    /// session whose working directory is gone asks for another, as pi does.
+    pub(super) fn import(&mut self, path: &str, cwd_override: Option<PathBuf>) {
         let cwd = std::env::current_dir().unwrap_or_else(|_| self.cwd.clone());
         let source = yapi_core::tools::path::resolve_to_cwd(path, &cwd);
         if !source.exists() {
@@ -860,7 +860,17 @@ impl super::App {
                 app.fatal("Failed to import session", &error.to_string(), None);
                 return;
             }
-            match SessionManager::open(&destination, Some(&dir), None) {
+            let fallback = std::env::current_dir().unwrap_or_else(|_| app.cwd.clone());
+            match crate::runtime::open_session(&destination, cwd_override.as_deref(), &fallback) {
+                Err(crate::runtime::SwitchError::MissingCwd {
+                    session_cwd,
+                    fallback,
+                    ..
+                }) => app.ask_missing_cwd(
+                    super::Dialog::ImportMissingCwd(path),
+                    &session_cwd,
+                    &fallback,
+                ),
                 Ok(manager) => {
                     app.replace_session(
                         manager,

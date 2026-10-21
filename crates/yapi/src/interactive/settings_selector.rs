@@ -1381,14 +1381,14 @@ impl super::App {
     pub(super) fn open_settings(&mut self) {
         let settings = self.session.settings();
         let appearance = super::appearance(&self.colors);
-        let mode = |mode: yapi_types::settings::QueueMode| {
-            serde_json::to_value(mode)
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
+        let mode = |mode: Option<serde_json::Value>| {
+            mode.as_ref()
+                .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
+                .to_owned()
         };
         let config = SettingsConfig {
-            auto_compact: self.session.auto_compaction_enabled(),
+            auto_compact: yapi_ai::http::is_truthy(&self.session.auto_compaction_enabled()),
             steering_mode: mode(self.session.steering_mode()),
             follow_up_mode: mode(self.session.follow_up_mode()),
             http_idle_timeout_ms: self.session.http_idle_timeout_ms(),
@@ -1459,7 +1459,7 @@ impl super::App {
         let text = || Value::String(value.to_owned());
         match id {
             "autocompact" => {
-                let _ = self.session.set_auto_compaction(on);
+                let _ = self.session.set_auto_compaction(Some(on.into()));
                 self.footer_cache = None;
             }
             "show-images" => {
@@ -1502,13 +1502,11 @@ impl super::App {
             }
             "terminal-progress" => nested("terminal", "showTerminalProgress", on.into()),
             "steering-mode" | "follow-up-mode" => {
-                if let Ok(mode) = serde_json::from_value(text()) {
-                    let _ = if id == "steering-mode" {
-                        self.session.set_steering_mode(mode)
-                    } else {
-                        self.session.set_follow_up_mode(mode)
-                    };
-                }
+                let _ = if id == "steering-mode" {
+                    self.session.set_steering_mode(Some(text()))
+                } else {
+                    self.session.set_follow_up_mode(Some(text()))
+                };
             }
             "transport" => global("transport", text()),
             "http-idle-timeout" => {

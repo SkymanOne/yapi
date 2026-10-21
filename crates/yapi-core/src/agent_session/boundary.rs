@@ -9,7 +9,6 @@ use yapi_types::event::AgentEvent;
 use yapi_types::extension_event::ExtensionEvent;
 use yapi_types::message::{AssistantMessage, Content, Message, StopReason, ToolResultMessage};
 use yapi_types::session::FileEntry;
-use yapi_types::settings::QueueMode;
 use yapi_types::sync::lock;
 
 use crate::compaction::estimate_projected_context_tokens;
@@ -113,19 +112,15 @@ impl AgentSession {
     /// Queued messages the next turn would take, then extension messages
     /// waiting for the turn to end; pi's `_getPendingBoundaryMessages`.
     fn pending_boundary_messages(&self) -> Vec<Message> {
-        let settings = self.settings();
-        let peek = |queue: &std::sync::Mutex<std::collections::VecDeque<Message>>, mode| {
+        let (steering_all, follow_up_all) = self.drains_all();
+        let peek = |queue: &std::sync::Mutex<std::collections::VecDeque<Message>>, all| {
             let queue = lock(queue);
-            let count = if mode == Some(QueueMode::All) {
-                queue.len()
-            } else {
-                1
-            };
+            let count = if all { queue.len() } else { 1 };
             queue.iter().take(count).cloned().collect::<Vec<_>>()
         };
-        let mut pending = peek(&self.inner.steering, settings.steering_mode);
+        let mut pending = peek(&self.inner.steering, steering_all);
         if pending.is_empty() {
-            pending = peek(&self.inner.follow_up, settings.follow_up_mode);
+            pending = peek(&self.inner.follow_up, follow_up_all);
         }
         pending.extend(lock(&self.inner.pending_custom).iter().cloned());
         pending

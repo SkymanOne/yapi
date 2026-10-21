@@ -331,8 +331,8 @@ fn commands_reset_ignored_signals() {
     assert_eq!(response["data"]["output"], "done\n", "{response}");
 }
 
-/// On SIGTERM, print mode kills the commands its `bash` tool is running, as
-/// pi does, instead of leaving them behind.
+/// On SIGTERM, print mode kills the commands its `bash` tool is running and
+/// ends the session, as pi does, instead of leaving them behind.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn print_sigterm_kills_commands() {
@@ -345,6 +345,15 @@ async fn print_sigterm_kills_commands() {
         .unwrap();
     let home = common::scratch("print-signal");
     std::fs::create_dir_all(home.join("agent")).unwrap();
+    let log = home.join("events.log");
+    std::fs::write(
+        home.join("log.ts"),
+        format!(
+            "import {{ appendFileSync }} from \"node:fs\";\nexport default function (pi) {{\n\tpi.on(\"session_start\", (event) => appendFileSync({log:?}, `start ${{event.reason}}\\n`));\n\tpi.on(\"session_shutdown\", (event) => appendFileSync({log:?}, `shutdown ${{event.reason}}\\n`));\n}}\n",
+            log = log.display().to_string()
+        ),
+    )
+    .unwrap();
     std::fs::write(
         home.join("agent/models.json"),
         format!(
@@ -359,6 +368,8 @@ async fn print_sigterm_kills_commands() {
             "--no-session",
             "--model",
             "anthropic/claude-sonnet-4-5",
+            "-e",
+            "log.ts",
             "go",
         ])
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
@@ -392,9 +403,11 @@ async fn print_sigterm_kills_commands() {
             .args(["-f", r"^sleep 31\.7$"])
             .status();
     }
+    let events = std::fs::read_to_string(&log).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&home);
     assert_eq!(status.code(), Some(143));
     assert!(!left, "the command outlived yapi");
+    assert_eq!(events, "start startup\nshutdown quit\n");
 }
 
 /// `list` tags each installed package by its extensions: `[npm]` for pi
