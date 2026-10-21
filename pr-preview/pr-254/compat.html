@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8726a58e.js";
+            window.path_to_searchindex_js = "searchindex-bf28978e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -203,8 +203,11 @@
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s whole <code>SessionManager</code></td><td>It reads the session and writes with <code>appendMessage</code>, <code>appendCustomEntry</code> and <code>appendSessionInfo</code>. Other writes throw.</td></tr>
 <tr><td>Failing session actions</td><td>A throwing <code>setup</code> or <code>withSession</code> callback ends interactive mode</td><td>yapi reports the error and keeps the current session.</td></tr>
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
+<tr><td>Clipboard</td><td><code>copyToClipboard</code> writes its OSC 52 fallback to stdout in every mode</td><td>Only in interactive mode. In print, JSON and RPC modes stdout carries their output.</td></tr>
+<tr><td><code>ctx.modelRegistry.getProvider</code></td><td>The pi-ai <code>Provider</code> itself</td><td>Its id, name, models, <code>stream</code> and <code>streamSimple</code>. yapi’s built-in providers are not JavaScript objects, and an extension’s <code>Provider</code> stays in the runtime instance that registered it.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
 <tr><td>Codemode scripts</td><td>May compute without limit</td><td>Stop after 60 seconds of computing without awaiting a call.</td></tr>
+<tr><td>Model availability of extension providers</td><td><code>getAvailableOfType</code> runs a pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> on each call</td><td><code>getAvailableOfType</code> returns what they kept at the last refresh. They run in the extension’s runtime instance as extensions load, on <code>/login</code>, <code>/logout</code> and <code>--api-key</code>, when the model selector opens, on <code>/reload</code>, on <code>ctx.modelRegistry.refresh</code> and after an extension registers or unregisters a provider. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them.</td></tr>
 <tr><td>Native extensions</td><td>None</td><td>WebAssembly components written in Rust. See <a href="native-extensions.html">Native extensions</a>. Unstable until 1.0.</td></tr>
 </tbody>
 </table>
@@ -243,6 +246,7 @@
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
+<tr><td>MCP sign-in page</td><td>Opens the authorization endpoint an MCP server names with any scheme but <code>javascript</code>, <code>data</code> and <code>vbscript</code></td><td>Opens only <code>http</code> and <code>https</code> endpoints and fails the sign-in on another scheme. The page opens without a click, and another scheme could launch an app or run a program.</td></tr>
 <tr><td>Syntax highlighting</td><td>Highlights code in messages and tool rows</td><td>Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with <a href="extensions.html#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>.</td></tr>
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
@@ -261,18 +265,7 @@
 <tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
 <tr><td>Session lines with an unpaired surrogate</td><td>Text cut inside an emoji is written as an unpaired UTF-16 escape, such as <code>\ud83d</code></td><td>The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one.</td></tr>
 <tr><td>Failed session writes</td><td>Later entries can point to an entry that is missing from the file</td><td>yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole.</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="open-gaps"><a class="header" href="#open-gaps">Open gaps</a></h2>
-<p>Pi features yapi does not have yet, or has only in part. Each row links its issue.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Area</th><th>Pi</th><th>yapi today</th><th>Issue</th></tr>
-</thead>
-<tbody>
-<tr><td>Complete pi-ai providers</td><td>A <code>Provider</code> passed to <code>registerProvider</code> can limit its models per account with <code>filterModels</code>, and checks for an API key on every availability refresh. <code>/login</code> asks for its key with its own prompt.</td><td><code>filterModels</code> and <code>filterAllModels</code> are ignored. The API key check runs once as the extension loads, and <code>/login</code> asks for the key with yapi’s prompt.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
+<tr><td>Fractions in count settings</td><td>A fraction such as <code>1.5</code> in <code>retry.maxRetries</code>, <code>retry.baseDelayMs</code>, <code>thinkingBudgets</code>, <code>editorPaddingX</code> or a similar count reaches the code that uses it unchanged</td><td>The fraction is rounded down, since yapi counts retries, milliseconds, tokens and cells in whole numbers. Whole numbers written as floats, such as <code>1.5e5</code>, read as in Pi, and Pi’s own rounding of <code>terminal.imageWidthCells</code> and its checks of the <code>compaction</code> token settings apply as in Pi.</td></tr>
 </tbody>
 </table>
 </div>

@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8726a58e.js";
+            window.path_to_searchindex_js = "searchindex-bf28978e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -330,7 +330,7 @@ yapi install . -l    # for this project only
 <li><code>code</code> is <code>null</code> when a signal ended the process, and <code>killed</code> is <code>true</code> when the timeout did.</li>
 <li>A process that cannot start answers <code>{"stdout": "", "stderr": "", "code": null, "error"}</code>, where <code>error</code> is Node’s spawn error, such as <code>spawn git ENOENT</code>. The request fails when the extension may not run processes.</li>
 </ul>
-<p><code>session.read</code> takes the method’s arguments as the array <code>args</code>, such as <code>["&lt;entry id&gt;"]</code> for <code>getEntry</code>. The methods are <code>getCwd</code>, <code>getSessionDir</code>, <code>getSessionId</code>, <code>getSessionFile</code>, <code>getSessionName</code>, <code>isPersisted</code>, <code>getHeader</code>, <code>getEntries</code>, <code>getEntry</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getLeafId</code>, <code>getLeafEntry</code>, <code>getBranch</code> and <code>buildSessionContext</code>. Entries have the shapes of Pi’s session files.</p>
+<p><code>session.read</code> takes the method’s arguments as the array <code>args</code>, such as <code>["&lt;entry id&gt;"]</code> for <code>getEntry</code>. The methods are <code>getCwd</code>, <code>getSessionDir</code>, <code>getSessionId</code>, <code>getSessionFile</code>, <code>getSessionName</code>, <code>isPersisted</code>, <code>getHeader</code>, <code>getEntries</code>, <code>getEntry</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getLeafId</code>, <code>getLeafEntry</code>, <code>getBranch</code>, <code>buildContextEntries</code>, <code>buildSessionProjection</code> and <code>buildSessionContext</code>. Entries have the shapes of Pi’s session files.</p>
 <p><code>ui.notify</code> and the <code>session</code> requests fail while the init function runs, before yapi binds the extension to a session. Every other kind is internal to yapi and may change or disappear in any release.</p>
 <h3 id="host-operations"><a class="header" href="#host-operations">Host operations</a></h3>
 <p><code>op(kind, payload)</code> starts an operation and returns a future of its JSON answer. Other handlers and background tasks run while it waits. yapi supports these kinds for native extensions:</p>

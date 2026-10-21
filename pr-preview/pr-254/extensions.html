@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8726a58e.js";
+            window.path_to_searchindex_js = "searchindex-bf28978e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -295,7 +295,7 @@ export default function (pi: ExtensionAPI) {
 <h2 id="crashes"><a class="header" href="#crashes">Crashes</a></h2>
 <p><a href="security.html#sandboxing">Security model and sandboxing</a> describes the limits of each instance and what extensions may access. A crashed instance restarts and its extensions reload. yapi reports the crash as an extension error, closes the instance’s dialogs and widgets, and restores the built-in editor, footer and header. Tool calls and messages it drew stay in the transcript and are drawn again by the restarted instance.</p>
 <h2 id="providers-from-extensions"><a class="header" href="#providers-from-extensions">Providers from extensions</a></h2>
-<p><code>pi.registerProvider()</code> adds a provider and its models. They appear in <code>/model</code> and work with <code>--model</code> and RPC’s <code>set_model</code>.</p>
+<p><code>pi.registerProvider()</code> adds a provider and its models. They appear in <code>/model</code> and work with <code>--model</code> and RPC’s <code>set_model</code>. An extension can register a provider at any time, such as from a command or an event handler, and the change applies at once. A configuration registered again for the same provider keeps the previous configuration’s values for the keys it leaves undefined. <code>pi.unregisterProvider()</code> removes a provider whichever extension registered it, and restores the built-in or <code>models.json</code> provider it replaced.</p>
 <ul>
 <li>A provider configured like a <code>models.json</code> entry streams through yapi’s implementation of its <code>api</code>.</li>
 <li>A provider with its own <code>streamSimple</code> can implement an API yapi does not have, or hand requests to pi-ai’s built-in APIs, such as <code>anthropicMessagesApi()</code>. A stream registered with pi-ai’s <code>registerApiProvider</code> serves every model of its API, including ones from <code>models.json</code>. Provider hooks such as <code>before_provider_request</code> run either way.</li>
@@ -303,7 +303,8 @@ export default function (pi: ExtensionAPI) {
 <li>A provider with <code>refreshModels</code> updates its model list whenever yapi refreshes model catalogs.</li>
 <li>A provider with the legacy <code>oauth.modifyModels</code> adjusts its models for the signed-in account whenever yapi refreshes model catalogs.</li>
 <li>Image and classifier models run through the provider’s <code>images</code> and <code>classifiers</code> implementations for their <code>api</code>. Codemode scripts and extensions use them with <code>generateImages</code> and <code>classify</code>.</li>
-<li>A complete pi-ai <code>Provider</code>, such as one <code>createProvider</code> builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh.</li>
+<li>A complete pi-ai <code>Provider</code>, such as one <code>createProvider</code> builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh. <code>/login</code> asks for its API key with the provider’s own <code>login</code>, or says the key is set up outside yapi when it has none.</li>
+<li>A pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> decide which of its models are available for the stored credential, or for the key <code>--api-key</code> gives. They run as the extension loads, whenever yapi refreshes model catalogs, after you sign in or out, and after an extension registers or unregisters a provider. See <a href="compat.html#extensions">Differences from Pi</a>.</li>
 </ul>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider documentation</a> describes the configuration.</p>
 
