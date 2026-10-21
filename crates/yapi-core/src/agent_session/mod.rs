@@ -1494,6 +1494,7 @@ impl AgentSession {
                 &self.inner.docs,
             ));
         }
+        self.compact_before_prompt().await;
         let mut sections = self.base_prompt_options().sections;
         let ctx = self.extension_context(CancellationToken::new());
         for extension in &self.inner.extensions {

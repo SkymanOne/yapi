@@ -187,7 +187,7 @@ impl AgentSession {
             }
         }
         if self
-            .check_compaction(&message, entry_id, tool_results, cancel)
+            .check_compaction(&message, entry_id, tool_results, cancel, true)
             .await
         {
             return !cancel.is_cancelled();
@@ -195,20 +195,75 @@ impl AgentSession {
         !cancel.is_cancelled() && self.has_queued()
     }
 
+    /// pi's check before a prompt is sent: [`Self::check_compaction`] for
+    /// the context's last response, aborted ones included. It catches
+    /// aborted responses and sessions resumed above the threshold. An abort
+    /// stops the compaction, not the prompt.
+    pub(super) async fn compact_before_prompt(&self) {
+        let last = self.with_session(|session| {
+            let branch = session.branch_path(None);
+            build_projection(&branch)
+                .entries
+                .iter()
+                .rev()
+                .find_map(|entry| {
+                    let message =
+                        entry
+                            .messages
+                            .iter()
+                            .rev()
+                            .find_map(|message| match message {
+                                Message::Assistant(assistant) => Some((**assistant).clone()),
+                                _ => None,
+                            })?;
+                    Some((message, entry.source.meta().map(|meta| meta.id.clone())))
+                })
+        });
+        let Some((message, entry_id)) = last else {
+            return;
+        };
+        let cancel = CancellationToken::new();
+        *lock(&self.inner.cancel) = Some(cancel.clone());
+        self.check_compaction(&message, entry_id, Vec::new(), &cancel, false)
+            .await;
+        *lock(&self.inner.cancel) = None;
+    }
+
+    /// pi's `_compactBeforeNextAssistantResponse`, before each turn of a run
+    /// after the first: threshold compaction when the context the next
+    /// request would send exceeds the threshold.
+    pub(super) async fn compact_before_next_response(&self, cancel: &CancellationToken) {
+        let Some(model) = self.model().filter(|model| model.context_window > 0) else {
+            return;
+        };
+        let settings =
+            CompactionSettings::resolve(lock(&self.inner.settings).settings(), Some(&model));
+        let tokens = self.with_session(|session| {
+            let branch = session.branch_path(None);
+            estimate_projected_context_tokens(&build_projection(&branch), &branch).tokens
+        });
+        if should_compact(tokens, model.context_window, &settings) {
+            self.run_auto_compaction(CompactionReason::Threshold, false, cancel)
+                .await;
+        }
+    }
+
     /// pi's `_checkCompaction`: overflow recovery, then threshold compaction.
+    /// An aborted `message` is skipped when `skip_aborted`.
     async fn check_compaction(
         &self,
         message: &AssistantMessage,
         entry_id: Option<String>,
         tool_results: Vec<String>,
         cancel: &CancellationToken,
+        skip_aborted: bool,
     ) -> bool {
         let Some(model) = self.model() else {
             return false;
         };
         let settings =
             CompactionSettings::resolve(lock(&self.inner.settings).settings(), Some(&model));
-        if !settings.enabled || message.stop_reason == StopReason::Aborted {
+        if !settings.enabled || (skip_aborted && message.stop_reason == StopReason::Aborted) {
             return false;
         }
         let message_model = self.model_for_message(message);

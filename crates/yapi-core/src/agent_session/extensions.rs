@@ -423,9 +423,14 @@ impl AgentHooks for Hooks {
     fn next_turn_messages(&self) -> BoxFuture<'_, Option<Vec<Message>>> {
         // As in pi, each turn continues from the session's transcript, with
         // what the session recorded since the last, such as custom messages
-        // held while it ran and entries turn_end handlers committed.
-        let messages = self.session.messages();
-        Box::pin(async move { Some(messages) })
+        // held while it ran and entries turn_end handlers committed, once a
+        // context over the threshold is compacted.
+        Box::pin(async move {
+            self.session
+                .compact_before_next_response(&self.cancel)
+                .await;
+            Some(self.session.messages())
+        })
     }
 
     // As pi's agent, each drain reads the current mode, so a change applies
