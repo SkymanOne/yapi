@@ -92,13 +92,34 @@ pub fn parse_frontmatter(content: &str) -> Result<(Frontmatter, String), String>
     let Some(yaml) = yaml.filter(|yaml| !yaml.is_empty()) else {
         return Ok((Frontmatter::new(), body));
     };
-    let documents =
-        yaml_rust2::YamlLoader::load_from_str(&yaml).map_err(|error| error.to_string())?;
+    let documents = load_yaml(yaml).map_err(|error| error.to_string())?;
     let frontmatter = match documents.into_iter().next().map(yaml_to_json) {
         Some(Value::Object(map)) => map,
         _ => Frontmatter::new(),
     };
     Ok((frontmatter, body))
+}
+
+/// The documents in `yaml`, read as pi's `yaml` package reads them: unlike
+/// yaml_rust2, it takes a tab alone after a key's colon.
+fn load_yaml(mut yaml: String) -> Result<Vec<yaml_rust2::Yaml>, yaml_rust2::ScanError> {
+    loop {
+        match yaml_rust2::YamlLoader::load_from_str(&yaml) {
+            Err(error) if error.info() == "':' must be followed by a valid YAML whitespace" => {
+                // The error points past the tabs; the first of them becomes a space.
+                let at = yaml
+                    .char_indices()
+                    .nth(error.marker().index())
+                    .map_or(yaml.len(), |(at, _)| at);
+                let start = yaml[..at].trim_end_matches('\t').len();
+                if start == at {
+                    return Err(error);
+                }
+                yaml.replace_range(start..=start, " ");
+            }
+            result => return result,
+        }
+    }
 }
 
 /// A YAML value as JavaScript sees it; keys become strings.
@@ -723,7 +744,7 @@ mod tests {
     #[test]
     fn parses_frontmatter() {
         let (meta, body) = parse_frontmatter(
-            "---\nname: demo\ndescription: \"Does: things\"\ndisable-model-invocation: true\nnotes: |\n  a\n    b\nwhen: >-\n  folded\n  text\ntags: [a, b]\nlimit: 3\n---\n\nBody\n",
+            "---\nname: demo\ndescription: \"Does: things\"\ndisable-model-invocation: true\nnotes: |\n  a\n    b\nwhen: >-\n  folded\n  text\ntags: [a, b]\nlimit: 3\ntabbed:\tTabbed value\noffset:\t\t-1\n---\n\nBody\n",
         )
         .unwrap();
         assert_eq!(
@@ -736,11 +757,14 @@ mod tests {
                 "when": "folded text",
                 "tags": ["a", "b"],
                 "limit": 3,
+                "tabbed": "Tabbed value",
+                "offset": -1,
             })
         );
         assert_eq!(body, "Body");
         // pi's `yaml` throws on malformed YAML, which skips the skill.
         assert!(parse_frontmatter("---\nname: a: b\n---\n").is_err());
+        assert!(parse_frontmatter("---\na: x\n\tb: y\n---\n").is_err());
         assert!(parse_frontmatter("no frontmatter").unwrap().0.is_empty());
     }
 
