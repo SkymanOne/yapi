@@ -20,7 +20,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 
 ## Project instructions
 
-yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. Use them for build commands, conventions and anything else the agent should know about the project.
+yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. In a git worktree inside its main checkout, such as `.worktrees/feature`, the worktree's own file replaces the main checkout's file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.
 
 ## Skills and prompt templates
 

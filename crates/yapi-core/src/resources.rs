@@ -156,16 +156,74 @@ fn context_file_in(dir: &Path) -> Option<ContextFile> {
     None
 }
 
+/// pi's `findGitPaths`: the folder holding the `.git` of `cwd` or its
+/// nearest ancestor, and the repository's common git directory.
+fn git_paths(cwd: &Path) -> Option<(PathBuf, PathBuf)> {
+    for dir in cwd.ancestors() {
+        let git = dir.join(".git");
+        if git.is_dir() {
+            return git.join("HEAD").exists().then(|| (dir.to_path_buf(), git));
+        }
+        if !git.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&git).ok()?;
+        let Some(target) = text.trim().strip_prefix("gitdir: ") else {
+            continue;
+        };
+        let git_dir = crate::tools::path::resolve_lexically(dir, Path::new(target.trim()));
+        if !git_dir.join("HEAD").exists() {
+            return None;
+        }
+        let common = git_dir.join("commondir");
+        let common = if common.exists() {
+            let text = std::fs::read_to_string(common).ok()?;
+            crate::tools::path::resolve_lexically(&git_dir, Path::new(text.trim()))
+        } else {
+            git_dir
+        };
+        return Some((dir.to_path_buf(), common));
+    }
+    None
+}
+
+/// pi's `findShadowedContextFile`: when `cwd` is in a linked worktree nested
+/// in its main checkout, the main checkout's context file, canonical, that
+/// the worktree's own context file replaces.
+fn shadowed_context_file(cwd: &Path) -> Option<PathBuf> {
+    let canonical =
+        |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let (repo_dir, common_git_dir) = git_paths(cwd)?;
+    let common_git_dir = canonical(&common_git_dir);
+    let worktree = canonical(&repo_dir);
+    let main = common_git_dir.parent()?;
+    // An ordinary checkout, a sibling worktree, a bare layout or a submodule
+    // shadows nothing.
+    if worktree == main
+        || !worktree.starts_with(main)
+        || canonical(&main.join(".git")) != common_git_dir
+    {
+        return None;
+    }
+    Some(main.join(context_file_in(&worktree)?.path.file_name()?))
+}
+
 /// The global context file from the agent directory, then those of
-/// `project_dir` and its ancestors, outermost first.
+/// `project_dir` and its ancestors, outermost first. In a linked worktree
+/// nested in its main checkout, the main checkout's file is left out when the
+/// worktree has its own.
 pub fn context_files(project_dir: &Path, agent_dir: &Path) -> Vec<ContextFile> {
     let mut files = Vec::new();
     if let Some(global) = context_file_in(agent_dir) {
         files.push(global);
     }
+    let shadowed = shadowed_context_file(project_dir);
     let mut ancestors = Vec::new();
     for dir in project_dir.ancestors() {
         if let Some(file) = context_file_in(dir)
+            && shadowed.as_ref().is_none_or(|shadowed| {
+                std::fs::canonicalize(&file.path).ok().as_ref() != Some(shadowed)
+            })
             && !files
                 .iter()
                 .any(|seen: &ContextFile| seen.path == file.path)
@@ -713,6 +771,39 @@ mod tests {
             diagnostics.as_slice(),
             [Diagnostic::Warning { path, .. }] if path.ends_with("broken/SKILL.md")
         ));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn worktree_shadows_main() {
+        let dir = std::fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!("yapi-worktree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let main = dir.join("main");
+        let git_dir = main.join(".git/worktrees/feat");
+        let feat = main.join(".worktrees/feat");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::create_dir_all(&feat).unwrap();
+        std::fs::write(main.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/feat\n").unwrap();
+        std::fs::write(git_dir.join("commondir"), "../..\n").unwrap();
+        std::fs::write(
+            feat.join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )
+        .unwrap();
+        std::fs::write(main.join("AGENTS.md"), "main").unwrap();
+        let paths = || -> Vec<PathBuf> {
+            context_files(&feat, &dir.join("agent"))
+                .into_iter()
+                .map(|file| file.path)
+                .collect()
+        };
+        // The main checkout's file applies until the worktree has its own.
+        assert_eq!(paths(), [main.join("AGENTS.md")]);
+        std::fs::write(feat.join("AGENTS.md"), "feat").unwrap();
+        assert_eq!(paths(), [feat.join("AGENTS.md")]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
