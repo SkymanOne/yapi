@@ -152,7 +152,7 @@ impl AnthropicOAuth {
     }
 
     async fn login_browser(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
+        let pkce = pkce::generate()?;
         let mut server = start_code_server(
             "Anthropic",
             &callback_host(),
@@ -203,7 +203,7 @@ impl AnthropicOAuth {
         &self,
         interaction: &Interaction,
     ) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
+        let pkce = pkce::generate()?;
         interaction.notify(AuthEvent::AuthUrl {
             url: self.authorize_url(&pkce.challenge, &pkce.verifier, &self.copy_code_redirect_uri),
             instructions: Some(

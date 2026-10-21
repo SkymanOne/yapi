@@ -121,10 +121,11 @@ impl OpenRouterOAuth {
         &self,
         interaction: &Interaction,
     ) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
+        let pkce = pkce::generate()?;
         // OpenRouter sends no `state`; the random path keeps stray requests
         // from completing the sign-in.
-        let path = format!("/oauth/callback/{}", yapi_types::time::uuid_v4());
+        let uuid = yapi_types::time::try_uuid_v4().map_err(AuthError::random)?;
+        let path = format!("/oauth/callback/{uuid}");
         let route = path.clone();
         let handler = move |method: &str, url: &Url| -> Reply<String> {
             if method != "GET" || url.path() != route {

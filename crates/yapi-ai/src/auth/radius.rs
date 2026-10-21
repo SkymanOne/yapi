@@ -152,8 +152,8 @@ impl RadiusOAuth {
         let endpoint = discovery["authorizationEndpoint"].as_str().ok_or_else(|| {
             AuthError::Failed(format!("Invalid Radius OAuth config from {}", self.gateway))
         })?;
-        let pkce = pkce::generate();
-        let state = yapi_types::time::uuid_v4();
+        let pkce = pkce::generate()?;
+        let state = yapi_types::time::try_uuid_v4().map_err(AuthError::random)?;
         let redirect_uri = self.redirect_uri();
         let mut authorize =
             Url::parse(endpoint).map_err(|err| AuthError::Failed(err.to_string()))?;

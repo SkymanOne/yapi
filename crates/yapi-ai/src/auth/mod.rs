@@ -45,6 +45,12 @@ impl AuthError {
     pub(crate) fn failed(message: impl Into<String>) -> AuthError {
         AuthError::Failed(message.into())
     }
+
+    /// A sign-in fails when the OS random generator does, as Web Crypto
+    /// throws, rather than use a guessable verifier or state.
+    pub fn random(err: std::io::Error) -> AuthError {
+        AuthError::Failed(format!("The OS random generator failed: {err}"))
+    }
 }
 
 /// One choice of a select prompt.

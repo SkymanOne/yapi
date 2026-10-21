@@ -86,11 +86,34 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// `N` bytes from the OS generator; zeros on a platform without one.
+/// `N` bytes from the OS generator, or why it failed.
+pub fn try_random_bytes<const N: usize>() -> std::io::Result<[u8; N]> {
+    let mut bytes = [0u8; N];
+    fill(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// `N` bytes from the OS generator. Panics when it fails, as Node's crypto
+/// throws, so ids never repeat.
 pub fn random_bytes<const N: usize>() -> [u8; N] {
     let mut bytes = [0u8; N];
-    let _ = getrandom::fill(&mut bytes);
+    fill_or_panic(&mut bytes);
     bytes
+}
+
+fn fill(bytes: &mut [u8]) -> std::io::Result<()> {
+    #[cfg(test)]
+    if tests::NO_RANDOM.get() {
+        return Err(std::io::Error::other("unavailable"));
+    }
+    getrandom::fill(bytes).map_err(std::io::Error::other)
+}
+
+fn fill_or_panic(bytes: &mut [u8]) {
+    // Zeros would make every id the same and every secret guessable.
+    if let Err(err) = fill(bytes) {
+        panic!("The OS random generator failed: {err}");
+    }
 }
 
 /// `bytes` as lowercase hexadecimal.
@@ -98,22 +121,32 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// `count` random bytes as lowercase hexadecimal.
+/// `count` random bytes as lowercase hexadecimal; panics as
+/// [`random_bytes`] does.
 pub fn random_hex(count: usize) -> String {
     let mut bytes = vec![0u8; count];
-    let _ = getrandom::fill(&mut bytes);
+    fill_or_panic(&mut bytes);
     hex(&bytes)
 }
 
-/// A random UUID v4, as `crypto.randomUUID`.
+/// A random UUID v4, as `crypto.randomUUID`; panics as [`random_bytes`] does.
 pub fn uuid_v4() -> String {
-    let mut bytes = random_bytes::<16>();
+    v4(random_bytes())
+}
+
+/// A random UUID v4, or why the OS generator failed.
+pub fn try_uuid_v4() -> std::io::Result<String> {
+    try_random_bytes().map(v4)
+}
+
+fn v4(mut bytes: [u8; 16]) -> String {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     format_uuid(&bytes)
 }
 
-/// A time-ordered UUID v7, used for session ids.
+/// A time-ordered UUID v7, used for session ids; panics as [`random_bytes`]
+/// does.
 pub fn uuid_v7() -> String {
     let mut bytes = random_bytes::<16>();
     bytes[..6].copy_from_slice(&now_ms().to_be_bytes()[2..]);
@@ -135,7 +168,25 @@ fn format_uuid(bytes: &[u8; 16]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
+
+    thread_local! {
+        /// Makes the OS generator fail on this thread.
+        pub(super) static NO_RANDOM: Cell<bool> = const { Cell::new(false) };
+    }
+
+    #[test]
+    fn random_fails_closed() {
+        NO_RANDOM.set(true);
+        assert!(try_random_bytes::<16>().is_err());
+        assert!(try_uuid_v4().is_err());
+        assert!(std::panic::catch_unwind(uuid_v4).is_err());
+        assert!(std::panic::catch_unwind(|| random_hex(8)).is_err());
+        NO_RANDOM.set(false);
+        assert_ne!(random_hex(8), random_hex(8));
+    }
 
     #[test]
     fn round_trips_iso() {
@@ -153,5 +204,6 @@ mod tests {
         assert_eq!(v7.len(), 36);
         assert_eq!(&v7[14..15], "7");
         assert_eq!(&uuid_v4()[14..15], "4");
+        assert_eq!(&try_uuid_v4().unwrap()[14..15], "4");
     }
 }

@@ -919,7 +919,9 @@ impl<'a> Provider<'a> {
         if let Some(state) = truthy(&self.load().await?, "oauthState") {
             return Ok(state.to_owned());
         }
-        let state = yapi_types::time::random_hex(32);
+        let state = yapi_types::time::try_random_bytes::<32>()
+            .map(|bytes| yapi_types::time::hex(&bytes))
+            .map_err(|err| other(yapi_ai::auth::AuthError::random(err).to_string()))?;
         let value = state.clone();
         self.update(|stored| {
             stored.insert("oauthState".into(), Value::String(value));
@@ -1028,7 +1030,7 @@ fn start_authorization(
     if !matches!(url.scheme(), "http" | "https") {
         return Err(other("Invalid authorization endpoint"));
     }
-    let pkce = yapi_ai::auth::pkce::generate();
+    let pkce = yapi_ai::auth::pkce::generate().map_err(|err| other(err.to_string()))?;
     let mut params: Vec<(String, String)> = url.query_pairs().into_owned().collect();
     set(&mut params, "response_type", "code");
     set(

@@ -160,8 +160,10 @@ impl CodexOAuth {
     }
 
     async fn login_browser(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {
-        let pkce = pkce::generate();
-        let state = yapi_types::time::random_hex(16);
+        let pkce = pkce::generate()?;
+        let state = yapi_types::time::try_random_bytes::<16>()
+            .map(|bytes| yapi_types::time::hex(&bytes))
+            .map_err(AuthError::random)?;
         // Port 1455 is shared with the Codex CLI; when it is taken, the pasted redirect URL is used.
         let mut server = start_code_server(
             "OpenAI",
