@@ -68,12 +68,45 @@ impl<T> Reply<T> {
 /// Answers one request, given its method and URL.
 pub type Handler<T> = Box<dyn FnMut(&str, &Url) -> Reply<T> + Send>;
 
+/// The browser's page for a callback whose sign-in finishes first.
+pub struct PendingPage {
+    page: oneshot::Sender<(u16, String)>,
+    sent: oneshot::Receiver<()>,
+}
+
+impl PendingPage {
+    /// Answers with pi's page for `result`, signed in or 502 with the error,
+    /// and waits until it is sent.
+    pub async fn finish<U>(self, provider: &str, result: &Result<U, AuthError>) {
+        let page = match result {
+            Ok(_) => (
+                200,
+                success_page(&format!(
+                    "Signed in to {provider}. You may now close this page."
+                )),
+            ),
+            Err(err) => (
+                502,
+                error_page(
+                    &format!("{provider} sign-in failed."),
+                    Some(&err.to_string()),
+                ),
+            ),
+        };
+        if self.page.send(page).is_ok() {
+            let _ = self.sent.await;
+        }
+    }
+}
+
+type Outcome<T> = (Result<T, AuthError>, Option<PendingPage>);
+
 /// A running loopback server. Dropping it closes the listener and every open
 /// connection.
 pub struct Server<T> {
     port: u16,
     redirect_uri: String,
-    outcome: oneshot::Receiver<Result<T, AuthError>>,
+    outcome: oneshot::Receiver<Outcome<T>>,
     cancel: CancellationToken,
     tasks: tokio::task::JoinHandle<()>,
 }
@@ -88,11 +121,35 @@ impl<T: Send + 'static> Server<T> {
         cancel: &CancellationToken,
         handler: Handler<T>,
     ) -> std::io::Result<Server<T>> {
+        Self::listen(host, port, path, cancel, handler, false).await
+    }
+
+    /// [`Server::start`] for a sign-in that finishes before the browser's
+    /// page, as pi's `complete` option: the reply that yields a value waits
+    /// for the [`PendingPage`] from [`Server::wait_pending`].
+    pub async fn start_pending(
+        host: &str,
+        port: u16,
+        path: &str,
+        cancel: &CancellationToken,
+        handler: Handler<T>,
+    ) -> std::io::Result<Server<T>> {
+        Self::listen(host, port, path, cancel, handler, true).await
+    }
+
+    async fn listen(
+        host: &str,
+        port: u16,
+        path: &str,
+        cancel: &CancellationToken,
+        handler: Handler<T>,
+        pending: bool,
+    ) -> std::io::Result<Server<T>> {
         let listener = TcpListener::bind((host, port)).await?;
         let port = listener.local_addr()?.port();
         let redirect_uri = format!("http://{host}:{port}{path}");
         let (sender, outcome) = oneshot::channel();
-        let state = Arc::new(Mutex::new((handler, Some(sender))));
+        let state = Arc::new(Mutex::new((handler, Some(sender), pending)));
         let tasks = tokio::spawn(async move {
             let mut connections = JoinSet::new();
             while let Ok((stream, _)) = listener.accept().await {
@@ -120,10 +177,15 @@ impl<T: Send + 'static> Server<T> {
 
     /// The outcome of the first conclusive request.
     pub async fn wait(&mut self) -> Result<T, AuthError> {
+        self.wait_pending().await.map(|(value, _)| value)
+    }
+
+    /// [`Server::wait`], with the page a server from
+    /// [`Server::start_pending`] holds until the sign-in finishes.
+    pub async fn wait_pending(&mut self) -> Result<(T, Option<PendingPage>), AuthError> {
         match self.cancel.run_until_cancelled(&mut self.outcome).await {
-            Some(outcome) => {
-                outcome.unwrap_or_else(|_| Err(AuthError::failed("OAuth callback server closed")))
-            }
+            Some(Ok((outcome, page))) => outcome.map(|value| (value, page)),
+            Some(Err(_)) => Err(AuthError::failed("OAuth callback server closed")),
             None => Err(AuthError::Cancelled),
         }
     }
@@ -135,7 +197,8 @@ impl<T> Drop for Server<T> {
     }
 }
 
-type Shared<T> = Arc<Mutex<(Handler<T>, Option<oneshot::Sender<Result<T, AuthError>>>)>>;
+/// The handler, the sender of the outcome, and whether a value's page waits.
+type Shared<T> = Arc<Mutex<(Handler<T>, Option<oneshot::Sender<Outcome<T>>>, bool)>>;
 
 async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     let mut buffer = Vec::new();
@@ -154,19 +217,43 @@ async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     let method = parts.next().unwrap_or_default().to_owned();
     let target = parts.next().unwrap_or("/");
     let url = Url::parse("http://localhost").and_then(|base| base.join(target));
-    let (status, html, outcome) = match url {
+    let (mut status, mut html, outcome, pending) = match url {
         Ok(url) => {
             let mut guard = state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let (handler, sender) = &mut *guard;
+            let (handler, sender, pending) = &mut *guard;
             let reply = handler(&method, &url);
             let outcome = reply
                 .outcome
                 .and_then(|outcome| sender.take().map(|sender| (sender, outcome)));
-            (reply.status, reply.html, outcome)
+            (reply.status, reply.html, outcome, *pending)
         }
-        Err(_) => (404, error_page("Callback route not found.", None), None),
+        Err(_) => (
+            404,
+            error_page("Callback route not found.", None),
+            None,
+            false,
+        ),
+    };
+    let mut sent = None;
+    let outcome = match outcome {
+        Some((sender, Ok(value))) if pending => {
+            let (page, chosen) = oneshot::channel();
+            let (done, waiting) = oneshot::channel();
+            sent = Some(done);
+            let page = PendingPage {
+                page,
+                sent: waiting,
+            };
+            let _ = sender.send((Ok(value), Some(page)));
+            // A sign-in that ends without choosing keeps the handler's page.
+            if let Ok(page) = chosen.await {
+                (status, html) = page;
+            }
+            None
+        }
+        outcome => outcome,
     };
     let reason = reqwest::StatusCode::from_u16(status)
         .ok()
@@ -178,8 +265,11 @@ async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     );
     let _ = stream.write_all(response.as_bytes()).await;
     let _ = stream.shutdown().await;
+    if let Some(sent) = sent {
+        let _ = sent.send(());
+    }
     if let Some((sender, outcome)) = outcome {
-        let _ = sender.send(outcome);
+        let _ = sender.send((outcome, None));
     }
 }
 

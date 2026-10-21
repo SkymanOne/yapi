@@ -194,7 +194,7 @@ impl RadiusOAuth {
                 None => Reply::page(400, error_page("Missing authorization code.", None)),
             }
         };
-        let mut server = Server::start(
+        let mut server = Server::start_pending(
             CALLBACK_HOST,
             self.callback_port,
             CALLBACK_PATH,
@@ -210,20 +210,25 @@ impl RadiusOAuth {
             url: authorize.to_string(),
             instructions: Some("Continue in your browser.".into()),
         });
-        let code = server.wait().await?;
-        drop(server);
-        self.token(
-            &[
-                ("grant_type", "authorization_code"),
-                ("client_id", CLIENT_ID),
-                ("redirect_uri", &redirect_uri),
-                ("code", &code),
-                ("code_verifier", &pkce.verifier),
-            ],
-            cancel,
-        )
-        .await?
-        .map_err(|failure| AuthError::Failed(failure.message))
+        let (code, page) = server.wait_pending().await?;
+        // pi exchanges the code before the browser's page, which then shows the result.
+        let result = self
+            .token(
+                &[
+                    ("grant_type", "authorization_code"),
+                    ("client_id", CLIENT_ID),
+                    ("redirect_uri", &redirect_uri),
+                    ("code", &code),
+                    ("code_verifier", &pkce.verifier),
+                ],
+                cancel,
+            )
+            .await
+            .and_then(|result| result.map_err(|failure| AuthError::Failed(failure.message)));
+        if let Some(page) = page {
+            page.finish("Radius", &result).await;
+        }
+        result
     }
 
     async fn login_device(&self, interaction: &Interaction) -> Result<OAuthCredential, AuthError> {

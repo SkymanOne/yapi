@@ -150,7 +150,7 @@ impl OpenRouterOAuth {
                 None => Reply::page(400, error_page("Missing authorization code.", None)),
             }
         };
-        let mut server = Server::start(
+        let mut server = Server::start_pending(
             &callback_host(),
             0,
             &path,
@@ -193,16 +193,21 @@ impl OpenRouterOAuth {
         };
         let race = async {
             tokio::select! {
-                result = server.wait() => result,
-                result = manual => result,
+                result = server.wait_pending() => result,
+                result = manual => result.map(|code| (code, None)),
             }
         };
-        let code = tokio::time::timeout(LOGIN_TIMEOUT, race)
+        let (code, page) = tokio::time::timeout(LOGIN_TIMEOUT, race)
             .await
             .unwrap_or_else(|_| Err(AuthError::failed("OpenRouter sign-in timed out")))?;
-        drop(server);
-        self.exchange(&code, &pkce.verifier, interaction.cancel())
-            .await
+        // pi exchanges the code before the browser's page, which then shows the result.
+        let result = self
+            .exchange(&code, &pkce.verifier, interaction.cancel())
+            .await;
+        if let Some(page) = page {
+            page.finish("OpenRouter", &result).await;
+        }
+        result
     }
 }
 

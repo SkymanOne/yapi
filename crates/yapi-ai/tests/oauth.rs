@@ -878,17 +878,47 @@ async fn xai_keeps_refresh_token() {
 
 #[tokio::test]
 async fn openrouter_code_for_key() {
-    let server = mock(vec![Exchange::json(
-        "POST",
-        "/api/v1/auth/keys",
-        200,
-        &json!({"key": "sk-or-v1-key"}),
-    )])
+    let server = mock(vec![
+        Exchange::json(
+            "POST",
+            "/api/v1/auth/keys",
+            400,
+            &json!({"error": {"message": "bad code"}}),
+        ),
+        Exchange::json(
+            "POST",
+            "/api/v1/auth/keys",
+            200,
+            &json!({"key": "sk-or-v1-key"}),
+        ),
+    ])
     .await;
-    let oauth = OpenRouterOAuth {
+    let oauth = Arc::new(OpenRouterOAuth {
         authorize_url: format!("{}/auth", server.url()),
         token_url: format!("{}/api/v1/auth/keys", server.url()),
-    };
+    });
+    // The browser's page waits for the key exchange and shows its failure.
+    let (interaction, requests) = Interaction::new(CancellationToken::new());
+    let events = serve(requests, |_, _, _| None);
+    let login = tokio::spawn({
+        let oauth = Arc::clone(&oauth);
+        async move {
+            oauth
+                .login(&interaction, &LoginOptions::default())
+                .await
+                .map(|credential| credential.access)
+        }
+    });
+    let callback = query(&shown_auth_url(&events).await, "callback_url");
+    let page = reqwest::get(format!("{callback}?code=c1")).await.unwrap();
+    assert_eq!(page.status().as_u16(), 502);
+    let html = page.text().await.unwrap();
+    assert!(html.contains("OpenRouter sign-in failed."), "{html}");
+    assert_eq!(
+        login.await.unwrap().unwrap_err().to_string(),
+        "OpenRouter OAuth key exchange failed (HTTP 400): bad code"
+    );
+
     let (interaction, requests) = Interaction::new(CancellationToken::new());
     let events = serve(requests, |prompt, _, _| match prompt {
         AuthPrompt::ManualCode { .. } => {
@@ -908,7 +938,7 @@ async fn openrouter_code_for_key() {
     assert!(callback.contains("/oauth/callback/"));
     assert_eq!(query(&url, "code_challenge_method"), "S256");
     let requests = server.finish().unwrap();
-    let exchange: Value = serde_json::from_str(&requests[0].body).unwrap();
+    let exchange: Value = serde_json::from_str(&requests[1].body).unwrap();
     assert_eq!(exchange["code"], "or-code");
     assert_eq!(exchange["code_challenge_method"], "S256");
     assert!(!oauth.is_subscription());
@@ -974,63 +1004,88 @@ async fn radius_device_login() {
 
 #[tokio::test]
 async fn radius_browser_login() {
-    let server = mock(vec![
+    let discovery = || {
         Exchange::json(
             "GET",
             "/v1/oauth",
             200,
             &json!({"authorizationEndpoint": "https://radius.example/authorize"}),
-        ),
+        )
+    };
+    let server = mock(vec![
+        discovery(),
         Exchange::json(
             "POST",
             "/v1/oauth/token",
             200,
             &json!({"access_token": "rad-access", "refresh_token": "rad-refresh", "expires_in": 3600}),
         ),
+        discovery(),
+        Exchange::json(
+            "POST",
+            "/v1/oauth/token",
+            400,
+            &json!({"error": "invalid_grant", "error_description": "bad code"}),
+        ),
+        discovery(),
     ])
     .await;
-    let mut oauth = RadiusOAuth::new("Radius", &server.url());
-    oauth.callback_port = free_port();
-    let (interaction, requests) = Interaction::new(CancellationToken::new());
-    let events = serve(requests, |prompt, _, _| match prompt {
-        AuthPrompt::Select { options, .. } => Some(options[0].id.clone()),
-        _ => None,
-    });
-    let login = tokio::spawn(async move {
-        oauth
-            .login(&interaction, &LoginOptions::default())
+    // The browser's page waits for the token exchange and shows its result.
+    let mut redirects = Vec::new();
+    for (callback, page_status, access) in [
+        ("code=c1", 200, Some("rad-access")),
+        ("code=c1", 502, None),
+        ("error=access_denied", 400, None),
+    ] {
+        let mut oauth = RadiusOAuth::new("Radius", &server.url());
+        oauth.callback_port = free_port();
+        let (interaction, requests) = Interaction::new(CancellationToken::new());
+        let events = serve(requests, |prompt, _, _| match prompt {
+            AuthPrompt::Select { options, .. } => Some(options[0].id.clone()),
+            _ => None,
+        });
+        let login = tokio::spawn(async move {
+            oauth
+                .login(&interaction, &LoginOptions::default())
+                .await
+                .map(|credential| credential.access)
+        });
+        let url = shown_auth_url(&events).await;
+        assert!(url.starts_with(
+            "https://radius.example/authorize?response_type=code&client_id=pi-gateway"
+        ));
+        assert_eq!(query(&url, "handoff"), "url");
+        let redirect = query(&url, "redirect_uri");
+        let state = query(&url, "state");
+        let wrong = reqwest::get(format!("{redirect}?code=c1&state=other"))
             .await
-            .map(|credential| credential.access)
-    });
-    let url = loop {
+            .unwrap();
+        assert_eq!(wrong.status().as_u16(), 400);
+        let right = reqwest::get(format!("{redirect}?{callback}&state={state}"))
+            .await
+            .unwrap();
+        assert_eq!(right.status().as_u16(), page_status);
+        assert_eq!(login.await.unwrap().ok().as_deref(), access);
+        redirects.push(redirect);
+    }
+    let requests = server.finish().unwrap();
+    let exchange = body(&requests[1]);
+    assert!(exchange.contains(&("code".into(), "c1".into())));
+    assert!(exchange.contains(&("redirect_uri".into(), redirects.remove(0))));
+}
+
+/// The sign-in's authorization URL, once it is shown.
+async fn shown_auth_url(events: &Events) -> String {
+    loop {
         let found = events.lock().unwrap().iter().find_map(|event| match event {
             AuthEvent::AuthUrl { url, .. } => Some(url.clone()),
             _ => None,
         });
         if let Some(url) = found {
-            break url;
+            return url;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    };
-    assert!(
-        url.starts_with("https://radius.example/authorize?response_type=code&client_id=pi-gateway")
-    );
-    assert_eq!(query(&url, "handoff"), "url");
-    let redirect = query(&url, "redirect_uri");
-    let state = query(&url, "state");
-    let wrong = reqwest::get(format!("{redirect}?code=c1&state=other"))
-        .await
-        .unwrap();
-    assert_eq!(wrong.status().as_u16(), 400);
-    let right = reqwest::get(format!("{redirect}?code=c1&state={state}"))
-        .await
-        .unwrap();
-    assert_eq!(right.status().as_u16(), 200);
-    assert_eq!(login.await.unwrap().unwrap(), "rad-access");
-    let requests = server.finish().unwrap();
-    let exchange = body(&requests[1]);
-    assert!(exchange.contains(&("code".into(), "c1".into())));
-    assert!(exchange.contains(&("redirect_uri".into(), redirect)));
+    }
 }
 
 #[tokio::test]
