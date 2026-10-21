@@ -94,7 +94,7 @@ fn entries(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_then_keeps_this_versions_docs() {
+async fn installs_then_keeps_docs() {
     let agent = scratch("install");
     let bytes = archive(VERSION);
     let server = release(&bytes, &sums(&bytes)).await;
@@ -132,7 +132,7 @@ async fn replaces_another_versions_docs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn keeps_the_old_docs_when_the_archive_fails_its_checksum() {
+async fn bad_checksum_keeps_docs() {
     let agent = scratch("refuse");
     std::fs::create_dir_all(agent.join("docs")).unwrap();
     std::fs::write(agent.join("docs/.version"), "0.0.1\n").unwrap();

@@ -655,7 +655,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn derives_callback_settings_like_pi() {
+    fn derives_callback_settings() {
         let settings = |url: Option<&str>, port: Option<u16>| {
             callback_settings(&OAuthConfig {
                 callback_url: url.map(str::to_owned),
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_pasted_redirect_urls_like_pi() {
+    fn reads_pasted_redirects() {
         assert_eq!(
             response_from_redirect_url(" http://127.0.0.1:1/callback?code=c&state=s&iss=i ", "s"),
             Ok(("c".into(), Some("i".into())))
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_separate_credentials_for_servers_sharing_a_url() {
+    async fn shared_url_separate_credentials() {
         let (dir, store) = temp_store("shared");
         store
             .for_server("work", URL)
@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn moves_legacy_credentials_to_the_first_server_that_loads_them() {
+    async fn migrates_legacy_credentials() {
         let (dir, store) = temp_store("legacy");
         std::fs::create_dir_all(&dir).unwrap();
         let legacy = json!({URL: state("legacy-token")});

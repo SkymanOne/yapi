@@ -919,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_counts_only_the_editor() {
+    fn typed_counts_editor_only() {
         let rows: Vec<String> = [
             "Line 1 of a box",
             "",
@@ -937,7 +937,7 @@ mod tests {
     }
 
     #[test]
-    fn temp_dir_is_removed_when_dropped() {
+    fn temp_dir_removed_on_drop() {
         let path = std::env::temp_dir().join(format!("yapi-bench-drop-{}", std::process::id()));
         std::fs::create_dir_all(path.join("project")).unwrap();
         drop(TempDir(path.clone()));
@@ -946,7 +946,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn print_mode_that_exits_early_fails_with_its_stderr() {
+    fn print_early_exit_fails() {
         use std::os::unix::fs::PermissionsExt as _;
         let temp =
             TempDir(std::env::temp_dir().join(format!("yapi-bench-test-{}", std::process::id())));

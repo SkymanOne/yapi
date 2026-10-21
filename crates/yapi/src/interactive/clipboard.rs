@@ -377,7 +377,7 @@ mod tests {
     use super::*;
 
     #[tokio::test(flavor = "current_thread")]
-    async fn commands_run_without_blocking_the_runtime() {
+    async fn commands_run_nonblocking() {
         let tick = tokio::spawn(tokio::time::sleep(Duration::from_millis(20)));
         let script = ["-c", "cat >/dev/null; sleep 0.5"];
         assert!(
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn image_types_are_chosen_as_in_pi() {
+    fn chooses_image_types() {
         let types = "TARGETS\r\ntext/plain\nimage/bmp\n image/JPEG \nimage/png;q=1\n";
         assert_eq!(image_type(types), Some("image/png;q=1"));
         assert_eq!(image_type("image/gif\nimage/webp"), Some("image/webp"));
@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn images_are_read_with_the_type_listed() {
+    async fn reads_listed_image_type() {
         let list = ["-c", "printf 'text/plain\\nimage/png\\n'"];
         // `sh -c` names the type `$0`.
         let read = [&["-c", r#"test "$0" = image/png && printf png"#][..], &[]];
@@ -467,7 +467,7 @@ mod tests {
     /// The reader on a pasteboard of its own, filled by a script.
     #[cfg(target_os = "macos")]
     #[tokio::test]
-    async fn the_macos_reader_finds_files_images_and_text() {
+    async fn macos_files_images_text() {
         const WRITER: &str = r#"ObjC.import("AppKit");
 function run([name, kind, value]) {
 	const board = $.NSPasteboard.pasteboardWithName(name);

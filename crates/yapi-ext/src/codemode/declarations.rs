@@ -633,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn types_cover_references_unions_and_tuples() {
+    fn refs_unions_and_tuples() {
         let schema = json!({
             "$defs": {"node": {"type": "object", "properties": {"next": {"$ref": "#/$defs/node"}}}},
             "type": "object",

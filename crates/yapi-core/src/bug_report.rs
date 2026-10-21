@@ -730,7 +730,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn redacts_credential_keys_user_info_and_query_tokens() {
+    fn redacts_credentials() {
         let mut value = json!({
             "apiKey": "sk-1",
             "nested": {"x-api-key": "sk-2", "Authorization": "Bearer t", "maxTokens": 5},
@@ -795,7 +795,7 @@ mod tests {
     }
 
     #[test]
-    fn zips_pi_file_names_and_leaves_out_a_declined_transcript() {
+    fn zip_contents() {
         let dir = std::env::temp_dir().join(format!("yapi-bug-zip-{}", crate::time::uuid_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let declined = report(None, None);
@@ -824,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn issue_bodies_write_the_home_folder_as_a_tilde() {
+    fn issue_body_tilde_home() {
         let report = report(
             None,
             Some("ENOENT: '/home/me/work/a.txt' in /home/me, not /home/meg or /home/me.d"),
@@ -838,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn issue_body_omits_setting_values() {
+    fn issue_body_omits_settings() {
         let mut report = report(None, None);
         report.metadata["settings"] = json!({
             "global": {"shellCommandPrefix": "export GITHUB_TOKEN=ghp_secret", "apiKey": "sk-1"},
@@ -860,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn issue_bodies_stay_within_the_limit() {
+    fn issue_body_size_limit() {
         let mut long = report(None, Some(&"s".repeat(BODY_LIMIT)));
         long.metadata["settings"] = json!("r".repeat(BODY_LIMIT));
         let body = long.issue_body(Path::new("/home/me"));
@@ -914,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_hold_the_cwd_and_transcript_only_when_included() {
+    fn cwd_and_transcript_optional() {
         let session = faux_session(&yapi_ai::faux::Faux::default());
         let declined = Report::collect(&session, "  it hangs ", false, None);
         assert_eq!(declined.metadata["hint"], "it hangs");
@@ -934,7 +934,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn summaries_are_about_yapi_and_fail_on_tool_calls_or_no_text() {
+    async fn summary_rejects_bad_output() {
         use tokio_util::sync::CancellationToken;
         use yapi_ai::faux::{Faux, Response};
 
@@ -968,7 +968,7 @@ mod tests {
     /// shell, and a body file without the transcript or the diagnostics.
     #[cfg(unix)]
     #[test]
-    fn issues_are_created_with_an_argument_vector_and_a_body_file() {
+    fn issue_create_avoids_shell() {
         use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("yapi-bug-gh-{}", crate::time::uuid_v4()));
         std::fs::create_dir_all(&dir).unwrap();

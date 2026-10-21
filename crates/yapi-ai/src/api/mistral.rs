@@ -766,7 +766,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derives_tool_call_ids_like_pi() {
+    fn derives_tool_call_ids() {
         assert_eq!(derive_tool_call_id("abcDEF123", 0), "abcDEF123");
         let mut ids = IdNormalizer::default();
         let first = ids.normalize("call_1|fc_long_item");
@@ -776,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn splits_events_on_any_blank_line() {
+    fn splits_on_blank_lines() {
         let mut parser = EventParser::default();
         let events = parser
             .push("data: {\"choices\":[]}\r\n\r\ndata: {\"choices\":[1]}\n\ndata: [DONE]\n\n")

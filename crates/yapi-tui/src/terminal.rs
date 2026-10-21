@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn negotiates_kitty_or_falls_back() {
+    fn kitty_negotiation_fallback() {
         let mut protocol = KeyboardProtocol::default();
         assert_eq!(protocol.query(), KEYBOARD_QUERY);
         let mut write = String::new();

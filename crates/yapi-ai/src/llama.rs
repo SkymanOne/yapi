@@ -840,7 +840,7 @@ pub mod huggingface {
             regex_lite::Regex::new(
                 r"(?i)(?:^|[-_.])((?:UD-)?(?:IQ\d(?:_[A-Z0-9]+)+|Q\d(?:_[A-Z0-9]+)+|BF16|F16|F32|MXFP\d(?:_[A-Z0-9]+)*))$",
             )
-            .expect("constant pattern; `normalizes_server_urls_like_pi`")
+            .expect("constant pattern; `normalizes_server_urls`")
         });
         PATTERN
             .captures(stem)
@@ -854,7 +854,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalizes_server_urls_like_pi() {
+    fn normalizes_server_urls() {
         assert_eq!(
             normalize_server_url(" http://127.0.0.1:8080/v1/?x=1#y ").unwrap(),
             "http://127.0.0.1:8080"

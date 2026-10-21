@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn strips_types_and_keeps_modules() {
+    fn strips_types_keeps_modules() {
         let dir = scratch("ts");
         let path = write(
             &dir,
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn detects_common_js_and_jiti_globals() {
+    fn detects_commonjs_jiti_globals() {
         let dir = scratch("cjs");
         let cjs = write(&dir, "c.js", "module.exports = { a: require('./d') };\n");
         let esm = write(
@@ -393,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_typescript_siblings_and_packages() {
+    fn resolves_siblings_and_packages() {
         let dir = scratch("resolve");
         write(&dir, "src/util.ts", "export const x = 1;\n");
         let main = write(&dir, "src/main.ts", "import { x } from './util.js';\n");

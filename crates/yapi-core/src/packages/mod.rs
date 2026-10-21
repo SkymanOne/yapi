@@ -976,7 +976,7 @@ mod tests {
     /// pi's `installGit` on an existing checkout fetches the new ref, and
     /// keeps the checkout when that fails.
     #[tokio::test]
-    async fn install_new_ref_updates_checkout() {
+    async fn new_ref_updates_checkout() {
         let (dir, mut manager) = git_scratch("existing");
         let origin = dir.join("origin");
         run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();

@@ -91,7 +91,7 @@ fn text(result: &ToolResultMessage) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn scripts_call_tools_and_print_output() {
+async fn scripts_call_and_print() {
     let dir = scratch("codemode-calls");
     std::fs::write(dir.join("a.txt"), "alpha\nbeta\n").unwrap();
     let (session, faux, results) = run(
@@ -168,7 +168,7 @@ async fn scripts_call_tools_and_print_output() {
 /// lists every callable tool. The transcript still records the direct tools,
 /// and scripts still call them.
 #[tokio::test(flavor = "multi_thread")]
-async fn only_mode_hides_direct_tools() {
+async fn only_mode_hides_tools() {
     let dir = scratch("codemode-only");
     std::fs::write(dir.join("a.txt"), "alpha").unwrap();
     let faux = Faux::new([
@@ -224,7 +224,7 @@ async fn only_mode_hides_direct_tools() {
 /// call's start, its running row, its end, its finished row. They report from
 /// the task that runs codemode, so no scheduling can reorder them (#41).
 #[tokio::test(flavor = "multi_thread")]
-async fn nested_calls_report_in_pi_order() {
+async fn nested_calls_pi_order() {
     let dir = scratch("codemode-order");
     std::fs::write(dir.join("hello.txt"), "hi\n").unwrap();
     let (session, _faux) = start(
@@ -294,7 +294,7 @@ async fn nested_calls_report_in_pi_order() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn script_errors_read_as_in_pi() {
+async fn script_errors_match_pi() {
     let dir = scratch("codemode-errors");
     let (_session, _faux, results) = run(
         &dir,
@@ -362,7 +362,7 @@ async fn script_errors_read_as_in_pi() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn store_values_last_across_calls() {
+async fn store_persists_across_calls() {
     let dir = scratch("codemode-store");
     let (session, _faux, results) = run(
         &dir,
@@ -440,7 +440,7 @@ async fn limits_stop_scripts() {
 /// Scripts reach nothing but their tools: no files, processes, network,
 /// environment, modules or host natives.
 #[tokio::test(flavor = "multi_thread")]
-async fn scripts_have_no_ambient_access() {
+async fn no_ambient_access() {
     let dir = scratch("codemode-sandbox");
     std::fs::write(dir.join("secret.txt"), "secret").unwrap();
     let secret = dir.join("secret.txt").display().to_string();
@@ -501,7 +501,7 @@ async fn discovery_globals_find_tools() {
 /// Packages that decorate codemode register the facade's definition; scripts
 /// still run in yapi's sandbox, and the loadout still applies.
 #[tokio::test(flavor = "multi_thread")]
-async fn facade_codemode_replaces_the_builtin() {
+async fn facade_codemode_replaces_builtin() {
     let dir = scratch("codemode-facade");
     std::fs::write(dir.join("a.txt"), "alpha").unwrap();
     let path = dir.join("decorate.ts");

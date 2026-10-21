@@ -57,7 +57,7 @@ mod tests {
     use super::from_path;
 
     #[test]
-    fn names_languages_by_extension_as_pi() {
+    fn languages_by_extension() {
         assert_eq!(from_path("src/main.rs"), Some("rust"));
         assert_eq!(from_path("a/b.test.TSX"), Some("typescript"));
         assert_eq!(from_path("Dockerfile"), Some("dockerfile"));

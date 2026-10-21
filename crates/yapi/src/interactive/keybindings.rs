@@ -383,7 +383,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrates_legacy_names_in_definition_order() {
+    fn migrates_legacy_names() {
         let raw: Map<String, Value> = serde_json::from_str(
             r#"{"zeta": "x", "interrupt": "escape", "cursorUp": ["up", "ctrl+p"], "app.clear": "ctrl+x", "clear": "ctrl+c"}"#,
         )
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_objects_after_a_byte_order_mark() {
+    fn reads_after_bom() {
         let dir = std::env::temp_dir().join(format!("yapi-keybindings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("keybindings.json");

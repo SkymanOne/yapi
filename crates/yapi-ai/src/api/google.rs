@@ -969,7 +969,7 @@ mod vertex {
         }
 
         #[test]
-        fn builds_the_sdk_urls() {
+        fn builds_sdk_urls() {
             let template = "https://{location}-aiplatform.googleapis.com";
             let url = |key: Option<&str>, location: &str, base: &str| {
                 target(

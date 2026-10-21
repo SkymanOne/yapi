@@ -68,7 +68,7 @@ fn contexts_match_pi() {
 }
 
 #[test]
-fn migrates_v1_files_like_pi() {
+fn migrates_v1_files() {
     let scratch = Scratch::new("migrate");
     let copy = scratch.0.join("old.jsonl");
     std::fs::copy(fixtures().join("legacy/large-session.v1.jsonl"), &copy).unwrap();
@@ -103,7 +103,7 @@ fn user(text: &str) -> Message {
 }
 
 #[test]
-fn creates_files_lazily_and_branches() {
+fn lazy_file_and_branch() {
     let scratch = Scratch::new("lazy");
     let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
     session.append_model_change("anthropic", "m").unwrap();

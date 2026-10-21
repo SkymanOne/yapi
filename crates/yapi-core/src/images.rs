@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn images_within_the_limits_pass_unchanged() {
+    fn small_images_unchanged() {
         let png = file(&pixels(30, 20, false), ImageOutputFormat::Png);
         let processed = process(&png, "image/png", true, None).unwrap();
         assert_eq!(processed.image.data, STANDARD.encode(&png));
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn large_images_are_scaled_to_fit_with_pi_s_note() {
+    fn large_images_scaled() {
         let png = file(&pixels(2100, 10, false), ImageOutputFormat::Png);
         let processed = process(&png, "image/png", true, None).unwrap();
         assert_eq!(processed.image.mime_type, "image/png");
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn jpeg_replaces_png_that_exceeds_the_byte_limit() {
+    fn jpeg_replaces_large_png() {
         let image = pixels(64, 64, true);
         let png = file(&image, ImageOutputFormat::Png);
         let limits = limits(2000, 2000, Some(base64_len(png.len())));
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn images_shrink_until_they_fit_or_are_omitted() {
+    fn shrinks_then_omits() {
         let png = file(&pixels(40, 40, true), ImageOutputFormat::Png);
         let limits = limits(2000, 2000, Some(1200));
         let processed = process(&png, "image/png", true, Some(&limits)).unwrap();
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn exif_orientation_turns_images_upright_before_resizing() {
+    fn exif_upright_before_resize() {
         let jpeg = file(&pixels(4, 2, false), ImageOutputFormat::Jpeg(90));
         // An APP1 segment with one IFD entry: orientation 6, rotate clockwise.
         let mut exif = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01".to_vec();
@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn to_png_ignores_exif_orientation() {
+    fn to_png_ignores_exif() {
         let jpeg = file(&pixels(4, 2, false), ImageOutputFormat::Jpeg(90));
         let mut exif = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01".to_vec();
         exif.extend_from_slice(b"\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0");
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn prompts_and_tool_results_are_normalized() {
+    fn normalizes_prompts_and_results() {
         let png = ImageContent {
             data: STANDARD.encode(file(&pixels(3, 2, false), ImageOutputFormat::Png)),
             mime_type: "image/png".into(),

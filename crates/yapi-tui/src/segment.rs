@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn treats_valid_markers_as_atoms() {
+    fn valid_markers_atomic() {
         let text = "x [paste #1 +11 lines] y";
         assert_eq!(find_word_forward(text, 1, &[1]), 22);
         assert_eq!(find_word_backward(text, 22, &[1]), 2);

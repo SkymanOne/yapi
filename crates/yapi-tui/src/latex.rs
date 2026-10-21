@@ -2100,7 +2100,7 @@ mod tests {
     }
 
     #[test]
-    fn jacobian_conjecture_session_using_dollar_delimiters() {
+    fn jacobian_conjecture_dollars() {
         check(r#"\mathbb{C}^3 \to \mathbb{C}^3"#, false, "ℂ³ → ℂ³");
         check(
             r#"\{3x+2y,\; 27x^2-4z-1,\; x(x-1)(x+1)\} \quad\Rightarrow\quad x \in \{0, \pm 1\},"#,
@@ -2165,7 +2165,7 @@ mod tests {
     }
 
     #[test]
-    fn satellite_calculation_session_using_bracket_delimiters() {
+    fn satellite_session_brackets() {
         check(
             r#"E \approx \frac{0.1\ \text{lux}}{100\ \text{lm/W}} = 0.001\ \text{W/m}^2"#,
             false,
@@ -2213,7 +2213,7 @@ mod tests {
     }
 
     #[test]
-    fn jacobian_conjecture_sessions_using_parenthesis_and_bracket_delimiters() {
+    fn jacobian_conjecture_parens_brackets() {
         check(
             r#"\det\!\left(\frac{\partial(F_1,F_2,F_3)}{\partial(x,y,z)}\right)=-2."#,
             false,
@@ -2234,7 +2234,7 @@ F(-1,\tfrac32,\tfrac{13}2)&=(-\tfrac14,0,0).
     }
 
     #[test]
-    fn jacobian_matrix_session_using_dollar_delimiters() {
+    fn jacobian_matrix_dollars() {
         check(
             r#"J = \begin{pmatrix}
 \frac{\partial f_1}{\partial x} & \frac{\partial f_1}{\partial y} & \frac{\partial f_1}{\partial z} \\
@@ -2299,7 +2299,7 @@ f_3 = x\,(2 - 3u - t)
     }
 
     #[test]
-    fn extended_formulas_from_a_renderer_stress_test_session() {
+    fn stress_test_formulas() {
         check(r#"e^{i\pi}+1=0"#, false, "e^(iπ)+1 = 0");
         check(
             r#"\boxed{
@@ -2453,7 +2453,7 @@ c_n
     }
 
     #[test]
-    fn renders_common_symbols_roots_sums_and_integrals() {
+    fn symbols_roots_sums_integrals() {
         check(
             r#"\sum_{i=0}^n \alpha_i + \int_0^\infty e^{-x^2}\,dx = \sqrt{\pi}"#,
             false,
@@ -2462,7 +2462,7 @@ c_n
     }
 
     #[test]
-    fn renders_common_accents_and_binomial_notation() {
+    fn accents_and_binomials() {
         check(
             r#"\binom{n}{k}+\vec{x}+\hat{y}+\overline{AB}"#,
             false,
@@ -2471,7 +2471,7 @@ c_n
     }
 
     #[test]
-    fn renders_extended_symbols_and_negated_relations() {
+    fn extended_symbols_negations() {
         check(
             r#"\epsilon+\varepsilon+\varsigma+\varkappa+\oplus+\otimes+\therefore+\because"#,
             false,
@@ -2485,7 +2485,7 @@ c_n
     }
 
     #[test]
-    fn renders_relational_algebra_join_operators() {
+    fn join_operators() {
         check(r#"R\bowtie S,\quad R\Join S"#, false, "R ⋈ S, R ⋈ S");
         check(r#"R\ltimes S,\quad R\rtimes S"#, false, "R ⋉ S, R ⋊ S");
         check(
@@ -2496,7 +2496,7 @@ c_n
     }
 
     #[test]
-    fn renders_delimiter_commands_and_invisible_delimiters() {
+    fn delimiter_commands() {
         check(
             r#"\lvert{x}\rvert+\lVert{v}\rVert+\left.\frac{dy}{dx}\right|_{x=0}"#,
             false,
@@ -2510,7 +2510,7 @@ c_n
     }
 
     #[test]
-    fn renders_named_modular_overlaid_and_underlaid_operators() {
+    fn named_modular_operators() {
         check(
             r#"\operatorname*{arg\,max}_{x\in X} f(x)"#,
             false,
@@ -2529,7 +2529,7 @@ c_n
     }
 
     #[test]
-    fn renders_indexed_roots_and_additional_accents_and_wrappers() {
+    fn indexed_roots_and_accents() {
         check(
             r#"\sqrt[2]{x}+\sqrt[3]{x}+\sqrt[4]{x}+\sqrt[n]{x}+\sqrt[k]{x+1}"#,
             false,
@@ -2548,7 +2548,7 @@ c_n
     }
 
     #[test]
-    fn renders_additional_display_environments() {
+    fn display_environments() {
         check(
             r#"\begin{equation}\begin{split}a&=b\\&=c\end{split}\end{equation}"#,
             false,
@@ -2562,7 +2562,7 @@ c_n
     }
 
     #[test]
-    fn uses_natural_case_conditions_and_aligns_matrix_columns() {
+    fn cases_and_matrix_alignment() {
         check(
             r#"f(x)=\begin{cases}a & x<0 \\ b & \text{if }x=0 \\ c & \text{otherwise}\end{cases}"#,
             false,
@@ -2576,7 +2576,7 @@ c_n
     }
 
     #[test]
-    fn composes_matrices_with_fractions_and_adjacent_matrices() {
+    fn composed_matrices() {
         check(
             r#"R\left(\frac{\pi}{4}\right)
 =
@@ -2610,7 +2610,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn normalizes_relation_multiplication_and_named_operator_spacing() {
+    fn operator_spacing() {
         check("x=y", false, "x = y");
         check("x =y", false, "x = y");
         check("x=\ny", false, "x = y");
@@ -2627,7 +2627,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn treats_a_backslash_followed_by_a_line_ending_as_control_space() {
+    fn backslash_newline_space() {
         check(
             r#"\boxed{
 (1,1,1),\ (1,1,2),\ (1,2,5),\ (1,5,13),\ (2,5,29),\
@@ -2640,7 +2640,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn stacks_operator_limits_in_display_mode() {
+    fn display_operator_limits() {
         check(r#"\sum_{i=0}^n x_i"#, true, " n\n ∑  xᵢ\ni=0");
         check(r#"\min_{x\in X} f(x)"#, true, "min f(x)\nx∈X");
         check(
@@ -2653,7 +2653,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn centers_even_case_rows_around_a_middle_brace() {
+    fn even_cases_centered() {
         check(
             r#"f(x) = \begin{cases} x^{2} & x \geq 0 \\ -x & x < 0 \end{cases}"#,
             false,
@@ -2662,7 +2662,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn stacks_fractions_in_display_mode() {
+    fn display_fractions_stacked() {
         check(
             r#"x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}"#,
             true,
@@ -2678,7 +2678,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn keeps_nested_display_fractions_linear() {
+    fn nested_fractions_linear() {
         check(
             r#"\frac{\frac{x^2+1}{x-1}-\frac{2x}{x+1}}{\frac{x}{x^2-1}}"#,
             true,
@@ -2697,7 +2697,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn lays_out_unsupported_and_nested_scripts_while_keeping_script_fractions_linear() {
+    fn nested_scripts_layout() {
         check(
             r#"\partial_tU_2(t,0)=Aj_*(1-t)^{-A-1}.\qquad x^{n^2}+x_{i_j}"#,
             true,
@@ -2707,12 +2707,12 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn returns_undefined_for_unsupported_commands() {
+    fn unsupported_commands_undefined() {
         check_none(r#"x + \unknown{y}"#, false);
     }
 
     #[test]
-    fn returns_undefined_for_malformed_groups_and_environments() {
+    fn malformed_groups_undefined() {
         check_none(r#"\frac{1}{x"#, false);
         check_none("x}", false);
         check_none(r#"\begin{matrix}1 & 2"#, false);
@@ -2720,7 +2720,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn deep_nesting_is_unsupported_without_overflowing_the_stack() {
+    fn deep_nesting_no_overflow() {
         check(
             &format!("{}x{}", "{".repeat(100), "}".repeat(100)),
             false,
@@ -2752,7 +2752,7 @@ R\left(\frac{\pi}{4}\right)
     }
 
     #[test]
-    fn layout_markers_in_the_source_are_unsupported() {
+    fn layout_markers_unsupported() {
         check_none("\\frac{\u{f0000}0\u{f0001}}{2}", true);
         check_none("\\frac{\u{f0000}1\u{f0001}}{2}\\frac{a}{b}", true);
         check_none("x\u{f0002}y", false);

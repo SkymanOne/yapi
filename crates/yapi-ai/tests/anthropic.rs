@@ -119,7 +119,7 @@ async fn streams_text() {
 }
 
 #[tokio::test]
-async fn reports_http_errors_like_the_sdk() {
+async fn reports_http_errors() {
     let body = r#"{"type":"error","error":{"type":"invalid_request_error","message":"bad model"}}"#;
     let interactions = vec![Interaction::json(
         "POST",
@@ -144,7 +144,7 @@ async fn reports_http_errors_like_the_sdk() {
 
 /// A stream that fails during a tool call keeps the arguments streamed so far.
 #[tokio::test]
-async fn partial_tool_arguments_on_error() {
+async fn partial_arguments_on_error() {
     let events = [
         json!({"type": "message_start", "message": {"id": "msg_1", "model": "claude-sonnet-4-5", "usage": {"input_tokens": 1, "output_tokens": 1}}}),
         json!({"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}}),
@@ -177,7 +177,7 @@ async fn partial_tool_arguments_on_error() {
 }
 
 #[tokio::test]
-async fn missing_key_fails_before_sending() {
+async fn missing_key_fails_early() {
     let server = MockServer::local(Cassette::default()).await.unwrap();
     let request = Request {
         model: model(&server.url()),

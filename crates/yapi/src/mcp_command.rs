@@ -844,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn options_stop_at_the_server_command() {
+    fn options_stop_at_server() {
         let known = [("local", Kind::Flag), ("env", Kind::List)];
         let parsed = parse_options(
             &strings(&["-l", "x", "--env", "A=1", "npx", "--yes", "pkg"]),

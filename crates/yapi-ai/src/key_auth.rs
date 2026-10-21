@@ -595,7 +595,7 @@ mod tests {
     }
 
     #[test]
-    fn llama_reads_the_server_and_key_like_pi() {
+    fn llama_server_and_key() {
         assert_eq!(run("llama.cpp", None, &[], &[]), None);
         let from_env = run(
             "llama.cpp",
@@ -677,7 +677,7 @@ mod tests {
     }
 
     #[test]
-    fn vertex_needs_credentials_project_and_location() {
+    fn vertex_required_fields() {
         let full = [
             ("GOOGLE_CLOUD_PROJECT", "p"),
             ("GOOGLE_CLOUD_LOCATION", "us-central1"),
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn cloudflare_merges_fields_and_moves_the_gateway_key_to_a_header() {
+    fn cloudflare_gateway_key_header() {
         let partial = stored(Some("cf"), &[]);
         assert!(run("cloudflare-workers-ai", Some(&partial), &[], &[]).is_none());
         let workers = run(
@@ -763,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn federation_needs_all_three_ids() {
+    fn federation_needs_three_ids() {
         let (env, exists) = ambient(
             &[
                 ("ANTHROPIC_FEDERATION_RULE_ID", "rule"),

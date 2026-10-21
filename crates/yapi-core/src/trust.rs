@@ -243,7 +243,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decisions_are_stored_inherited_and_cleared() {
+    fn decisions_stored_inherited_cleared() {
         let root = std::env::temp_dir().join(format!("yapi-trust-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let project = root.join("work").join("app");

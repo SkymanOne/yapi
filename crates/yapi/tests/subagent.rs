@@ -75,7 +75,7 @@ fn sent(body: &str) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn foreground_subagents_answer_the_tool_call() {
+async fn foreground_subagent_answers() {
     let parent = server(vec![
         subagent(json!({"task": "Count to four", "model": "child/claude-sonnet-4-5"})),
         text("The subagent counted."),
@@ -165,7 +165,7 @@ impl Rpc {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn background_subagents_report_in_a_new_turn() {
+async fn background_subagent_new_turn() {
     let parent = server(vec![
         subagent(json!({"task": "Count to four", "background": true, "model": "child/claude-sonnet-4-5"})),
         text("Started it."),
@@ -197,7 +197,7 @@ async fn background_subagents_report_in_a_new_turn() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn aborting_the_run_kills_the_subagent() {
+async fn abort_kills_subagent() {
     let task = format!("Count slowly {}", std::process::id());
     let parent = server(vec![subagent(
         json!({"task": task, "model": "child/claude-sonnet-4-5"}),
@@ -249,7 +249,7 @@ async fn aborting_the_run_kills_the_subagent() {
 
 /// Pi's `RpcClient` runs yapi in RPC mode and drives it from a Pi extension.
 #[tokio::test(flavor = "multi_thread")]
-async fn pi_extensions_drive_subagents_with_rpc_client() {
+async fn rpc_client_drives_subagents() {
     let delegate = json!({"type": "tool_use", "id": "toolu_1", "name": "delegate", "input": {"task": "Count to four"}});
     let parent = server(vec![
         reply(&[delegate], "tool_use", 0),

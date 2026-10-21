@@ -742,7 +742,7 @@ mod tests {
     /// A long process reloads and binds once per session; a restart replays
     /// the load, the flags, and the latest reload and binding only.
     #[test]
-    fn the_replay_keeps_the_latest_reload_and_bind() {
+    fn replay_keeps_latest_reload() {
         let mut replay = Vec::new();
         for kind in [
             "load", "flags", "bind", "emit", "reload", "bind", "reload", "bind",

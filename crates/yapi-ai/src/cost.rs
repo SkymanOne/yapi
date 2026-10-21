@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn highest_matching_tier_prices_the_request() {
+    fn highest_matching_tier_wins() {
         let model = model(
             r#"{"input":1,"output":1,"cacheRead":1,"cacheWrite":1,"tiers":[
                 {"inputTokensAbove":100,"input":2,"output":2,"cacheRead":2,"cacheWrite":2},
@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn long_cache_writes_cost_twice_the_input_rate() {
+    fn long_cache_writes_double() {
         let model = model(r#"{"input":3,"output":0,"cacheRead":0,"cacheWrite":3.75}"#);
         let mut usage = Usage {
             cache_write: 300,

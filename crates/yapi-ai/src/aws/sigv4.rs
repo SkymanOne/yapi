@@ -191,7 +191,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn matches_the_sdk_signature() {
+    fn matches_sdk_signature() {
         // A request pi's Bedrock provider made, with fake credentials.
         let body = r#"{"messages":[{"role":"user","content":[{"text":"hi"},{"cachePoint":{"type":"default"}}]}],"inferenceConfig":{"maxTokens":64000}}"#;
         let mut headers: Vec<(String, String)> = [

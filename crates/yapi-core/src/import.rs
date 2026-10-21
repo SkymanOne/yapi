@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_what_ri_reads_and_keeps_existing_files() {
+    fn copies_state_keeps_existing() {
         let dir = std::env::temp_dir().join(format!("yapi-import-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (pi, yapi) = (dir.join("pi"), dir.join("yapi"));
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_settings_replace_yapi_first_start_record_without_pi_version() {
+    fn settings_replace_first_start() {
         let dir = std::env::temp_dir().join(format!("yapi-import-settings-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (pi, yapi) = (dir.join("pi"), dir.join("yapi"));
@@ -353,7 +353,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn copies_context_files_and_survives_bad_links() {
+    fn context_files_and_symlinks() {
         use std::os::unix::fs::symlink;
         let dir = std::env::temp_dir().join(format!("yapi-import-links-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

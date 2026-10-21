@@ -291,14 +291,14 @@ mod tests {
     use crate::json;
 
     #[test]
-    fn message_update_matches_pi_json_mode() {
+    fn message_update_json() {
         let line = r#"{"type":"message_update","usage":{"input":12,"output":6,"cacheRead":0,"cacheWrite":0,"totalTokens":18,"cost":{"input":0.000036,"output":0.00009,"cacheRead":0,"cacheWrite":0,"total":0.000126},"cacheWrite1h":0},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello"}}"#;
         let event: AgentEvent = serde_json::from_str(line).unwrap();
         assert_eq!(json::to_string(&event).unwrap(), line);
     }
 
     #[test]
-    fn toolcall_start_carries_id_and_name() {
+    fn toolcall_start_id_name() {
         let event = AssistantMessageEvent::ToolcallStart {
             content_index: 1,
             id: "call_1".into(),
@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn unit_variants_are_bare_types() {
+    fn unit_variants_bare() {
         assert_eq!(
             json::to_string(&AgentEvent::AgentSettled).unwrap(),
             r#"{"type":"agent_settled"}"#

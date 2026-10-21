@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_timeouts_fail_as_in_pi() {
+    fn invalid_timeouts_fail() {
         let mut manager = SettingsManager::in_memory();
         manager.global =
             json!({"httpIdleTimeoutMs": " 1500.7 ", "websocketConnectTimeoutMs": "soon"})
@@ -525,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_fields_leave_the_valid_ones() {
+    fn invalid_fields_keep_valid() {
         let mut manager = SettingsManager::in_memory();
         manager.global = json!({
             "theme": "dark",
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_warming_comes_from_the_global_settings_only() {
+    fn cache_warming_global_only() {
         let mut manager = SettingsManager::in_memory();
         assert_eq!(manager.cache_warming_mode(), CacheWarming::Streaming);
         manager.project = json!({"cacheWarming": "off"}).as_object().unwrap().clone();

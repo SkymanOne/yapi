@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn replaces_exact_and_fuzzy_matches() {
+    fn exact_and_fuzzy_matches() {
         assert_eq!(
             apply_edits("a\nb\nc\n", &[edit("b", "B"), edit("c", "C")], "f").unwrap(),
             "a\nB\nC\n"
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn patch_ranges_carry_counts_as_jsdiff() {
+    fn patch_range_counts() {
         assert_eq!(
             unified_patch("a.txt", "x\n", "y\n"),
             "--- a.txt\n+++ a.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n"

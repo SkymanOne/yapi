@@ -143,7 +143,7 @@ fn completes_like_pi() {
 /// first request is pending, the notifier fires when `fd` finishes, and the
 /// next request answers from its results. A new query cancels the old one.
 #[test]
-fn file_search_runs_in_the_background() {
+fn background_file_search() {
     let Some(fd) = find_fd() else {
         eprintln!("fd not found: skipping");
         return;

@@ -851,7 +851,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compares_versions_as_node_semver_gt() {
+    fn compares_versions_like_semver() {
         assert_eq!(newer("1.2.0", "1.0.0"), Some(true));
         assert_eq!(newer(" 1.0.0\n", "1.0.0"), Some(false));
         assert_eq!(newer("1.0.0-rc.1", "1.0.0"), Some(false));
@@ -860,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_npm_view_output_as_pi() {
+    fn reads_npm_view_output() {
         assert_eq!(
             viewed_version("\"2.0.0\"\n", Some("^1")).as_deref(),
             Some("2.0.0")
@@ -901,7 +901,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_npmrc_settings_with_environment_references() {
+    fn npmrc_environment_references() {
         let env = |name: &str| (name == "TOKEN").then(|| "secret".to_owned());
         let config = parse_config(
             "; comment\n\
@@ -938,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn sends_credentials_only_where_their_key_covers_the_url() {
+    fn credentials_scoped_to_url() {
         let npm = Npm::new(HashMap::from(
             [
                 ("@acme:registry", "https://npm.acme.test"),
@@ -999,7 +999,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_manifests_with_a_byte_order_mark() {
+    fn reads_manifests_with_bom() {
         let dir = std::env::temp_dir().join(format!("yapi-npm-bom-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("package.json"), "\u{feff}{\"version\": \"1.2.3\"}").unwrap();
@@ -1055,7 +1055,7 @@ mod tests {
     }
 
     #[test]
-    fn ranges_may_prefix_versions_with_v() {
+    fn ranges_allow_v_prefix() {
         assert!(satisfies("1.2.3", "v1.2.3"));
         assert!(!satisfies("1.2.4", "v1.2.3"));
         assert!(satisfies("1.4.0", "^v1.2.3"));
@@ -1067,7 +1067,7 @@ mod tests {
     }
 
     #[test]
-    fn verifies_the_strongest_known_integrity_then_shasum() {
+    fn verifies_strongest_integrity() {
         let bytes = b"tarball";
         let sha512 = format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes)));
         let sha1 = format!("sha1-{}", STANDARD.encode(digest(&SHA1, bytes)));

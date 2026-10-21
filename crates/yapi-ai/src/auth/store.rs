@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_a_file_that_does_not_parse() {
+    fn reports_unparsable_file() {
         let path = temp("corrupt");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "{bad").unwrap();
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_other_entries_byte_identical() {
+    async fn other_entries_byte_identical() {
         let path = temp("bytes");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let original = "{\n  \"zeta\": {\n    \"type\": \"oauth\",\n    \"refresh\": \"r\",\n    \"access\": \"a\",\n    \"expires\": 1700000000000,\n    \"accountId\": \"x\"\n  },\n  \"alpha\": {\n    \"type\": \"api_key\",\n    \"key\": \"$KEY\"\n  }\n}";
@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sees_external_changes_and_creates_files() {
+    async fn external_edits_and_creation() {
         let path = temp("reload");
         let store = CredentialStore::open(&path);
         assert!(store.get("openai").is_none());

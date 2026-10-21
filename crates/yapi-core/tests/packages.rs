@@ -127,7 +127,7 @@ fn manager(dir: &Path, url: &str) -> PackageManager {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_npm_packages_with_dependencies() {
+async fn installs_npm_dependencies() {
     let dir = scratch("npm");
     let extension = tarball(&[
         (
@@ -244,7 +244,7 @@ fn installed(dir: &Path, name: &str, version: &str) -> PathBuf {
 /// pi compares the installed version with the newest one in the source's
 /// range, and `update` installs that one.
 #[tokio::test(flavor = "multi_thread")]
-async fn finds_and_applies_npm_updates_in_range() {
+async fn npm_updates_in_range() {
     let dir = scratch("npm-updates");
     configure(
         &dir,
@@ -295,7 +295,7 @@ async fn finds_and_applies_npm_updates_in_range() {
 /// With `npmCommand`, pi asks that command's `npm view` for the versions.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
-async fn checks_npm_updates_through_npm_command() {
+async fn npm_command_updates() {
     let dir = scratch("npm-command-updates");
     let script = dir.join("npm.sh");
     std::fs::write(
@@ -331,7 +331,7 @@ fn git(dir: &Path, args: &[&str]) {
 /// pi compares a git package's commit with its remote branch's. Pinned
 /// sources are left alone.
 #[tokio::test(flavor = "multi_thread")]
-async fn finds_git_updates_on_the_remote() {
+async fn git_remote_updates() {
     let dir = scratch("git-updates");
     let origin = dir.join("origin.git");
     let work = dir.join("work");
@@ -372,7 +372,7 @@ async fn finds_git_updates_on_the_remote() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_native_addons_unbuilt_and_rejects_bad_integrity() {
+async fn native_addons_and_integrity() {
     let dir = scratch("native");
     let native = tarball(&[
         (
@@ -416,7 +416,7 @@ async fn installs_native_addons_unbuilt_and_rejects_bad_integrity() {
 /// An `npm:` alias installs the package it names under the alias, and
 /// packuments are asked for in npm's abbreviated form.
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_aliased_dependencies_from_abbreviated_packuments() {
+async fn aliases_from_abbreviated_packuments() {
     let dir = scratch("alias");
     let app = tarball(&[("package.json", r#"{"name": "app-pkg"}"#)]);
     let fork = tarball(&[(
@@ -474,7 +474,7 @@ async fn installs_aliased_dependencies_from_abbreviated_packuments() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn local_packages_are_stored_relative_to_the_scope() {
+async fn local_packages_scope_relative() {
     let dir = scratch("local");
     let mut packages = manager(&dir, "http://127.0.0.1:9");
     std::fs::create_dir_all(dir.join("project/tools")).unwrap();
@@ -569,7 +569,7 @@ async fn installs_native_extensions() {
 /// a scoped package's packument and tarball carry them, and the public
 /// registry on another host never sees them.
 #[tokio::test(flavor = "multi_thread")]
-async fn sends_npmrc_credentials_to_their_registry_only() {
+async fn npmrc_credentials_per_registry() {
     let dir = scratch("npmrc");
     let private = tarball(&[("package.json", r#"{"name": "@acme/ext"}"#)]);
     let public = tarball(&[("package.json", r#"{"name": "left-pad"}"#)]);
@@ -632,7 +632,7 @@ async fn sends_npmrc_credentials_to_their_registry_only() {
 /// touching settings, reuses an install whose version is in range, and
 /// offline installs nothing.
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_temporary_packages_outside_settings() {
+async fn temporary_packages_outside_settings() {
     let dir = scratch("temporary");
     let package = tarball(&[
         (
@@ -705,7 +705,7 @@ async fn installs_temporary_packages_outside_settings() {
 /// whose installed version is outside the configured range is replaced, and
 /// one in range is left alone (the registry serves one install only).
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_missing_and_out_of_range_configured_packages() {
+async fn installs_missing_or_outdated() {
     let dir = scratch("missing");
     let version = |version: &str| {
         tarball(&[
@@ -798,7 +798,7 @@ async fn installs_missing_and_out_of_range_configured_packages() {
 /// the user's entry for the same package installs the user's copy, which
 /// both entries resolve to, and no project copy.
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_an_autoload_delta_as_the_users_package() {
+async fn autoload_delta_user_package() {
     let dir = scratch("delta");
     let package = tarball(&[("package.json", r#"{"name": "ext-pkg", "version": "2.0.0"}"#)]);
     let server = registry(|base| {
@@ -894,7 +894,7 @@ async fn remove_keeps_shared_dependency() {
 /// An update whose new version's dependency fails leaves the working
 /// version in place, still out of range, so the next startup tries again.
 #[tokio::test(flavor = "multi_thread")]
-async fn failed_update_keeps_old_version() {
+async fn failed_update_keeps_version() {
     let dir = scratch("failed-update");
     configure(&dir, json!(["npm:ext-pkg@^2.0.0"]));
     let old = installed(&dir, "ext-pkg", "1.0.0");

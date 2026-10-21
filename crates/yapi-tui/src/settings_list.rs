@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn cycles_values_and_scrolls_as_pi_tui() {
+    fn cycles_values_and_scrolls() {
         let items = (0..5)
             .map(|n| item(&format!("item{n}"), "true", &["true", "false"]))
             .collect();

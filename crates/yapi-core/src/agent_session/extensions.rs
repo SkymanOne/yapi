@@ -1414,7 +1414,7 @@ mod tests {
     /// A handler's `details` and `usage` take the places pi's event holds
     /// for them, as another extension runtime then sees the event.
     #[test]
-    fn tool_result_keys_go_where_pi_has_them() {
+    fn tool_result_key_placement() {
         let mut event = json!({"type": "tool_result", "content": [], "isError": false});
         let event = event.as_object_mut().unwrap();
         set_tool_result_key(event, "structuredContent", json!({}));

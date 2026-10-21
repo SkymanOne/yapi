@@ -1299,7 +1299,7 @@ mod builtin_tests {
     }
 
     #[test]
-    fn builtins_follow_flags_and_settings() {
+    fn builtins_follow_flags_settings() {
         let none = [Vec::new(), Vec::new()];
         assert!(builtin_enabled("mcp", &args(&[], false), &none));
         assert!(!builtin_enabled("mcp", &args(&[], true), &none));

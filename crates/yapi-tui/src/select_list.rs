@@ -364,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_columns_and_scroll_info() {
+    fn columns_and_scroll_info() {
         let mut list = SelectList::new(
             items(8),
             3,

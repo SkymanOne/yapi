@@ -371,7 +371,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_device_ids_and_callbacks() {
+    fn validates_ids_and_callbacks() {
         assert!(is_uuid("123e4567-E89b-12d3-a456-426614174000"));
         assert!(!is_uuid("123e4567e89b12d3a456426614174000"));
         let oauth = ChatGptOAuth::default();

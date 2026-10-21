@@ -244,7 +244,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn applying_answers_in_utf16_columns() {
+    fn applies_utf16_columns() {
         let request = json!({
             "lines": ["é $P"], "cursorLine": 0, "cursorCol": 4,
             "item": {"value": "$PATH", "label": "$PATH"}, "prefix": "$P",

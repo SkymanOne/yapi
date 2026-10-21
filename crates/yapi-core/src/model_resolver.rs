@@ -498,7 +498,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_provider_prefixed_and_fuzzy_patterns() {
+    fn resolves_prefixed_and_fuzzy() {
         let registry = ModelRegistry::builtin();
         let model = resolve_cli_model(None, "anthropic/claude-sonnet-4-5", None, &registry)
             .model
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn fuzzy_matches_prefer_ids_in_locale_order() {
+    fn fuzzy_matches_locale_order() {
         let base = ModelRegistry::builtin().models()[0].clone();
         let model = |provider: &str, id: &str| Model {
             provider: provider.into(),
@@ -541,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn scopes_models_by_pattern_and_glob() {
+    fn scopes_models_by_glob() {
         // As with credentials for Anthropic only.
         let registry = ModelRegistry::builtin();
         let models: Vec<Model> = registry

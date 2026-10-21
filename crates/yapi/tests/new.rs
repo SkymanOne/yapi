@@ -46,7 +46,7 @@ fn files(dir: &Path) -> Vec<String> {
 }
 
 #[test]
-fn creates_a_package_from_the_template() {
+fn creates_package_from_template() {
     let dir = scratch("package");
     let output = yapi_new(&dir, &["my-ext"]);
     assert!(output.status.success(), "{output:?}");
@@ -100,7 +100,7 @@ fn creates_a_package_from_the_template() {
 }
 
 #[test]
-fn names_the_package_with_name_and_fills_an_empty_directory() {
+fn name_flag_empty_dir() {
     let dir = scratch("named");
     let output = yapi_new(&dir, &[".", "--name", "tool_box"]);
     assert!(output.status.success(), "{output:?}");
@@ -110,7 +110,7 @@ fn names_the_package_with_name_and_fills_an_empty_directory() {
 }
 
 #[test]
-fn refuses_existing_files_and_invalid_names() {
+fn refuses_existing_or_invalid() {
     let dir = scratch("refused");
     std::fs::create_dir_all(dir.join("taken")).unwrap();
     std::fs::write(dir.join("taken/notes.txt"), "keep").unwrap();
@@ -141,7 +141,7 @@ fn refuses_existing_files_and_invalid_names() {
 /// The package loads in yapi once the build is in `extensions/`. The `hello`
 /// example's build stands in for `cargo build`, which needs the network.
 #[test]
-fn the_package_loads_once_built() {
+fn package_loads_once_built() {
     let dir = scratch("loads");
     assert!(yapi_new(&dir, &["greeter-ext"]).status.success());
     let project = dir.join("greeter-ext");

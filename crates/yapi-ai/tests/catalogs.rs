@@ -52,7 +52,7 @@ fn ids(models: &[yapi_types::model::Model]) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn pi_dev_overlay_is_stored_revalidated_and_merged() {
+async fn pi_dev_overlay_merged() {
     let server = mock(vec![
         get(
             "/api/models/providers/xai",
@@ -136,7 +136,7 @@ async fn pi_dev_overlay_is_stored_revalidated_and_merged() {
 }
 
 #[tokio::test]
-async fn an_overlay_older_than_the_build_is_ignored() {
+async fn stale_overlay_ignored() {
     let server = mock(vec![get(
         "/api/models/providers/xai",
         200,
@@ -163,7 +163,7 @@ async fn an_overlay_older_than_the_build_is_ignored() {
 }
 
 #[tokio::test]
-async fn radius_gateway_catalog_is_fetched_with_the_token_and_restored_offline() {
+async fn radius_gateway_catalog() {
     let server = mock(vec![
         get(
             "/v1/config",
@@ -234,7 +234,7 @@ async fn radius_gateway_catalog_is_fetched_with_the_token_and_restored_offline()
 }
 
 #[tokio::test]
-async fn llama_server_models_become_chat_models_and_classifiers() {
+async fn llama_server_models() {
     let server = mock(vec![
         get(
             "/models",
@@ -309,7 +309,7 @@ async fn llama_server_models_become_chat_models_and_classifiers() {
 }
 
 #[test]
-fn enabling_llama_without_a_stored_catalog_keeps_the_models() {
+fn llama_without_stored_catalog() {
     let (dir, _) = store("llama-empty");
     let mut registry = ModelRegistry::load(&dir);
     let before: Vec<(String, String)> = registry

@@ -1279,7 +1279,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_regions_from_endpoints_and_arns() {
+    fn resolves_regions() {
         assert_eq!(
             endpoint_region("https://bedrock-runtime.eu-central-1.amazonaws.com").as_deref(),
             Some("eu-central-1")
@@ -1301,7 +1301,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_errors_like_the_sdk() {
+    fn formats_errors_like_sdk() {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "x-amzn-errortype",

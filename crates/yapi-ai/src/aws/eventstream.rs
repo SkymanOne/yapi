@@ -140,7 +140,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decodes_split_messages_and_rejects_corruption() {
+    fn split_and_corrupt_messages() {
         let first = encode(
             &[(":event-type", "messageStart")],
             br#"{"role":"assistant"}"#,

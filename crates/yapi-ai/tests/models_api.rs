@@ -280,7 +280,7 @@ fn classifier(
 }
 
 #[tokio::test]
-async fn system_one_classifiers_match_pi() {
+async fn system_one_classifiers() {
     let cases = cases();
     let typesafe_answers =
         json!({"answers": answers(), "usage": {"input_tokens": 1000, "output_tokens": 10}});

@@ -2846,7 +2846,7 @@ mod tests {
     /// A tool's step that ends after its call ended runs the calls it
     /// began, and drops its updates (#100).
     #[tokio::test]
-    async fn updates_after_the_tool_ended_are_dropped() {
+    async fn late_tool_updates_dropped() {
         let (jobs, queue) = tokio::sync::mpsc::unbounded_channel();
         drop(queue);
         let ran = Arc::new(Mutex::new(Vec::new()));

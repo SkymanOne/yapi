@@ -912,7 +912,7 @@ mod tests {
     const REFRESH: Duration = Duration::from_secs(271);
 
     #[tokio::test(start_paused = true)]
-    async fn idle_warming_refreshes_the_cache_until_its_limit() {
+    async fn idle_warming_until_limit() {
         let provider = Cached::default();
         let session = warming_session(cached_model(), &provider, Vec::new(), CacheWarming::Idle);
         let appended = Arc::new(Mutex::new(0));
@@ -961,7 +961,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn streaming_warming_refreshes_while_the_run_lasts() {
+    async fn streaming_warming_refreshes() {
         let provider = Cached::default();
         provider
             .delays
@@ -1002,7 +1002,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn warming_stops_when_the_context_or_mode_changes() {
+    async fn warming_stops_on_change() {
         let provider = Cached::default();
         let session = warming_session(cached_model(), &provider, Vec::new(), CacheWarming::Idle);
         session.prompt("hi", Vec::new()).await.unwrap();
@@ -1056,7 +1056,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn warming_needs_a_cache_lifetime_and_economics() {
+    async fn warming_needs_lifetime_economics() {
         let mut model = cached_model();
         model.prompt_cache = None;
         let session = warming_session(model, &Cached::default(), Vec::new(), CacheWarming::Idle);
@@ -1078,7 +1078,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_refresh_past_its_deadline_is_not_sent() {
+    async fn late_refresh_not_sent() {
         let provider = Cached::default();
         let session = warming_session(cached_model(), &provider, Vec::new(), CacheWarming::Idle);
         session.prompt("hi", Vec::new()).await.unwrap();
@@ -1094,7 +1094,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn the_deadline_is_checked_again_after_extensions_decide() {
+    async fn deadline_rechecked_after_extensions() {
         let provider = Cached::default();
         let slow = Decide(Box::new(|| {
             sleep_through(Duration::from_secs(16));
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn extensions_override_the_decision() {
+    async fn extensions_override_decision() {
         // pi would warm; an extension stops it.
         let provider = Cached::default();
         let veto = Decide(Box::new(|| Some("stop")));
@@ -1170,7 +1170,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn failed_refreshes_are_not_recorded_and_replaced_ones_are_aborted() {
+    async fn failed_and_replaced_refreshes() {
         let provider = Cached {
             refresh_stop: StopReason::Error,
             ..Cached::default()
@@ -1206,7 +1206,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_thinking_cannot_be_replayed() {
+    fn budget_thinking_not_replayed() {
         let request = |api: &str, compat: Value, reasoning| Request {
             model: Model {
                 api: api.into(),
@@ -1238,7 +1238,7 @@ mod tests {
 
     /// The lifetime follows `PI_CACHE_RETENTION` in the provider env too.
     #[test]
-    fn the_provider_env_selects_the_cache_lifetime() {
+    fn env_selects_cache_lifetime() {
         let request = Request {
             model: Model {
                 prompt_cache: Some(yapi_types::models::PromptCache {
@@ -1257,7 +1257,7 @@ mod tests {
     }
 
     #[test]
-    fn refreshes_at_ninety_percent_with_ten_seconds_of_margin() {
+    fn refreshes_at_ninety_percent() {
         assert_eq!(delay_ms(10_000.0), None);
         assert_eq!(delay_ms(11_000.0), Some(1_000));
         assert_eq!(delay_ms(300_000.0), Some(270_000));
@@ -1265,7 +1265,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_the_status_as_pi() {
+    fn formats_status() {
         let decision = CacheWarmingDecision {
             phase: CacheWarmingPhase::Streaming,
             warm_cost: 0.006,
@@ -1320,7 +1320,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_refresh_costs_with_three_to_six_decimals() {
+    fn refresh_cost_decimals() {
         let mut entry: UsageEntry = serde_json::from_value(serde_json::json!({
             "id": "u", "parentId": null, "timestamp": "2026-10-13T10:00:00.000Z",
             "kind": "cache_warm", "provider": "p", "model": "m",
@@ -1362,7 +1362,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_dropped_run_clears_settling() {
+    async fn dropped_run_clears_settling() {
         let provider = Cached::default();
         let ext: Arc<dyn Extension> = Arc::new(HangSettled);
         let session = warming_session(cached_model(), &provider, vec![ext], CacheWarming::Off);
@@ -1394,7 +1394,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn refresh_hooks_do_not_see_the_aborted_run() {
+    async fn hooks_skip_aborted_run() {
         let provider = Cached::default();
         provider
             .delays

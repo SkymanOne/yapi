@@ -581,7 +581,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn store_writes_and_deletes_entries() {
+    async fn store_writes_and_deletes() {
         let dir = std::env::temp_dir().join(format!("yapi-models-store-{}", std::process::id()));
         let store = ModelsStore::new(dir.join("models-store.json"));
         let cancel = CancellationToken::new();
@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_catalog_shapes_and_dates() {
+    fn parses_shapes_and_dates() {
         let models = parse_catalog(
             "xai",
             json!({"models": [{"id": "a"}, {"id": "b", "type": "video"}, {"name": "no id"}]}),

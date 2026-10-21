@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_flags_restrict_every_registration() {
+    fn tool_flags_restrict_registrations() {
         let mut registry = ToolRegistry::new(
             vec![
                 tool("read", Exposure::Direct),
@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn restored_names_wait_for_registration() {
+    fn restored_names_await_registration() {
         let mut registry = ToolRegistry::new(vec![tool("read", Exposure::Direct)], Vec::new());
         registry.restore(vec!["read".into(), "mcp__late".into()]);
         assert_eq!(registry.active(), ["read"]);

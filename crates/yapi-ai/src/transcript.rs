@@ -563,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn closes_unanswered_tool_calls_and_drops_failures() {
+    fn closes_calls_drops_failures() {
         let model: Model = serde_json::from_value(json!({
             "id":"m","name":"M","api":"anthropic-messages","provider":"p","baseUrl":"u","reasoning":false,
             "input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1,"maxTokens":1

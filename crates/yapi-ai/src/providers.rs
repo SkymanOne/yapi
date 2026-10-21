@@ -321,7 +321,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn covers_the_catalog() {
+    fn covers_catalog() {
         for id in crate::catalog::builtin_providers() {
             assert!(info(id).is_some(), "{id} has no provider info");
         }

@@ -46,7 +46,7 @@ async fn start(cassette: Cassette) -> MockServer {
 }
 
 #[tokio::test]
-async fn streams_chunks_and_records_the_request() {
+async fn streams_and_records() {
     let cassette = sample();
     let expected_body: String = cassette.interactions[0].response.chunks.concat();
     let server = start(cassette).await;
@@ -116,7 +116,7 @@ async fn serves_interactions_in_order() {
 }
 
 #[tokio::test]
-async fn unexpected_request_fails_with_500() {
+async fn unexpected_request_500() {
     let server = start(sample()).await;
 
     let response = reqwest::get(format!("{}/v1/models", server.url()))
@@ -141,7 +141,7 @@ async fn unexpected_request_fails_with_500() {
 }
 
 #[tokio::test]
-async fn unused_interactions_and_extra_requests_are_reported() {
+async fn unused_and_extra_reported() {
     let server = start(sample()).await;
     let Err(Error::Unsatisfied(problems)) = server.finish() else {
         panic!("unused interaction not reported");

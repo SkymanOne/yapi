@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn asks_each_slot_once_and_keeps_its_answer() {
+    fn asks_each_slot_once() {
         let answers = Answers::default();
         assert_eq!(render(&answers, &["a", "b"]), (vec![None, None], true));
         assert_eq!(
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn a_growing_question_keeps_the_previous_answer_and_asks_only_the_newest() {
+    fn growing_question_asks_newest() {
         let answers = Answers::default();
         render(&answers, &["fn"]);
         answers.questions();

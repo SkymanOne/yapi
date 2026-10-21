@@ -249,7 +249,7 @@ pub fn strip_json_comments(input: &str) -> String {
             r#""(?:\\.|[^"\\])*"|,([\t\n\x0B\f\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]*[}\]])"#,
         ]
         .map(|pattern| {
-            Regex::new(pattern).expect("constant pattern; `strips_comments_and_trailing_commas`")
+            Regex::new(pattern).expect("constant pattern; `strips_comments_and_commas`")
         })
     });
     let [comments, commas] = &*PATTERNS;
@@ -1731,7 +1731,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strips_comments_and_trailing_commas() {
+    fn strips_comments_and_commas() {
         assert_eq!(
             strip_json_comments("{\"a\": \"x//y\", // note\n \"b\": [1, 2,],\n}"),
             "{\"a\": \"x//y\", \n \"b\": [1, 2]\n}"
@@ -1746,7 +1746,7 @@ mod tests {
     /// A refreshed list replaces an extension provider's models only when
     /// every model has an API and a base URL.
     #[test]
-    fn replace_models_validates_before_applying() {
+    fn replace_models_validates_first() {
         let config = |value| serde_json::from_value::<ProviderConfig>(value).unwrap();
         let models = |value| serde_json::from_value::<Vec<ModelDefinition>>(value).unwrap();
         let ids = |registry: &ModelRegistry, provider: &str| -> Vec<String> {
@@ -1784,7 +1784,7 @@ mod tests {
     /// provider's models of those types, taking a missing API and base URL
     /// from its own, and never list as chat models.
     #[test]
-    fn typed_definitions_replace_the_providers_own() {
+    fn typed_definitions_override() {
         let config = |value| serde_json::from_value::<ProviderConfig>(value).unwrap();
         let cost = serde_json::json!({"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0});
         let mut registry = ModelRegistry::builtin();

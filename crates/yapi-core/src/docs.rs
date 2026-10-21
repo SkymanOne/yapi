@@ -115,7 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finds_this_versions_local_docs_else_the_published_ones() {
+    fn local_else_published_docs() {
         let agent = std::env::temp_dir().join(format!("yapi-docs-find-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&agent);
         let published = Locations::find(&agent);

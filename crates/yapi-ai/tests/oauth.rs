@@ -110,7 +110,7 @@ fn auth_url(events: &[AuthEvent]) -> String {
 }
 
 #[tokio::test]
-async fn anthropic_copy_code_login_and_refresh() {
+async fn anthropic_copy_code_login() {
     let server = mock(vec![
         Exchange::json(
             "POST",
@@ -181,7 +181,7 @@ async fn anthropic_copy_code_login_and_refresh() {
 }
 
 #[tokio::test]
-async fn anthropic_browser_login_takes_the_callback() {
+async fn anthropic_browser_login() {
     let server = mock(vec![Exchange::json(
         "POST",
         "/v1/oauth/token",
@@ -298,7 +298,7 @@ async fn codex_device_code_login() {
 }
 
 #[tokio::test]
-async fn copilot_device_flow_enables_policy_models() {
+async fn copilot_device_flow() {
     let known = yapi_ai::catalog::builtin_models("github-copilot")[0]
         .id
         .clone();
@@ -376,7 +376,7 @@ async fn copilot_device_flow_enables_policy_models() {
 }
 
 #[tokio::test]
-async fn chatgpt_login_registers_a_client() {
+async fn chatgpt_login_registers_client() {
     let server = mock(vec![Exchange::json(
         "POST",
         "/api/accounts/oauth/token",
@@ -485,7 +485,7 @@ impl OAuthProvider for NoKey {
 /// pi, which derives no key for it: a sign-in that cannot derive one still
 /// refreshes.
 #[tokio::test]
-async fn refresh_credentials_refresh_oauth_without_deriving_a_key() {
+async fn refresh_without_key_derivation() {
     let dir = agent_dir("refresh-credential");
     std::fs::write(
         dir.join("auth.json"),
@@ -504,7 +504,7 @@ async fn refresh_credentials_refresh_oauth_without_deriving_a_key() {
 }
 
 #[tokio::test]
-async fn registry_refreshes_expired_tokens_and_persists_them() {
+async fn registry_refreshes_expired_tokens() {
     let server = mock(vec![Exchange::json(
         "POST",
         "/v1/oauth/token",
@@ -589,7 +589,7 @@ async fn refresh_rechecks_under_lock() {
 }
 
 #[tokio::test]
-async fn registry_reports_refresh_failures_and_logs_in_with_keys() {
+async fn refresh_failures_and_key_login() {
     let server = mock(vec![Exchange::json(
         "POST",
         "/v1/oauth/token",
@@ -677,7 +677,7 @@ fn device_code(events: &Events) -> (String, String) {
 }
 
 #[tokio::test]
-async fn kimi_device_login_refresh_and_bearer_header() {
+async fn kimi_device_login() {
     let server = mock(vec![
         Exchange::json(
             "POST",
@@ -743,7 +743,7 @@ async fn kimi_device_login_refresh_and_bearer_header() {
 }
 
 #[tokio::test]
-async fn meta_device_login_mints_an_api_key() {
+async fn meta_login_mints_key() {
     let server = mock(vec![
         Exchange::json(
             "POST",
@@ -792,7 +792,7 @@ async fn meta_device_login_mints_an_api_key() {
 }
 
 #[tokio::test]
-async fn xai_device_login_and_refresh_keep_the_refresh_token() {
+async fn xai_keeps_refresh_token() {
     let server = mock(vec![
         Exchange::json(
             "POST",
@@ -831,7 +831,7 @@ async fn xai_device_login_and_refresh_keep_the_refresh_token() {
 }
 
 #[tokio::test]
-async fn openrouter_trades_a_pasted_code_for_a_key() {
+async fn openrouter_code_for_key() {
     let server = mock(vec![Exchange::json(
         "POST",
         "/api/v1/auth/keys",
@@ -869,7 +869,7 @@ async fn openrouter_trades_a_pasted_code_for_a_key() {
 }
 
 #[tokio::test]
-async fn radius_device_login_polls_until_authorized() {
+async fn radius_device_login() {
     let server = mock(vec![
         Exchange::json(
             "POST",
@@ -927,7 +927,7 @@ async fn radius_device_login_polls_until_authorized() {
 }
 
 #[tokio::test]
-async fn radius_browser_login_checks_the_state() {
+async fn radius_browser_login() {
     let server = mock(vec![
         Exchange::json(
             "GET",
@@ -988,7 +988,7 @@ async fn radius_browser_login_checks_the_state() {
 }
 
 #[tokio::test]
-async fn llama_sign_in_checks_the_server_and_stores_its_url() {
+async fn llama_sign_in() {
     let server = mock(vec![Exchange::json(
         "GET",
         "/models",

@@ -89,7 +89,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_item_without_a_label_shows_its_value() {
+    fn unlabeled_item_shows_value() {
         let item: AutocompleteItem = serde_json::from_str(r#"{"value": "a"}"#).unwrap();
         assert_eq!(item.label, "a");
         assert_eq!(

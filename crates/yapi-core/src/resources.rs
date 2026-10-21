@@ -687,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_malformed_frontmatter_like_pi() {
+    fn reports_malformed_frontmatter() {
         let dir = std::env::temp_dir().join(format!("yapi-frontmatter-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let bad = "---\ndescription: a: b\n---\nBody\n";
@@ -734,7 +734,7 @@ mod tests {
 
     /// Expectations from pi's `substituteArgs` in Node.
     #[test]
-    fn substitutes_edge_cases_like_pi() {
+    fn substitution_edge_cases() {
         let args = |list: &[&str]| -> Vec<String> { list.iter().map(|&arg| arg.into()).collect() };
         let ten = args(&["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
         assert_eq!(substitute_args("$10|$1|$0|$11", &ten), "j|a||");

@@ -67,7 +67,7 @@ export function greeting(name: string, tone: string): string {
 "#;
 
 #[tokio::test(flavor = "multi_thread")]
-async fn registers_and_runs_a_typescript_extension() {
+async fn runs_typescript_extension() {
     let dir = scratch("hello");
     let (instance, extension) = load(&dir, &[("hello.ts", HELLO), ("greeting.ts", GREETING)]).await;
     assert_eq!(extension.get("error"), None, "{extension}");
@@ -93,7 +93,7 @@ async fn registers_and_runs_a_typescript_extension() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reports_load_errors_as_pi_does() {
+async fn reports_load_errors() {
     let dir = scratch("errors");
     let (_instance, extension) = load(&dir, &[("bad.ts", "export const notAFactory = 1;\n")]).await;
     let error = extension["error"].as_str().unwrap();
@@ -119,7 +119,7 @@ async fn reports_load_errors_as_pi_does() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn runs_node_apis_and_common_js_packages() {
+async fn runs_node_and_commonjs() {
     let dir = scratch("node");
     let main = r#"
 import fs from "node:fs";
@@ -167,7 +167,7 @@ export default function (pi) {
 /// diagnostic report, a NUL character in a source file, and `stream` as the
 /// constructor old packages extend.
 #[tokio::test(flavor = "multi_thread")]
-async fn resolves_import_meta_reads_reports_and_keeps_nul_characters() {
+async fn npm_comparison_gaps() {
     let dir = scratch("meta");
     let main = "
 import lib from \"cjs-lib\";
@@ -265,7 +265,7 @@ export default function (pi) {
 
 /// File descriptors, file streams and `fs.promises.open`, which loggers use.
 #[tokio::test(flavor = "multi_thread")]
-async fn reads_and_writes_through_file_descriptors() {
+async fn file_descriptor_io() {
     let dir = scratch("descriptors");
     let main = r#"
 import fs from "node:fs";
@@ -345,7 +345,7 @@ export default function (pi) {
 /// `realpath` inside an instance whose filesystem is limited to one folder,
 /// as for a package with restricted grants.
 #[tokio::test(flavor = "multi_thread")]
-async fn resolves_real_paths_under_restricted_roots() {
+async fn resolves_restricted_real_paths() {
     let dir = scratch("realpath-roots");
     std::fs::write(
         dir.join("main.ts"),
@@ -492,7 +492,7 @@ async fn restart_trap_not_retried() {
 /// Node modules yapi has no sockets for still load, with the parts that need
 /// none: address checks, agents, `node:sea` and the names of `node:sqlite`.
 #[tokio::test(flavor = "multi_thread")]
-async fn loads_socket_free_parts_of_network_modules() {
+async fn loads_socketless_network_modules() {
     let dir = scratch("network");
     let main = r#"
 import net, { BlockList } from "node:net";
@@ -541,7 +541,7 @@ export default function (pi) {
 /// Only `localhost` and address literals resolve here, so the test needs no
 /// network.
 #[tokio::test(flavor = "multi_thread")]
-async fn looks_up_host_names_through_the_host() {
+async fn host_name_lookup() {
     let dir = scratch("dns");
     let main = r#"
 import dns, { lookup } from "node:dns";
@@ -618,7 +618,7 @@ export default async function (pi) {
 /// query, and TypeScript grammar checks do not stop a module, as with pi's
 /// loader.
 #[tokio::test(flavor = "multi_thread")]
-async fn loads_scripts_queries_and_unchecked_typescript() {
+async fn lenient_module_loading() {
     let dir = scratch("loading");
     let main = r#"
 import { createRequire } from "node:module";
@@ -689,7 +689,7 @@ export default async function (pi) {
 /// needs: process for stdio, network for HTTP. Pi's default grants allow
 /// both.
 #[tokio::test(flavor = "multi_thread")]
-async fn registering_an_mcp_server_needs_its_transport_grant() {
+async fn mcp_needs_transport_grant() {
     let dir = scratch("mcp-grants");
     std::fs::write(
         dir.join("main.ts"),
@@ -745,7 +745,7 @@ export default function (pi) {
 
 /// An instance given its own environment sees those variables only.
 #[tokio::test(flavor = "multi_thread")]
-async fn sees_only_the_given_environment() {
+async fn sees_only_given_env() {
     let dir = scratch("environment");
     std::fs::write(
         dir.join("main.ts"),
@@ -775,7 +775,7 @@ export default function (pi) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pins_pi_tui_to_text_fallbacks() {
+async fn pi_tui_text_fallbacks() {
     let dir = scratch("capabilities");
     std::fs::write(
         dir.join("main.ts"),
@@ -836,7 +836,7 @@ impl yapi_ext::Bridge for Themed {
 /// `pi.yapi.registerCodeRenderer`, yapi's own: the host asks a renderer by
 /// call, and the facade's `highlightCode` uses the runtime's renderers.
 #[tokio::test(flavor = "multi_thread")]
-async fn renders_code_through_registered_renderers() {
+async fn registered_code_renderers() {
     let dir = scratch("code-renderer");
     std::fs::write(
         dir.join("main.ts"),
@@ -934,7 +934,7 @@ impl Drop for DropFlag {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn join_stopped_waits_for_dropped_instances() {
+async fn join_stopped_waits() {
     let dir = scratch("join-stopped");
     let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let instance = Instance::start(
@@ -954,7 +954,7 @@ async fn join_stopped_waits_for_dropped_instances() {
 /// their output; `process.execPath` is the yapi binary; and a tool's
 /// `signal` aborts when the host aborts the call.
 #[tokio::test(flavor = "multi_thread")]
-async fn spawns_streaming_processes_and_aborts_tools() {
+async fn process_streaming_and_abort() {
     let dir = scratch("processes");
     let main = r#"
 import fs from "node:fs";

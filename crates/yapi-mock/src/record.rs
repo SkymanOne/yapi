@@ -187,7 +187,7 @@ mod tests {
     use super::take_utf8;
 
     #[test]
-    fn keeps_split_characters_for_the_next_chunk() {
+    fn keeps_split_utf8() {
         let crab = "🦀".as_bytes();
         let mut buffer = [b"ab".as_slice(), &crab[..2]].concat();
         assert_eq!(take_utf8(&mut buffer), "ab");

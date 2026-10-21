@@ -99,7 +99,7 @@ async fn read_pages_through_files() {
 }
 
 #[tokio::test]
-async fn read_converts_and_resizes_images() {
+async fn read_resizes_images() {
     use image::{DynamicImage, ImageOutputFormat, RgbaImage};
     let dir = Scratch::new("read-images");
     let write = |name: &str, width: u32, format: ImageOutputFormat| {
@@ -157,7 +157,7 @@ async fn read_converts_and_resizes_images() {
 }
 
 #[tokio::test]
-async fn write_and_edit_preserve_bom_and_crlf() {
+async fn bom_and_crlf_preserved() {
     let dir = Scratch::new("edit");
     let result = call(
         &dir.0,
@@ -223,7 +223,7 @@ async fn edit_accepts_legacy_arguments() {
 }
 
 #[tokio::test]
-async fn bash_reports_output_and_exit_codes() {
+async fn bash_output_exit_codes() {
     let dir = Scratch::new("bash");
     let result = call(&dir.0, "bash", json!({"command": "echo hi; echo err >&2"}))
         .await
@@ -251,7 +251,7 @@ async fn bash_reports_output_and_exit_codes() {
 }
 
 #[tokio::test]
-async fn bash_aborts_and_streams_updates() {
+async fn bash_abort_and_updates() {
     let dir = Scratch::new("abort");
     let tool = builtin("bash", &env(&dir.0)).unwrap().tool;
     let (updates, seen) = sink();
@@ -277,7 +277,7 @@ async fn bash_aborts_and_streams_updates() {
 }
 
 #[tokio::test]
-async fn read_huge_offset_and_limit() {
+async fn read_huge_offset_limit() {
     let dir = Scratch::new("read-huge");
     std::fs::write(dir.0.join("a.txt"), "1\n2\n3").unwrap();
     let result = call(

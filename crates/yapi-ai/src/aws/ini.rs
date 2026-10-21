@@ -146,7 +146,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merges_config_and_credentials_like_the_sdk() {
+    fn merges_config_and_credentials() {
         let config = parse(
             "[default]\nregion = us-west-2\n\n[profile dev]\nrole_arn = arn:aws:iam::1:role/r\nsource_profile = default\ns3 =\n  max_concurrent_requests = 10\n[sso-session corp]\nsso_region = eu-west-1\n[ignored]\nx = 1\n",
         );

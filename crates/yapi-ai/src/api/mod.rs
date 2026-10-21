@@ -273,7 +273,7 @@ mod tests {
 
     /// A provider's own stream serves only its models of that API.
     #[tokio::test]
-    async fn provider_streams_serve_their_own_models() {
+    async fn streams_serve_own_models() {
         let mut apis = Apis::default();
         apis.register_for(
             "echo",
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_tool_call_ids_in_utf16_units() {
+    fn tool_call_ids_utf16() {
         // pi's regex replaces each half of a surrogate pair.
         assert_eq!(normalize_tool_call_id("call|a😀b"), "call_a__b");
         assert_eq!(normalize_tool_call_id(&"x".repeat(70)), "x".repeat(64));

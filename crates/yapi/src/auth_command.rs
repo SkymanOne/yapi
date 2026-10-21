@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn bearer_tokens_come_from_the_authorization_header() {
+    fn bearer_from_authorization_header() {
         let mut auth = Auth::default();
         assert_eq!(credential_of(&auth), None);
         auth.headers

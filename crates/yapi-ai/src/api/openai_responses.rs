@@ -2231,7 +2231,7 @@ mod tests {
     }
 
     #[test]
-    fn replays_grammar_calls_by_the_current_tools() {
+    fn replays_grammar_calls() {
         let model: Model = serde_json::from_value(json!({
             "id": "gpt-5.1", "name": "G", "api": "openai-responses", "provider": "openai",
             "baseUrl": "u", "reasoning": false, "input": ["text"],
@@ -2283,7 +2283,7 @@ mod tests {
     }
 
     #[test]
-    fn a_removed_grammar_tool_replays_as_a_function_without_mid_conversation_system_messages() {
+    fn removed_grammar_tool_replay() {
         let model: Model = serde_json::from_value(json!({
             "id": "gpt-5.1", "name": "G", "api": "openai-responses", "provider": "openai",
             "baseUrl": "u", "reasoning": false, "input": ["text"],

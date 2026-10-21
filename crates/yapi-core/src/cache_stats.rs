@@ -225,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn counts_prompt_tokens_billed_again() {
+    fn counts_rebilled_prompt_tokens() {
         let registry = ModelRegistry::builtin();
         let compaction: FileEntry = serde_json::from_value(json!({
             "type": "compaction", "id": "c", "parentId": null, "timestamp": "2026-10-13T10:00:00.000Z",
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn providers_that_never_report_caching_have_no_misses() {
+    fn uncached_providers_never_miss() {
         let registry = ModelRegistry::builtin();
         let entries = [
             assistant("a", 0, 100_000, 0, 0),
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn model_switches_count_as_misses() {
+    fn model_switches_miss() {
         let registry = ModelRegistry::builtin();
         let mut switched = assistant("b", 1_000, 0, 0, 100_000);
         if let FileEntry::Message(entry) = &mut switched
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn only_cache_warming_refreshes_count_as_requests() {
+    fn only_warming_refreshes_count() {
         let registry = ModelRegistry::builtin();
         let usage = |kind: &str| -> FileEntry {
             serde_json::from_value(json!({

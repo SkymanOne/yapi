@@ -2307,7 +2307,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_skill_blocks_as_pi() {
+    fn parses_skill_blocks() {
         let block = parse_skill_block(
             "<skill name=\"demo\" location=\"/s/SKILL.md\">\nbody\n</skill>\n\n  go now ",
         )
@@ -2328,7 +2328,7 @@ mod tests {
     }
 
     #[test]
-    fn a_poisoned_registry_keeps_its_credentials() {
+    fn poisoned_registry_keeps_credentials() {
         let model: Model = serde_json::from_value(serde_json::json!({
             "id": "m", "name": "M", "api": "faux", "provider": "p", "baseUrl": "",
             "reasoning": false, "input": ["text"],

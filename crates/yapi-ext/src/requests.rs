@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn zone_offsets_take_a_name_and_reject_unknown_ones() {
+    fn zone_offsets_by_name() {
         let summer = 1_784_116_800;
         let tokyo = json!({ "zone": "asia/tokyo", "time": summer });
         assert_eq!(zone_offset("timezone.offset", &tokyo), json!(9 * 3600));

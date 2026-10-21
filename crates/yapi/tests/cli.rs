@@ -23,7 +23,7 @@ fn version_prints_bare_version() {
 /// export of each session fixture, made with `pi --export` in a clean
 /// environment.
 #[test]
-fn export_matches_pi_byte_for_byte() {
+fn export_matches_pi() {
     use sha2::Digest;
     let fixtures = common::fixtures().join("pi/sessions");
     let out = common::scratch("export");
@@ -74,7 +74,7 @@ fn export_matches_pi_byte_for_byte() {
 /// Once `-p` or `--mode` owns stdout, help and the model list go to stderr,
 /// as in pi; on their own they print to stdout.
 #[test]
-fn metadata_goes_to_stderr_in_print_and_modes() {
+fn metadata_on_stderr() {
     let home = common::scratch("metadata");
     let run = |args: &[&str]| {
         let output = common::yapi(&home)
@@ -144,7 +144,7 @@ fn fork_question_on_stderr() {
 /// Help lists the flags of the extensions that loaded when another fails,
 /// without reporting the failure, as in pi.
 #[test]
-fn help_lists_flags_despite_extension_errors() {
+fn help_despite_extension_errors() {
     let home = common::scratch("help-extensions");
     std::fs::write(
         home.join("ext.ts"),
@@ -170,7 +170,7 @@ fn help_lists_flags_despite_extension_errors() {
 /// open.
 #[cfg(unix)]
 #[test]
-fn rpc_starts_without_models_and_exits_on_sigterm() {
+fn rpc_starts_without_models() {
     use std::io::{BufRead, Write};
     let home = common::scratch("rpc-signal");
     let mut child = common::yapi(&home)
@@ -217,7 +217,7 @@ fn rpc_starts_without_models_and_exits_on_sigterm() {
 /// runs commands with SIGINT at its default action, as Node gives pi's.
 #[cfg(unix)]
 #[test]
-fn commands_take_signals_yapi_inherited_ignored() {
+fn commands_reset_ignored_signals() {
     use std::io::{BufRead, Write};
     let home = common::scratch("rpc-ignored-signal");
     let mut child = Command::new("/bin/sh")
@@ -257,7 +257,7 @@ fn commands_take_signals_yapi_inherited_ignored() {
 /// pi does, instead of leaving them behind.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
-async fn print_mode_kills_running_commands_on_sigterm() {
+async fn print_sigterm_kills_commands() {
     let cassette = yapi_mock::Cassette::load(
         &common::fixtures().join("cassettes/anthropic-messages/sleep-tool.json"),
     )
@@ -376,7 +376,7 @@ fn list_tags_extension_kinds() {
 /// `-e npm:` loads the temporary package installed in pi's folder for it, and
 /// offline skips one that is not installed, as pi does.
 #[test]
-fn offline_temporary_packages_load_when_installed() {
+fn offline_temporary_packages_load() {
     let root = common::scratch("temporary-packages");
     let package = root.join("agent/tmp/extensions/npm/f35b2129/node_modules/hello-pkg");
     std::fs::create_dir_all(package.join("extensions")).unwrap();
@@ -412,7 +412,7 @@ fn offline_temporary_packages_load_when_installed() {
 /// pi's service and easter egg commands report that yapi does not offer them,
 /// without suggesting that a later version will.
 #[test]
-fn service_commands_are_not_offered() {
+fn no_service_commands() {
     use std::time::Duration;
     let root = common::scratch("unavailable");
     let agent = root.join("agent");
@@ -451,7 +451,7 @@ fn service_commands_are_not_offered() {
 /// Extension console output goes to stderr in print mode. In interactive
 /// mode it stays off the screen, and `/debug` writes it.
 #[test]
-fn extension_output_stays_off_the_screen() {
+fn extension_output_off_screen() {
     use std::time::Duration;
     let root = common::scratch("extension-output");
     let agent = root.join("agent");
@@ -566,7 +566,7 @@ fn extension_output_stays_off_the_screen() {
 }
 
 #[test]
-fn update_self_names_the_installer() {
+fn update_self_names_installer() {
     let dir = common::scratch("update-self");
     // pi's `--force` reinstalls pi; yapi accepts it for `update` only.
     for args in [&["update", "self"][..], &["update", "--force"]] {
@@ -757,7 +757,7 @@ fn streamed_text(text: &str) -> yapi_mock::Interaction {
 /// extension handles stops there, as pi shuts down then, instead of
 /// streaming to its end.
 #[tokio::test(flavor = "multi_thread")]
-async fn rpc_end_of_input_cuts_off_a_run_extensions_follow() {
+async fn rpc_eof_cuts_run() {
     use std::io::Write as _;
     let text = "x".repeat(200);
     let server = yapi_mock::MockServer::local(yapi_mock::Cassette {
@@ -836,7 +836,7 @@ async fn rpc_end_of_input_cuts_off_a_run_extensions_follow() {
 /// extension code that earlier commands started.
 #[cfg(unix)]
 #[test]
-fn rpc_exits_on_sigterm_at_the_end_of_input() {
+fn rpc_sigterm_at_eof() {
     use std::io::{BufRead as _, Write as _};
     let home = common::scratch("rpc-end-signal");
     std::fs::write(
@@ -878,7 +878,7 @@ fn rpc_exits_on_sigterm_at_the_end_of_input() {
 /// prompt's working directory and extensions' `ctx.cwd` stay in the working
 /// directory, whose own `.yapi` never loads, trusted or not.
 #[tokio::test(flavor = "multi_thread")]
-async fn project_dir_supplies_the_project() {
+async fn project_dir_flag() {
     use serde_json::json;
     let call = |id: &str, name: &str, input: serde_json::Value| json!({"type": "tool_use", "id": id, "name": name, "input": input});
     let text = |text: &str| common::reply(&[json!({"type": "text", "text": text})], "end_turn", 0);
@@ -1054,7 +1054,7 @@ async fn project_dir_supplies_the_project() {
 /// directory, which starts a new runtime too, takes that directory's project,
 /// in its new sessions and reloads as well.
 #[test]
-fn native_extensions_read_the_project_as_they_load() {
+fn native_extensions_read_project() {
     use serde_json::{Value, json};
     use std::io::{BufRead as _, Write as _};
     let home = common::scratch("load-project-dir");
@@ -1370,7 +1370,7 @@ async fn startup_shows_update_notices() {
 /// `--offline` is pi's `PI_OFFLINE=1` and `PI_SKIP_VERSION_CHECK=1` for the
 /// whole process: extensions and the programs they run see both.
 #[test]
-fn offline_flag_reaches_extensions_and_children() {
+fn offline_flag_propagates() {
     let home = common::scratch("offline-env");
     std::fs::create_dir_all(home.join("agent")).unwrap();
     std::fs::write(
@@ -1411,7 +1411,7 @@ fn offline_flag_reaches_extensions_and_children() {
 /// `newSession`'s `setup` names the `SessionManager` writes yapi does not
 /// make when it throws.
 #[test]
-fn new_session_setup_names_writes_yapi_does_not_make() {
+fn setup_names_unsupported_writes() {
     use serde_json::{Value, json};
     use std::io::{BufRead as _, Write as _};
     let home = common::scratch("setup-writes");

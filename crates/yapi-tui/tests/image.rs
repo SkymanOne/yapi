@@ -70,7 +70,7 @@ fn rendered(fixture: &Value, key: &str, protocol: Protocol) {
 }
 
 #[test]
-fn renders_kitty_and_iterm2_rows_crops_and_placements_like_pi() {
+fn kitty_iterm2_rendering() {
     let fixture = fixture();
     rendered(&fixture, "iterm2", Protocol::Iterm2);
     rendered(&fixture, "kitty", Protocol::Kitty);
@@ -96,7 +96,7 @@ fn renders_kitty_and_iterm2_rows_crops_and_placements_like_pi() {
 }
 
 #[test]
-fn refuses_data_that_is_not_base64() {
+fn refuses_non_base64() {
     // A tool result's data could otherwise end the sequence and send its own.
     let injected = "AAAA\x1b\\\x1b]52;c;aGk=\x07";
     for protocol in [Protocol::Kitty, Protocol::Iterm2] {

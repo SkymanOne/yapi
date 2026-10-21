@@ -160,7 +160,7 @@ async fn stdio_server() {
 }
 
 #[tokio::test]
-async fn stdio_server_that_exits_closes_the_client() {
+async fn stdio_exit_closes_client() {
     let client = McpClient::connect(options(), stdio(Vec::new()))
         .await
         .unwrap();
@@ -239,7 +239,7 @@ async fn stdio_oversized_lines() {
 }
 
 #[tokio::test]
-async fn missing_command_fails_like_pi() {
+async fn missing_command_fails() {
     let transport = Transport::Stdio(Box::new(StdioTransport::new(StdioOptions {
         command: "yapi-no-such-command".into(),
         cwd: std::env::temp_dir(),
@@ -365,7 +365,7 @@ async fn huge_timeout() {
 }
 
 #[tokio::test]
-async fn unreachable_http_server_fails_like_pi() {
+async fn unreachable_http_server() {
     // The discard port: outside the ephemeral range, so no free port lands on it.
     let transport = HttpTransport::new(HttpOptions {
         url: "http://127.0.0.1:9/mcp".into(),
@@ -494,7 +494,7 @@ async fn echo(connection: &Arc<Connection>) -> Result<Value, McpError> {
 }
 
 #[tokio::test]
-async fn oauth_sign_in_refresh_and_sign_out() {
+async fn oauth_lifecycle() {
     let (_server, url) = spawn_http(&["--oauth"]).await;
     let base = url.trim_end_matches("/mcp").to_owned();
     let agent_dir = scratch("oauth");
@@ -609,7 +609,7 @@ async fn oauth_sign_in_refresh_and_sign_out() {
 }
 
 #[tokio::test]
-async fn provider_tokens_are_sent_for_auth_provider() {
+async fn auth_provider_tokens_sent() {
     let (_server, url) = spawn_http(&["--token", "secret"]).await;
     let agent_dir = scratch("provider");
     let config = json!({"auth": {"provider": "acme"}});
@@ -634,7 +634,7 @@ async fn provider_tokens_are_sent_for_auth_provider() {
 
 /// Credentials pi stored are read and written back unchanged.
 #[tokio::test]
-async fn reads_and_keeps_credentials_pi_stored() {
+async fn keeps_pi_credentials() {
     let text = pi_state_file();
     let states: serde_json::Map<String, Value> = serde_json::from_str(&text).unwrap();
     let url = states

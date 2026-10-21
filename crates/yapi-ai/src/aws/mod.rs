@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolves_profiles_without_the_process_environment() {
+    async fn profiles_ignore_process_env() {
         let home = scratch("profiles");
         std::fs::write(
             home.join(".aws/credentials"),

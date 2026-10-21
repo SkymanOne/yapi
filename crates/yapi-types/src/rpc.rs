@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn deep_trees_serialize_without_recursion() {
+    fn deep_trees_no_recursion() {
         let entry: FileEntry = serde_json::from_str(
             r#"{"type":"label","id":"a","parentId":null,"timestamp":"t","targetId":"b"}"#,
         )

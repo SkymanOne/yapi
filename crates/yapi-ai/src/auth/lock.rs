@@ -235,7 +235,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn write_atomic_keeps_mode_and_links() {
+    fn atomic_write_mode_links() {
         use std::os::unix::fs::PermissionsExt as _;
         let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
         let dir = std::env::temp_dir().join(format!("yapi-atomic-{}", std::process::id()));

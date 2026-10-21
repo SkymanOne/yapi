@@ -1285,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    fn builds_discovery_urls_like_pi() {
+    fn builds_discovery_urls() {
         let urls = discovery_urls("https://auth.test/tenant/").unwrap();
         let urls: Vec<String> = urls.into_iter().map(String::from).collect();
         assert_eq!(
@@ -1300,7 +1300,7 @@ mod tests {
     }
 
     #[test]
-    fn selects_the_protected_resource() {
+    fn selects_protected_resource() {
         let metadata = |resource: &str| {
             json!({"resource": resource})
                 .as_object()
@@ -1324,7 +1324,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_tokens_and_clients_like_pi() {
+    fn parses_tokens_and_clients() {
         let tokens = parse_tokens(&json!({
             "token_type": "Bearer", "access_token": "a", "scope": "", "refresh_token": null, "expires_in": "60",
         }))
@@ -1348,7 +1348,7 @@ mod tests {
     }
 
     #[test]
-    fn picks_client_authentication_like_pi() {
+    fn picks_client_authentication() {
         let client = |value: Value| value.as_object().cloned().unwrap_or_default();
         let secret = client(json!({"client_id": "c", "client_secret": "s"}));
         assert!(select_client_auth(&secret, &[]) == ClientAuth::Basic);
@@ -1362,7 +1362,7 @@ mod tests {
     }
 
     #[test]
-    fn sends_credentials_only_over_https_or_loopback() {
+    fn credentials_https_or_loopback() {
         assert!(secure_endpoint("http://auth.test/token").is_err());
         assert!(secure_endpoint("http://127.0.0.1:1/token").is_ok());
     }

@@ -1429,7 +1429,7 @@ mod tests {
     }
 
     #[test]
-    fn trims_a_streaming_closing_fence() {
+    fn trims_streaming_fence() {
         assert_eq!(
             md("```rust\nlet a = 1;\n``", 40),
             ["```rust", "  let a = 1;", "```"]
@@ -1525,7 +1525,7 @@ mod tests {
     }
 
     #[test]
-    fn code_blocks_take_their_lines_from_the_renderer() {
+    fn code_blocks_use_renderer() {
         let theme = MarkdownTheme {
             highlight_code: Some(std::sync::Arc::new(
                 |code: &str, lang: Option<&str>, width: usize| {
@@ -1552,7 +1552,7 @@ mod tests {
     }
 
     #[test]
-    fn link_urls_reach_the_terminal_without_control_characters() {
+    fn link_urls_without_controls() {
         let render = |hyperlinks| {
             let options = MarkdownOptions {
                 hyperlinks,
@@ -1582,7 +1582,7 @@ mod tests {
     }
 
     #[test]
-    fn entity_references_stay_as_written() {
+    fn entities_kept_verbatim() {
         assert_eq!(
             md(
                 "Entities: &amp; &lt;tag&gt; &copy; &#x1F600; and `&amp;`",

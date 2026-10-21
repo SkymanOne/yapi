@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_before_the_zip_writes_nothing() {
+    async fn cancel_writes_nothing() {
         let (out, bin) = (temp("out"), temp("bin"));
         for answers in [
             &[None][..],
@@ -321,7 +321,7 @@ mod tests {
     /// `gh` does not start, or answers only `auth status`.
     #[cfg(unix)]
     #[tokio::test]
-    async fn the_zip_is_the_report_when_offline_or_signed_out() {
+    async fn zip_report_when_offline() {
         for (offline, log) in [(true, None), (false, Some("auth status\n"))] {
             let (out, bin) = (temp("out"), temp("bin"));
             let gh = signed_out_gh(&bin);

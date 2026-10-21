@@ -302,7 +302,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn repairs_raw_control_characters_and_bad_escapes() {
+    fn repairs_controls_and_escapes() {
         assert_eq!(repair_json("{\"a\":\"x\ny\"}"), "{\"a\":\"x\\ny\"}");
         assert_eq!(repair_json(r#"{"a":"C:\dir"}"#), r#"{"a":"C:\\dir"}"#);
         assert_eq!(repair_json(r#"{"a":"\u00e9\n"}"#), r#"{"a":"\u00e9\n"}"#);
