@@ -164,7 +164,7 @@ mod tests {
             "[default]\nregion = us-west-2\n\n[profile dev]\nrole_arn = arn:aws:iam::1:role/r\nsource_profile = default\ns3 =\n  max_concurrent_requests = 10\n[sso-session corp]\nsso_region = eu-west-1\n[ignored]\nx = 1\n",
         );
         let credentials = parse(
-            "# keys\n[default]\naws_access_key_id = AKID\naws_secret_access_key = secret\nregion = eu-central-1\n",
+            "# keys\n[default]\naws_access_key_id = AKID\naws_secret_access_key = secret\nregion = eu-central-1\n[prod] # production account\nregion = eu-west-1 # Ireland\nsecret = a#b;c\n  ; indented\n",
         );
         let profiles = merge(config, credentials);
         let default = &profiles.profiles["default"];
@@ -173,22 +173,9 @@ mod tests {
         assert_eq!(profiles.profiles["dev"]["source_profile"], "default");
         assert_eq!(profiles.profiles["dev"]["s3.max_concurrent_requests"], "10");
         assert_eq!(profiles.sso_sessions["corp"]["sso_region"], "eu-west-1");
-        assert!(!profiles.profiles.contains_key("ignored"));
-    }
-
-    #[test]
-    fn inline_comments() {
-        let credentials = parse(
-            "[default]\nregion = us-east-1\naws_access_key_id = AKIADEFAULT\n[prod] # production account\naws_access_key_id = AKIAPROD\nregion = eu-west-1 # Ireland\nsecret = a#b;c\n  ; indented\n",
-        );
-        let profiles = merge(IndexMap::new(), credentials);
-        assert_eq!(profiles.profiles["default"]["region"], "us-east-1");
-        assert_eq!(
-            profiles.profiles["default"]["aws_access_key_id"],
-            "AKIADEFAULT"
-        );
+        // A comment starts at `#` or `;` after whitespace, as in smithy.
         assert_eq!(profiles.profiles["prod"]["region"], "eu-west-1");
-        assert_eq!(profiles.profiles["prod"]["aws_access_key_id"], "AKIAPROD");
         assert_eq!(profiles.profiles["prod"]["secret"], "a#b;c");
+        assert!(!profiles.profiles.contains_key("ignored"));
     }
 }

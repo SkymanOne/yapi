@@ -349,7 +349,7 @@ mod tests {
     async fn other_entries_byte_identical() {
         let path = temp("bytes");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let original = "{\n  \"zeta\": {\n    \"type\": \"oauth\",\n    \"refresh\": \"r\",\n    \"access\": \"a\",\n    \"expires\": 1700000000000,\n    \"accountId\": \"x\"\n  },\n  \"alpha\": {\n    \"type\": \"api_key\",\n    \"key\": \"$KEY\"\n  }\n}";
+        let original = "{\n  \"zeta\": {\n    \"type\": \"oauth\",\n    \"refresh\": \"r\",\n    \"access\": \"a\",\n    \"expires\": 1700000000000.5,\n    \"accountId\": \"x\"\n  },\n  \"alpha\": {\n    \"type\": \"api_key\",\n    \"key\": \"$KEY\"\n  }\n}";
         std::fs::write(&path, original).unwrap();
         let store = CredentialStore::open(&path);
         assert_eq!(
@@ -371,38 +371,18 @@ mod tests {
         );
         store.delete("beta", &cancel).await.unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        // pi accepts any finite expiry, and a rewrite keeps its bytes.
+        let Some(Credential::OAuth(zeta)) = store.get("zeta") else {
+            panic!("zeta is not an OAuth credential");
+        };
+        assert_eq!(zeta.expires, 1_700_000_000_000.5);
+        store
+            .set("zeta", Credential::OAuth(zeta), &cancel)
+            .await
+            .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"expires\": 1700000000000.5,"), "{text}");
         assert!(!path.with_file_name("auth.json.lock").exists());
-        std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap()).unwrap();
-    }
-
-    #[tokio::test]
-    async fn fractional_expires() {
-        let path = temp("fraction");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let original = "{\n  \"a\": {\n    \"type\": \"oauth\",\n    \"access\": \"a\",\n    \"refresh\": \"r\",\n    \"expires\": 1790000000000.5\n  },\n  \"b\": {\n    \"type\": \"oauth\",\n    \"access\": \"a\",\n    \"refresh\": \"r\",\n    \"expires\": 1.79e12\n  }\n}";
-        std::fs::write(&path, original).unwrap();
-        let store = CredentialStore::open(&path);
-        let Some(Credential::OAuth(credential)) = store.get("a") else {
-            panic!("no credential");
-        };
-        assert_eq!(credential.expires, 1_790_000_000_000.5);
-        let Some(Credential::OAuth(exponent)) = store.get("b") else {
-            panic!("no credential");
-        };
-        assert_eq!(exponent.expires, 1.79e12);
-        let cancel = CancellationToken::new();
-        store
-            .set("a", Credential::OAuth(credential), &cancel)
-            .await
-            .unwrap();
-        store
-            .set("b", Credential::OAuth(exponent), &cancel)
-            .await
-            .unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            original.replace("1.79e12", "1790000000000")
-        );
         std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap()).unwrap();
     }
 

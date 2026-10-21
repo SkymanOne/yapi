@@ -937,82 +937,66 @@ fn refusal(path: &str, status: u16, headers: &[(&str, &str)], body: Value) -> In
     interaction
 }
 
+/// pi's retry headers and finish reasons, per provider.
 #[tokio::test]
-async fn retry_delay_message() {
-    let quota = json!({"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}});
-    let server = mock(Cassette {
-        interactions: vec![refusal(
-            "/chat/completions",
-            429,
-            &[("retry-after", "3600")],
-            quota,
-        )],
-    })
-    .await;
-    let message = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
-    assert_eq!(
-        message.error_message.as_deref(),
-        Some("Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota")
-    );
-    server.finish().unwrap();
-}
-
-#[tokio::test]
-async fn google_ignores_retry_after() {
-    let mut cassette = cassette(
-        "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
-        "google-generative-ai/text.json",
-    );
-    cassette.interactions.insert(
+async fn provider_quirks() {
+    let completions = "/chat/completions";
+    let chunk = |delta: Value, reason: &str| {
+        let chunk = json!({"choices": [{"index": 0, "delta": delta, "finish_reason": reason}]});
+        format!("data: {chunk}\n\n")
+    };
+    let stream = |chunks: Vec<String>| {
+        let mut interaction = Interaction::json("POST", completions, 200, &json!({}));
+        interaction.response.chunks = chunks;
+        interaction.response.headers["content-type"] = "text/event-stream".into();
+        interaction
+    };
+    let done = || "data: [DONE]\n\n".to_owned();
+    let gemini = "/v1beta/models/gemini-2.5-flash:streamGenerateContent";
+    let mut google = cassette(gemini, "google-generative-ai/text.json").interactions;
+    google.insert(
         0,
         refusal(
-            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+            gemini,
             429,
             &[("retry-after", "120"), ("x-should-retry", "false")],
             json!({"error": {"code": 429, "message": "Resource exhausted"}}),
         ),
     );
-    let server = mock(cassette).await;
-    let message = ask_at(&server, "google", "gemini-2.5-flash", "/v1beta").await;
-    assert_eq!(message.error_message, None);
-    assert_eq!(message.stop_reason, StopReason::Stop);
-    assert_eq!(server.finish().unwrap().len(), 2);
-}
-
-#[tokio::test]
-async fn empty_finish_reason() {
-    let chunk = |delta: Value, reason: Value| {
-        let chunk = json!({"choices": [{"index": 0, "delta": delta, "finish_reason": reason}]});
-        format!("data: {chunk}\n\n")
-    };
-    let stream = |chunks: Vec<String>| {
-        let mut interaction = Interaction::json("POST", "/chat/completions", 200, &json!({}));
-        interaction.response.chunks = chunks;
-        interaction.response.headers["content-type"] = "text/event-stream".into();
-        interaction
-    };
-    let server = mock(Cassette {
-        interactions: vec![
-            stream(vec![
-                chunk(json!({"content": "Hi"}), json!("")),
-                chunk(json!({}), json!("stop")),
-                chunk(json!({}), json!("")),
-                "data: [DONE]\n\n".into(),
-            ]),
-            stream(vec![
-                chunk(json!({"content": "Hi"}), json!("")),
-                "data: [DONE]\n\n".into(),
-            ]),
-        ],
-    })
-    .await;
-    let finished = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
-    assert_eq!(finished.stop_reason, StopReason::Stop);
-    assert_eq!(finished.error_message, None);
-    let unfinished = ask_at(&server, "groq", "openai/gpt-oss-120b", "").await;
-    assert_eq!(
-        unfinished.error_message.as_deref(),
-        Some("Stream ended without finish_reason")
-    );
-    server.finish().unwrap();
+    let quota = json!({"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}});
+    let groq = ("groq", "openai/gpt-oss-120b", "");
+    let cases = [
+        // A refused retry delay keeps the provider's message, which says why.
+        (
+            groq,
+            vec![refusal(completions, 429, &[("retry-after", "3600")], quota)],
+            Some(
+                "Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota",
+            ),
+        ),
+        // Google's SDK errors carry no headers, so retries back off regardless.
+        (("google", "gemini-2.5-flash", "/v1beta"), google, None),
+        // An empty finish_reason neither ends nor fails the message.
+        (
+            groq,
+            vec![stream(vec![
+                chunk(json!({"content": "Hi"}), ""),
+                chunk(json!({}), "stop"),
+                chunk(json!({}), ""),
+                done(),
+            ])],
+            None,
+        ),
+        (
+            groq,
+            vec![stream(vec![chunk(json!({"content": "Hi"}), ""), done()])],
+            Some("Stream ended without finish_reason"),
+        ),
+    ];
+    for ((provider, model, path), interactions, error) in cases {
+        let server = mock(Cassette { interactions }).await;
+        let message = ask_at(&server, provider, model, path).await;
+        assert_eq!(message.error_message.as_deref(), error, "{provider}");
+        server.finish().unwrap();
+    }
 }

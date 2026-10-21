@@ -673,11 +673,7 @@ mod tests {
             Duration::from_secs(2)
         );
         assert!(retry_delay(&headers, 0, Some(1000)).is_err());
-    }
-
-    #[test]
-    fn retry_after_date() {
-        // `2026-10-21T12:34:56.789Z` as `Wed, 21 Oct 2026 12:34:56 GMT`; the weekday is not read.
+        // An HTTP date, `Mon, 21 Oct 2026 12:34:56 GMT`; the weekday is not read.
         let iso = yapi_types::time::iso(yapi_types::time::now_ms() + 120_000);
         let months = [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -689,7 +685,6 @@ mod tests {
             &iso[..4],
             &iso[11..19]
         );
-        let mut headers = HeaderMap::new();
         headers.insert("retry-after", date.parse().unwrap());
         assert!(retry_delay(&headers, 0, Some(0)).unwrap() > Duration::from_secs(110));
         assert_eq!(

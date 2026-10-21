@@ -505,12 +505,19 @@ async fn refresh_without_key_derivation() {
 
 #[tokio::test]
 async fn registry_refreshes_expired_tokens() {
-    let server = mock(vec![Exchange::json(
-        "POST",
-        "/v1/oauth/token",
-        200,
-        &json!({"access_token": "sk-ant-oat-new", "refresh_token": "r-new", "expires_in": 3600}),
-    )])
+    let token = |access: &str, expires_in: u64| {
+        Exchange::json(
+            "POST",
+            "/v1/oauth/token",
+            200,
+            &json!({"access_token": access, "refresh_token": "r-new", "expires_in": expires_in}),
+        )
+    };
+    let server = mock(vec![
+        token("sk-ant-oat-new", 3600),
+        token("sk-ant-oat-short", 480),
+        token("sk-ant-oat-long", 3600),
+    ])
     .await;
     let dir = agent_dir("refresh");
     let original = "{\n  \"openai\": {\n    \"type\": \"api_key\",\n    \"key\": \"sk-x\"\n  },\n  \"anthropic\": {\n    \"type\": \"oauth\",\n    \"refresh\": \"r-old\",\n    \"access\": \"sk-ant-oat-old\",\n    \"expires\": 1\n  }\n}";
@@ -533,6 +540,15 @@ async fn registry_refreshes_expired_tokens() {
     // A second request uses the stored token without refreshing again.
     let again = registry.auth(&model).await;
     assert_eq!(again.api_key.as_deref(), Some("sk-ant-oat-new"));
+    // A refreshed token, here valid for 3 minutes, must last the requested minimum.
+    let short = registry.auth_valid_for(&model, Some(60 * 60_000)).await;
+    assert_eq!(
+        short.error.as_deref(),
+        Some("OAuth refresh returned a token that expires too soon for anthropic")
+    );
+    // Any minimum is at least five minutes, so the 3-minute token refreshes.
+    let long = registry.auth_valid_for(&model, Some(60_000)).await;
+    assert_eq!(long.api_key.as_deref(), Some("sk-ant-oat-long"));
     server.finish().unwrap();
 
     let text = std::fs::read_to_string(dir.join("auth.json")).unwrap();
@@ -542,54 +558,8 @@ async fn registry_refreshes_expired_tokens() {
     };
     assert_eq!(
         (stored.access.as_str(), stored.refresh.as_str()),
-        ("sk-ant-oat-new", "r-new")
+        ("sk-ant-oat-long", "r-new")
     );
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-/// A bearer token valid for less than five minutes or the requested minimum
-/// is refreshed, and a refreshed token must last the requested minimum.
-#[tokio::test]
-async fn bearer_expiry_floor() {
-    let token = || {
-        Exchange::json(
-            "POST",
-            "/v1/oauth/token",
-            200,
-            &json!({"access_token": "sk-ant-oat-new", "refresh_token": "r-new", "expires_in": 3600}),
-        )
-    };
-    let server = mock(vec![token(), token()]).await;
-    let dir = agent_dir("bearer-floor");
-    let expires = yapi_types::time::now_ms() + 3 * 60_000;
-    std::fs::write(
-        dir.join("auth.json"),
-        format!(
-            r#"{{"anthropic": {{"type": "oauth", "refresh": "r", "access": "sk-ant-oat-old", "expires": {expires}}}}}"#
-        ),
-    )
-    .unwrap();
-    let mut registry = ModelRegistry::load(&dir);
-    registry.register_oauth(
-        "anthropic",
-        Arc::new(AnthropicOAuth {
-            token_url: format!("{}/v1/oauth/token", server.url()),
-            ..AnthropicOAuth::default()
-        }),
-    );
-    let model = registry
-        .find("anthropic", "claude-sonnet-4-5")
-        .unwrap()
-        .clone();
-    let auth = registry.auth_valid_for(&model, Some(60_000)).await;
-    assert_eq!(auth.api_key.as_deref(), Some("sk-ant-oat-new"));
-    // The refreshed token lasts 55 minutes.
-    let auth = registry.auth_valid_for(&model, Some(60 * 60_000)).await;
-    assert_eq!(
-        auth.error.as_deref(),
-        Some("OAuth refresh returned a token that expires too soon for anthropic")
-    );
-    server.finish().unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
