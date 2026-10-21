@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bf28978e.js";
+            window.path_to_searchindex_js = "searchindex-ba872369.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -193,18 +193,18 @@
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.2.0
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.3.0
 ├── README.md
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
 <p>The package takes the directory’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
-<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.2.0 crates/yapi/templates/extension
+<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.0 crates/yapi/templates/extension
 </code></pre>
 <p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = "0.2.0"
+yapi-extension-api = "0.3.0"
 </code></pre>
 <p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -460,7 +460,7 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.2.0", features = ["widgets"] }
+yapi-extension-api = { version = "0.3.0", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds the widgets.</p>
 <ul>

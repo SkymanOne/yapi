@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bf28978e.js";
+            window.path_to_searchindex_js = "searchindex-ba872369.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -191,14 +191,14 @@
 <tr><th>Option</th><th>Variable</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.2.0</code></td></tr>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.3.0</code></td></tr>
 <tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
 <tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
 </tbody>
 </table>
 </div>
 <p>Pass options after <code>sh -s --</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.2.0 --to /usr/local/bin
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.0 --to /usr/local/bin
 </code></pre>
 <h2 id="cargo-binstall"><a class="header" href="#cargo-binstall">cargo-binstall</a></h2>
 <p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary into <code>~/.cargo/bin</code>:</p>
@@ -229,7 +229,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="troubleshooting.html#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then run:</p>
-<pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.2.0 yapi
+<pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.0 yapi
 </code></pre>
 <p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>. To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>

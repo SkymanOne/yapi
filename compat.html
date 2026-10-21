@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bf28978e.js";
+            window.path_to_searchindex_js = "searchindex-ba872369.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -241,6 +241,7 @@
 </thead>
 <tbody>
 <tr><td><code>/share</code></td><td>Shares a session through Pi’s services</td><td>Not available.</td></tr>
+<tr><td>Name given to other programs</td><td>Requests carry <code>User-Agent: pi (&lt;platform&gt; &lt;release&gt;; &lt;arch&gt;)</code>, and commands run with <code>AI_AGENT=pi</code></td><td>Requests carry <code>User-Agent: yapi/&lt;version&gt; (&lt;os&gt;; &lt;arch&gt;)</code>, and commands run with <code>AI_AGENT=yapi</code>, so servers and tools can tell yapi from Pi.</td></tr>
 <tr><td><code>/bug</code></td><td>Uploads a private report to Pi’s service at radius.pi.dev, or exports it as a zip file</td><td>Always writes the zip file to the working folder, then offers to post a public issue on <a href="https://github.com/SkymanOne/yapi/issues">SkymanOne/yapi</a> with the GitHub CLI. The report has no crash log. Its diagnostics come from the current branch, and its <code>session.jsonl</code> holds the branch without Pi’s system prompt and tool list. The session records the report as a <code>yapi.bug-report</code> entry.</td></tr>
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
@@ -261,6 +262,7 @@
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
+<tr><td>Sorting names</td><td>ICU’s <code>localeCompare</code> sorts every script</td><td>Latin letters, accents and marks sort as ICU’s root collation does. Letters of other scripts sort by code point, to keep ICU’s data out of the binary.</td></tr>
 <tr><td><code>edit</code> on a file that is not UTF-8</td><td>Reads it as UTF-8 and writes every invalid byte back as U+FFFD</td><td>Refuses the edit with “File is not valid UTF-8.”, so bytes outside the edit never change.</td></tr>
 <tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
 <tr><td>Session lines with an unpaired surrogate</td><td>Text cut inside an emoji is written as an unpaired UTF-16 escape, such as <code>\ud83d</code></td><td>The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one.</td></tr>
