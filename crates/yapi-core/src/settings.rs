@@ -622,9 +622,11 @@ mod tests {
             "retry": "often",
             "steeringMode": "all",
             "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
-            "compaction": {"enabled": false, "reserveTokens": "16384"},
+            "compaction": {"enabled": false, "reserveTokens": "16384", "keepRecentTokens": 2e4},
             "branchSummary": {"skipPrompt": true, "reserveTokens": 1.5e5},
             "modelThinkingLevels": {"a/b": "high", "a/c": "extreme"},
+            "terminal": {"imageWidthCells": 40.7},
+            "outputPad": 0.5,
         })
         .as_object()
         .unwrap()
@@ -635,13 +637,22 @@ mod tests {
         assert!(settings.retry.is_none());
         // A wrongly typed nested field drops alone.
         let compaction = settings.compaction.as_ref().unwrap();
+        let tokens = (compaction.reserve_tokens, compaction.keep_recent_tokens);
         assert_eq!(
-            (compaction.enabled, compaction.reserve_tokens),
-            (Some(false), None)
+            (compaction.enabled, tokens),
+            (Some(false), (None, Some(20000)))
         );
+        // A whole float is its integer; pi rounds a fraction down where it
+        // counts cells, and reads any output padding but 0 as 1.
+        let summary = settings.branch_summary.as_ref().unwrap();
         assert_eq!(
-            settings.branch_summary.as_ref().unwrap().skip_prompt,
-            Some(true)
+            (summary.skip_prompt, summary.reserve_tokens),
+            (Some(true), Some(150_000))
+        );
+        let terminal = settings.terminal.as_ref().unwrap();
+        assert_eq!(
+            (terminal.image_width_cells, settings.output_pad),
+            (Some(40), None)
         );
         assert_eq!(settings.model_thinking_levels.as_ref().unwrap().len(), 1);
         assert_eq!(
