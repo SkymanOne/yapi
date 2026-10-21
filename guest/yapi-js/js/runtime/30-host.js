@@ -1068,6 +1068,12 @@
 			getProviderDisplayName: (provider) => yapi.request("models.providerName", { provider }) ?? provider,
 			getModelsOfType: (type, provider) => yapi.request("models.ofType", { type, provider }) ?? [],
 			getModelOfType: (type, provider, id) => ofType(type, provider, id),
+			// shortcut: getProvider gives a provider's names, models and streams, not the rest of pi-ai's Provider; add members as extensions need them.
+			getProvider: registryProvider,
+			getProviderAuthStatus: (provider) => yapi.request("models.authStatus", { provider }),
+			stream: registryStream,
+			streamSimple: registryStream,
+			complete: (model, context, options) => registryStream(model, context, options).result(),
 			findOfType: (type, provider, id) => ofType(type, provider, id),
 			getAvailableOfType: (type, provider) => yapi.op("models.availableOfType", { type, provider }),
 			// Only the provider and id cross: the host runs its own catalog entry with its credentials.
@@ -1093,6 +1099,33 @@
 	}
 	function ofType(type, provider, id) {
 		return (yapi.request("models.ofType", { type, provider }) ?? []).find((model) => model.id === id);
+	}
+	/**
+	 * pi's `ModelRegistry.stream`: the session's provider of `model` with the
+	 * registry's credentials. pi-ai's facade, which streams through the host,
+	 * loads with the first.
+	 */
+	function registryStream(model, context, options) {
+		const stream = import("@earendil-works/pi-ai").then(() => yapi.registryStream(model, context, options));
+		return {
+			async *[Symbol.asyncIterator]() {
+				yield* await stream;
+			},
+			result: async () => (await stream).result(),
+		};
+	}
+	/** pi-ai's `Provider` `provider` as extensions read it: its names, models and streams. */
+	function registryProvider(provider) {
+		const all = () => ["chat", "image", "classifier"].flatMap((type) => yapi.request("models.ofType", { type, provider }) ?? []);
+		if (all().length === 0) return undefined;
+		return {
+			id: provider,
+			name: yapi.request("models.providerName", { provider }) ?? provider,
+			getModels: () => yapi.request("models.ofType", { type: "chat", provider }) ?? [],
+			getAllModels: all,
+			stream: registryStream,
+			streamSimple: registryStream,
+		};
 	}
 	// The current run's abort signal, by the host's id, as pi's `ctx.signal`.
 	let runAbort;

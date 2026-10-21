@@ -192,7 +192,17 @@ export default function (pi: ExtensionAPI) {
 			} catch (error) {
 				classifyError = error.message;
 			}
+			// The session's provider answers with the registry's credentials.
+			const context = { systemPrompt: "Be brief.", messages: [{ role: "user", content: [{ type: "text", text: "hi" }], timestamp: Date.now() }] };
+			const completed = await registry.complete(ctx.model, context);
+			const events = [];
+			for await (const event of registry.streamSimple(ctx.model, context)) events.push(event.type);
+			const provider = registry.getProvider("faux");
 			pi.appendEntry("probe", {
+				completed: completed.content.map((block) => block.text).join(""),
+				streamed: [events[0], events.at(-1)],
+				provider: [provider.name, provider.getModels().map((model) => model.id), registry.getProvider("nope") ?? null],
+				status: [registry.getProviderAuthStatus("faux"), registry.getProviderAuthStatus("nope")],
 				classifiers: registry.getModelsOfType("classifier", "typesafe").map((model) => model.id),
 				image: registry.findOfType("image", "openrouter", "black-forest-labs/flux.2-flex")?.name,
 				missing: registry.getModelOfType("image", "openrouter", "nope") ?? null,
@@ -217,7 +227,8 @@ async fn model_registry_reads_typed_models() {
         .await
         .unwrap();
     assert!(js.errors().is_empty(), "{:?}", js.errors());
-    let session = session(&Faux::new([]), &dir, js.for_session());
+    let faux = Faux::new([Response::text("summed"), Response::text("streamed")]);
+    let session = session(&faux, &dir, js.for_session());
     session
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
         .await;
@@ -232,6 +243,10 @@ async fn model_registry_reads_typed_models() {
     assert_eq!(
         custom_entries(&session, "probe"),
         [json!({
+            "completed": "summed",
+            "streamed": ["start", "done"],
+            "provider": ["faux", ["faux-1"], null],
+            "status": [{"configured": true, "source": "runtime"}, {"configured": false}],
             "classifiers": ["jev-latest"],
             "image": "Black Forest Labs: FLUX.2 Flex",
             "missing": null,
@@ -243,6 +258,11 @@ async fn model_registry_reads_typed_models() {
             "classifyError": "Unknown classifier model \"nope/x\"",
         })]
     );
+    let requests = faux.requests();
+    let Some(Message::System(system)) = requests[0].first() else {
+        panic!("no system message: {:?}", requests[0]);
+    };
+    assert_eq!(system.text(), "Be brief.");
 }
 
 const TREE_EXTENSION: &str = r#"

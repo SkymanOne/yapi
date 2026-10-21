@@ -2670,6 +2670,15 @@ impl Bridge for SessionBridge {
                     .is_using_oauth(&text(&payload["provider"])),
             )),
             "models.error" => Ok(to_json(session.registry().error())),
+            // pi's `AuthStatus`; `login_status` names the source or the
+            // environment it comes from.
+            "models.authStatus" => Ok(match session.registry().login_status(&text(&payload["provider"])) {
+                None => json!({"configured": false}),
+                Some(source) if matches!(source.as_str(), "runtime" | "stored" | "models_json_command" | "models_json_key" | "fallback") => {
+                    json!({"configured": true, "source": source})
+                }
+                Some(label) => json!({"configured": true, "source": "environment", "label": label}),
+            }),
             "models.providerName" => Ok(Value::String(
                 session.registry().provider_name(&text(&payload["provider"])),
             )),
@@ -2778,6 +2787,46 @@ impl Bridge for SessionBridge {
             .get(&id)
             .map(|stream| stream.hooks.clone())
             .unwrap_or_default()
+    }
+
+    fn stream_model(
+        &self,
+        payload: Value,
+        cancel: CancellationToken,
+    ) -> BoxFuture<'static, Result<EventStream, String>> {
+        let Some(session) = self.session() else {
+            return Box::pin(async { Err(not_bound()) });
+        };
+        Box::pin(async move {
+            let model: Model = serde_json::from_value(payload["model"].clone())
+                .map_err(|err| format!("Invalid model: {err}"))?;
+            let messages = serde_json::from_value(payload["context"]["messages"].clone())
+                .map_err(|err| format!("Invalid context: {err}"))?;
+            let options = crate::streams::options_from_json(&payload["options"], cancel);
+            let mut request = Request {
+                model,
+                messages,
+                options,
+            };
+            // pi's `prepareRequest`: the options' key and headers win over the registry's.
+            let key = request.options.api_key.take();
+            let headers = std::mem::take(&mut request.options.headers);
+            let auth = session.registry().auth(&request.model).await;
+            if let Err(message) = auth.apply(&mut request) {
+                let cancel = request.options.cancel.clone();
+                return Ok(yapi_ai::api::failed_stream(
+                    &request.model,
+                    &cancel,
+                    message,
+                ));
+            }
+            if key.is_some() {
+                request.options.api_key = key;
+            }
+            request.options.headers.extend(headers);
+            RequestHooks::prepare(&mut request).await;
+            Ok(session.apis().stream(request))
+        })
     }
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
