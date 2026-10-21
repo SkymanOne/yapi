@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7c9463df.js";
+            window.path_to_searchindex_js = "searchindex-db591939.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -599,7 +599,7 @@ yapi --no-session            # do not save this run
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
 <p>The host checks every file, process, network and environment access against the extension’s grants. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
-<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant.</p>
+<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code> only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
 <p>Extensions share Pi’s <code>pi.events</code> bus, so every extension receives the events of every other extension.</p>
@@ -1653,6 +1653,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Terminal input listeners</td><td>Pi handles each key before the next one reaches them</td><td>They run while yapi keeps drawing, so keys that arrive together pass through them together.</td></tr>
 <tr><td>Focused component</td><td><code>tui.focusedComponent</code> is the component that has the keyboard</td><td>The extension’s own editor when it replaced yapi’s. Otherwise a stand-in, as yapi’s editor, selectors and dialogs are not objects in the runtime: an <code>Editor</code> with no state while the prompt editor has the keyboard, and an empty object while a selector, a dialog or a component has it.</td></tr>
 <tr><td>Autocomplete providers</td><td>The editor waits for providers</td><td>yapi’s editor never waits: <code>applyCompletion</code> runs for every suggestion, and <code>signal</code> never aborts. Editors from <code>setEditorComponent</code> behave as in Pi.</td></tr>
+<tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s whole <code>SessionManager</code></td><td>It reads the session and writes with <code>appendMessage</code>, <code>appendCustomEntry</code> and <code>appendSessionInfo</code>. Other writes throw.</td></tr>
 <tr><td>Failing session actions</td><td>A throwing <code>setup</code> or <code>withSession</code> callback ends interactive mode</td><td>yapi reports the error and keeps the current session.</td></tr>
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
@@ -1707,8 +1708,6 @@ api.on("session_start", |_event, ctx| async move {
 </thead>
 <tbody>
 <tr><td>Complete pi-ai providers</td><td>A <code>Provider</code> passed to <code>registerProvider</code> can limit its models per account with <code>filterModels</code>, and checks for an API key on every availability refresh. <code>/login</code> asks for its key with its own prompt.</td><td><code>filterModels</code> and <code>filterAllModels</code> are ignored. The API key check runs once as the extension loads, and <code>/login</code> asks for the key with yapi’s prompt.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
-<tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s writable session manager before its extensions start</td><td><code>setup</code> runs after the new session’s <code>session_start</code> and gets the read-only session manager.</td><td><a href="https://github.com/SkymanOne/yapi/issues/67">#67</a></td></tr>
-<tr><td>Provider credentials in extensions</td><td><code>ctx.modelRegistry.getProviderAuth</code> returns a provider’s API key and headers</td><td>Rejects.</td><td><a href="https://github.com/SkymanOne/yapi/issues/176">#176</a></td></tr>
 </tbody>
 </table>
 </div>
