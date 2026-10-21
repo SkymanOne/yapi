@@ -12,14 +12,14 @@ The script downloads the latest release for your system, verifies its SHA-256 ch
 
 | Option | Variable | Effect |
 |---|---|---|
-| `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.2.0` |
+| `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.3.0` |
 | `--to <dir>` | `YAPI_INSTALL_DIR` | Install into `<dir>` |
 | `--no-docs` | `YAPI_NO_DOCS=1` | Skip the documentation for the model |
 
 Pass options after `sh -s --`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.2.0 --to /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.0 --to /usr/local/bin
 ```
 
 ## cargo-binstall
@@ -59,7 +59,7 @@ On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `lates
 yapi builds with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs), then run:
 
 ```sh
-cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.2.0 yapi
+cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.0 yapi
 ```
 
 Cargo installs `yapi` in `~/.cargo/bin`. Leave out `--tag` to build the latest commit on `main`. To build from a clone, run `cargo install --locked --path crates/yapi` in it. If Cargo reports that rustc is too old, run `rustup update`.

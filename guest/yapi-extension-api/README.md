@@ -4,7 +4,7 @@ The Rust SDK for native [yapi](https://github.com/SkymanOne/yapi) extensions. An
 
 ```toml
 [dependencies]
-yapi-extension-api = "0.2.0"
+yapi-extension-api = "0.3.0"
 ```
 
 ```rust
