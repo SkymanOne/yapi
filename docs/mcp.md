@@ -30,7 +30,7 @@ Inside yapi, `/mcp` opens a manager that lists each server with its state, tool 
 
 HTTP servers without an `Authorization` header sign in with OAuth. A server that needs a sign-in shows it in `/mcp` and `yapi mcp list`. Select it in `/mcp`, or run `/mcp login <server>` inside yapi or `yapi mcp login <server>` in a terminal. `logout` deletes the stored credentials.
 
-yapi opens the authorization page in your browser and waits for the redirect. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server's `oauth` object (`clientId`, `clientSecret`, `callbackPort` or `callbackUrl`, `scope`, `clientName`, `authServerMetadataUrl`), or pass `--oauth-client-id` and the related options to `yapi mcp add`.
+yapi opens the authorization page in your browser and waits for the redirect. It opens only `http` and `https` pages and fails the sign-in when a server names another scheme. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server's `oauth` object (`clientId`, `clientSecret`, `callbackPort` or `callbackUrl`, `scope`, `clientName`, `authServerMetadataUrl`), or pass `--oauth-client-id` and the related options to `yapi mcp add`.
 
 yapi stores credentials in `~/.yapi/agent/mcp-auth.json`, in Pi's format, and refreshes access tokens before they expire. A running session picks up a sign-in made with `yapi mcp login` on its next turn.
 

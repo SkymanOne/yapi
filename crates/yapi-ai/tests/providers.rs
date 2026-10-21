@@ -14,7 +14,7 @@ use yapi_ai::credentials::ProviderEnv;
 use yapi_ai::registry::ModelRegistry;
 use yapi_ai::stream::{Request, StreamOptions};
 use yapi_mock::{Cassette, Interaction, MockServer, REDACTED, RequestMatch, Response};
-use yapi_types::message::{Content, Message, StopReason, UserMessage};
+use yapi_types::message::{AssistantMessage, Content, Message, StopReason, UserMessage};
 
 fn agent_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("yapi-providers-{name}-{}", std::process::id()));
@@ -773,6 +773,25 @@ async fn bedrock_reports_errors() {
             "Provider stopped with: guardrail_intervened",
             json!({"requestId": "req-1"}),
         ),
+        (
+            binary_exchange(
+                path,
+                200,
+                &[
+                    ("content-type", "application/vnd.amazon.eventstream"),
+                    ("x-amzn-requestid", "req-1"),
+                ],
+                &[
+                    event("messageStart", &json!({"role": "assistant"})),
+                    event("messageStop", &json!({"stopReason": "end_turn"})),
+                    // The connection drops inside the trailing `metadata` frame.
+                    event("metadata", &json!({"usage": {"inputTokens": 1}}))[..20].to_vec(),
+                ]
+                .concat(),
+            ),
+            "Truncated event message received.",
+            json!({"requestId": "req-1"}),
+        ),
     ];
     for (interaction, message, details) in cases {
         let server = mock(Cassette {
@@ -885,4 +904,99 @@ async fn aws_credential_chain() {
     );
     assert_eq!(requests[2].headers["authorization"], REDACTED);
     std::fs::remove_dir_all(&home).unwrap();
+}
+
+/// Streams "hi" to a built-in model at the mock server, retrying once.
+async fn ask_at(server: &MockServer, provider: &str, id: &str, path: &str) -> AssistantMessage {
+    let mut model = builtin_models(provider)
+        .into_iter()
+        .find(|model| model.id == id)
+        .unwrap();
+    model.base_url = format!("{}{path}", server.url());
+    let request = Request {
+        model,
+        messages: vec![user("hi")],
+        options: StreamOptions {
+            api_key: Some("key".into()),
+            max_retries: 1,
+            ..StreamOptions::default()
+        },
+    };
+    Apis::default().stream(request).result().await.unwrap()
+}
+
+/// A JSON error response with `headers`.
+fn refusal(path: &str, status: u16, headers: &[(&str, &str)], body: Value) -> Interaction {
+    let mut interaction = Interaction::json("POST", path, status, &body);
+    for (name, value) in headers {
+        interaction
+            .response
+            .headers
+            .insert((*name).to_owned(), (*value).to_owned());
+    }
+    interaction
+}
+
+/// pi's retry headers and finish reasons, per provider.
+#[tokio::test]
+async fn provider_quirks() {
+    let completions = "/chat/completions";
+    let chunk = |delta: Value, reason: &str| {
+        let chunk = json!({"choices": [{"index": 0, "delta": delta, "finish_reason": reason}]});
+        format!("data: {chunk}\n\n")
+    };
+    let stream = |chunks: Vec<String>| {
+        let mut interaction = Interaction::json("POST", completions, 200, &json!({}));
+        interaction.response.chunks = chunks;
+        interaction.response.headers["content-type"] = "text/event-stream".into();
+        interaction
+    };
+    let done = || "data: [DONE]\n\n".to_owned();
+    let gemini = "/v1beta/models/gemini-2.5-flash:streamGenerateContent";
+    let mut google = cassette(gemini, "google-generative-ai/text.json").interactions;
+    google.insert(
+        0,
+        refusal(
+            gemini,
+            429,
+            &[("retry-after", "120"), ("x-should-retry", "false")],
+            json!({"error": {"code": 429, "message": "Resource exhausted"}}),
+        ),
+    );
+    let quota = json!({"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}});
+    let groq = ("groq", "openai/gpt-oss-120b", "");
+    let cases = [
+        // A refused retry delay keeps the provider's message, which says why.
+        (
+            groq,
+            vec![refusal(completions, 429, &[("retry-after", "3600")], quota)],
+            Some(
+                "Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota",
+            ),
+        ),
+        // Google's SDK errors carry no headers, so retries back off regardless.
+        (("google", "gemini-2.5-flash", "/v1beta"), google, None),
+        // An empty finish_reason neither ends nor fails the message.
+        (
+            groq,
+            vec![stream(vec![
+                chunk(json!({"content": "Hi"}), ""),
+                chunk(json!({}), "stop"),
+                chunk(json!({}), ""),
+                done(),
+            ])],
+            None,
+        ),
+        (
+            groq,
+            vec![stream(vec![chunk(json!({"content": "Hi"}), ""), done()])],
+            Some("Stream ended without finish_reason"),
+        ),
+    ];
+    for ((provider, model, path), interactions, error) in cases {
+        let server = mock(Cassette { interactions }).await;
+        let message = ask_at(&server, provider, model, path).await;
+        assert_eq!(message.error_message.as_deref(), error, "{provider}");
+        server.finish().unwrap();
+    }
 }

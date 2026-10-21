@@ -1486,12 +1486,14 @@ impl ModelRegistry {
     /// Credentials for a request to `model`, with its configured headers. A
     /// stored OAuth token about to expire is refreshed first.
     pub async fn auth(&self, model: &Model) -> Auth {
-        self.auth_valid_for(model, OAUTH_MINIMUM_VALIDITY_MS).await
+        self.auth_valid_for(model, None).await
     }
 
-    /// [`ModelRegistry::auth`], refreshing a stored OAuth token that is valid
-    /// for less than `min_validity_ms`, as pi's `minOAuthValidityMs`.
-    pub async fn auth_valid_for(&self, model: &Model, min_validity_ms: u64) -> Auth {
+    /// [`ModelRegistry::auth`] with pi's `minOAuthValidityMs`: a stored OAuth
+    /// token valid for less than five minutes or `min_validity_ms` is
+    /// refreshed first, and with `min_validity_ms` a refreshed token valid for
+    /// less than that is an error.
+    pub async fn auth_valid_for(&self, model: &Model, min_validity_ms: Option<u64>) -> Auth {
         let provider = model.provider.as_str();
         let mut auth = Auth {
             headers: self.headers(model).await,
@@ -1606,14 +1608,14 @@ impl ModelRegistry {
         auth
     }
 
-    /// Request credentials from a stored OAuth token, refreshed first when
-    /// it expires within `min_validity_ms`. `Ok(None)` means the provider was
-    /// logged out meanwhile.
+    /// Request credentials from a stored OAuth token, refreshed as
+    /// [`ModelRegistry::auth_valid_for`] says. `Ok(None)` means the provider
+    /// was logged out meanwhile.
     async fn oauth_auth(
         &self,
         provider: &str,
         stored: OAuthCredential,
-        min_validity_ms: u64,
+        min_validity_ms: Option<u64>,
     ) -> Result<Option<OAuthAuth>, String> {
         let Some(flow) = self.oauth_flow(provider) else {
             // yapi has no sign-in for this provider: use the token as stored.
@@ -1622,10 +1624,20 @@ impl ModelRegistry {
                 ..OAuthAuth::default()
             }));
         };
-        let refreshed = self.refreshed_oauth(provider, flow.as_ref(), stored, min_validity_ms);
+        let minimum = min_validity_ms.map_or(OAUTH_MINIMUM_VALIDITY_MS, |min| {
+            min.max(OAUTH_MINIMUM_VALIDITY_MS)
+        });
+        let refreshed = self.refreshed_oauth(provider, flow.as_ref(), stored, minimum);
         let Some(credential) = refreshed.await? else {
             return Ok(None);
         };
+        if min_validity_ms.is_some()
+            && (crate::auth::now_ms() + minimum) as f64 >= credential.expires
+        {
+            return Err(format!(
+                "OAuth refresh returned a token that expires too soon for {provider}"
+            ));
+        }
         flow.to_auth(&credential)
             .await
             .map(Some)
@@ -1644,7 +1656,7 @@ impl ModelRegistry {
         min_validity_ms: u64,
     ) -> Result<Option<OAuthCredential>, String> {
         let expires_soon = |credential: &OAuthCredential| {
-            crate::auth::now_ms() + min_validity_ms >= credential.expires
+            (crate::auth::now_ms() + min_validity_ms) as f64 >= credential.expires
         };
         if !expires_soon(&stored) {
             return Ok(Some(stored));
