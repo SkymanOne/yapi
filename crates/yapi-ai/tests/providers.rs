@@ -937,3 +937,25 @@ async fn retry_delay_message() {
     );
     server.finish().unwrap();
 }
+
+#[tokio::test]
+async fn google_ignores_retry_after() {
+    let mut cassette = cassette(
+        "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+        "google-generative-ai/text.json",
+    );
+    cassette.interactions.insert(
+        0,
+        refusal(
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+            429,
+            &[("retry-after", "120"), ("x-should-retry", "false")],
+            json!({"error": {"code": 429, "message": "Resource exhausted"}}),
+        ),
+    );
+    let server = mock(cassette).await;
+    let message = retried(&server, "google", "gemini-2.5-flash", "/v1beta").await;
+    assert_eq!(message.error_message, None);
+    assert_eq!(message.stop_reason, StopReason::Stop);
+    assert_eq!(server.finish().unwrap().len(), 2);
+}

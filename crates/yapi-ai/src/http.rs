@@ -247,6 +247,17 @@ pub async fn send(
     build: impl Fn() -> reqwest::RequestBuilder,
     options: &StreamOptions,
 ) -> Result<reqwest::Response, Failure> {
+    send_with(build, options, true).await
+}
+
+/// [`send`], which without `use_headers` ignores `retry-after` and
+/// `x-should-retry`, as pi's Google adapters do: their SDK's errors carry no
+/// headers.
+pub(crate) async fn send_with(
+    build: impl Fn() -> reqwest::RequestBuilder,
+    options: &StreamOptions,
+    use_headers: bool,
+) -> Result<reqwest::Response, Failure> {
     let mut retry = 0;
     loop {
         let result = options
@@ -254,10 +265,13 @@ pub async fn send(
             .run_until_cancelled(attempt(build(), options.timeout_ms))
             .await
             .unwrap_or_else(|| Err(Box::new((Failure::Aborted, HeaderMap::new()))));
-        let (failure, headers) = match result {
+        let (failure, mut headers) = match result {
             Ok(response) => return Ok(response),
             Err(failure) => *failure,
         };
+        if !use_headers {
+            headers.clear();
+        }
         if options.cancel.is_cancelled() {
             return Err(Failure::Aborted);
         }

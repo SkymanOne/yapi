@@ -804,7 +804,9 @@ async fn connect(
         timeout_ms: None,
         ..options.clone()
     };
-    http::send(build, &options).await.map_err(failure_message)
+    http::send_with(build, &options, false)
+        .await
+        .map_err(failure_message)
 }
 
 /// Where a request goes and how it authenticates.
