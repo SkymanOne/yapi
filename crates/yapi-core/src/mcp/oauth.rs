@@ -1024,6 +1024,10 @@ fn start_authorization(
         Some(endpoint) => parse_url(endpoint)?,
         None => join(&parse_url(authorization_server_url)?, "/authorize")?,
     };
+    // The page opens without a click, and another scheme could launch an app (Pi opens any).
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(other("Invalid authorization endpoint"));
+    }
     let pkce = yapi_ai::auth::pkce::generate();
     let mut params: Vec<(String, String)> = url.query_pairs().into_owned().collect();
     set(&mut params, "response_type", "code");
@@ -1365,5 +1369,33 @@ mod tests {
     fn credentials_https_or_loopback() {
         assert!(secure_endpoint("http://auth.test/token").is_err());
         assert!(secure_endpoint("http://127.0.0.1:1/token").is_ok());
+    }
+
+    #[test]
+    fn authorization_web_only() {
+        let start = |endpoint: &str| {
+            let metadata = json!({
+                "authorization_endpoint": endpoint,
+                "response_types_supported": ["code"],
+            });
+            let metadata = metadata.as_object().cloned();
+            start_authorization(
+                "https://auth.test",
+                metadata.as_ref(),
+                &Object::new(),
+                "http://127.0.0.1:1/callback",
+                None,
+                "state",
+                None,
+            )
+        };
+        assert!(start("https://auth.test/authorize").is_ok());
+        for endpoint in [
+            "file:///Applications/Calculator.app",
+            "smb://host/share",
+            "vscode://x",
+        ] {
+            assert!(start(endpoint).is_err(), "{endpoint}");
+        }
     }
 }
