@@ -301,13 +301,17 @@ async fn dialog_signal_dismisses() {
 }
 
 /// `ctx.executeTool` passes the nested tool's partial results to
-/// `onUpdate`, and `signal` cancels the nested call (#206).
+/// `onUpdate`, and `signal` cancels the nested call (#206). The built-in
+/// edit tool waits for `withFileMutationQueue` on the same file (#238).
 #[tokio::test(flavor = "multi_thread")]
 async fn nested_call_options() {
     let dir = scratch("api-nested-options");
+    std::fs::write(dir.join("notes.md"), "start\n").unwrap();
     let host = load(
         &dir,
-        r#"export default function (pi) {
+        r#"import { readFileSync, writeFileSync } from "node:fs";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+export default function (pi) {
 	pi.registerTool({
 		name: "nest", label: "Nest", description: "Nests", parameters: { type: "object", properties: {} },
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
@@ -318,6 +322,14 @@ async fn nested_call_options() {
 			const started = Date.now();
 			const aborted = await ctx.executeTool("bash", { command: "sleep 5; echo done" }, { signal: controller.signal });
 			pi.appendEntry("nested", { updated: updates > 0, isError: aborted.isError, quick: Date.now() - started < 3000 });
+			let edit;
+			await withFileMutationQueue("./notes.md", async () => {
+				const text = readFileSync("notes.md", "utf8");
+				edit = ctx.executeTool("edit", { path: "notes.md", edits: [{ oldText: "start", newText: "edited" }] });
+				await new Promise((resolve) => setTimeout(resolve, 300));
+				writeFileSync("notes.md", `${text}ext\n`);
+			});
+			await edit;
 			return { content: [{ type: "text", text: "ok" }] };
 		},
 	});
@@ -328,12 +340,17 @@ async fn nested_call_options() {
         Response::tool_call("call-1", "nest", json!({})),
         Response::text("done"),
     ]);
-    let session = common::session_with_tools(&faux, &dir, host.for_session(), &["read", "bash"]);
+    let session =
+        common::session_with_tools(&faux, &dir, host.for_session(), &["read", "bash", "edit"]);
     bind(&session).await;
     session.prompt("go", Vec::new()).await.unwrap();
     assert_eq!(
         custom_entries(&session, "nested"),
         [json!({"updated": true, "isError": true, "quick": true})]
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("notes.md")).unwrap(),
+        "edited\next\n"
     );
 }
 

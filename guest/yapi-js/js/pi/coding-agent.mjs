@@ -188,20 +188,13 @@ export function parseFrontmatter(content) {
 }
 export const stripFrontmatter = (content) => parseFrontmatter(content).body;
 
-const mutationQueues = new Map();
+/** pi's `withFileMutationQueue`, in the host's queue, which yapi's edit and write tools share. */
 export async function withFileMutationQueue(path, fn) {
-	const previous = mutationQueues.get(path) ?? Promise.resolve();
-	let release;
-	const current = new Promise((resolve) => {
-		release = resolve;
-	});
-	mutationQueues.set(path, previous.then(() => current));
-	await previous.catch(() => {});
+	const id = await yapi.op("file.lock", { path: globalThis.__yapi_builtins.path.resolve(String(path)) });
 	try {
 		return await fn();
 	} finally {
-		release();
-		if (mutationQueues.get(path) === current) mutationQueues.delete(path);
+		yapi.request("file.unlock", { id });
 	}
 }
 

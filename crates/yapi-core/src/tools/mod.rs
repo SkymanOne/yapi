@@ -14,7 +14,7 @@ pub mod external;
 mod find;
 mod grep;
 mod ls;
-mod mutation;
+pub mod mutation;
 pub mod path;
 mod read;
 pub mod registry;

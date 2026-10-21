@@ -1808,6 +1808,8 @@ struct SessionBridge {
     /// What cancels each running operation that a guest `signal` may
     /// cancel, such as a dialog or a nested tool call, by the guest's id.
     cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
+    /// The files `withFileMutationQueue` holds, by the host's id.
+    file_locks: Arc<Mutex<HashMap<u64, tokio::sync::OwnedMutexGuard<()>>>>,
 }
 
 fn not_bound() -> String {
@@ -1839,6 +1841,7 @@ impl SessionBridge {
             project_dir: options.project_dir.clone(),
             run_signal: Mutex::default(),
             cancels: Arc::default(),
+            file_locks: Arc::default(),
         })
     }
 
@@ -2513,6 +2516,10 @@ impl Bridge for SessionBridge {
             }
             return Ok(Value::Null);
         }
+        if kind == "file.unlock" {
+            lock(&self.file_locks).remove(&payload["id"].as_u64().unwrap_or_default());
+            return Ok(Value::Null);
+        }
         if kind == "op.cancel" {
             let id = payload["id"].as_u64().unwrap_or_default();
             if let Some(cancel) = lock(&self.cancels).remove(&id) {
@@ -2723,6 +2730,8 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
+        // The stopped runtime's queued file mutations are over.
+        lock(&self.file_locks).clear();
         let Some(session) = self.session() else {
             return;
         };
@@ -2817,6 +2826,20 @@ impl Bridge for SessionBridge {
                     .await
                     .map(Value::String)
                     .map_err(|err| err.to_string())
+            });
+        }
+        // `withFileMutationQueue` holds the file until `file.unlock`, in the
+        // queue yapi's edit and write tools use, as pi's tools share it.
+        if kind == "file.lock" {
+            let (locks, id) = (
+                self.file_locks.clone(),
+                self.next_id.fetch_add(1, Ordering::Relaxed),
+            );
+            let path = PathBuf::from(text(&payload["path"]));
+            return Box::pin(async move {
+                let guard = yapi_core::tools::mutation::file_lock(&path).await;
+                lock(&locks).insert(id, guard);
+                Ok(json!(id))
             });
         }
         let Some(session) = self.session() else {
