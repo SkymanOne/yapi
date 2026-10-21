@@ -260,15 +260,16 @@ fn tool_names(args: &Args, settings: &SettingsManager) -> Vec<String> {
     names
 }
 
-/// The session directory from `--session-dir`, the environment or settings.
+/// The session directory from `--session-dir`, the environment or settings;
+/// an empty value is unset.
 fn custom_session_dir(args: &Args, settings: &SettingsManager, cwd: &Path) -> Option<PathBuf> {
-    let env_dir = std::env::var(SESSION_DIR_ENV)
-        .ok()
-        .filter(|dir| !dir.is_empty());
+    let set = |dir: &&str| !dir.is_empty();
+    let env_dir = std::env::var(SESSION_DIR_ENV).ok();
     args.session_dir
         .as_deref()
-        .or(env_dir.as_deref())
-        .or(settings.settings().session_dir.as_deref())
+        .filter(set)
+        .or(env_dir.as_deref().filter(set))
+        .or(settings.settings().session_dir.as_deref().filter(set))
         .map(|dir| resolve_to_cwd(dir, cwd))
 }
 
@@ -1344,5 +1345,30 @@ mod builtin_tests {
         assert!(builtin_enabled("mcp", &args(&[], false), &both));
         let project_off = [entries(&["!builtin:m*"]), Vec::new()];
         assert!(!builtin_enabled("mcp", &args(&[], false), &project_off));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A settings manager whose global settings are `json`, in `dir`.
+    fn settings(dir: &Path, json: &str) -> SettingsManager {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("settings.json"), json).unwrap();
+        SettingsManager::load(dir, dir, false)
+    }
+
+    #[test]
+    fn empty_session_dir() {
+        let dir = std::env::temp_dir().join(format!("yapi-session-dir-{}", std::process::id()));
+        let settings = settings(&dir, r#"{"sessionDir": ""}"#);
+        let args = Args {
+            session_dir: Some(String::new()),
+            ..Args::default()
+        };
+        assert_eq!(custom_session_dir(&args, &settings, &dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
