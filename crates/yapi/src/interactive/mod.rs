@@ -91,6 +91,8 @@ const PROGRESS_CLEAR: &str = "\x1b]9;4;0\x07";
 const PROGRESS_KEEPALIVE: Duration = Duration::from_secs(1);
 const DOUBLE_PRESS: Duration = Duration::from_millis(500);
 const COLOR_QUERY_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long pi-tui holds a partial keyboard negotiation reply for the rest.
+const NEGOTIATION_FRAGMENT_TIMEOUT: Duration = Duration::from_millis(150);
 const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const STDIN_POLL: Duration = Duration::from_millis(50);
 /// The app's actions that keys trigger from the editor, in the order pi
@@ -347,29 +349,84 @@ fn terminal_leave(protocol: &mut KeyboardProtocol) -> String {
     format!("{BRACKETED_PASTE_DISABLE}{}\x1b[?25h", protocol.disable())
 }
 
-/// Decodes terminal input into keys and bracketed pastes, in order, and
-/// writes back the keyboard protocol's replies.
-fn decode_input(
-    buffer: &mut InputBuffer,
-    protocol: &mut KeyboardProtocol,
-    bytes: &[u8],
-) -> Vec<String> {
-    let mut write = String::new();
-    let mut keys = Vec::new();
-    for input in buffer.push(bytes) {
-        match input {
-            Input::Key(sequence) => {
-                if let Filtered::Forward(forward) = protocol.filter(&sequence, &mut write) {
-                    keys.extend(forward);
-                }
-            }
-            Input::Paste(text) => keys.push(format!("\x1b[200~{text}\x1b[201~")),
+/// Terminal input decoded into keys and bracketed pastes, in order, through
+/// the keyboard protocol filter, on pi-tui's timers: a partial sequence is
+/// released after the input buffer's timeout, and a partial negotiation reply
+/// [`NEGOTIATION_FRAGMENT_TIMEOUT`] after its last piece.
+struct TerminalInput {
+    buffer: InputBuffer,
+    escape_wait: Duration,
+    /// When the input buffer's partial sequence is released.
+    sequence_at: Option<Instant>,
+    /// When the protocol's partial reply is released as input.
+    negotiation_at: Option<Instant>,
+}
+
+impl TerminalInput {
+    fn new() -> TerminalInput {
+        TerminalInput {
+            buffer: InputBuffer::new(),
+            escape_wait: escape_timeout(|name| std::env::var(name).ok()),
+            sequence_at: None,
+            negotiation_at: None,
         }
     }
-    if !write.is_empty() {
-        emit(&write);
+
+    /// Decodes `bytes` just read, writing back the protocol's replies.
+    fn decode(&mut self, protocol: &mut KeyboardProtocol, bytes: &[u8]) -> Vec<String> {
+        let inputs = self.buffer.push(bytes);
+        let now = Instant::now();
+        self.sequence_at = self.buffer.timeout(self.escape_wait).map(|wait| now + wait);
+        self.filter(protocol, inputs)
     }
-    keys
+
+    /// How long until the next held piece is due; `None` when nothing is held.
+    fn wait(&self) -> Option<Duration> {
+        let next = self
+            .sequence_at
+            .into_iter()
+            .chain(self.negotiation_at)
+            .min()?;
+        Some(next.saturating_duration_since(Instant::now()))
+    }
+
+    /// Releases the held pieces that are due.
+    fn expire(&mut self, protocol: &mut KeyboardProtocol) -> Vec<String> {
+        let now = Instant::now();
+        let due = |at: &mut Option<Instant>| at.take_if(|at| *at <= now).is_some();
+        let mut keys = Vec::new();
+        if due(&mut self.negotiation_at) {
+            keys.extend(protocol.flush());
+        }
+        if due(&mut self.sequence_at) {
+            let inputs = self.buffer.flush();
+            keys.extend(self.filter(protocol, inputs));
+        }
+        keys
+    }
+
+    fn filter(&mut self, protocol: &mut KeyboardProtocol, inputs: Vec<Input>) -> Vec<String> {
+        let mut write = String::new();
+        let mut keys = Vec::new();
+        for input in inputs {
+            match input {
+                Input::Key(sequence) => match protocol.filter(&sequence, &mut write) {
+                    Filtered::Forward(forward) => {
+                        self.negotiation_at = None;
+                        keys.extend(forward);
+                    }
+                    Filtered::Pending => {
+                        self.negotiation_at = Some(Instant::now() + NEGOTIATION_FRAGMENT_TIMEOUT)
+                    }
+                },
+                Input::Paste(text) => keys.push(format!("\x1b[200~{text}\x1b[201~")),
+            }
+        }
+        if !write.is_empty() {
+            emit(&write);
+        }
+        keys
+    }
 }
 
 fn true_color() -> bool {
@@ -4168,7 +4225,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     emit(&terminal_enter(&mut terminal.protocol));
 
     // Wait briefly for the color replies; keys typed meanwhile are kept.
-    let mut buffer = InputBuffer::new();
+    let mut input = TerminalInput::new();
     let mut early: Vec<String> = Vec::new();
     let mut early_events: Vec<Event> = Vec::new();
     let deadline = Instant::now() + COLOR_QUERY_TIMEOUT;
@@ -4179,7 +4236,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         }
         match tokio::time::timeout(remaining, rx.recv()).await {
             Ok(Some(Event::Input(bytes))) => early.extend(
-                decode_input(&mut buffer, &mut terminal.protocol, &bytes)
+                input
+                    .decode(&mut terminal.protocol, &bytes)
                     .into_iter()
                     .filter(|key| !query.consume(key)),
             ),
@@ -4274,7 +4332,6 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     // SIGTERM, or SIGHUP when the terminal goes away; it ends the loop.
     let terminated = crate::modes::rpc::termination();
     tokio::pin!(terminated);
-    let escape_wait = escape_timeout(|name| std::env::var(name).ok());
     let mut last_draw = Instant::now();
     let mut dirty = false;
     while !app.quit {
@@ -4288,9 +4345,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         {
             tick = tick.min(at.saturating_duration_since(Instant::now()));
         }
-        let input_wait = buffer
-            .timeout(escape_wait)
-            .unwrap_or(Duration::from_secs(3600));
+        let input_wait = input.wait();
         #[cfg(unix)]
         let resized = async {
             match resize.as_mut() {
@@ -4312,7 +4367,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 let Some(event) = event else { break };
                 match event {
                     Event::Input(bytes) => {
-                        let mut keys = decode_input(&mut buffer, &mut terminal.protocol, &bytes);
+                        let mut keys = input.decode(&mut terminal.protocol, &bytes);
                         // A pointer move changes at most the scrollbar's
                         // hover; a frame is drawn only when it does.
                         let (decoded, mut hovered) = (keys.len(), false);
@@ -4341,16 +4396,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 }
                 dirty |= redraw;
             }
-            _ = tokio::time::sleep(input_wait) => {
-                let mut keys: Vec<String> = buffer
-                    .flush()
-                    .into_iter()
-                    .filter_map(|input| match input {
-                        Input::Key(key) => Some(key),
-                        _ => None,
-                    })
-                    .collect();
-                keys.extend(terminal.protocol.flush());
+            _ = tokio::time::sleep(input_wait.unwrap_or_default()), if input_wait.is_some() => {
+                let keys = input.expire(&mut terminal.protocol);
                 app.on_keys(keys, &mut terminal);
                 dirty = true;
             }

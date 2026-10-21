@@ -613,8 +613,9 @@ async fn auth_provider_tokens_sent() {
     let (_server, url) = spawn_http(&["--token", "secret"]).await;
     let agent_dir = scratch("provider");
     let config = json!({"auth": {"provider": "acme"}});
+    // The value is trimmed, as Node's `Headers` trims it for pi.
     let token: yapi_core::mcp::http::ProviderToken = Arc::new(|provider: String| {
-        Box::pin(async move { (provider == "acme").then(|| "secret".to_owned()) })
+        Box::pin(async move { (provider == "acme").then(|| "secret\n".to_owned()) })
     });
     let connection = http_connection(&url, config.clone(), &agent_dir, Some(token));
     assert!(connection.oauth_url().is_none());
@@ -630,6 +631,33 @@ async fn auth_provider_tokens_sent() {
     );
     assert_eq!(connection.snapshot().state, State::NeedsAuth);
     assert!(!agent_dir.join("mcp-auth.json").exists());
+
+    // A configured header is trimmed, as Node's `Headers` trims it, such as
+    // a token read from a CRLF `.env` file.
+    let config = json!({"headers": {"Authorization": "Bearer secret\r"}});
+    let connection = http_connection(&url, config, &agent_dir, None);
+    assert_eq!(echo(&connection).await.unwrap()["content"][0]["text"], "hi");
+    connection.close().await;
+
+    // Values `Headers` or `fetch` refuse fail the connection with their errors.
+    for (value, error) in [
+        (
+            "Bearer se\ncret",
+            "Headers.append: \"Bearer se\ncret\" is an invalid header value.",
+        ),
+        (
+            "Bearer €",
+            "Cannot convert argument to a ByteString because the character at index 7 has a value of 8364 which is greater than 255.",
+        ),
+        ("Bearer \u{1}", "fetch failed"),
+    ] {
+        let config = json!({"headers": {"Authorization": value}});
+        let connection = http_connection(&url, config, &agent_dir, None);
+        assert_eq!(
+            connection.client().await.err().unwrap().to_string(),
+            format!("MCP server \"demo\" failed to connect: {error}")
+        );
+    }
 }
 
 /// Credentials pi stored are read and written back unchanged.
