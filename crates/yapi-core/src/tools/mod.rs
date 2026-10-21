@@ -14,7 +14,7 @@ pub mod external;
 mod find;
 mod grep;
 mod ls;
-mod mutation;
+pub mod mutation;
 pub mod path;
 mod read;
 pub mod registry;
@@ -196,10 +196,14 @@ pub struct RegisteredTool {
     pub namespace: Option<Namespace>,
     /// Whether registering it activates it, when its exposure is declarable.
     pub default_active: bool,
+    /// pi's `ToolAnnotations`, such as `readOnlyHint`.
+    pub annotations: Option<Value>,
+    /// The extension that registered it; `None` for a built-in tool.
+    pub source: Option<yapi_types::rpc::SourceInfo>,
 }
 
 impl RegisteredTool {
-    /// A direct tool, active on registration.
+    /// A direct built-in tool, active on registration.
     pub fn direct(tool: Arc<dyn Tool>, snippet: Option<String>, guidelines: Vec<String>) -> Self {
         RegisteredTool {
             tool,
@@ -208,6 +212,8 @@ impl RegisteredTool {
             exposure: Exposure::Direct,
             namespace: None,
             default_active: true,
+            annotations: None,
+            source: None,
         }
     }
 

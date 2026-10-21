@@ -30,9 +30,9 @@ use yapi_ai::stream::{
 };
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
-    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup,
-    TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
+    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
+    LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
+    Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -47,6 +47,7 @@ use yapi_types::message::{
 use yapi_types::model::{ClassifierModel, ImageModel, Model};
 use yapi_types::models::ModelDefinition;
 use yapi_types::rpc::{SourceInfo, StreamingBehavior};
+use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
 use crate::{Bridge, Engine, Error, Instance, Options};
@@ -509,6 +510,7 @@ impl ExtensionHost {
                     description: description.clone(),
                     completions: Arc::default(),
                     crashed: Mutex::default(),
+                    loadout: Mutex::default(),
                 }) as Arc<dyn Extension>
             })
             .collect()
@@ -1020,6 +1022,9 @@ fn ctx_data(
         "cwd": session.map(|session| session.cwd().to_path_buf()),
         "model": session.and_then(AgentSession::model),
         "thinkingLevel": session.map(|session| session.thinking_level().as_str()),
+        "scopedModels": session.map(|session| session.scoped_models().into_iter().map(|scoped| {
+            defined(json!({"model": scoped.model, "thinkingLevel": scoped.thinking_level.map(ThinkingLevel::as_str)}))
+        }).collect::<Vec<_>>()),
         "projectTrusted": trusted,
         "projectDir": session.map(AgentSession::project_dir),
         "aborted": cancel.is_cancelled(),
@@ -1056,6 +1061,8 @@ struct JsExtension {
     completions: Arc<Mutex<HashMap<(String, String), Fetched>>>,
     /// The drawing requests that stopped the runtime, with their errors.
     crashed: Mutex<HashMap<String, String>>,
+    /// What its tools' `prepareLoadout` hooks made of the latest loadout.
+    loadout: Mutex<LoadoutChanges>,
 }
 
 /// An argument completion request: under way, or answered at a time.
@@ -1470,6 +1477,76 @@ impl Extension for JsExtension {
         })
     }
 
+    fn prepare_loadout(&self, _loadout: &Loadout) -> LoadoutChanges {
+        lock(&self.loadout).clone()
+    }
+
+    /// Runs the `prepareLoadout` hooks of its declared tools in the guest,
+    /// for [`Extension::prepare_loadout`] to give, and reports their errors
+    /// as pi does.
+    fn refresh_loadout<'a>(&'a self, loadout: &'a Loadout) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let hooked: Vec<String> = self.latest(|latest| {
+                list(&latest["tools"])
+                    .iter()
+                    .filter(|tool| tool["hasPrepareLoadout"] == true)
+                    .map(|tool| text(&tool["name"]))
+                    .collect()
+            });
+            let declares = loadout
+                .declared
+                .iter()
+                .any(|tool| hooked.iter().any(|name| name == tool.name()));
+            let session = self.shared.bridge.session();
+            let bound = *self.shared.bound.lock().await == self.generation + 1;
+            let (Some(session), true, true) = (session, declares, bound) else {
+                *lock(&self.loadout) = LoadoutChanges::default();
+                return;
+            };
+            let infos = |tools: &[RegisteredTool]| tools.iter().map(tool_info).collect::<Vec<_>>();
+            let registered = session.tools().with(|registry| registry.all());
+            let payload = json!({"extension": self.id, "loadout": {
+                "declared": infos(&loadout.declared),
+                "callable": infos(&loadout.callable),
+                "registered": infos(&registered),
+            }});
+            let (ui, _) = session.extension_binding();
+            let result = match self.shared.instance.call("loadout", &payload).await {
+                Ok(result) => result,
+                Err(err) => {
+                    ui.extension_error(
+                        &self.path_text(),
+                        "prepare_loadout",
+                        &err.to_string(),
+                        None,
+                    );
+                    Value::Null
+                }
+            };
+            for error in list(&result["errors"]) {
+                ui.extension_error(
+                    &self.path_text(),
+                    "prepare_loadout",
+                    &text(&error["error"]),
+                    error["stack"].as_str(),
+                );
+            }
+            let descriptions = result["descriptions"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, description)| {
+                    Some((name.clone(), description.as_str()?.to_owned()))
+                })
+                .collect();
+            let hidden = list(&result["hidden"]).iter().map(text).collect();
+            *lock(&self.loadout) = LoadoutChanges {
+                descriptions,
+                hidden,
+            };
+        })
+    }
+
     fn handles(&self, kind: &str) -> bool {
         self.description["events"]
             .as_array()
@@ -1579,7 +1656,37 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         exposure,
         namespace,
         default_active: tool["defaultActive"] != false,
+        annotations: Some(tool["annotations"].clone()).filter(Value::is_object),
+        source: usize::try_from(extension)
+            .ok()
+            .and_then(|id| lock(&shared.sources).get(id).cloned()),
     }
+}
+
+/// pi's `ToolInfo` of `tool`, as `pi.getAllTools()` gives it.
+fn tool_info(tool: &RegisteredTool) -> Value {
+    let declaration = tool.tool.declaration();
+    let namespace = tool.namespace.as_ref().map(|namespace| {
+        defined(json!({
+            "name": namespace.name,
+            "description": namespace.description,
+            "instructions": namespace.instructions,
+        }))
+    });
+    let source = tool
+        .source
+        .clone()
+        .unwrap_or_else(|| yapi_core::extensions::builtin_source(&declaration.name));
+    defined(json!({
+        "name": declaration.name,
+        "description": declaration.description,
+        "parameters": declaration.parameters,
+        "promptGuidelines": Some(&tool.guidelines).filter(|guidelines| !guidelines.is_empty()),
+        "exposure": tool.exposure,
+        "namespace": namespace,
+        "annotations": tool.annotations,
+        "sourceInfo": source,
+    }))
 }
 
 /// A tool an extension registered; runs in the guest.
@@ -1768,6 +1875,14 @@ struct SessionBridge {
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
     /// The project directory of the sessions the factories run for.
     project_dir: PathBuf,
+    /// The run whose abort signal the guest holds, its id, and the task
+    /// that aborts it with the run.
+    run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
+    /// What cancels each running operation that a guest `signal` may
+    /// cancel, such as a dialog or a nested tool call, by the guest's id.
+    cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
+    /// The files `withFileMutationQueue` holds, by the host's id.
+    file_locks: Arc<Mutex<HashMap<u64, tokio::sync::OwnedMutexGuard<()>>>>,
 }
 
 fn not_bound() -> String {
@@ -1797,6 +1912,9 @@ impl SessionBridge {
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
+            run_signal: Mutex::default(),
+            cancels: Arc::default(),
+            file_locks: Arc::default(),
         })
     }
 
@@ -1900,6 +2018,36 @@ impl SessionBridge {
         Ok(())
     }
 
+    /// pi's `ctx.signal` for the guest: `{ id, aborted }` of the session's
+    /// current run, whose `abort` the guest gets as the run is aborted, or
+    /// `null` while no run is active.
+    fn run_signal(&self, session: &AgentSession) -> Value {
+        let Some(token) = session.run_cancel() else {
+            return Value::Null;
+        };
+        let mut watched = lock(&self.run_signal);
+        if let Some((current, id, _)) = &*watched
+            && *current == token
+        {
+            return json!({"id": id, "aborted": token.is_cancelled()});
+        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let owner = self.owner.get().cloned().unwrap_or_default();
+        let cancelled = token.clone();
+        let watch = self.runtime.spawn(async move {
+            cancelled.cancelled().await;
+            if let Some(host) = owner.upgrade() {
+                let _ = host.instance.call("abort", &json!({ "id": id })).await;
+            }
+        });
+        let aborted = token.is_cancelled();
+        // Only the latest run's signal can still abort.
+        if let Some((_, _, previous)) = watched.replace((token, id, watch)) {
+            previous.abort();
+        }
+        json!({"id": id, "aborted": aborted})
+    }
+
     /// Holds `job`, an update or a nested call of tool call `id` in the
     /// current guest step, until the step ends.
     fn hold(&self, id: &str, jobs: Jobs, job: crate::ops::Job, update: bool) {
@@ -1917,14 +2065,15 @@ impl SessionBridge {
     }
 }
 
-/// A dialog's `timeout` (milliseconds) from its request.
-fn dialog(payload: &Value) -> DialogOptions {
+/// A dialog's `timeout` (milliseconds) from its request, and what its
+/// `signal` cancels.
+fn dialog(payload: &Value, cancel: Option<CancellationToken>) -> DialogOptions {
     DialogOptions {
         timeout: payload["timeout"]
             .as_f64()
             .filter(|millis| *millis > 0.0)
             .map(|millis| std::time::Duration::from_millis(millis as u64)),
-        cancel: None,
+        cancel,
     }
 }
 
@@ -2139,6 +2288,7 @@ impl SessionBridge {
                     return terminal_json(&state.borrow());
                 }
             }
+
             // The working indicator's visibility and frames are not shown.
             _ => {}
         }
@@ -2229,8 +2379,29 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
             "getEntry" => to_json(arg(0).and_then(|id| file.entry(&id).cloned())),
             "getLabel" => to_json(arg(0).and_then(|id| file.label(&id).map(str::to_owned))),
             "getBranch" => to_json(file.branch_path(arg(0).as_deref())),
-            "getHeader" => to_json(file.header()),
+            "getHeader" => to_json(file.header().cloned().map(FileEntry::Session)),
             "getEntries" => to_json(file.entries().collect::<Vec<_>>()),
+            "buildContextEntries" => to_json(
+                file.build_projection()
+                    .entries
+                    .iter()
+                    .map(|entry| entry.source)
+                    .collect::<Vec<_>>(),
+            ),
+            "buildSessionProjection" => {
+                let projection = file.build_projection();
+                let entries: Vec<Value> = projection
+                    .entries
+                    .iter()
+                    .map(|entry| json!({"sourceEntry": entry.source, "messages": entry.messages}))
+                    .collect();
+                json!({
+                    "entries": entries,
+                    "messages": projection.messages,
+                    "thinkingLevel": projection.thinking_level,
+                    "model": projection.model.map(|(provider, id)| json!({"provider": provider, "modelId": id})),
+                })
+            }
             "getSessionName" => to_json(file.name()),
             "isPersisted" => Value::Bool(file.is_persisted()),
             "getChildren" => {
@@ -2418,6 +2589,17 @@ impl Bridge for SessionBridge {
             }
             return Ok(Value::Null);
         }
+        if kind == "file.unlock" {
+            lock(&self.file_locks).remove(&payload["id"].as_u64().unwrap_or_default());
+            return Ok(Value::Null);
+        }
+        if kind == "op.cancel" {
+            let id = payload["id"].as_u64().unwrap_or_default();
+            if let Some(cancel) = lock(&self.cancels).remove(&id) {
+                cancel.cancel();
+            }
+            return Ok(Value::Null);
+        }
         if kind == "mcp.servers" {
             let servers = serde_json::from_value(payload["servers"].clone())
                 .map_err(|err| err.to_string())?;
@@ -2473,12 +2655,7 @@ impl Bridge for SessionBridge {
             "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
-                session
-                    .tools()
-                    .all()
-                    .into_iter()
-                    .map(|tool| json!({"name": tool.name, "description": tool.description, "parameters": tool.parameters}))
-                    .collect(),
+                session.tools().with(|registry| registry.all()).iter().map(tool_info).collect(),
             )),
             "tools.setActive" => {
                 let names = list(&payload["names"]).iter().map(text).collect();
@@ -2504,6 +2681,14 @@ impl Bridge for SessionBridge {
                 let extension = payload["extension"].as_u64().unwrap_or_default();
                 for tool in list(&payload["tools"]) {
                     session.tools().register(js_tool(&owner, extension, tool));
+                }
+                // Loadout hooks of tools registered since run too.
+                if let Some(Value::Array(tools)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == Some(extension))
+                    .map(|description| &mut description["tools"])
+                {
+                    tools.extend(list(&payload["tools"]).iter().cloned());
                 }
                 Ok(Value::Null)
             }
@@ -2542,15 +2727,7 @@ impl Bridge for SessionBridge {
                 self.spawn(refresh_offline(session));
                 Ok(Value::Null)
             }
-            "commands.list" => Ok(Value::Array(
-                session
-                    .extension_commands()
-                    .into_iter()
-                    .map(|resolved| {
-                        json!({"name": resolved.invocation, "description": resolved.command.description, "source": "extension", "sourceInfo": resolved.extension.source()})
-                    })
-                    .collect(),
-            )),
+            "commands.list" => Ok(to_json(session.slash_commands())),
             "thinking.get" => Ok(Value::String(session.thinking_level().as_str().into())),
             "thinking.set" => {
                 if let Some(level) = payload["level"].as_str().and_then(ThinkingLevel::parse) {
@@ -2574,6 +2751,15 @@ impl Bridge for SessionBridge {
                     .is_using_oauth(&text(&payload["provider"])),
             )),
             "models.error" => Ok(to_json(session.registry().error())),
+            // pi's `AuthStatus`; `login_status` names the source or the
+            // environment it comes from.
+            "models.authStatus" => Ok(match session.registry().login_status(&text(&payload["provider"])) {
+                None => json!({"configured": false}),
+                Some(source) if matches!(source.as_str(), "runtime" | "stored" | "models_json_command" | "models_json_key" | "fallback") => {
+                    json!({"configured": true, "source": source})
+                }
+                Some(label) => json!({"configured": true, "source": "environment", "label": label}),
+            }),
             "models.providerName" => Ok(Value::String(
                 session.registry().provider_name(&text(&payload["provider"])),
             )),
@@ -2606,11 +2792,12 @@ impl Bridge for SessionBridge {
             "agent.contextUsage" => Ok(session.context_usage().map_or(Value::Null, |usage| {
                 json!({"tokens": usage.tokens, "contextWindow": usage.context_window, "percent": usage.percent()})
             })),
-            "agent.systemPrompt" => Ok(Value::String(
-                yapi_ai::transcript::current_system_message(&session.messages())
-                    .map(|system| system.text())
-                    .unwrap_or_default(),
-            )),
+            "agent.systemPrompt" => session.system_prompt().map(Value::String),
+            "agent.renderSystemPrompt" => {
+                let options = serde_json::from_value(payload["options"].clone()).map_err(|err| err.to_string())?;
+                session.render_prompt(&options).map(Value::String)
+            }
+            "agent.signal" => Ok(self.run_signal(&session)),
             "agent.shutdown" => {
                 session.extension_binding().0.shutdown();
                 Ok(Value::Null)
@@ -2633,6 +2820,8 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
+        // The stopped runtime's queued file mutations are over.
+        lock(&self.file_locks).clear();
         let Some(session) = self.session() else {
             return;
         };
@@ -2679,6 +2868,46 @@ impl Bridge for SessionBridge {
             .get(&id)
             .map(|stream| stream.hooks.clone())
             .unwrap_or_default()
+    }
+
+    fn stream_model(
+        &self,
+        payload: Value,
+        cancel: CancellationToken,
+    ) -> BoxFuture<'static, Result<EventStream, String>> {
+        let Some(session) = self.session() else {
+            return Box::pin(async { Err(not_bound()) });
+        };
+        Box::pin(async move {
+            let model: Model = serde_json::from_value(payload["model"].clone())
+                .map_err(|err| format!("Invalid model: {err}"))?;
+            let messages = serde_json::from_value(payload["context"]["messages"].clone())
+                .map_err(|err| format!("Invalid context: {err}"))?;
+            let options = crate::streams::options_from_json(&payload["options"], cancel);
+            let mut request = Request {
+                model,
+                messages,
+                options,
+            };
+            // pi's `prepareRequest`: the options' key and headers win over the registry's.
+            let key = request.options.api_key.take();
+            let headers = std::mem::take(&mut request.options.headers);
+            let auth = session.registry().auth(&request.model).await;
+            if let Err(message) = auth.apply(&mut request) {
+                let cancel = request.options.cancel.clone();
+                return Ok(yapi_ai::api::failed_stream(
+                    &request.model,
+                    &cancel,
+                    message,
+                ));
+            }
+            if key.is_some() {
+                request.options.api_key = key;
+            }
+            request.options.headers.extend(headers);
+            RequestHooks::prepare(&mut request).await;
+            Ok(session.apis().stream(request))
+        })
     }
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
@@ -2729,6 +2958,20 @@ impl Bridge for SessionBridge {
                     .map_err(|err| err.to_string())
             });
         }
+        // `withFileMutationQueue` holds the file until `file.unlock`, in the
+        // queue yapi's edit and write tools use, as pi's tools share it.
+        if kind == "file.lock" {
+            let (locks, id) = (
+                self.file_locks.clone(),
+                self.next_id.fetch_add(1, Ordering::Relaxed),
+            );
+            let path = PathBuf::from(text(&payload["path"]));
+            return Box::pin(async move {
+                let guard = yapi_core::tools::mutation::file_lock(&path).await;
+                lock(&locks).insert(id, guard);
+                Ok(json!(id))
+            });
+        }
         let Some(session) = self.session() else {
             return Box::pin(async { Err(not_bound()) });
         };
@@ -2758,6 +3001,24 @@ impl Bridge for SessionBridge {
         };
         let codemode = self.codemode.clone();
         let owner = self.owner.get().cloned().unwrap_or_default();
+        // The guest's `signal` cancels the operation through `op.cancel`,
+        // which may come as soon as this returns.
+        let signal = payload["signal"].as_u64().map(|id| {
+            let cancel = CancellationToken::new();
+            lock(&self.cancels).insert(id, cancel.clone());
+            (id, cancel)
+        });
+        let signal_cancel = signal.as_ref().map(|(_, cancel)| cancel.clone());
+        // `executeTool`'s `onUpdate` hears the nested tool's partial results.
+        let nested_updates = payload["updates"].as_u64().map(|id| {
+            let owner = owner.clone();
+            Arc::new(move |partial: ToolResult| {
+                if let Some(host) = owner.upgrade() {
+                    host.instance
+                        .post("nestedUpdate", &json!({"id": id, "partial": partial}));
+                }
+            }) as UpdateSink
+        });
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -2781,8 +3042,8 @@ impl Bridge for SessionBridge {
                             &text(&payload["toolCallId"]),
                             &text(&payload["name"]),
                             payload["args"].clone(),
-                            caller_cancel,
-                            None,
+                            signal_cancel.unwrap_or(caller_cancel),
+                            nested_updates,
                         )
                         .await;
                     Ok(
@@ -2936,6 +3197,21 @@ impl Bridge for SessionBridge {
                         "env": auth.env,
                     })))
                 }
+                // pi's `copyToClipboard`. OSC 52 reaches the terminal only in
+                // interactive mode, where stdout is not the mode's output.
+                "clipboard.copy" => {
+                    let terminal = session.extension_binding().1 == Mode::Tui;
+                    let emit = |sequence: &str| {
+                        if terminal {
+                            let mut out = std::io::stdout().lock();
+                            let _ = out.write_all(sequence.as_bytes());
+                            let _ = out.flush();
+                        }
+                    };
+                    yapi_core::clipboard::copy(&text(&payload["text"]), emit)
+                        .await
+                        .map(|()| Value::Null)
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)
@@ -2984,17 +3260,18 @@ impl Bridge for SessionBridge {
                     let title = text(&payload["title"]);
                     let dialog_kind = &kind["ui.".len()..];
                     session.ui_prompt_opened(dialog_kind, Some(&title));
+                    let options = dialog(&payload, signal_cancel);
                     let answer = match dialog_kind {
                         "select" => {
-                            let options = list(&payload["options"]).iter().map(text).collect();
-                            to_json(ui.select(&title, options, dialog(&payload)).await)
+                            let choices = list(&payload["options"]).iter().map(text).collect();
+                            to_json(ui.select(&title, choices, options).await)
                         }
                         "confirm" => Value::Bool(
-                            ui.confirm(&title, &text(&payload["message"]), dialog(&payload))
+                            ui.confirm(&title, &text(&payload["message"]), options)
                                 .await,
                         ),
                         "input" => to_json(
-                            ui.input(&title, payload["placeholder"].as_str(), dialog(&payload))
+                            ui.input(&title, payload["placeholder"].as_str(), options)
                                 .await,
                         ),
                         _ => to_json(ui.editor(&title, payload["prefill"].as_str()).await),
@@ -3007,6 +3284,17 @@ impl Bridge for SessionBridge {
                 other => Err(format!("{other} is not available in yapi extensions yet")),
             }
         });
+        let operation: BoxFuture<'static, Result<Value, String>> = match signal {
+            Some((id, _)) => {
+                let cancels = self.cancels.clone();
+                Box::pin(async move {
+                    let result = operation.await;
+                    lock(&cancels).remove(&id);
+                    result
+                })
+            }
+            None => operation,
+        };
         match caller_jobs {
             Some(jobs) => {
                 let (job, result) = crate::ops::job(operation);

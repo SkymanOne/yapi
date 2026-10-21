@@ -142,7 +142,7 @@ async fn run_loop(
             }
             first_turn = false;
 
-            if let Some(tools) = hooks.current_tools() {
+            if let Some(tools) = hooks.current_tools().await {
                 context.tools = tools;
             }
             for message in declare_tool_changes(

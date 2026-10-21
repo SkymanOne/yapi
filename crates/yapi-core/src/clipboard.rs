@@ -335,7 +335,7 @@ fn pasteable(bytes: Vec<u8>, mime: &str) -> Option<(Vec<u8>, &'static str)> {
     let base = base_type(mime);
     match IMAGE_TYPES.iter().find(|(kind, _)| *kind == base) {
         Some((_, extension)) => Some((bytes, extension)),
-        None => Some((yapi_core::images::to_png(&bytes)?, "png")),
+        None => Some((crate::images::to_png(&bytes)?, "png")),
     }
 }
 
@@ -364,7 +364,7 @@ async fn text_linux() -> Option<String> {
 /// Saves a pasted image where pi does, as `yapi-clipboard-<uuid>.<extension>`
 /// in the temporary directory, and returns its path.
 async fn save_image(bytes: &[u8], extension: &str) -> Result<String, String> {
-    let name = format!("yapi-clipboard-{}.{extension}", yapi_core::time::uuid_v4());
+    let name = format!("yapi-clipboard-{}.{extension}", crate::time::uuid_v4());
     let path = std::env::temp_dir().join(name);
     tokio::fs::write(&path, bytes)
         .await

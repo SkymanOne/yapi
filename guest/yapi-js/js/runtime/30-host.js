@@ -229,6 +229,12 @@
 				let provider;
 				if (typeof nameOrProvider === "string") {
 					if (!config) throw new Error("Provider config is required when registering by name");
+					// As in pi, a configuration registered again takes the values it
+					// defines over the previous configuration's.
+					const previous = providerConfig(nameOrProvider, extension);
+					if (previous && !isProvider(previous)) {
+						config = { ...previous, ...Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)) };
+					}
 					provider = { name: nameOrProvider, config: describeProvider(config) };
 				} else provider = { name: nameOrProvider.id, native: true };
 				// The code stays here; the host gets the description.
@@ -348,10 +354,59 @@
 				options.signal?.removeEventListener("abort", killProcess);
 				resolve({ stdout, stderr, code, killed });
 			};
-			proc.on("close", (code) => finish(code ?? 0));
-			proc.on("error", () => finish(1));
+			yapi.waitForChild(proc).then(
+				(code) => finish(code ?? 0),
+				() => finish(1),
+			);
 		});
 	}
+
+	/**
+	 * pi's `waitForChildProcess`: `child`'s exit code once it has exited and
+	 * its output has ended or been quiet for 100 ms, so a descendant that
+	 * holds the output open does not hold the caller.
+	 */
+	yapi.waitForChild = (child) =>
+		new Promise((resolve, reject) => {
+			let settled = false;
+			let exited = false;
+			let exitCode = null;
+			let ended = 0;
+			let idle;
+			const finish = (code) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				resolve(code);
+			};
+			const quiet = () => {
+				clearTimeout(idle);
+				idle = setTimeout(() => finish(exitCode), 100);
+			};
+			const end = () => {
+				if (++ended === 2 && exited) finish(exitCode);
+			};
+			const data = () => {
+				if (exited && !settled) quiet();
+			};
+			for (const stream of [child.stdout, child.stderr]) {
+				stream.once("end", end);
+				stream.on("data", data);
+			}
+			child.once("error", (error) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(idle);
+				reject(error);
+			});
+			child.once("exit", (code) => {
+				exited = true;
+				exitCode = code;
+				if (ended === 2) finish(code);
+				else quiet();
+			});
+			child.once("close", finish);
+		});
 
 	// ----- descriptions sent to the host -----------------------------------------------
 	function describeTool(tool) {
@@ -370,6 +425,7 @@
 			annotations: tool.annotations,
 			defaultActive: tool.defaultActive,
 			executionMode: tool.executionMode,
+			hasPrepareLoadout: typeof tool.prepareLoadout === "function",
 			hasRenderCall: typeof tool.renderCall === "function",
 			hasRenderResult: typeof tool.renderResult === "function",
 		};
@@ -433,10 +489,15 @@
 			hasFilter: typeof provider.filterModels === "function" || typeof provider.filterAllModels === "function",
 		};
 	}
-	/** The configuration of provider `name` as last registered, with its code. */
-	function providerConfig(name) {
+	/**
+	 * The configuration of provider `name` as last registered, with its code,
+	 * by the loaded extensions or `loading`, one whose factory runs.
+	 */
+	function providerConfig(name, loading) {
 		let found;
-		for (const extension of extensions.values()) {
+		const all = new Set(extensions.values());
+		if (loading) all.add(loading);
+		for (const extension of all) {
 			for (const provider of extension.providers) if (provider.name === name && provider.implementation) found = provider.implementation;
 		}
 		return found;
@@ -803,6 +864,17 @@
 	};
 
 	// ----- contexts --------------------------------------------------------------------------------------
+	let nextSignal = 1;
+	/** Starts host operation `kind`, which `signal` cancels as it aborts. */
+	function cancellable(kind, payload, signal) {
+		if (!signal) return yapi.op(kind, payload);
+		const id = nextSignal++;
+		const cancel = () => yapi.request("op.cancel", { id });
+		const op = yapi.op(kind, { ...payload, signal: id });
+		if (signal.aborted) cancel();
+		else signal.addEventListener("abort", cancel, { once: true });
+		return op.finally(() => signal.removeEventListener("abort", cancel));
+	}
 	function createUi(data) {
 		const shown = !!(data.hasUI && data.components);
 		const replaceSlot = (slot, factory, ...args) => {
@@ -817,11 +889,17 @@
 			getAvailableProviderCount: () => request("footerData", {})?.providers ?? 0,
 			onBranchChange: () => () => {},
 		};
+		// pi's dialog options: `timeout` and `signal` close the dialog with its
+		// default answer, and an aborted `signal` opens none.
+		const dialog = (kind, payload, opts, fallback) => {
+			if (!data.hasUI || opts?.signal?.aborted) return Promise.resolve(fallback);
+			return cancellable(`ui.${kind}`, { ...payload, timeout: opts?.timeout }, opts?.signal);
+		};
 		return {
 			// A cancelled dialog resolves to `undefined`, as in pi.
-			select: (title, options, opts) => (data.hasUI ? yapi.op("ui.select", { title, options, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
-			confirm: (title, message, opts) => (data.hasUI ? yapi.op("ui.confirm", { title, message, timeout: opts?.timeout }) : Promise.resolve(false)),
-			input: (title, placeholder, opts) => (data.hasUI ? yapi.op("ui.input", { title, placeholder, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
+			select: (title, options, opts) => dialog("select", { title, options }, opts, undefined).then(orUndefined),
+			confirm: (title, message, opts) => dialog("confirm", { title, message }, opts, false),
+			input: (title, placeholder, opts) => dialog("input", { title, placeholder }, opts, undefined).then(orUndefined),
 			editor: (title, prefill) => (data.hasUI ? yapi.op("ui.editor", { title, prefill }).then(orUndefined) : Promise.resolve(undefined)),
 			notify: (message, type) => request("notify", type === undefined ? { message } : { message, type }),
 			onTerminalInput(handler) {
@@ -925,6 +1003,8 @@
 		"getEntry",
 		"getLabel",
 		"getBranch",
+		"buildContextEntries",
+		"buildSessionProjection",
 		"getHeader",
 		"getEntries",
 		"getTree",
@@ -989,6 +1069,11 @@
 			getProviderDisplayName: (provider) => yapi.request("models.providerName", { provider }) ?? provider,
 			getModelsOfType: (type, provider) => yapi.request("models.ofType", { type, provider }) ?? [],
 			getModelOfType: (type, provider, id) => ofType(type, provider, id),
+			getProvider: registryProvider,
+			getProviderAuthStatus: (provider) => yapi.request("models.authStatus", { provider }),
+			stream: registryStream,
+			streamSimple: registryStream,
+			complete: (model, context, options) => registryStream(model, context, options).result(),
 			findOfType: (type, provider, id) => ofType(type, provider, id),
 			getAvailableOfType: (type, provider) => yapi.op("models.availableOfType", { type, provider }),
 			// Only the provider and id cross: the host runs its own catalog entry with its credentials.
@@ -1015,8 +1100,67 @@
 	function ofType(type, provider, id) {
 		return (yapi.request("models.ofType", { type, provider }) ?? []).find((model) => model.id === id);
 	}
+	/**
+	 * pi's `ModelRegistry.stream`: the session's provider of `model` with the
+	 * registry's credentials. pi-ai's facade, which streams through the host,
+	 * loads with the first.
+	 */
+	function registryStream(model, context, options) {
+		const stream = import("@earendil-works/pi-ai").then(() => yapi.registryStream(model, context, options));
+		return {
+			async *[Symbol.asyncIterator]() {
+				yield* await stream;
+			},
+			result: async () => (await stream).result(),
+		};
+	}
+	/**
+	 * pi-ai's `Provider` `provider` as yapi gives it: its names, models and
+	 * streams, as `docs/compat.md` lists.
+	 */
+	function registryProvider(provider) {
+		const all = () => ["chat", "image", "classifier"].flatMap((type) => yapi.request("models.ofType", { type, provider }) ?? []);
+		if (all().length === 0) return undefined;
+		return {
+			id: provider,
+			name: yapi.request("models.providerName", { provider }) ?? provider,
+			getModels: () => yapi.request("models.ofType", { type: "chat", provider }) ?? [],
+			getAllModels: all,
+			stream: registryStream,
+			streamSimple: registryStream,
+		};
+	}
+	// The current run's abort signal, by the host's id, as pi's `ctx.signal`.
+	let runAbort;
+	function runSignal() {
+		let run = null;
+		try {
+			run = yapi.request("agent.signal", {});
+		} catch {
+			// Hosts without a session have no run.
+		}
+		if (!run) return undefined;
+		if (runAbort?.id !== run.id) {
+			if (runAbort) aborts.delete(runAbort.id);
+			runAbort = { id: run.id, controller: new AbortController() };
+			aborts.set(run.id, runAbort.controller);
+		}
+		if (run.aborted) runAbort.controller.abort();
+		return runAbort.controller.signal;
+	}
+	/** What the session holds now for the `key` of the host's context data, else `data`'s. */
+	function current(data, key) {
+		if (bound) {
+			try {
+				return yapi.request("session.context", {})?.[key] ?? undefined;
+			} catch {
+				// Hosts without a session answer from the call's data.
+			}
+		}
+		return data[key] ?? undefined;
+	}
 	function createContext(data = {}, extra = {}) {
-		const controller = new AbortController();
+		// pi reads the model, thinking level, scoped models and run signal as they are read.
 		const context = {
 			ui: createUi(data),
 			mode: data.mode ?? "print",
@@ -1024,10 +1168,18 @@
 			cwd: data.cwd ?? yapi.cwd,
 			sessionManager: createSessionManager(),
 			modelRegistry: createModelRegistry(),
-			model: data.model ?? undefined,
-			scopedModels: data.scopedModels ?? [],
-			thinkingLevel: data.thinkingLevel,
-			signal: data.aborted ? AbortSignal.abort() : controller.signal,
+			get model() {
+				return current(data, "model");
+			},
+			get scopedModels() {
+				return current(data, "scopedModels") ?? [];
+			},
+			get thinkingLevel() {
+				return current(data, "thinkingLevel");
+			},
+			get signal() {
+				return runSignal();
+			},
 			isIdle: () => !!yapi.request("agent.isIdle", {}),
 			isProjectTrusted: () => !!data.projectTrusted,
 			abort: () => yapi.request("agent.abort", {}),
@@ -1046,12 +1198,13 @@
 		// Every member throws once the session is replaced.
 		const born = generation;
 		const guarded = {};
-		for (const [key, value] of Object.entries(context)) {
+		for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(context))) {
+			const read = descriptor.get ?? (() => descriptor.value);
 			Object.defineProperty(guarded, key, {
 				enumerable: true,
 				get() {
 					assertActive(born);
-					return value;
+					return read();
 				},
 			});
 		}
@@ -1135,10 +1288,10 @@
 
 	// ----- emitting to one extension -----------------------------------------------------------
 	/** Runs `extension`'s handlers for `event` as pi's runner does for each handler. */
-	async function emit(extension, event, ctx) {
+	async function emit(extension, event, ctx, signal) {
 		const handlers = [...(extension.handlers.get(event.type) ?? [])];
 		// What JSON cannot carry: the abort signal and pi's file operation sets.
-		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = ctx.signal;
+		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = signal;
 		const fileOps = event.type === "session_before_compact" ? event.preparation?.fileOps : undefined;
 		if (fileOps) for (const key of ["read", "written", "edited"]) fileOps[key] = new Set(fileOps[key] ?? []);
 		const errors = [];
@@ -1221,12 +1374,14 @@
 			case "before_agent_start": {
 				// As in pi, handlers share the live prompt options and may edit them; a
 				// returned `systemPrompt` forces the prompt through `forceSystemPrompt`.
+				// The prompt, and `ctx.getSystemPrompt()`, render the options as they are.
 				const messages = [];
 				const options = event.systemPromptOptions;
-				const rendered = event.systemPrompt;
-				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: () => options.forceSystemPrompt ?? rendered });
+				const render = () => options.forceSystemPrompt ?? yapi.request("agent.renderSystemPrompt", { options: plain(options) });
+				Object.defineProperty(event, "systemPrompt", { enumerable: true, get: render });
+				const local = Object.create(ctx, { getSystemPrompt: { value: render } });
 				for (const handler of handlers) {
-					const handlerResult = await guard(() => handler(event, ctx));
+					const handlerResult = await guard(() => handler(event, local));
 					if (handlerResult?.message) messages.push(handlerResult.message);
 					if (handlerResult?.systemPrompt !== undefined) options.forceSystemPrompt = handlerResult.systemPrompt;
 				}
@@ -1439,6 +1594,9 @@
 		timestamp: Date.now(),
 	}));
 
+	/** `onUpdate` of `executeTool` calls, by id. */
+	const nestedUpdates = new Map();
+
 	// ----- dispatch -------------------------------------------------------------------------------
 	const extensionOf = (id) => {
 		const extension = extensions.get(id);
@@ -1548,7 +1706,8 @@
 			return null;
 		},
 		emit(payload) {
-			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx));
+			const signal = payload.ctx?.aborted ? AbortSignal.abort() : new AbortController().signal;
+			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx), signal);
 		},
 		async tool(payload) {
 			const extension = extensionOf(payload.extension);
@@ -1558,7 +1717,13 @@
 				const ctx = createContext(payload.ctx, {
 					signal: payload.ctx?.aborted ? AbortSignal.abort() : signal,
 					tools: payload.tools ?? [],
-					executeTool: (name, args) => yapi.op("tool.execute", { toolCallId: payload.toolCallId, name, args: plain(args) }),
+					// Without `options.signal`, the calling tool's signal cancels the nested call.
+					executeTool: (name, args, options = {}) => {
+						const updates = typeof options.onUpdate === "function" ? nextSignal++ : undefined;
+						if (updates !== undefined) nestedUpdates.set(updates, options.onUpdate);
+						const call = { toolCallId: payload.toolCallId, name, args: plain(args), updates };
+						return cancellable("tool.execute", call, options.signal).finally(() => nestedUpdates.delete(updates));
+					},
 				});
 				const onUpdate = (partial) => yapi.request("tool.update", { toolCallId: payload.toolCallId, partial: plain(partial) });
 				let params = payload.params;
@@ -1589,6 +1754,38 @@
 				}
 			}
 			return null;
+		},
+		/**
+		 * pi's `prepareLoadout` hooks of extension `extension`'s declared tools
+		 * for `loadout`, `{ declared, callable, registered }` as `getAllTools`
+		 * describes tools: `{ descriptions, hidden, errors }`.
+		 */
+		loadout(payload) {
+			const extension = extensionOf(payload.extension);
+			const { declared, callable, registered } = payload.loadout;
+			const byName = new Map(registered.map((tool) => [tool.name, tool]));
+			const loadout = {
+				declared,
+				callable,
+				registered,
+				getExposure: (name) => byName.get(name)?.exposure ?? "direct",
+				getNamespace: (name) => byName.get(name)?.namespace,
+			};
+			const descriptions = {};
+			const hidden = [];
+			const errors = [];
+			for (const tool of declared) {
+				const hook = extension.tools.get(tool.name)?.prepareLoadout;
+				if (typeof hook !== "function") continue;
+				try {
+					const changes = hook(loadout);
+					Object.assign(descriptions, changes?.descriptions);
+					hidden.push(...(changes?.hiddenDeclarations ?? []));
+				} catch (error) {
+					errors.push(errorInfo(error));
+				}
+			}
+			return { descriptions: plain(descriptions), hidden, errors };
 		},
 		async complete(payload) {
 			const command = extensionOf(payload.extension).commands.get(payload.name);
@@ -1679,6 +1876,15 @@
 		},
 		bashAbort(payload) {
 			bashAborts.get(payload.id)?.abort();
+			return null;
+		},
+		/** A partial result of nested tool call `id`, for its `onUpdate`. */
+		nestedUpdate(payload) {
+			try {
+				nestedUpdates.get(payload.id)?.(payload.partial);
+			} catch (error) {
+				console.error("Nested tool update error:", error);
+			}
 			return null;
 		},
 		async shortcut(payload) {

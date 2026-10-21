@@ -127,7 +127,7 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 
 ## Providers from extensions
 
-`pi.registerProvider()` adds a provider and its models. They appear in `/model` and work with `--model` and RPC's `set_model`. An extension can register a provider at any time, such as from a command or an event handler, and the change applies at once. `pi.unregisterProvider()` removes a provider whichever extension registered it, and restores the built-in or `models.json` provider it replaced.
+`pi.registerProvider()` adds a provider and its models. They appear in `/model` and work with `--model` and RPC's `set_model`. An extension can register a provider at any time, such as from a command or an event handler, and the change applies at once. A configuration registered again for the same provider keeps the previous configuration's values for the keys it leaves undefined. `pi.unregisterProvider()` removes a provider whichever extension registered it, and restores the built-in or `models.json` provider it replaced.
 
 - A provider configured like a `models.json` entry streams through yapi's implementation of its `api`.
 - A provider with its own `streamSimple` can implement an API yapi does not have, or hand requests to pi-ai's built-in APIs, such as `anthropicMessagesApi()`. A stream registered with pi-ai's `registerApiProvider` serves every model of its API, including ones from `models.json`. Provider hooks such as `before_provider_request` run either way.

@@ -119,13 +119,13 @@ export function createAssistantMessageEventStream() {
  * host sends the events that have arrived each time it is asked; the live
  * message is rebuilt here from them.
  */
-function hostStream(model, context, options, api) {
+function hostStream(model, context, options, api, kind = "ai.stream") {
 	const stream = new AssistantMessageEventStream();
 	const { signal, onPayload, onResponse, onProviderStreamEvent, ...rest } = options ?? {};
 	// The session's hooks of the extension stream this request serves.
 	const hooks = [onPayload, onResponse, onProviderStreamEvent].find((hook) => hook?.yapiStream !== undefined)?.yapiStream;
 	(async () => {
-		const id = await yapi.op("ai.stream", { api, model, context: normalizeContext(context), options: rest, hooks });
+		const id = await yapi.op(kind, { api, model, context: normalizeContext(context), options: rest, hooks });
 		const abort = () => yapi.request("ai.abort", { id });
 		if (signal?.aborted) abort();
 		else signal?.addEventListener("abort", abort, { once: true });
@@ -187,6 +187,8 @@ function hostStream(model, context, options, api) {
 	})().catch((error) => stream.push({ type: "error", reason: "error", error: yapi.setupError(model, error) }));
 	return stream;
 }
+/** `ctx.modelRegistry`'s streams: the session's provider of `model`, with the registry's credentials. */
+yapi.registryStream = (model, context, options) => hostStream(model, context, options, undefined, "models.stream");
 /** yapi's implementation of wire API `api`. */
 const hostApi = (api) => {
 	const run = (model, context, options) => hostStream(model, context, options, api);
