@@ -1774,6 +1774,8 @@ struct SessionBridge {
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
+    /// What closes each open dialog that has a `signal`, by the guest's id.
+    dialogs: Arc<Mutex<HashMap<u64, CancellationToken>>>,
 }
 
 fn not_bound() -> String {
@@ -1804,6 +1806,7 @@ impl SessionBridge {
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
             run_signal: Mutex::default(),
+            dialogs: Arc::default(),
         })
     }
 
@@ -1954,14 +1957,15 @@ impl SessionBridge {
     }
 }
 
-/// A dialog's `timeout` (milliseconds) from its request.
-fn dialog(payload: &Value) -> DialogOptions {
+/// A dialog's `timeout` (milliseconds) from its request, and what its
+/// `signal` cancels.
+fn dialog(payload: &Value, cancel: Option<CancellationToken>) -> DialogOptions {
     DialogOptions {
         timeout: payload["timeout"]
             .as_f64()
             .filter(|millis| *millis > 0.0)
             .map(|millis| std::time::Duration::from_millis(millis as u64)),
-        cancel: None,
+        cancel,
     }
 }
 
@@ -2174,6 +2178,12 @@ impl SessionBridge {
             "ui.terminalSize" => {
                 if let Some(state) = ui.terminal() {
                     return terminal_json(&state.borrow());
+                }
+            }
+            "ui.cancelDialog" => {
+                let id = payload["id"].as_u64().unwrap_or_default();
+                if let Some(cancel) = lock(&self.dialogs).remove(&id) {
+                    cancel.cancel();
                 }
             }
             // The working indicator's visibility and frames are not shown.
@@ -2788,6 +2798,15 @@ impl Bridge for SessionBridge {
         };
         let codemode = self.codemode.clone();
         let owner = self.owner.get().cloned().unwrap_or_default();
+        // A dialog's `signal` closes it through `ui.cancelDialog`, which may
+        // come as soon as this returns.
+        let dialogs = self.dialogs.clone();
+        let dialog_id = payload["dialog"].as_u64();
+        let dialog_cancel = dialog_id.map(|id| {
+            let cancel = CancellationToken::new();
+            lock(&dialogs).insert(id, cancel.clone());
+            cancel
+        });
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -3014,21 +3033,25 @@ impl Bridge for SessionBridge {
                     let title = text(&payload["title"]);
                     let dialog_kind = &kind["ui.".len()..];
                     session.ui_prompt_opened(dialog_kind, Some(&title));
+                    let options = dialog(&payload, dialog_cancel);
                     let answer = match dialog_kind {
                         "select" => {
-                            let options = list(&payload["options"]).iter().map(text).collect();
-                            to_json(ui.select(&title, options, dialog(&payload)).await)
+                            let choices = list(&payload["options"]).iter().map(text).collect();
+                            to_json(ui.select(&title, choices, options).await)
                         }
                         "confirm" => Value::Bool(
-                            ui.confirm(&title, &text(&payload["message"]), dialog(&payload))
+                            ui.confirm(&title, &text(&payload["message"]), options)
                                 .await,
                         ),
                         "input" => to_json(
-                            ui.input(&title, payload["placeholder"].as_str(), dialog(&payload))
+                            ui.input(&title, payload["placeholder"].as_str(), options)
                                 .await,
                         ),
                         _ => to_json(ui.editor(&title, payload["prefill"].as_str()).await),
                     };
+                    if let Some(id) = dialog_id {
+                        lock(&dialogs).remove(&id);
+                    }
                     session.ui_prompt_closed();
                     // pi's handlers hear of it before the dialog's caller resumes.
                     session.flush_announcements().await;

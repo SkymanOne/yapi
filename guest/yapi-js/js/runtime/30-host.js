@@ -803,6 +803,7 @@
 	};
 
 	// ----- contexts --------------------------------------------------------------------------------------
+	let nextDialog = 1;
 	function createUi(data) {
 		const shown = !!(data.hasUI && data.components);
 		const replaceSlot = (slot, factory, ...args) => {
@@ -817,11 +818,21 @@
 			getAvailableProviderCount: () => request("footerData", {})?.providers ?? 0,
 			onBranchChange: () => () => {},
 		};
+		// pi's dialog options: `timeout` and `signal` close the dialog with its
+		// default answer, and an aborted `signal` opens none.
+		const dialog = (kind, payload, opts, fallback) => {
+			const signal = opts?.signal;
+			if (!data.hasUI || signal?.aborted) return Promise.resolve(fallback);
+			const id = signal ? nextDialog++ : undefined;
+			const dismiss = () => request("cancelDialog", { id });
+			signal?.addEventListener("abort", dismiss, { once: true });
+			return yapi.op(`ui.${kind}`, { ...payload, timeout: opts?.timeout, dialog: id }).finally(() => signal?.removeEventListener("abort", dismiss));
+		};
 		return {
 			// A cancelled dialog resolves to `undefined`, as in pi.
-			select: (title, options, opts) => (data.hasUI ? yapi.op("ui.select", { title, options, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
-			confirm: (title, message, opts) => (data.hasUI ? yapi.op("ui.confirm", { title, message, timeout: opts?.timeout }) : Promise.resolve(false)),
-			input: (title, placeholder, opts) => (data.hasUI ? yapi.op("ui.input", { title, placeholder, timeout: opts?.timeout }).then(orUndefined) : Promise.resolve(undefined)),
+			select: (title, options, opts) => dialog("select", { title, options }, opts, undefined).then(orUndefined),
+			confirm: (title, message, opts) => dialog("confirm", { title, message }, opts, false),
+			input: (title, placeholder, opts) => dialog("input", { title, placeholder }, opts, undefined).then(orUndefined),
 			editor: (title, prefill) => (data.hasUI ? yapi.op("ui.editor", { title, prefill }).then(orUndefined) : Promise.resolve(undefined)),
 			notify: (message, type) => request("notify", type === undefined ? { message } : { message, type }),
 			onTerminalInput(handler) {

@@ -238,3 +238,64 @@ async fn before_agent_start_rerenders() {
         "{sent}"
     );
 }
+
+/// Dialogs that stay open until cancelled, counting those opened.
+#[derive(Default)]
+struct Waiting(std::sync::atomic::AtomicUsize);
+
+impl yapi_core::extensions::ExtensionUi for Waiting {
+    fn has_ui(&self) -> bool {
+        true
+    }
+
+    fn notify(&self, _message: &str, _kind: yapi_core::extensions::NotifyKind) {}
+
+    fn confirm(
+        &self,
+        _title: &str,
+        _message: &str,
+        dialog: yapi_core::extensions::DialogOptions,
+    ) -> futures_util::future::BoxFuture<'static, bool> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async move {
+            match dialog.cancel {
+                Some(cancel) => cancel.cancelled().await,
+                None => std::future::pending().await,
+            }
+            false
+        })
+    }
+}
+
+/// A dialog's `signal` dismisses it with its default answer, and one that
+/// is already aborted opens no dialog (#205).
+#[tokio::test(flavor = "multi_thread")]
+async fn dialog_signal_dismisses() {
+    let dir = scratch("api-dialog-signal");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.registerCommand("probe", {
+		handler: async (_args, ctx) => {
+			const later = new AbortController();
+			setTimeout(() => later.abort(), 100);
+			const answer = await ctx.ui.confirm("T", "M", { signal: later.signal });
+			const early = await ctx.ui.confirm("T", "M", { signal: AbortSignal.abort() });
+			pi.appendEntry("dialogs", { answer, early });
+		},
+	});
+}"#,
+    )
+    .await;
+    let session = common::session(&Faux::new([]), &dir, host.for_session());
+    let ui = Arc::new(Waiting::default());
+    session
+        .bind_extensions(ui.clone(), Mode::Rpc, None, None)
+        .await;
+    let probed = probe(&session, "/probe", "dialogs");
+    let answered = tokio::time::timeout(std::time::Duration::from_secs(10), probed)
+        .await
+        .expect("the signal left the dialog open");
+    assert_eq!(answered, json!({"answer": false, "early": false}));
+    assert_eq!(ui.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
