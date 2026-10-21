@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6f4f9150.js";
+            window.path_to_searchindex_js = "searchindex-ba872369.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -238,6 +238,7 @@ yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 </code></pre>
+<p><code>print-bearer-token</code> refreshes a token that expires within <code>--min-expiry</code>, which is 30 minutes by default and at least five minutes. It fails when the refreshed token does not last that long.</p>
 
                     </main>
 
