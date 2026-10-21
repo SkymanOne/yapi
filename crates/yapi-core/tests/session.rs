@@ -197,3 +197,22 @@ fn lone_surrogates_load() {
         ["one", "cut \u{fffd} \u{fffd} \u{1f600} \\ud83d", "three"]
     );
 }
+
+/// Listing reads a file whose last line lacks its newline without repairing it.
+#[test]
+fn listing_never_writes() {
+    let scratch = Scratch::new("listing");
+    let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
+    session.append_message(user("one")).unwrap();
+    let file = session.file().unwrap().to_path_buf();
+    let cut = std::fs::read_to_string(&file)
+        .unwrap()
+        .trim_end()
+        .to_owned();
+    std::fs::write(&file, &cut).unwrap();
+
+    assert_eq!(list(&scratch.0, None).len(), 1);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), cut);
+    SessionManager::open(&file, None, None).unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), cut + "\n");
+}

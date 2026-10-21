@@ -169,8 +169,9 @@ fn line(doc: &Value) -> String {
 }
 
 /// Reads the entries of a session file; empty when the file is missing or does not
-/// start with a session header.
-fn load_docs(path: &Path) -> Result<Vec<Value>> {
+/// start with a session header. With `repair`, a valid file whose last line lacks
+/// its newline gets one appended.
+fn load_docs(path: &Path, repair: bool) -> Result<Vec<Value>> {
     let Ok(bytes) = fs::read(path) else {
         return Ok(Vec::new());
     };
@@ -190,7 +191,7 @@ fn load_docs(path: &Path) -> Result<Vec<Value>> {
     if !valid {
         return Ok(Vec::new());
     }
-    if !text.is_empty() && !text.ends_with('\n') {
+    if repair && !text.is_empty() && !text.ends_with('\n') {
         OpenOptions::new()
             .append(true)
             .open(path)
@@ -343,7 +344,7 @@ impl SessionManager {
     /// working directory comes from the header unless given; new sessions go to
     /// `dir`, else the file's directory.
     pub fn open(path: &Path, dir: Option<&Path>, cwd: Option<&Path>) -> Result<SessionManager> {
-        let docs = load_docs(path)?;
+        let docs = load_docs(path, true)?;
         let header_cwd = docs
             .first()
             .and_then(|header| header["cwd"].as_str())
@@ -1084,7 +1085,7 @@ impl SessionManager {
         dir: &Path,
         id: Option<String>,
     ) -> Result<SessionManager> {
-        let docs = load_docs(source)?;
+        let docs = load_docs(source, true)?;
         if docs.is_empty() {
             return Err(SessionError::Rejected(format!(
                 "Cannot fork: source session file is empty or invalid: {}",
@@ -1393,7 +1394,8 @@ pub fn find_by_id(dir: &Path, id: &str, cwd: Option<&Path>) -> Option<PathBuf> {
 }
 
 fn summary(path: &Path) -> Option<SessionSummary> {
-    let docs = load_docs(path).ok()?;
+    // Listing never writes: only opening a session repairs it.
+    let docs = load_docs(path, false).ok()?;
     let header = docs.first().filter(|header| header["type"] == "session")?;
     let mut summary = SessionSummary {
         path: path.to_path_buf(),
