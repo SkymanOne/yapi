@@ -803,7 +803,17 @@
 	};
 
 	// ----- contexts --------------------------------------------------------------------------------------
-	let nextDialog = 1;
+	let nextSignal = 1;
+	/** Starts host operation `kind`, which `signal` cancels as it aborts. */
+	function cancellable(kind, payload, signal) {
+		if (!signal) return yapi.op(kind, payload);
+		const id = nextSignal++;
+		const cancel = () => yapi.request("op.cancel", { id });
+		const op = yapi.op(kind, { ...payload, signal: id });
+		if (signal.aborted) cancel();
+		else signal.addEventListener("abort", cancel, { once: true });
+		return op.finally(() => signal.removeEventListener("abort", cancel));
+	}
 	function createUi(data) {
 		const shown = !!(data.hasUI && data.components);
 		const replaceSlot = (slot, factory, ...args) => {
@@ -821,12 +831,8 @@
 		// pi's dialog options: `timeout` and `signal` close the dialog with its
 		// default answer, and an aborted `signal` opens none.
 		const dialog = (kind, payload, opts, fallback) => {
-			const signal = opts?.signal;
-			if (!data.hasUI || signal?.aborted) return Promise.resolve(fallback);
-			const id = signal ? nextDialog++ : undefined;
-			const dismiss = () => request("cancelDialog", { id });
-			signal?.addEventListener("abort", dismiss, { once: true });
-			return yapi.op(`ui.${kind}`, { ...payload, timeout: opts?.timeout, dialog: id }).finally(() => signal?.removeEventListener("abort", dismiss));
+			if (!data.hasUI || opts?.signal?.aborted) return Promise.resolve(fallback);
+			return cancellable(`ui.${kind}`, { ...payload, timeout: opts?.timeout }, opts?.signal);
 		};
 		return {
 			// A cancelled dialog resolves to `undefined`, as in pi.
@@ -1490,6 +1496,9 @@
 		timestamp: Date.now(),
 	}));
 
+	/** `onUpdate` of `executeTool` calls, by id. */
+	const nestedUpdates = new Map();
+
 	// ----- dispatch -------------------------------------------------------------------------------
 	const extensionOf = (id) => {
 		const extension = extensions.get(id);
@@ -1610,7 +1619,13 @@
 				const ctx = createContext(payload.ctx, {
 					signal: payload.ctx?.aborted ? AbortSignal.abort() : signal,
 					tools: payload.tools ?? [],
-					executeTool: (name, args) => yapi.op("tool.execute", { toolCallId: payload.toolCallId, name, args: plain(args) }),
+					// Without `options.signal`, the calling tool's signal cancels the nested call.
+					executeTool: (name, args, options = {}) => {
+						const updates = typeof options.onUpdate === "function" ? nextSignal++ : undefined;
+						if (updates !== undefined) nestedUpdates.set(updates, options.onUpdate);
+						const call = { toolCallId: payload.toolCallId, name, args: plain(args), updates };
+						return cancellable("tool.execute", call, options.signal).finally(() => nestedUpdates.delete(updates));
+					},
 				});
 				const onUpdate = (partial) => yapi.request("tool.update", { toolCallId: payload.toolCallId, partial: plain(partial) });
 				let params = payload.params;
@@ -1731,6 +1746,15 @@
 		},
 		bashAbort(payload) {
 			bashAborts.get(payload.id)?.abort();
+			return null;
+		},
+		/** A partial result of nested tool call `id`, for its `onUpdate`. */
+		nestedUpdate(payload) {
+			try {
+				nestedUpdates.get(payload.id)?.(payload.partial);
+			} catch (error) {
+				console.error("Nested tool update error:", error);
+			}
 			return null;
 		},
 		async shortcut(payload) {

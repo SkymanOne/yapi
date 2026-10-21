@@ -299,3 +299,40 @@ async fn dialog_signal_dismisses() {
     assert_eq!(answered, json!({"answer": false, "early": false}));
     assert_eq!(ui.0.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
+
+/// `ctx.executeTool` passes the nested tool's partial results to
+/// `onUpdate`, and `signal` cancels the nested call (#206).
+#[tokio::test(flavor = "multi_thread")]
+async fn nested_call_options() {
+    let dir = scratch("api-nested-options");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.registerTool({
+		name: "nest", label: "Nest", description: "Nests", parameters: { type: "object", properties: {} },
+		async execute(_id, _params, _signal, _onUpdate, ctx) {
+			let updates = 0;
+			await ctx.executeTool("bash", { command: "echo a; sleep 0.2; echo b" }, { onUpdate: () => updates++ });
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(), 200);
+			const started = Date.now();
+			const aborted = await ctx.executeTool("bash", { command: "sleep 5; echo done" }, { signal: controller.signal });
+			pi.appendEntry("nested", { updated: updates > 0, isError: aborted.isError, quick: Date.now() - started < 3000 });
+			return { content: [{ type: "text", text: "ok" }] };
+		},
+	});
+}"#,
+    )
+    .await;
+    let faux = Faux::new([
+        Response::tool_call("call-1", "nest", json!({})),
+        Response::text("done"),
+    ]);
+    let session = common::session_with_tools(&faux, &dir, host.for_session(), &["read", "bash"]);
+    bind(&session).await;
+    session.prompt("go", Vec::new()).await.unwrap();
+    assert_eq!(
+        custom_entries(&session, "nested"),
+        [json!({"updated": true, "isError": true, "quick": true})]
+    );
+}

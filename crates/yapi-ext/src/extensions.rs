@@ -1774,8 +1774,9 @@ struct SessionBridge {
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
-    /// What closes each open dialog that has a `signal`, by the guest's id.
-    dialogs: Arc<Mutex<HashMap<u64, CancellationToken>>>,
+    /// What cancels each running operation that a guest `signal` may
+    /// cancel, such as a dialog or a nested tool call, by the guest's id.
+    cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
 }
 
 fn not_bound() -> String {
@@ -1806,7 +1807,7 @@ impl SessionBridge {
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
             run_signal: Mutex::default(),
-            dialogs: Arc::default(),
+            cancels: Arc::default(),
         })
     }
 
@@ -2180,12 +2181,7 @@ impl SessionBridge {
                     return terminal_json(&state.borrow());
                 }
             }
-            "ui.cancelDialog" => {
-                let id = payload["id"].as_u64().unwrap_or_default();
-                if let Some(cancel) = lock(&self.dialogs).remove(&id) {
-                    cancel.cancel();
-                }
-            }
+
             // The working indicator's visibility and frames are not shown.
             _ => {}
         }
@@ -2462,6 +2458,13 @@ impl Bridge for SessionBridge {
                         send_error(&stream.sender, output, &CancellationToken::new(), message);
                     }
                 }
+            }
+            return Ok(Value::Null);
+        }
+        if kind == "op.cancel" {
+            let id = payload["id"].as_u64().unwrap_or_default();
+            if let Some(cancel) = lock(&self.cancels).remove(&id) {
+                cancel.cancel();
             }
             return Ok(Value::Null);
         }
@@ -2798,14 +2801,23 @@ impl Bridge for SessionBridge {
         };
         let codemode = self.codemode.clone();
         let owner = self.owner.get().cloned().unwrap_or_default();
-        // A dialog's `signal` closes it through `ui.cancelDialog`, which may
-        // come as soon as this returns.
-        let dialogs = self.dialogs.clone();
-        let dialog_id = payload["dialog"].as_u64();
-        let dialog_cancel = dialog_id.map(|id| {
+        // The guest's `signal` cancels the operation through `op.cancel`,
+        // which may come as soon as this returns.
+        let signal = payload["signal"].as_u64().map(|id| {
             let cancel = CancellationToken::new();
-            lock(&dialogs).insert(id, cancel.clone());
-            cancel
+            lock(&self.cancels).insert(id, cancel.clone());
+            (id, cancel)
+        });
+        let signal_cancel = signal.as_ref().map(|(_, cancel)| cancel.clone());
+        // `executeTool`'s `onUpdate` hears the nested tool's partial results.
+        let nested_updates = payload["updates"].as_u64().map(|id| {
+            let owner = owner.clone();
+            Arc::new(move |partial: ToolResult| {
+                if let Some(host) = owner.upgrade() {
+                    host.instance
+                        .post("nestedUpdate", &json!({"id": id, "partial": partial}));
+                }
+            }) as UpdateSink
         });
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
@@ -2830,8 +2842,8 @@ impl Bridge for SessionBridge {
                             &text(&payload["toolCallId"]),
                             &text(&payload["name"]),
                             payload["args"].clone(),
-                            caller_cancel,
-                            None,
+                            signal_cancel.unwrap_or(caller_cancel),
+                            nested_updates,
                         )
                         .await;
                     Ok(
@@ -3033,7 +3045,7 @@ impl Bridge for SessionBridge {
                     let title = text(&payload["title"]);
                     let dialog_kind = &kind["ui.".len()..];
                     session.ui_prompt_opened(dialog_kind, Some(&title));
-                    let options = dialog(&payload, dialog_cancel);
+                    let options = dialog(&payload, signal_cancel);
                     let answer = match dialog_kind {
                         "select" => {
                             let choices = list(&payload["options"]).iter().map(text).collect();
@@ -3049,9 +3061,6 @@ impl Bridge for SessionBridge {
                         ),
                         _ => to_json(ui.editor(&title, payload["prefill"].as_str()).await),
                     };
-                    if let Some(id) = dialog_id {
-                        lock(&dialogs).remove(&id);
-                    }
                     session.ui_prompt_closed();
                     // pi's handlers hear of it before the dialog's caller resumes.
                     session.flush_announcements().await;
@@ -3060,6 +3069,17 @@ impl Bridge for SessionBridge {
                 other => Err(format!("{other} is not available in yapi extensions yet")),
             }
         });
+        let operation: BoxFuture<'static, Result<Value, String>> = match signal {
+            Some((id, _)) => {
+                let cancels = self.cancels.clone();
+                Box::pin(async move {
+                    let result = operation.await;
+                    lock(&cancels).remove(&id);
+                    result
+                })
+            }
+            None => operation,
+        };
         match caller_jobs {
             Some(jobs) => {
                 let (job, result) = crate::ops::job(operation);
