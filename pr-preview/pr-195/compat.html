@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7014552f.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -222,6 +222,7 @@
 <tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
+<tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="troubleshooting.html#logs">Logs</a>.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
 <tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="install.html#upgrade">Install</a>.</td></tr>

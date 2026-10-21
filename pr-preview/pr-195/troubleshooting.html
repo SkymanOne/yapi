@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7014552f.js";
+            window.path_to_searchindex_js = "searchindex-f69349cc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -201,6 +201,8 @@
 <p>yapi writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its <code>report.json</code> leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.</p>
 <p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>, with the names of your settings but not their values, and with your home folder written as <code>~</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
 <p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
+<h2 id="logs"><a class="header" href="#logs">Logs</a></h2>
+<p>Start yapi with <code>--enable-logging</code> to append its log to <code>~/.yapi/agent/yapi.log</code>, or <code>yapi.log</code> in <code>YAPI_CODING_AGENT_DIR</code>. Each line holds the time, the process ID, the level, where the message comes from, and the message. The log has extension output, extension runtime restarts and crashes, and warnings from yapi’s libraries. Only you can read the file, as extension output can hold private data. yapi never shortens or removes it, so delete it when you no longer need it.</p>
 
                     </main>
 
