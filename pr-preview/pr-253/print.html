@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5cd7526c.js";
+            window.path_to_searchindex_js = "searchindex-f9bbd770.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -1721,6 +1721,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
 <tr><td>Session lines with an unpaired surrogate</td><td>Text cut inside an emoji is written as an unpaired UTF-16 escape, such as <code>\ud83d</code></td><td>The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one.</td></tr>
 <tr><td>Failed session writes</td><td>Later entries can point to an entry that is missing from the file</td><td>yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole.</td></tr>
+<tr><td>Fractions in count settings</td><td>A fraction such as <code>1.5</code> in <code>retry.maxRetries</code>, <code>retry.baseDelayMs</code>, <code>thinkingBudgets</code>, <code>editorPaddingX</code> or a similar count reaches the code that uses it unchanged</td><td>The fraction is rounded down, since yapi counts retries, milliseconds, tokens and cells in whole numbers. Whole numbers written as floats, such as <code>1.5e5</code>, read as in Pi, and Pi’s own rounding of <code>terminal.imageWidthCells</code> and its checks of the <code>compaction</code> token settings apply as in Pi.</td></tr>
 </tbody>
 </table>
 </div>
