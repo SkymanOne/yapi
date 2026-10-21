@@ -55,6 +55,13 @@ pub struct ModelDefinition {
     pub api: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
+    /// `"image"` or `"classifier"` in an extension provider's models; absent
+    /// or `"chat"` otherwise. `models.json` defines chat models only.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// An image model's output modalities.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Vec<InputKind>>,
     #[serde(flatten)]
     pub options: ModelOptions,
 }

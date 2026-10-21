@@ -15,6 +15,8 @@ use common::{cli_source, custom_entries, engine, eventually, options, scratch};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use yapi_ai::api::Apis;
+use yapi_ai::api::classify::ClassifyOptions;
+use yapi_ai::api::images::ImagesOptions;
 use yapi_ai::auth::{AuthError, AuthPrompt, AuthRequest, Interaction, LoginOptions};
 use yapi_ai::model_catalog::RefreshOptions;
 use yapi_ai::registry::{LoginKind, ModelRegistry};
@@ -25,12 +27,13 @@ use yapi_core::session::SessionManager;
 use yapi_core::settings::SettingsManager;
 use yapi_ext::ExtensionHost;
 use yapi_types::auth::Credential;
+use yapi_types::classify::ClassifierContext;
 use yapi_types::event::AssistantMessageEvent;
 use yapi_types::message::{ContentBlock, Message, StopReason, ThinkingLevel};
 use yapi_types::model::Model;
 
 const EXTENSION: &str = r#"
-import { createAssistantMessageEventStream, getCurrentSystemPrompt, registerApiProvider } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, createProvider, getCurrentSystemPrompt, registerApiProvider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const zero = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
@@ -101,6 +104,7 @@ export default function (pi: ExtensionAPI) {
 				return { ...credentials, refresh: "refresh-2", access: `${credentials.access}-refreshed`, expires: Date.now() + 3600000 };
 			},
 			getApiKey: (credentials) => `key:${credentials.access}:${credentials.team}`,
+			modifyModels: (models, credentials) => models.map((model) => ({ ...model, name: `${model.name} (${credentials.team})` })),
 		},
 		streamSimple,
 	});
@@ -118,6 +122,50 @@ export default function (pi: ExtensionAPI) {
 		},
 		streamSimple,
 	});
+	const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+	const generated = (model, text) => ({ api: model.api, provider: model.provider, model: model.id, output: [{ type: "text", text }], stopReason: "stop", timestamp: 1 });
+	const classified = (model, probability) => ({ api: model.api, provider: model.provider, model: model.id, answers: { ok: { type: "bool", probability } }, stopReason: "stop", timestamp: 1 });
+	pi.registerProvider("media", {
+		baseUrl: "http://127.0.0.1:9",
+		apiKey: "media-key",
+		models: [
+			{ type: "image", id: "draw", name: "Draw", api: "media-images", input: ["text"], output: ["image"], cost },
+			{ type: "classifier", id: "judge", name: "Judge", api: "media-classify", input: ["text"], cost, contextWindow: 1000 },
+		],
+		images: { "media-images": { generateImages: async (model, context, options) => generated(model, `${options.apiKey}:${context.input[0].text}`) } },
+		classifiers: { "media-classify": { classify: async (model, context, options) => classified(model, options.temperature) } },
+	});
+	// A complete pi-ai provider: its own auth, models, streams, classifier and refresh.
+	pi.registerProvider(
+		createProvider({
+			id: "native",
+			name: "Native",
+			auth: {
+				apiKey: {
+					name: "Native key",
+					check: async () => ({ type: "api_key", source: "native check" }),
+					resolve: async ({ credential }) => ({ auth: { apiKey: credential?.key ?? "ambient-key", headers: { "x-native": "1" } }, source: "native" }),
+				},
+				oauth: {
+					name: "Native SSO",
+					async login(interaction) {
+						interaction.notify({ type: "progress", message: "Signing in" });
+						const token = await interaction.prompt({ type: "secret", message: "Token:" });
+						return { type: "oauth", access: token, refresh: "r", expires: 1 };
+					},
+					refresh: async (credential) => ({ ...credential, access: `${credential.access}+`, expires: Date.now() + 3600000 }),
+					toAuth: async (credential) => ({ apiKey: `sso:${credential.access}`, headers: { "x-account": credential.type }, baseUrl: "http://account.example" }),
+				},
+			},
+			models: [
+				{ ...model("n1", "N1"), api: "native-api", provider: "native", baseUrl: "http://127.0.0.1:9" },
+				{ type: "classifier", id: "nc", name: "NC", api: "native-classify", provider: "native", baseUrl: "http://127.0.0.1:9", input: ["text"], cost, contextWindow: 1000 },
+			],
+			api: { stream: streamSimple, streamSimple },
+			classifiers: { "native-classify": { classify: async (model) => classified(model, 0.5) } },
+			fetchModels: async (context) => [{ ...model("n2", `Fetched ${context.credential.key}`), api: "native-api", provider: "native", baseUrl: "http://127.0.0.1:9" }],
+		}),
+	);
 }
 "#;
 
@@ -139,16 +187,7 @@ fn registry_and_apis(host: &Arc<ExtensionHost>, dir: &Path) -> (ModelRegistry, A
     let mut registry = ModelRegistry::load(&agent_dir);
     let mut apis = Apis::default();
     for provider in host.providers() {
-        registry.register_config(
-            &provider.name,
-            serde_json::from_value(provider.config).unwrap(),
-        );
-        if let Some(stream) = provider.stream {
-            apis.register_for(&provider.name, stream);
-        }
-        if let Some(oauth) = provider.oauth {
-            registry.register_oauth(&provider.name, oauth);
-        }
+        provider.install(&mut registry, &mut apis).unwrap();
     }
     for api in host.apis() {
         apis.register(api);
@@ -497,6 +536,203 @@ async fn refresh_models_replaces_and_persists_the_model_list() {
         ids(&second),
         [("dyn-live".into(), "Live api_key dyn-key".into())]
     );
+}
+
+/// One `bool` question.
+fn bool_question() -> ClassifierContext {
+    serde_json::from_value(json!({"state": {}, "questions": {
+        "ok": {"type": "bool", "instructions": "OK?", "criteria": {"true": "yes", "false": "no"}},
+    }}))
+    .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn image_and_classifier_models_run_in_the_extension() {
+    let dir = scratch("provider-media");
+    let host = load(&dir).await;
+    let (registry, _) = registry_and_apis(&host, &dir);
+    assert!(
+        !registry
+            .models()
+            .iter()
+            .any(|model| model.provider == "media")
+    );
+
+    // The temperature and the configured key reach the implementations.
+    let judge = registry
+        .classifiers()
+        .iter()
+        .find(|model| model.provider == "media")
+        .unwrap()
+        .clone();
+    let options = ClassifyOptions {
+        temperature: Some(0.25),
+        ..ClassifyOptions::default()
+    };
+    let result = registry.classify(&judge, &bool_question(), options).await;
+    assert_eq!(result.error_message, None);
+    assert_eq!(
+        json!(result.answers),
+        json!({"ok": {"type": "bool", "probability": 0.25}})
+    );
+    let draw = registry
+        .image_models()
+        .iter()
+        .find(|model| model.provider == "media")
+        .unwrap()
+        .clone();
+    let context = serde_json::from_value(json!({"input": [{"type": "text", "text": "a cat"}]}));
+    let images = registry
+        .generate_images(&draw, &context.unwrap(), ImagesOptions::default())
+        .await;
+    assert_eq!(
+        json!(images.output),
+        json!([{"type": "text", "text": "media-key:a cat"}])
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pi_ai_provider_brings_its_auth_models_streams_and_classifier() {
+    let dir = scratch("provider-native");
+    let host = load(&dir).await;
+    let (registry, apis) = registry_and_apis(&host, &dir);
+    assert_eq!(registry.provider_name("native"), "Native");
+    let model = registry.find("native", "n1").unwrap().clone();
+    assert_eq!(model.api, "native-api");
+
+    // Its check found a key as the extension loaded; its resolve gives it.
+    assert!(registry.has_auth("native"));
+    assert_eq!(
+        registry.login_status("native").as_deref(),
+        Some("native check")
+    );
+    let auth = registry.auth(&model).await;
+    assert_eq!(
+        (auth.api_key.as_deref(), auth.source.as_deref()),
+        (Some("ambient-key"), Some("native"))
+    );
+    assert_eq!(auth.headers.get("x-native"), Some(&Some("1".to_owned())));
+
+    let message = apis
+        .stream(request(model.clone(), CancellationToken::new()))
+        .result()
+        .await
+        .unwrap();
+    assert_eq!(message.error_message, None);
+    assert!(matches!(&message.content[0], ContentBlock::Text(text) if text.text == "Hello"));
+    let classifier = registry
+        .classifiers()
+        .iter()
+        .find(|model| model.provider == "native")
+        .unwrap()
+        .clone();
+    let result = registry
+        .classify(&classifier, &bool_question(), ClassifyOptions::default())
+        .await;
+    assert_eq!(
+        json!(result.answers),
+        json!({"ok": {"type": "bool", "probability": 0.5}})
+    );
+
+    // Its OAuth sign-in prompts through the interaction; the expired token
+    // refreshes and gives the account's credentials.
+    assert_eq!(registry.oauth_flow("native").unwrap().name(), "Native SSO");
+    let (interaction, mut requests) = Interaction::new(CancellationToken::new());
+    tokio::spawn(async move {
+        while let Some(request) = requests.recv().await {
+            if let AuthRequest::Prompt { reply, .. } = request {
+                let _ = reply.send("t".to_owned());
+            }
+        }
+    });
+    registry
+        .login(
+            "native",
+            LoginKind::OAuth,
+            &interaction,
+            &LoginOptions::default(),
+        )
+        .await
+        .unwrap();
+    let auth = registry.auth(&model).await;
+    assert_eq!(auth.error, None);
+    assert_eq!(auth.api_key.as_deref(), Some("sso:t+"));
+    assert_eq!(auth.base_url.as_deref(), Some("http://account.example"));
+    assert_eq!(
+        auth.headers.get("x-account"),
+        Some(&Some("oauth".to_owned()))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pi_ai_provider_refreshes_its_own_models() {
+    let dir = scratch("provider-native-refresh");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    let options = RefreshOptions {
+        providers: Some(vec!["native".into()]),
+        allow_network: true,
+        ..RefreshOptions::default()
+    };
+    let result = session.refresh_model_catalogs(options).await;
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let names: Vec<String> = session
+        .registry()
+        .models()
+        .iter()
+        .filter(|model| model.provider == "native")
+        .map(|model| model.name.clone())
+        .collect();
+    // The refresh gets the key its resolve gives.
+    assert_eq!(names, ["N1", "Fetched ambient-key"]);
+    assert!(
+        session
+            .registry()
+            .classifiers()
+            .iter()
+            .any(|model| model.provider == "native")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn modify_models_projects_the_models_for_the_signed_in_account() {
+    let dir = scratch("provider-modify");
+    let host = load(&dir).await;
+    let session = AgentSession::new(session_config(&host, &dir));
+    let names = |session: &AgentSession| -> Vec<String> {
+        session
+            .registry()
+            .models()
+            .iter()
+            .filter(|model| model.provider == "corp")
+            .map(|model| model.name.clone())
+            .collect()
+    };
+    let only_corp = RefreshOptions {
+        providers: Some(vec!["corp".into()]),
+        ..RefreshOptions::default()
+    };
+    let cancel = CancellationToken::new();
+    session.refresh_model_catalogs(only_corp.clone()).await;
+    assert_eq!(names(&session), ["Corp 1"]);
+
+    // Each refresh projects the configured models, not the projected ones.
+    let credential = json!({"type": "oauth", "access": "a", "refresh": "r", "expires": 4_102_444_800_000_u64, "team": "b"});
+    let store = Arc::clone(session.registry().store());
+    store
+        .set("corp", serde_json::from_value(credential).unwrap(), &cancel)
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        let result = session.refresh_model_catalogs(only_corp.clone()).await;
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(names(&session), ["Corp 1 (b)"]);
+    }
+
+    // Signed out, the models are restored.
+    store.delete("corp", &cancel).await.unwrap();
+    session.refresh_model_catalogs(only_corp).await;
+    assert_eq!(names(&session), ["Corp 1"]);
 }
 
 const AUTH_EXTENSION: &str = r#"

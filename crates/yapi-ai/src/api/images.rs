@@ -59,6 +59,26 @@ pub async fn generate_images(
     output
 }
 
+/// pi's `imageErrorResult`: `model`'s result for a request that failed with
+/// `message`, aborted when `cancel` fired.
+pub fn error_result(
+    model: &ImageModel,
+    message: String,
+    cancel: &CancellationToken,
+) -> AssistantImages {
+    AssistantImages {
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        output: Vec::new(),
+        response_id: None,
+        usage: None,
+        stop_reason: super::classify::failure_reason(cancel),
+        error_message: Some(message),
+        timestamp: now_ms(),
+    }
+}
+
 fn params(model: &ImageModel, context: &ImagesContext) -> Value {
     let content: Vec<Value> = context
         .input
