@@ -22,8 +22,8 @@ fn parse(text: &str) -> IndexMap<String, IndexMap<String, String>> {
     let mut current: Option<String> = None;
     let mut parent: Option<String> = None;
     for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+        let trimmed = without_comment(line).trim();
+        if trimmed.is_empty() {
             continue;
         }
         if let Some(header) = trimmed
@@ -55,6 +55,19 @@ fn parse(text: &str) -> IndexMap<String, IndexMap<String, String>> {
         }
     }
     sections
+}
+
+/// The text before a comment, which starts with `#` or `;` at the start of
+/// the line or after whitespace.
+fn without_comment(line: &str) -> &str {
+    let mut after_space = true;
+    for (index, c) in line.char_indices() {
+        if after_space && matches!(c, '#' | ';') {
+            return &line[..index];
+        }
+        after_space = c.is_whitespace();
+    }
+    line
 }
 
 /// A path setting, with a leading `~` as the home directory.
@@ -161,5 +174,21 @@ mod tests {
         assert_eq!(profiles.profiles["dev"]["s3.max_concurrent_requests"], "10");
         assert_eq!(profiles.sso_sessions["corp"]["sso_region"], "eu-west-1");
         assert!(!profiles.profiles.contains_key("ignored"));
+    }
+
+    #[test]
+    fn inline_comments() {
+        let credentials = parse(
+            "[default]\nregion = us-east-1\naws_access_key_id = AKIADEFAULT\n[prod] # production account\naws_access_key_id = AKIAPROD\nregion = eu-west-1 # Ireland\nsecret = a#b;c\n  ; indented\n",
+        );
+        let profiles = merge(IndexMap::new(), credentials);
+        assert_eq!(profiles.profiles["default"]["region"], "us-east-1");
+        assert_eq!(
+            profiles.profiles["default"]["aws_access_key_id"],
+            "AKIADEFAULT"
+        );
+        assert_eq!(profiles.profiles["prod"]["region"], "eu-west-1");
+        assert_eq!(profiles.profiles["prod"]["aws_access_key_id"], "AKIAPROD");
+        assert_eq!(profiles.profiles["prod"]["secret"], "a#b;c");
     }
 }
