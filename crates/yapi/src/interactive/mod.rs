@@ -252,6 +252,8 @@ enum Dialog {
     ResumeMissingCwd(PathBuf, Reply),
     /// Import a session file.
     Import(String),
+    /// Import a session file whose working directory is gone.
+    ImportMissingCwd(String),
     /// The `/login` method menu, for all providers or these, offering these kinds.
     LoginMenu(
         Option<Vec<login::ProviderOption>>,
@@ -3240,7 +3242,9 @@ impl App {
                 self.status("Resume cancelled");
                 answer(reply, Ok(true));
             }
-            Some(Dialog::Import(_)) => self.status("Import cancelled"),
+            Some(Dialog::Import(_) | Dialog::ImportMissingCwd(_)) => {
+                self.status("Import cancelled");
+            }
             Some(Dialog::LoginMenu(..) | Dialog::Logout) => {}
             Some(Dialog::LoginProviders(kind, _)) => self.providers_cancelled(kind),
             Some(Dialog::LoginSelect) => self.login_select_done(None),
@@ -3336,7 +3340,15 @@ impl App {
             },
             Some(Dialog::Import(path)) => {
                 if index == 0 {
-                    self.import(&path);
+                    self.import(&path, None);
+                } else {
+                    self.status("Import cancelled");
+                }
+            }
+            Some(Dialog::ImportMissingCwd(path)) => {
+                if index == 0 {
+                    let cwd = std::env::current_dir().unwrap_or_else(|_| self.cwd.clone());
+                    self.import(&path, Some(cwd));
                 } else {
                     self.status("Import cancelled");
                 }
@@ -3791,15 +3803,11 @@ impl App {
                 fallback,
                 ..
             }) => {
-                self.dialog = Some(Dialog::ResumeMissingCwd(path.to_path_buf(), reply));
-                self.selector = Some(Selector::Choice(ChoiceDialog::new(
-                    &format!(
-                        "Session cwd not found\ncwd from session file does not exist\n{}\n\ncontinue in current cwd\n{}",
-                        session_cwd.display(),
-                        fallback.display()
-                    ),
-                    &["Yes", "No"],
-                )));
+                self.ask_missing_cwd(
+                    Dialog::ResumeMissingCwd(path.to_path_buf(), reply),
+                    &session_cwd,
+                    &fallback,
+                );
                 return;
             }
             Err(error) => {
@@ -3821,6 +3829,20 @@ impl App {
                 Err(error) => app.fatal("Failed to resume session", &error, None),
             },
         );
+    }
+
+    /// pi's prompt for a session whose working directory is gone; `dialog`
+    /// takes the answer.
+    fn ask_missing_cwd(&mut self, dialog: Dialog, session_cwd: &Path, fallback: &Path) {
+        self.dialog = Some(dialog);
+        self.selector = Some(Selector::Choice(ChoiceDialog::new(
+            &format!(
+                "Session cwd not found\ncwd from session file does not exist\n{}\n\ncontinue in current cwd\n{}",
+                session_cwd.display(),
+                fallback.display()
+            ),
+            &["Yes", "No"],
+        )));
     }
 
     /// Runs `then` once the replacement session's extensions have started,
@@ -5217,6 +5239,38 @@ mod tests {
             let event = events.recv().await.unwrap();
             app.on_event(event);
         }
+    }
+
+    /// `/import` of a session whose folder is gone asks to use the current
+    /// one, and declining cancels the import, as in pi.
+    #[tokio::test]
+    async fn import_missing_cwd() {
+        let dir = std::env::temp_dir().join(format!("yapi-import-cwd-{}", std::process::id()));
+        let sessions = dir.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let source = dir.join("x.jsonl");
+        std::fs::write(
+            &source,
+            "{\"type\":\"session\",\"version\":3,\"id\":\"a\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"/nonexistent/gone-dir\"}\n",
+        )
+        .unwrap();
+        let (mut app, mut events) = app();
+        app.session.with_session(|session| {
+            *session = SessionManager::create(Path::new("/work"), &sessions, None).unwrap();
+        });
+        let path = source.display().to_string();
+        app.import(&path, None);
+        assert!(matches!(app.dialog, Some(Dialog::ImportMissingCwd(_))));
+        app.on_choice(1);
+        assert!(matches!(app.chat.last(), Some(Item::Status(text)) if text == "Import cancelled"));
+        app.import(&path, None);
+        app.on_choice(0);
+        replaced(&mut app, &mut events).await;
+        let cwd = app
+            .session
+            .with_session(|session| session.cwd().to_path_buf());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(cwd, std::env::current_dir().unwrap());
     }
 
     /// A session change asked for while the current session shuts down for
