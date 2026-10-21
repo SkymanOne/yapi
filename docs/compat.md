@@ -73,4 +73,4 @@ Pi features yapi does not have yet, or has only in part. Each row links its issu
 
 | Area | Pi | yapi today | Issue |
 |---|---|---|---|
-| Complete pi-ai providers | A `Provider` passed to `registerProvider` can limit its models per account with `filterModels`, and checks for an API key on every availability refresh. `/login` asks for its key with its own prompt. | `filterModels` and `filterAllModels` are ignored. The API key check runs once as the extension loads, and `/login` asks for the key with yapi's prompt. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
+| Complete pi-ai providers | A `Provider` passed to `registerProvider` can limit its models per account with `filterModels`, and checks for an API key on every availability refresh. `/login` asks for its key with its own prompt. | `filterModels` and `filterAllModels` are ignored. The API key check runs once as the extension loads, and `/login` asks for the key with yapi's prompt. | [#197](https://github.com/SkymanOne/yapi/issues/197) |
