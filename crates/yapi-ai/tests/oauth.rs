@@ -547,6 +547,52 @@ async fn registry_refreshes_expired_tokens() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// A bearer token valid for less than five minutes or the requested minimum
+/// is refreshed, and a refreshed token must last the requested minimum.
+#[tokio::test]
+async fn bearer_expiry_floor() {
+    let token = || {
+        Exchange::json(
+            "POST",
+            "/v1/oauth/token",
+            200,
+            &json!({"access_token": "sk-ant-oat-new", "refresh_token": "r-new", "expires_in": 3600}),
+        )
+    };
+    let server = mock(vec![token(), token()]).await;
+    let dir = agent_dir("bearer-floor");
+    let expires = yapi_types::time::now_ms() + 3 * 60_000;
+    std::fs::write(
+        dir.join("auth.json"),
+        format!(
+            r#"{{"anthropic": {{"type": "oauth", "refresh": "r", "access": "sk-ant-oat-old", "expires": {expires}}}}}"#
+        ),
+    )
+    .unwrap();
+    let mut registry = ModelRegistry::load(&dir);
+    registry.register_oauth(
+        "anthropic",
+        Arc::new(AnthropicOAuth {
+            token_url: format!("{}/v1/oauth/token", server.url()),
+            ..AnthropicOAuth::default()
+        }),
+    );
+    let model = registry
+        .find("anthropic", "claude-sonnet-4-5")
+        .unwrap()
+        .clone();
+    let auth = registry.auth_valid_for(&model, Some(60_000)).await;
+    assert_eq!(auth.api_key.as_deref(), Some("sk-ant-oat-new"));
+    // The refreshed token lasts 55 minutes.
+    let auth = registry.auth_valid_for(&model, Some(60 * 60_000)).await;
+    assert_eq!(
+        auth.error.as_deref(),
+        Some("OAuth refresh returned a token that expires too soon for anthropic")
+    );
+    server.finish().unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// A refresh that waited for the `auth.json` lock uses the token another
 /// process refreshed meanwhile instead of refreshing it again.
 #[tokio::test]
