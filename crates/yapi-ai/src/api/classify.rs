@@ -142,7 +142,9 @@ pub(crate) async fn post_json(
         }
         Err(Failure::Connection(_)) => return Err("fetch failed".into()),
         Err(Failure::Aborted) => return Err(http::ABORTED_BEFORE_RESPONSE.into()),
-        Err(Failure::RetryDelay(message)) => return Err(message),
+        Err(Failure::RetryDelay { delay, status, .. }) => {
+            return Err(format!("{delay} {label} returned {status}"));
+        }
     };
     let Some(bytes) = options.cancel.run_until_cancelled(response.bytes()).await else {
         return Err(http::ABORTED_READ.into());

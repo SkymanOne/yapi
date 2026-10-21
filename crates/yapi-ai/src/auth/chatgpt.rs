@@ -116,7 +116,7 @@ fn credential(token: &Value, client_id: &str) -> Result<OAuthCredential, AuthErr
     Ok(OAuthCredential {
         access,
         refresh,
-        expires: expiry(expires_in, EXPIRY_MARGIN_MS),
+        expires: expiry(expires_in, EXPIRY_MARGIN_MS) as f64,
         extra,
     })
 }
@@ -168,7 +168,7 @@ impl ChatGptOAuth {
         state: String,
         cancel: &CancellationToken,
     ) -> std::io::Result<Server<Authorization>> {
-        let handler = move |_method: &str, url: &Url| -> Reply<Authorization> {
+        let handler = move |_method: &str, url: &Url, _handled: bool| -> Reply<Authorization> {
             if url.path() != CALLBACK_PATH {
                 return Reply::page(404, error_page("Callback route not found.", None));
             }
@@ -220,9 +220,9 @@ impl ChatGptOAuth {
                 )
             })?;
         let host_id = format!("urn:uuid:{}", device_id.to_ascii_lowercase());
-        let pkce = pkce::generate();
-        let state = pkce::random_base64url();
-        let nonce = pkce::random_base64url();
+        let pkce = pkce::generate()?;
+        let state = pkce::random_base64url()?;
+        let nonce = pkce::random_base64url()?;
         let mut server = match self.start_server(state.clone(), interaction.cancel()).await {
             Ok(server) => Some(server),
             Err(err) => {

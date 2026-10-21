@@ -114,6 +114,17 @@ pub trait Bridge: Send + Sync {
         yapi_ai::stream::RequestHooks::default()
     }
 
+    /// Streams `{model, context, options}` through the session's provider
+    /// of the model, with the registry's credentials under the options'
+    /// own, as pi's `ModelRegistry.stream` does; `cancel` aborts it.
+    fn stream_model(
+        &self,
+        _payload: Value,
+        _cancel: CancellationToken,
+    ) -> BoxFuture<'static, Result<yapi_ai::stream::EventStream, String>> {
+        Box::pin(async { Err("models.stream is not available here".into()) })
+    }
+
     /// Console output from extensions, at `level` `debug`, `info`, `warn` or
     /// `error`.
     fn log(&self, _level: &str, message: &str) {

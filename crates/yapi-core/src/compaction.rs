@@ -698,7 +698,7 @@ pub struct Summarizer<'a> {
     /// The model to summarize with.
     pub model: &'a Model,
     /// Wire APIs.
-    pub apis: &'a Apis,
+    pub apis: Apis,
     /// Credentials for the model.
     pub auth: Auth,
     /// The session's thinking level; used when the model reasons.

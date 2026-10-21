@@ -45,6 +45,12 @@ impl AuthError {
     pub(crate) fn failed(message: impl Into<String>) -> AuthError {
         AuthError::Failed(message.into())
     }
+
+    /// A sign-in fails when the OS random generator does, as Web Crypto
+    /// throws, rather than use a guessable verifier or state.
+    pub fn random(err: std::io::Error) -> AuthError {
+        AuthError::Failed(format!("The OS random generator failed: {err}"))
+    }
 }
 
 /// One choice of a select prompt.
@@ -302,8 +308,21 @@ pub trait OAuthProvider: Send + Sync {
     }
 }
 
-/// pi-ai's `ApiKeyAuth.resolve` of a provider an extension implements.
+/// pi-ai's `ApiKeyAuth` of a provider an extension implements.
 pub trait KeyAuth: Send + Sync {
+    /// The method's name, such as "Anthropic API key".
+    fn name(&self) -> &str;
+
+    /// Whether [`KeyAuth::login`] asks for the credential. Without it the
+    /// key is set up outside yapi.
+    fn has_login(&self) -> bool;
+
+    /// Asks for the credential to store through `interaction`.
+    fn login<'a>(
+        &'a self,
+        interaction: &'a Interaction,
+    ) -> BoxFuture<'a, Result<ApiKeyCredential, AuthError>>;
+
     /// Request credentials from `credential`, whose key is resolved, else
     /// from the environment; `None` when the provider is not configured.
     fn resolve<'a>(

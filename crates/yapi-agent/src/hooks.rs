@@ -143,8 +143,8 @@ pub trait AgentHooks: Send + Sync {
 
     /// The tools for the next request, read before each turn; `None` keeps
     /// the current ones.
-    fn current_tools(&self) -> Option<Vec<std::sync::Arc<dyn crate::Tool>>> {
-        None
+    fn current_tools(&self) -> BoxFuture<'_, Option<Vec<std::sync::Arc<dyn crate::Tool>>>> {
+        Box::pin(async { None })
     }
 
     /// Messages the user queued to steer the current run; drained when read.

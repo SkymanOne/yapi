@@ -178,6 +178,8 @@ impl Extension for CodemodeExtension {
             exposure: Exposure::ModelOnly,
             namespace: None,
             default_active: false,
+            annotations: None,
+            source: Some(builtin_source(NAME)),
         });
     }
 

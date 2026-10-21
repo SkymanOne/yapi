@@ -1,7 +1,7 @@
 // `@earendil-works/pi-coding-agent` for extensions in yapi: the API helpers
 // extensions use, built-in tools backed by yapi's own, and stubs for the rest of
 // pi's exports so every import links. A stub throws when called.
-import { Container, Editor, Text, backgroundAnsi, foregroundAnsi, parseColor } from "@earendil-works/pi-tui";
+import { Container, Editor, Text, backgroundAnsi, foregroundAnsi, getKeybindings, parseColor } from "@earendil-works/pi-tui";
 
 const yapi = globalThis.__yapi;
 
@@ -106,10 +106,7 @@ export function createLocalBashOperations() {
 			child.stderr.on("data", onData);
 			signal?.addEventListener("abort", kill, { once: true });
 			try {
-				const exitCode = await new Promise((resolve, reject) => {
-					child.on("error", reject);
-					child.on("close", resolve);
-				});
+				const exitCode = await yapi.waitForChild(child);
 				if (signal?.aborted) throw new Error("aborted");
 				if (timedOut) throw new Error(`timeout:${timeout}`);
 				// A shell a signal ended reports 128 plus the signal's number, as in pi.
@@ -191,20 +188,13 @@ export function parseFrontmatter(content) {
 }
 export const stripFrontmatter = (content) => parseFrontmatter(content).body;
 
-const mutationQueues = new Map();
+/** pi's `withFileMutationQueue`, in the host's queue, which yapi's edit and write tools share. */
 export async function withFileMutationQueue(path, fn) {
-	const previous = mutationQueues.get(path) ?? Promise.resolve();
-	let release;
-	const current = new Promise((resolve) => {
-		release = resolve;
-	});
-	mutationQueues.set(path, previous.then(() => current));
-	await previous.catch(() => {});
+	const id = await yapi.op("file.lock", { path: globalThis.__yapi_builtins.path.resolve(String(path)) });
 	try {
 		return await fn();
 	} finally {
-		release();
-		if (mutationQueues.get(path) === current) mutationQueues.delete(path);
+		yapi.request("file.unlock", { id });
 	}
 }
 
@@ -290,14 +280,24 @@ export function getSettingsListTheme() {
 		hint: (text) => theme.fg("dim", text),
 	};
 }
+/** pi's `formatKeyText`: keys as hints show them, with macOS's name for alt. */
+function formatKeyText(key) {
+	const part = (name) => (process.platform === "darwin" && name.toLowerCase() === "alt" ? "option" : name);
+	return key
+		.split("/")
+		.map((keys) => keys.split("+").map(part).join("+"))
+		.join("/");
+}
+/** The keys bound to `keybinding`, as the session's bindings give them; empty without one. */
 export function keyText(keybinding) {
-	return yapi.request("keys.text", { keybinding }) ?? keybinding;
+	const keys = getKeybindings().getKeys(keybinding);
+	return keys.length === 0 ? "" : formatKeyText(keys.join("/"));
 }
 export function keyHint(keybinding, description) {
-	return `${keyText(keybinding)} ${description}`;
+	return theme.fg("dim", keyText(keybinding)) + theme.fg("muted", ` ${description}`);
 }
 export function rawKeyHint(key, description) {
-	return `${key} ${description}`;
+	return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
 }
 
 // ----- components ---------------------------------------------------------------------------------

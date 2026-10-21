@@ -319,6 +319,8 @@ impl Extension for ToolSearchExtension {
             exposure: Exposure::ModelOnly,
             namespace: None,
             default_active: false,
+            annotations: None,
+            source: Some(builtin_source("tool-search")),
         });
     }
 }

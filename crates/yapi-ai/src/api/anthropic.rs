@@ -312,11 +312,8 @@ pub(super) async fn run(request: Request, sender: EventSender) {
             result = http::send(|| build(&headers), &options).await;
         }
         result.map_err(|failure| match failure {
-            Failure::Status { status, body } => match serde_json::from_str::<Value>(&body) {
-                Ok(json) => http::sdk_status_message(status, Some(&json), None),
-                Err(_) => http::sdk_status_message(status, None, Some(&body)),
-            },
-            other => other.plain_message().unwrap_or_default(),
+            Failure::Status { status, body } => sdk_message(status, &body),
+            other => other.plain_message(sdk_message).unwrap_or_default(),
         })
     }
     .await;
@@ -350,6 +347,14 @@ pub(super) async fn run(request: Request, sender: EventSender) {
 }
 
 /// Bearer auth with a federated token, adding the OAuth beta to any others.
+/// The Anthropic SDK's message for a failed status, which carries the body.
+fn sdk_message(status: u16, body: &str) -> String {
+    match serde_json::from_str::<Value>(body) {
+        Ok(json) => http::sdk_status_message(status, Some(&json), None),
+        Err(_) => http::sdk_status_message(status, None, Some(body)),
+    }
+}
+
 fn federated_headers(headers: &mut Headers, token: &str) {
     headers.set("authorization", Some(format!("Bearer {token}")));
     let beta = headers.get("anthropic-beta").map(str::to_owned);

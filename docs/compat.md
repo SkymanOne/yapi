@@ -23,8 +23,11 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | `newSession` setup | `setup` gets the new session's whole `SessionManager` | It reads the session and writes with `appendMessage`, `appendCustomEntry` and `appendSessionInfo`. Other writes throw. |
 | Failing session actions | A throwing `setup` or `withSession` callback ends interactive mode | yapi reports the error and keeps the current session. |
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
+| Clipboard | `copyToClipboard` writes its OSC 52 fallback to stdout in every mode | Only in interactive mode. In print, JSON and RPC modes stdout carries their output. |
+| `ctx.modelRegistry.getProvider` | The pi-ai `Provider` itself | Its id, name, models, `stream` and `streamSimple`. yapi's built-in providers are not JavaScript objects, and an extension's `Provider` stays in the runtime instance that registered it. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
 | Codemode scripts | May compute without limit | Stop after 60 seconds of computing without awaiting a call. |
+| Model availability of extension providers | `getAvailableOfType` runs a pi-ai `Provider`'s API key `check`, `filterModels` and `filterAllModels` on each call | `getAvailableOfType` returns what they kept at the last refresh. They run in the extension's runtime instance as extensions load, on `/login`, `/logout` and `--api-key`, when the model selector opens, on `/reload`, on `ctx.modelRegistry.refresh` and after an extension registers or unregisters a provider. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them. |
 | Native extensions | None | WebAssembly components written in Rust. See [Native extensions](native-extensions.md). Unstable until 1.0. |
 
 ## Packages and installation
@@ -53,6 +56,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Word motions in Chinese, Japanese and Thai | By dictionary word | By character, to keep ICU's dictionaries out of the binary. |
 | Time zones | Node's own time zone data | The system's time zone database. With `TZ` set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless `TZ` holds a POSIX rule such as `EST5EDT`. |
 | Links | A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written. | A click opens only `http`, `https` and `mailto` links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command. |
+| MCP sign-in page | Opens the authorization endpoint an MCP server names with any scheme but `javascript`, `data` and `vbscript` | Opens only `http` and `https` endpoints and fails the sign-in on another scheme. The page opens without a click, and another scheme could launch an app or run a program. |
 | Syntax highlighting | Highlights code in messages and tool rows | Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with [`pi.yapi.registerCodeRenderer`](extensions.md#code-renderers). |
 | Markdown transformers | Change a message's Markdown before it shows | A message shows as written in its first frame, and each change while it streams shows transformed one frame late. |
 | Images in the terminal | A Herdr pane shows images when the outer terminal's variables reach it, such as Ghostty's. Image data reaches the terminal as written. | A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command. |
@@ -67,11 +71,3 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Session lines with an unpaired surrogate | Text cut inside an emoji is written as an unpaired UTF-16 escape, such as `\ud83d` | The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one. |
 | Failed session writes | Later entries can point to an entry that is missing from the file | yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole. |
 | Fractions in count settings | A fraction such as `1.5` in `retry.maxRetries`, `retry.baseDelayMs`, `thinkingBudgets`, `editorPaddingX` or a similar count reaches the code that uses it unchanged | The fraction is rounded down, since yapi counts retries, milliseconds, tokens and cells in whole numbers. Whole numbers written as floats, such as `1.5e5`, read as in Pi, and Pi's own rounding of `terminal.imageWidthCells` and its checks of the `compaction` token settings apply as in Pi. |
-
-## Open gaps
-
-Pi features yapi does not have yet, or has only in part. Each row links its issue.
-
-| Area | Pi | yapi today | Issue |
-|---|---|---|---|
-| Complete pi-ai providers | A `Provider` passed to `registerProvider` can limit its models per account with `filterModels`, and checks for an API key on every availability refresh. `/login` asks for its key with its own prompt. | `filterModels` and `filterAllModels` are ignored. The API key check runs once as the extension loads, and `/login` asks for the key with yapi's prompt. | [#54](https://github.com/SkymanOne/yapi/issues/54) |
