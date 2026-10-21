@@ -54,7 +54,7 @@ fn token(json: &Value, operation: &str) -> Result<OAuthCredential, AuthError> {
         (Some(access), Some(refresh), Some(expires_in)) => Ok(OAuthCredential {
             access: access.to_owned(),
             refresh: refresh.to_owned(),
-            expires: now_ms() + (expires_in * 1000.0) as u64,
+            expires: (now_ms() + (expires_in * 1000.0) as u64) as f64,
             extra: Map::new(),
         }),
         _ => Err(AuthError::Failed(format!(

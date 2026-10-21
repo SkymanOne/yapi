@@ -359,7 +359,7 @@ async fn copilot_device_flow() {
         .unwrap();
     assert_eq!(credential.refresh, "gho_token");
     assert_eq!(credential.access, "tid=1;exp=2");
-    assert_eq!(credential.expires, 4_000_000_000_000 - 300_000);
+    assert_eq!(credential.expires, 4_000_000_000_000.0 - 300_000.0);
     assert_eq!(
         credential.extra["availableModelIds"],
         json!(["picked", known])
@@ -463,7 +463,7 @@ impl OAuthProvider for NoKey {
         Box::pin(async move {
             Ok(OAuthCredential {
                 access: "access-2".into(),
-                expires: u64::MAX,
+                expires: f64::MAX,
                 ..credential.clone()
             })
         })
@@ -615,7 +615,7 @@ async fn refresh_failures_and_key_login() {
             Credential::OAuth(OAuthCredential {
                 access: "a".into(),
                 refresh: "r".into(),
-                expires: 0,
+                expires: 0.0,
                 extra: serde_json::Map::new(),
             }),
             &cancel,
@@ -855,7 +855,7 @@ async fn openrouter_code_for_key() {
         .await
         .unwrap();
     assert_eq!(credential.access, "sk-or-v1-key");
-    assert_eq!(credential.expires, 9_007_199_254_740_991);
+    assert_eq!(credential.expires, 9_007_199_254_740_991.0);
     let url = auth_url(&events.lock().unwrap());
     let callback = query(&url, "callback_url");
     assert!(callback.starts_with("http://127.0.0.1:"), "{callback}");

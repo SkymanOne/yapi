@@ -112,7 +112,7 @@ impl OpenRouterOAuth {
         Ok(OAuthCredential {
             access: key.to_owned(),
             refresh: String::new(),
-            expires: NEVER,
+            expires: NEVER as f64,
             extra: Map::new(),
         })
     }

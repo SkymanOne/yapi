@@ -125,7 +125,8 @@ impl RadiusOAuth {
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
-            expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(TOKEN_EXPIRY_SKEW_MS),
+            expires: (now_ms() + (expires_in * 1000.0) as u64).saturating_sub(TOKEN_EXPIRY_SKEW_MS)
+                as f64,
             extra,
         }))
     }

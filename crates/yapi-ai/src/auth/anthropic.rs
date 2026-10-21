@@ -58,7 +58,7 @@ fn credential(token: Token) -> OAuthCredential {
     OAuthCredential {
         access: token.access,
         refresh: token.refresh,
-        expires: expiry(token.expires_in, EXPIRY_MARGIN_MS),
+        expires: expiry(token.expires_in, EXPIRY_MARGIN_MS) as f64,
         extra: Map::new(),
     }
 }

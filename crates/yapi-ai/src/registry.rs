@@ -1542,7 +1542,7 @@ impl ModelRegistry {
         min_validity_ms: u64,
     ) -> Result<Option<OAuthCredential>, String> {
         let expires_soon = |credential: &OAuthCredential| {
-            crate::auth::now_ms() + min_validity_ms >= credential.expires
+            (crate::auth::now_ms() + min_validity_ms) as f64 >= credential.expires
         };
         if !expires_soon(&stored) {
             return Ok(Some(stored));

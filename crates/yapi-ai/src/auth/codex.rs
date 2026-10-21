@@ -81,7 +81,7 @@ fn credential(token: Token) -> Result<OAuthCredential, AuthError> {
     Ok(OAuthCredential {
         access: token.access,
         refresh: token.refresh,
-        expires: token.expires,
+        expires: token.expires as f64,
         extra,
     })
 }

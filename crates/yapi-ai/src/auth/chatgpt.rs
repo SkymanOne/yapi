@@ -116,7 +116,7 @@ fn credential(token: &Value, client_id: &str) -> Result<OAuthCredential, AuthErr
     Ok(OAuthCredential {
         access,
         refresh,
-        expires: expiry(expires_in, EXPIRY_MARGIN_MS),
+        expires: expiry(expires_in, EXPIRY_MARGIN_MS) as f64,
         extra,
     })
 }

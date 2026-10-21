@@ -256,7 +256,7 @@ impl CopilotOAuth {
         Ok(OAuthCredential {
             access: token.to_owned(),
             refresh: github_token.to_owned(),
-            expires: expires.saturating_sub(EXPIRY_MARGIN_MS),
+            expires: expires.saturating_sub(EXPIRY_MARGIN_MS) as f64,
             extra,
         })
     }
