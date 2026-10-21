@@ -2542,15 +2542,7 @@ impl Bridge for SessionBridge {
                 self.spawn(refresh_offline(session));
                 Ok(Value::Null)
             }
-            "commands.list" => Ok(Value::Array(
-                session
-                    .extension_commands()
-                    .into_iter()
-                    .map(|resolved| {
-                        json!({"name": resolved.invocation, "description": resolved.command.description, "source": "extension", "sourceInfo": resolved.extension.source()})
-                    })
-                    .collect(),
-            )),
+            "commands.list" => Ok(to_json(session.slash_commands())),
             "thinking.get" => Ok(Value::String(session.thinking_level().as_str().into())),
             "thinking.set" => {
                 if let Some(level) = payload["level"].as_str().and_then(ThinkingLevel::parse) {

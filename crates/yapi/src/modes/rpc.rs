@@ -24,8 +24,8 @@ use tokio::io::AsyncBufReadExt;
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, UserBash};
 use yapi_types::message::Message;
 use yapi_types::rpc::{
-    self, CommandSource, ContextUsage, ExtensionUiResponse, ForkMessage, RpcCommand, SessionState,
-    SessionStats, SlashCommand, StreamingBehavior, TokenTotals, response_line,
+    self, ContextUsage, ExtensionUiResponse, ForkMessage, RpcCommand, SessionState, SessionStats,
+    StreamingBehavior, TokenTotals, response_line,
 };
 
 use crate::runtime::{self, Runtime, SessionFactory};
@@ -694,33 +694,7 @@ async fn handle(rpc: &Rpc, id: Option<&Value>, command: RpcCommand) -> Reply {
             let messages: Vec<Message> = session.messages();
             data(&json!({ "messages": value(&messages)? }))
         }
-        RpcCommand::GetCommands => {
-            let resources = session.resources();
-            let mut commands: Vec<SlashCommand> = Vec::new();
-            commands.extend(session.extension_commands().into_iter().map(|resolved| {
-                SlashCommand {
-                    name: resolved.invocation,
-                    // pi omits a description the command did not give.
-                    description: Some(resolved.command.description)
-                        .filter(|description| !description.is_empty()),
-                    source: CommandSource::Extension,
-                    source_info: resolved.extension.source(),
-                }
-            }));
-            commands.extend(resources.templates.iter().map(|template| SlashCommand {
-                name: template.name.clone(),
-                description: Some(template.description.clone()),
-                source: CommandSource::Prompt,
-                source_info: template.source.clone(),
-            }));
-            commands.extend(resources.skills.iter().map(|skill| SlashCommand {
-                name: format!("skill:{}", skill.name),
-                description: Some(skill.description.clone()),
-                source: CommandSource::Skill,
-                source_info: skill.source.clone(),
-            }));
-            data(&json!({ "commands": value(&commands)? }))
-        }
+        RpcCommand::GetCommands => data(&json!({ "commands": value(&session.slash_commands())? })),
     }
 }
 
