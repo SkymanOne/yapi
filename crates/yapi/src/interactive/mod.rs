@@ -46,7 +46,7 @@ use yapi_core::agent_session::{
     AgentSession, Replacement, SessionChange, TreeNavigation, TreeOutcome, UserBash,
 };
 use yapi_core::bash_executor::BashResult;
-use yapi_core::extensions::{BashOperations, SessionAction};
+use yapi_core::extensions::{BashOperations, SessionAction, Setup};
 use yapi_core::extensions::{Mode, NotifyKind};
 use yapi_core::session::SessionManager;
 use yapi_tui::autocomplete::AutocompleteProvider;
@@ -2893,7 +2893,7 @@ impl App {
                     ));
                 }
             }
-            "app.session.new" => self.new_session(None, None),
+            "app.session.new" => self.new_session(None, None, None),
             "app.session.tree" => self.open_tree(None),
             "app.session.fork" => self.open_fork(),
             "app.session.resume" => self.open_resume(),
@@ -3583,14 +3583,16 @@ impl App {
     // Sessions
 
     /// pi's runtime replacement: the current session settles and shuts down,
-    /// a session built around `manager` takes its place for `reason`, and
-    /// `done` runs once it shows, or with the error that kept it from being
-    /// built. An extension command waiting on `reply` hears of a failure at
-    /// once, otherwise once the replacement's extensions have started.
+    /// a session built around `manager` runs `setup` and takes its place for
+    /// `reason`, and `done` runs once it shows, or with the error that kept
+    /// it from being built. An extension command waiting on `reply` hears of
+    /// a failure at once, otherwise once the replacement's extensions have
+    /// started.
     fn replace_session(
         &mut self,
         manager: SessionManager,
         reason: Replacement,
+        setup: Option<Setup>,
         reply: Reply,
         done: impl FnOnce(&mut App, Result<(), String>) + Send + 'static,
     ) {
@@ -3617,6 +3619,9 @@ impl App {
             let built = factory(manager, reason)
                 .await
                 .map_err(|error| error.to_string());
+            if let (Ok(session), Some(setup)) = (&built, setup) {
+                setup(session.clone()).await;
+            }
             let replaced = Replaced {
                 reason,
                 previous,
@@ -3698,8 +3703,9 @@ impl App {
         });
     }
 
-    /// pi's `newSession`, linked to `parent` when given; `/new` also says so.
-    fn new_session(&mut self, parent: Option<String>, reply: Reply) {
+    /// pi's `newSession`, linked to `parent` when given, which runs `setup`
+    /// before the new session shows; `/new` also says so.
+    fn new_session(&mut self, parent: Option<String>, setup: Option<Setup>, reply: Reply) {
         self.indicator = None;
         self.unless_cancelled(SessionChange::New, reply, |app, reply| {
             let command = reply.is_none();
@@ -3712,6 +3718,7 @@ impl App {
             app.replace_session(
                 manager,
                 Replacement::New,
+                setup,
                 reply,
                 move |app, result| match result {
                     Ok(()) if command => app.once_bound(|app| {
@@ -3744,8 +3751,12 @@ impl App {
                     Err(error) if command => return app.error(error),
                     Err(error) => return app.fatal("Failed to fork session", &error, reply),
                 };
-                app.replace_session(manager, Replacement::Fork, reply, move |app, result| {
-                    match result {
+                app.replace_session(
+                    manager,
+                    Replacement::Fork,
+                    None,
+                    reply,
+                    move |app, result| match result {
                         Ok(()) if at && command => app.once_bound(|app| {
                             app.set_editor_text("");
                             app.status("Cloned to new session");
@@ -3756,8 +3767,8 @@ impl App {
                         }),
                         Err(error) if command => app.error(error),
                         Err(error) => app.fatal("Failed to fork session", &error, None),
-                    }
-                });
+                    },
+                );
             },
         );
     }
@@ -3800,6 +3811,7 @@ impl App {
         self.replace_session(
             manager,
             Replacement::Resume,
+            None,
             reply,
             move |app, result| match result {
                 Ok(()) if in_cwd => {
@@ -4641,7 +4653,7 @@ impl App {
     fn on_action(&mut self, (action, reply): crate::runtime::ActionRequest) {
         let reply = Some(reply);
         match action {
-            SessionAction::New { parent } => self.new_session(parent, reply),
+            SessionAction::New { parent, setup } => self.new_session(parent, setup, reply),
             SessionAction::Fork { entry_id, at } => self.fork(&entry_id, at, reply),
             SessionAction::Tree { target_id, options } => {
                 let session = self.session.clone();
@@ -5212,9 +5224,15 @@ mod tests {
     #[tokio::test]
     async fn a_session_change_waits_for_the_one_in_progress() {
         let (mut app, mut events) = app();
-        app.new_session(None, None);
+        app.new_session(None, None, None);
         let (reply, mut outcome) = tokio::sync::oneshot::channel();
-        app.on_action((SessionAction::New { parent: None }, reply));
+        app.on_action((
+            SessionAction::New {
+                parent: None,
+                setup: None,
+            },
+            reply,
+        ));
         assert_eq!(
             outcome.try_recv().unwrap(),
             Err("Another session change is in progress".to_owned())
@@ -5228,7 +5246,7 @@ mod tests {
         let (mut app, mut events) = app();
         // A fork an extension asked for, whose `withSession` failed.
         app.once_bound(|app| app.set_editor_text("forked"));
-        app.new_session(None, None);
+        app.new_session(None, None, None);
         replaced(&mut app, &mut events).await;
         app.on_event(Event::Bound(app.epoch, None));
         assert_eq!(app.editor.text(), "");
@@ -5240,7 +5258,7 @@ mod tests {
     async fn a_replaced_sessions_late_start_leaves_held_text_waiting() {
         let (mut app, mut events) = app();
         let stale = app.epoch;
-        app.new_session(None, None);
+        app.new_session(None, None, None);
         replaced(&mut app, &mut events).await;
         app.once_bound(|app| app.set_editor_text("bound"));
         app.on_submit("hello".into());
@@ -5262,7 +5280,7 @@ mod tests {
             options: TreeNavigation::default(),
         };
         app.on_action((tree, reply));
-        app.new_session(None, None);
+        app.new_session(None, None, None);
         replaced(&mut app, &mut events).await;
         app.on_event(Event::Bound(app.epoch, None));
         let rows: Vec<String> = app.transcript(80).iter().map(text).collect();

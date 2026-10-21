@@ -26,7 +26,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
-use yapi_types::auth::OAuthCredential;
+use yapi_types::auth::{ApiKeyCredential, OAuthCredential};
 
 pub use store::{CredentialKind, CredentialStore};
 
@@ -300,6 +300,16 @@ pub trait OAuthProvider: Send + Sync {
             })
         })
     }
+}
+
+/// pi-ai's `ApiKeyAuth.resolve` of a provider an extension implements.
+pub trait KeyAuth: Send + Sync {
+    /// Request credentials from `credential`, whose key is resolved, else
+    /// from the environment; `None` when the provider is not configured.
+    fn resolve<'a>(
+        &'a self,
+        credential: Option<&'a ApiKeyCredential>,
+    ) -> BoxFuture<'a, Result<Option<crate::key_auth::Resolved>, String>>;
 }
 
 /// The built-in sign-in for a provider id, if yapi implements it.

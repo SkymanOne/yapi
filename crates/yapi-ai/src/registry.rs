@@ -19,11 +19,12 @@ use yapi_types::classify::{AssistantImages, ClassifierContext, ClassifierResult,
 use yapi_types::model::{ClassifierModel, ImageModel, Model, Pricing};
 use yapi_types::models::{ModelDefinition, ModelOverride, ModelsConfig, ProviderConfig};
 
-use crate::api::classify::{ClassifyOptions, failure_reason};
+use crate::api::ModelOperations;
+use crate::api::classify::ClassifyOptions;
 use crate::api::images::ImagesOptions;
 use crate::auth::{
-    AuthError, AuthPrompt, CredentialKind, CredentialStore, Interaction, LoginOptions, OAuthAuth,
-    OAuthProvider, builtin_oauth, copilot,
+    AuthError, AuthPrompt, CredentialKind, CredentialStore, Interaction, KeyAuth, LoginOptions,
+    OAuthAuth, OAuthProvider, builtin_oauth, copilot,
 };
 use crate::catalog;
 use crate::credentials::{self, BEARER_TOKEN_ENV, ProviderEnv};
@@ -121,6 +122,15 @@ fn environment_source(provider: &str) -> Option<String> {
         })
 }
 
+/// `credential` with its key resolved; no key when it does not resolve.
+async fn resolve_stored(credential: ApiKeyCredential) -> ApiKeyCredential {
+    let key = match &credential.key {
+        Some(key) => credentials::resolve(key, credential.env.as_ref(), true).await,
+        None => None,
+    };
+    ApiKeyCredential { key, ..credential }
+}
+
 /// A model that stands for a provider in provider-level auth.
 /// Replaces the models `key` matches by id with `refreshed` ones, and
 /// appends the new ones; pi's `mergeModels`.
@@ -205,6 +215,15 @@ pub struct ModelRegistry {
     llama: bool,
     /// Models extension providers register, by provider.
     extension_models: IndexMap<String, Vec<Model>>,
+    /// The image and classifier models of extension providers that define
+    /// models, by provider. They replace the provider's own, as in pi.
+    extension_typed: IndexMap<String, Vec<ModelDefinition>>,
+    /// Classifier and image APIs extension providers implement, by
+    /// provider and API.
+    operations: IndexMap<(String, String), Arc<dyn ModelOperations>>,
+    /// API-key auth of extension providers, with where the credential
+    /// comes from when nothing is stored, `None` when it is not configured.
+    key_auths: IndexMap<String, (Arc<dyn KeyAuth>, Option<String>)>,
     /// Where refreshed catalogs persist.
     models_store: Option<ModelsStore>,
 }
@@ -344,6 +363,99 @@ fn model_from_definition(
         headers: None,
         kind: None,
     })
+}
+
+/// Whether `definition` is an image or classifier model, or of a type
+/// yapi does not know, rather than a chat model.
+fn is_typed(definition: &ModelDefinition) -> bool {
+    definition
+        .kind
+        .as_deref()
+        .is_some_and(|kind| kind != "chat")
+}
+
+/// The image and classifier models of an extension provider's
+/// `definitions`, over `classifiers` and `images`, the provider's own: pi's
+/// `extensionModelFromDefinition`. Each takes its API and base URL from the
+/// definition, the provider's base URL, else an own model of its type with
+/// its id or API, else the first. Definitions of other types are skipped.
+fn typed_models(
+    provider: &str,
+    config: &ProviderConfig,
+    definitions: &[ModelDefinition],
+    classifiers: &[ClassifierModel],
+    images: &[ImageModel],
+) -> Result<(Vec<ClassifierModel>, Vec<ImageModel>), String> {
+    let mut typed = (Vec::new(), Vec::new());
+    for definition in definitions {
+        let own: Vec<(&str, &str, &str)> = match definition.kind.as_deref() {
+            Some("classifier") => classifiers
+                .iter()
+                .filter(|model| model.provider == provider)
+                .map(|model| {
+                    (
+                        model.id.as_str(),
+                        model.api.as_str(),
+                        model.base_url.as_str(),
+                    )
+                })
+                .collect(),
+            Some("image") => images
+                .iter()
+                .filter(|model| model.provider == provider)
+                .map(|model| {
+                    (
+                        model.id.as_str(),
+                        model.api.as_str(),
+                        model.base_url.as_str(),
+                    )
+                })
+                .collect(),
+            _ => continue,
+        };
+        let defaults = own
+            .iter()
+            .find(|(id, ..)| *id == definition.id)
+            .or_else(|| {
+                own.iter()
+                    .find(|(_, api, _)| definition.api.as_deref() == Some(*api))
+            })
+            .or_else(|| own.first());
+        let api = definition
+            .api
+            .as_deref()
+            .or(defaults.map(|(_, api, _)| *api))
+            .ok_or_else(|| {
+                format!(
+                    "Provider {provider}, model {}: no \"api\" specified. Set it at model level.",
+                    definition.id
+                )
+            })?;
+        let base_url = definition
+            .base_url
+            .as_deref()
+            .or(config.base_url.as_deref())
+            .or(defaults.map(|(.., base_url)| *base_url))
+            .ok_or_else(|| {
+                format!("Provider {provider}: \"baseUrl\" is required when defining custom models.")
+            })?;
+        let invalid =
+            |err: serde_json::Error| format!("Provider {provider}, model {}: {err}", definition.id);
+        let mut model = serde_json::to_value(definition).map_err(invalid)?;
+        model["api"] = Value::from(api);
+        model["provider"] = Value::from(provider);
+        model["baseUrl"] = Value::from(base_url);
+        if definition.kind.as_deref() == Some("classifier") {
+            typed
+                .0
+                .push(serde_json::from_value(model).map_err(invalid)?);
+        } else {
+            typed
+                .1
+                .push(serde_json::from_value(model).map_err(invalid)?);
+        }
+    }
+    Ok(typed)
 }
 
 fn apply_override(model: &mut Model, over: &ModelOverride) {
@@ -641,6 +753,21 @@ impl ModelRegistry {
         Some(self.auth(&model).await)
     }
 
+    /// Credentials for `provider` as a whole, with its `models.json` headers
+    /// but no model's, as pi's `getAuth(providerId)`. `None` for a provider
+    /// the registry does not know.
+    pub async fn provider_level_auth(&self, provider: &str) -> Option<Auth> {
+        let known = providers::info(provider).is_some()
+            || self.config.providers.contains_key(provider)
+            || self.oauth.contains_key(provider)
+            || self.models.iter().any(|model| model.provider == provider)
+            || (self.llama && provider == crate::llama::PROVIDER_ID);
+        if !known {
+            return None;
+        }
+        Some(self.auth(&placeholder_model(provider)?).await)
+    }
+
     /// The catalog alone, with no files.
     pub fn builtin() -> ModelRegistry {
         let mut registry = ModelRegistry::default();
@@ -663,6 +790,20 @@ impl ModelRegistry {
                 (model.provider == *provider).then_some(model.id.as_str())
             });
         }
+        let mut errors = Vec::new();
+        let unconfigured = ProviderConfig::default();
+        for (provider, definitions) in &self.extension_typed {
+            let config = self.config.providers.get(provider).unwrap_or(&unconfigured);
+            match typed_models(provider, config, definitions, &classifiers, &images) {
+                Ok((own_classifiers, own_images)) => {
+                    classifiers.retain(|model| model.provider != *provider);
+                    classifiers.extend(own_classifiers);
+                    images.retain(|model| model.provider != *provider);
+                    images.extend(own_images);
+                }
+                Err(err) => errors.push(err),
+            }
+        }
         self.classifiers = classifiers;
         self.images = images;
         let mut providers: Vec<String> = catalog::builtin_providers().map(str::to_owned).collect();
@@ -674,7 +815,6 @@ impl ModelRegistry {
         if self.llama && !providers.iter().any(|id| id == crate::llama::PROVIDER_ID) {
             providers.push(crate::llama::PROVIDER_ID.into());
         }
-        let mut errors = Vec::new();
         for (provider, config) in self.config.providers.clone() {
             let (mut own, others): (Vec<Model>, Vec<Model>) = models
                 .into_iter()
@@ -831,19 +971,18 @@ impl ModelRegistry {
                 &mut options.headers,
             ),
             Err(message) => {
-                return ClassifierResult {
-                    api: model.api,
-                    provider: model.provider,
-                    model: model.id,
-                    answers: IndexMap::new(),
-                    usage: None,
-                    stop_reason: failure_reason(&options.cancel),
-                    error_message: Some(message),
-                    timestamp: crate::stream::now_ms(),
-                };
+                return crate::api::classify::error_result(&model, message, &options.cancel);
             }
         }
-        crate::api::classify::classify(&model, context, &options).await
+        match self.operations_for(&model.provider, &model.api) {
+            Some(own) => own.classify(&model, context, &options).await,
+            None => crate::api::classify::classify(&model, context, &options).await,
+        }
+    }
+
+    /// The extension implementation of `provider`'s classifier or image API `api`.
+    fn operations_for(&self, provider: &str, api: &str) -> Option<&Arc<dyn ModelOperations>> {
+        self.operations.get(&(provider.to_owned(), api.to_owned()))
     }
 
     /// Generates images with `model`, resolving the provider's credentials;
@@ -871,29 +1010,31 @@ impl ModelRegistry {
                 &mut options.headers,
             ),
             Err(message) => {
-                return AssistantImages {
-                    api: model.api,
-                    provider: model.provider,
-                    model: model.id,
-                    output: Vec::new(),
-                    response_id: None,
-                    usage: None,
-                    stop_reason: failure_reason(&options.cancel),
-                    error_message: Some(message),
-                    timestamp: crate::stream::now_ms(),
-                };
+                return crate::api::images::error_result(&model, message, &options.cancel);
             }
         }
-        crate::api::images::generate_images(&model, context, &options).await
+        match self.operations_for(&model.provider, &model.api) {
+            Some(own) => own.generate_images(&model, context, &options).await,
+            None => crate::api::images::generate_images(&model, context, &options).await,
+        }
     }
 
     /// Adds a provider an extension configures, as a `models.json` entry
     /// that replaces any of the same name; pi's `registerProvider`.
-    pub fn register_config(&mut self, provider: &str, config: ProviderConfig) {
+    pub fn register_config(&mut self, provider: &str, mut config: ProviderConfig) {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
         }
         self.extension_providers.insert(provider.to_owned());
+        match config.models.as_mut() {
+            Some(models) => {
+                let typed = models.extract_if(.., |model| is_typed(model)).collect();
+                self.extension_typed.insert(provider.to_owned(), typed);
+            }
+            None => {
+                self.extension_typed.shift_remove(provider);
+            }
+        }
         self.config.providers.insert(provider.to_owned(), config);
         self.rebuild();
     }
@@ -904,7 +1045,7 @@ impl ModelRegistry {
     pub fn replace_models(
         &mut self,
         provider: &str,
-        models: Vec<ModelDefinition>,
+        mut models: Vec<ModelDefinition>,
     ) -> Result<(), String> {
         let config = self
             .config
@@ -913,12 +1054,61 @@ impl ModelRegistry {
             .ok_or_else(|| format!("Unknown provider: {provider}"))?;
         // Any built-in model supplies the API and base URL a definition leaves out.
         let defaults = catalog::builtin_models(provider).into_iter().next();
+        let typed: Vec<ModelDefinition> = models.extract_if(.., |model| is_typed(model)).collect();
         for definition in &models {
             model_from_definition(provider, definition, config, defaults.as_ref())?;
         }
+        typed_models(
+            provider,
+            config,
+            &typed,
+            &catalog::all_builtin_classifiers(),
+            &catalog::all_builtin_image_models(),
+        )?;
         config.models = Some(models);
+        self.extension_typed.insert(provider.to_owned(), typed);
         self.rebuild();
         Ok(())
+    }
+
+    /// Uses `implementation` for `provider`'s classifier and image models of
+    /// `apis`; pi's `classifiers` and `images` of an extension's provider.
+    pub fn register_operations(
+        &mut self,
+        provider: &str,
+        apis: impl IntoIterator<Item = String>,
+        implementation: Arc<dyn ModelOperations>,
+    ) {
+        for api in apis {
+            let key = (provider.to_owned(), api);
+            self.operations.insert(key, Arc::clone(&implementation));
+        }
+    }
+
+    /// Resolves `provider`'s API key with `auth` instead of the environment.
+    /// `source` says where its credential comes from when nothing is stored,
+    /// `None` when it is not configured.
+    pub fn register_key_auth(
+        &mut self,
+        provider: &str,
+        auth: Arc<dyn KeyAuth>,
+        source: Option<String>,
+    ) {
+        self.key_auths.insert(provider.to_owned(), (auth, source));
+    }
+
+    /// Uses `models` as `provider`'s chat models, as an extension's legacy
+    /// `oauth.modifyModels` made them for its signed-in account; `None`
+    /// restores the provider's own.
+    pub fn modify_models(&mut self, provider: &str, models: Option<Vec<Model>>) {
+        match models {
+            Some(models) => self.register_provider(provider, models),
+            None => {
+                if self.extension_models.shift_remove(provider).is_some() {
+                    self.rebuild();
+                }
+            }
+        }
     }
 
     /// The credential a catalog refresh of `provider` passes to the network,
@@ -1065,7 +1255,7 @@ impl ModelRegistry {
             return (credentials::is_command(key) || credentials::is_configured(key, None))
                 .then(|| "configured API key".into());
         }
-        environment_source(provider)
+        self.ambient_source(provider)
     }
 
     /// How `provider` is configured, as pi's `getProviderAuthStatus` labels
@@ -1099,7 +1289,16 @@ impl ModelRegistry {
             };
             return Some(source.into());
         }
-        environment_source(provider)
+        self.ambient_source(provider)
+    }
+
+    /// Where `provider`'s credential comes from when nothing is stored or
+    /// configured: its extension's key auth, else [`environment_source`].
+    fn ambient_source(&self, provider: &str) -> Option<String> {
+        match self.key_auths.get(provider) {
+            Some((_, source)) => source.clone(),
+            None => environment_source(provider),
+        }
     }
 
     /// The `apiKey` that `models.json` configures for `provider`, if any.
@@ -1198,7 +1397,8 @@ impl ModelRegistry {
         };
         if let Some(key) = self.runtime_keys.get(provider) {
             auth.api_key = Some(key.clone());
-            auth.source = Some("--api-key".into());
+            // pi reads a runtime key as a stored credential.
+            auth.source = Some("stored credential".into());
             return auth;
         }
         if let Some(error) = self.store_error(provider) {
@@ -1206,15 +1406,30 @@ impl ModelRegistry {
             return auth;
         }
         let mut env: Option<ProviderEnv> = None;
-        match self.credential(provider) {
+        let stored = self.credential(provider);
+        if let Some((own, _)) = self.key_auths.get(provider)
+            && !matches!(stored, Some(Credential::OAuth(_)))
+        {
+            let credential = match stored {
+                Some(Credential::ApiKey(credential)) => Some(resolve_stored(credential).await),
+                _ => None,
+            };
+            match own.resolve(credential.as_ref()).await {
+                Ok(Some(resolved)) => auth.use_resolved(resolved),
+                Ok(None) => {}
+                Err(message) => {
+                    auth.error = Some(format!(
+                        "API key auth failed for provider {provider}: {message}"
+                    ));
+                }
+            }
+            return auth;
+        }
+        match stored {
             Some(Credential::ApiKey(credential)) if key_auth::is_custom(provider) => {
                 // The stored credential owns the provider: an unresolved key
                 // leaves the provider's own fallbacks, not other sources.
-                let key = match &credential.key {
-                    Some(key) => credentials::resolve(key, credential.env.as_ref(), true).await,
-                    None => None,
-                };
-                let credential = ApiKeyCredential { key, ..credential };
+                let credential = resolve_stored(credential).await;
                 if let Some(resolved) =
                     key_auth::resolve(provider, Some(&credential), &Ambient::process())
                 {
@@ -1253,7 +1468,7 @@ impl ModelRegistry {
             match credentials::resolve(key, None, false).await {
                 Some(value) if !value.is_empty() => {
                     auth.api_key = Some(value);
-                    auth.source = Some("models.json".into());
+                    auth.source = Some("configured API key".into());
                 }
                 // pi resolves the configured key or fails, without falling
                 // back to the environment.
@@ -1389,6 +1604,13 @@ impl ModelRegistry {
     /// Whether an extension registered `provider`.
     pub fn registered_by_extension(&self, provider: &str) -> bool {
         self.extension_providers.contains(provider)
+    }
+
+    /// Whether `models.json` or an extension sets `authHeader` for `provider`.
+    pub fn auth_header(&self, provider: &str) -> bool {
+        self.provider_config(provider)
+            .and_then(|config| config.auth_header)
+            .unwrap_or(false)
     }
 
     /// Whether `models.json` or an extension configures an `apiKey` for
@@ -1556,6 +1778,86 @@ mod tests {
             "Provider y, model b: no \"api\" specified. Set at provider or model level."
         );
         assert_eq!(ids(&registry, "y"), ["a"]);
+    }
+
+    /// An extension's image and classifier definitions replace the
+    /// provider's models of those types, taking a missing API and base URL
+    /// from its own, and never list as chat models.
+    #[test]
+    fn typed_definitions_replace_the_providers_own() {
+        let config = |value| serde_json::from_value::<ProviderConfig>(value).unwrap();
+        let cost = serde_json::json!({"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0});
+        let mut registry = ModelRegistry::builtin();
+        assert!(
+            registry
+                .image_models()
+                .iter()
+                .filter(|model| model.provider == "openrouter")
+                .count()
+                > 1
+        );
+        registry.register_config(
+            "openrouter",
+            config(serde_json::json!({"models": [
+                {"type": "image", "id": "draw", "name": "Draw", "input": ["text"], "output": ["image"], "cost": cost},
+                {"type": "classifier", "id": "judge", "name": "Judge", "api": "x-classify", "baseUrl": "http://x", "input": ["text"], "cost": cost, "contextWindow": 10},
+                {"type": "embedding", "id": "embed"},
+            ]})),
+        );
+        let images: Vec<_> = registry
+            .image_models()
+            .iter()
+            .filter(|model| model.provider == "openrouter")
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(
+            (
+                images[0].id.as_str(),
+                images[0].api.as_str(),
+                images[0].base_url.as_str()
+            ),
+            ("draw", "openrouter-images", "https://openrouter.ai/api/v1")
+        );
+        let classifiers: Vec<_> = registry
+            .classifiers()
+            .iter()
+            .filter(|model| model.provider == "openrouter")
+            .collect();
+        assert_eq!(classifiers.len(), 1);
+        assert_eq!(
+            (classifiers[0].id.as_str(), classifiers[0].context_window),
+            ("judge", 10)
+        );
+        assert!(
+            !registry
+                .models()
+                .iter()
+                .any(|model| ["draw", "judge", "embed"].contains(&model.id.as_str()))
+        );
+
+        // A refreshed list is checked first, then replaces them in turn.
+        let models = |value| serde_json::from_value::<Vec<ModelDefinition>>(value).unwrap();
+        registry.register_config(
+            "x",
+            config(serde_json::json!({"baseUrl": "http://x", "models": []})),
+        );
+        let error = registry
+            .replace_models(
+                "x",
+                models(serde_json::json!([{"type": "classifier", "id": "c", "name": "C"}])),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error,
+            "Provider x, model c: no \"api\" specified. Set it at model level."
+        );
+        registry.replace_models("openrouter", Vec::new()).unwrap();
+        assert!(
+            !registry
+                .image_models()
+                .iter()
+                .any(|model| model.provider == "openrouter")
+        );
     }
 
     /// pi's `/login` labels for each credential source, and names from

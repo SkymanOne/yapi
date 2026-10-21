@@ -1369,3 +1369,67 @@ fn offline_flag_reaches_extensions_and_children() {
     let _ = std::fs::remove_dir_all(&home);
     assert!(stdout.contains(r#""content":"1 1 1 1""#), "{stdout}");
 }
+
+/// `newSession`'s `setup` names the `SessionManager` writes yapi does not
+/// make when it throws.
+#[test]
+fn new_session_setup_names_writes_yapi_does_not_make() {
+    use serde_json::{Value, json};
+    use std::io::{BufRead as _, Write as _};
+    let home = common::scratch("setup-writes");
+    std::fs::write(
+        home.join("setup.ts"),
+        r#"export default function (pi) {
+	pi.registerCommand("seed", {
+		handler: async (_args, ctx) => {
+			await ctx.newSession({
+				setup: async (manager) => {
+					try {
+						manager.appendLabelChange("x", "y");
+					} catch (error) {
+						manager.appendSessionInfo(error.message);
+					}
+				},
+			});
+		},
+	});
+}
+"#,
+    )
+    .unwrap();
+    let mut child = common::yapi(&home)
+        .args(["--mode", "rpc", "--no-session", "-e", "setup.ts"])
+        .env("PI_OFFLINE", "1")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut ask = |command: Value| {
+        writeln!(stdin, "{command}").unwrap();
+        loop {
+            let event: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            if event["type"] == "response" && event["id"] == command["id"] {
+                return event;
+            }
+        }
+    };
+    ask(json!({"id": "seed", "type": "prompt", "message": "/seed"}));
+    let mut name = Value::Null;
+    for _ in 0..500 {
+        name = ask(json!({"id": "state", "type": "get_state"}))["data"]["sessionName"].clone();
+        if !name.is_null() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    drop(stdin);
+    child.wait().unwrap();
+    assert_eq!(
+        name,
+        "sessionManager.appendLabelChange() is not available in yapi extensions"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

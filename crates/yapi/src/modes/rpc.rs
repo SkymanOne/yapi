@@ -507,7 +507,7 @@ async fn handle(rpc: &Rpc, id: Option<&Value>, command: RpcCommand) -> Reply {
             data(&json!({"steering": steering, "followUp": follow_up}))
         }
         RpcCommand::NewSession { parent_session } => {
-            let cancelled = rpc.runtime.new_session(parent_session).await?;
+            let cancelled = rpc.runtime.new_session(parent_session, None).await?;
             if !cancelled {
                 rpc.runtime.rebind().await;
             }

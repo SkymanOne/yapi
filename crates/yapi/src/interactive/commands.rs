@@ -695,7 +695,7 @@ impl super::App {
                 }
             }
             "/tree" => self.open_tree(None),
-            "/new" => self.new_session(None, None),
+            "/new" => self.new_session(None, None, None),
             "/compact" => {
                 self.indicator = None;
                 let session = self.session.clone();
@@ -857,14 +857,18 @@ impl super::App {
             }
             match SessionManager::open(&destination, Some(&dir), None) {
                 Ok(manager) => {
-                    app.replace_session(manager, Replacement::Resume, None, move |app, result| {
-                        match result {
+                    app.replace_session(
+                        manager,
+                        Replacement::Resume,
+                        None,
+                        None,
+                        move |app, result| match result {
                             Ok(()) => app.once_bound(move |app| {
                                 app.status(format!("Session imported from: {path}"))
                             }),
                             Err(error) => app.fatal("Failed to import session", &error, None),
-                        }
-                    });
+                        },
+                    );
                 }
                 Err(error) => app.fatal("Failed to import session", &error.to_string(), None),
             }
@@ -915,6 +919,7 @@ impl super::App {
         self.replace_session(
             manager,
             Replacement::Reload,
+            None,
             reply,
             move |app, result| match result {
                 Ok(()) => app.reloaded(&previous),

@@ -18,8 +18,11 @@ pub use codex_websocket::{
     debug_stats as codex_websocket_stats, reset_debug_stats as reset_codex_websocket_stats,
 };
 
+use futures_util::future::BoxFuture;
 use indexmap::IndexMap;
+use yapi_types::classify::{AssistantImages, ClassifierContext, ClassifierResult, ImagesContext};
 use yapi_types::message::{Content, ContentBlock, Message};
+use yapi_types::model::{ClassifierModel, ImageModel};
 
 use crate::http::Headers;
 use crate::stream::{EventStream, Provider, Request, new_output, now_ms, send_error};
@@ -178,12 +181,33 @@ pub(crate) fn copilot_headers(messages: &[Message]) -> Vec<(&'static str, String
     headers
 }
 
+/// The classifier and image APIs a provider an extension registers
+/// implements; pi-ai's `classify` and `generateImages` of the provider.
+pub trait ModelOperations: Send + Sync {
+    /// Classifies `context` with `model`. Failures are in the result.
+    fn classify<'a>(
+        &'a self,
+        model: &'a ClassifierModel,
+        context: &'a ClassifierContext,
+        options: &'a classify::ClassifyOptions,
+    ) -> BoxFuture<'a, ClassifierResult>;
+
+    /// Generates images with `model`. Failures are in the result.
+    fn generate_images<'a>(
+        &'a self,
+        model: &'a ImageModel,
+        context: &'a ImagesContext,
+        options: &'a images::ImagesOptions,
+    ) -> BoxFuture<'a, AssistantImages>;
+}
+
 /// Wire APIs by id: the built-ins plus any registered by extensions.
 #[derive(Clone, Default)]
 pub struct Apis {
     registered: IndexMap<String, Arc<dyn Provider>>,
-    /// Streams of extension providers for their own models, by provider id.
-    providers: IndexMap<String, Arc<dyn Provider>>,
+    /// Streams of extension providers for their own models, by provider id
+    /// and API.
+    providers: IndexMap<(String, String), Arc<dyn Provider>>,
 }
 
 impl Apis {
@@ -194,9 +218,11 @@ impl Apis {
 
     /// Streams the models of `provider` whose API is `implementation`'s with
     /// `implementation`, ahead of every other implementation of that API;
-    /// pi's `streamSimple` in an extension's provider configuration.
+    /// pi's `streamSimple` of an extension's provider, which may serve
+    /// several APIs.
     pub fn register_for(&mut self, provider: &str, implementation: Arc<dyn Provider>) {
-        self.providers.insert(provider.to_owned(), implementation);
+        let key = (provider.to_owned(), implementation.api().to_owned());
+        self.providers.insert(key, implementation);
     }
 
     /// The implementation for an API id.
@@ -229,11 +255,8 @@ impl Apis {
                 request.options.env.as_ref(),
             );
         }
-        let own = self
-            .providers
-            .get(&request.model.provider)
-            .filter(|own| own.api() == request.model.api)
-            .cloned();
+        let key = (request.model.provider.clone(), request.model.api.clone());
+        let own = self.providers.get(&key).cloned();
         match own.or_else(|| self.get(&request.model.api)) {
             Some(provider) => provider.stream(request),
             None => {

@@ -14,9 +14,13 @@ use futures_util::future::BoxFuture;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 use yapi_agent::tool::{ExecutionMode, Tool, UpdateSink};
+use yapi_ai::api::classify::ClassifyOptions;
+use yapi_ai::api::images::ImagesOptions;
+use yapi_ai::api::{Apis, ModelOperations};
 use yapi_ai::auth::{
-    AuthError, AuthEvent, AuthPrompt, Interaction, LoginOptions, OAuthAuth, OAuthProvider,
+    AuthError, AuthEvent, AuthPrompt, Interaction, KeyAuth, LoginOptions, OAuthAuth, OAuthProvider,
 };
+use yapi_ai::key_auth::Resolved;
 use yapi_ai::model_catalog::RefreshOptions;
 use yapi_ai::registry::ModelRegistry;
 use yapi_ai::stream::{
@@ -26,18 +30,20 @@ use yapi_ai::stream::{
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
     Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, TerminalState, ToolRenderers,
-    Tools, Widget, WorkingIndicator,
+    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup,
+    TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
-use yapi_types::auth::{Credential, OAuthCredential};
+use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
 use yapi_types::autocomplete::{ArgumentCompletions, AutocompleteItem};
+use yapi_types::classify::{AssistantImages, ClassifierContext, ClassifierResult, ImagesContext};
 use yapi_types::event::ToolResult;
 use yapi_types::extension_event::RegisteredMcpServer;
 use yapi_types::message::{
     AssistantMessage, Content, ContentBlock, CustomMessage, ImageContent, ThinkingLevel,
     ToolDeclaration,
 };
+use yapi_types::model::{ClassifierModel, ImageModel, Model};
 use yapi_types::models::ModelDefinition;
 use yapi_types::rpc::{SourceInfo, StreamingBehavior};
 use yapi_types::sync::lock;
@@ -239,7 +245,7 @@ impl ExtensionHost {
     }
 
     /// The providers the loaded extensions registered with
-    /// `pi.registerProvider(name, config)`, in registration order.
+    /// `pi.registerProvider`, in registration order.
     pub fn providers(self: &Arc<Self>) -> Vec<RegisteredProvider> {
         lock(&self.loaded)
             .iter()
@@ -247,8 +253,23 @@ impl ExtensionHost {
             .filter_map(|provider| {
                 let name = text(&provider["name"]);
                 let mut config = provider["config"].as_object()?.clone();
-                let streams = config.remove("hasStreamSimple") == Some(Value::Bool(true));
-                config.remove("hasRefreshModels");
+                let streams = list(&config.remove("streamApis").unwrap_or_default())
+                    .iter()
+                    .map(|api| self.js_stream(&text(api)))
+                    .collect();
+                for flag in ["hasRefreshModels", "hasModifyModels"] {
+                    config.remove(flag);
+                }
+                let key_auth = config
+                    .remove("keyAuth")
+                    .filter(Value::is_object)
+                    .map(|auth| {
+                        let own = Arc::new(JsKeyAuth {
+                            host: Arc::downgrade(self),
+                            provider: name.clone(),
+                        }) as Arc<dyn KeyAuth>;
+                        (own, auth["source"].as_str().map(str::to_owned))
+                    });
                 let oauth = config
                     .remove("oauth")
                     .filter(Value::is_object)
@@ -260,20 +281,26 @@ impl ExtensionHost {
                             subscription: oauth["isSubscription"] == true,
                         }) as Arc<dyn OAuthProvider>
                     });
-                // Image and classifier implementations are code.
+                // Image and classifier implementations, by API, are code.
+                let mut apis = Vec::new();
                 for key in ["images", "classifiers"] {
-                    config.remove(key);
+                    if let Some(Value::Object(own)) = config.remove(key) {
+                        apis.extend(own.keys().cloned());
+                    }
                 }
-                let stream = config
-                    .get("api")
-                    .and_then(Value::as_str)
-                    .filter(|_| streams)
-                    .map(|api| self.js_stream(api));
+                let operations = (!apis.is_empty()).then(|| {
+                    let own = Arc::new(JsOperations {
+                        host: Arc::downgrade(self),
+                    }) as Arc<dyn ModelOperations>;
+                    (apis, own)
+                });
                 Some(RegisteredProvider {
                     name,
                     config: Value::Object(config),
-                    stream,
+                    streams,
                     oauth,
+                    key_auth,
+                    operations,
                 })
             })
             .collect()
@@ -514,17 +541,47 @@ impl ExtensionHost {
     }
 }
 
-/// A provider an extension registered with `pi.registerProvider(name, config)`.
+/// A provider an extension registered with `pi.registerProvider`: a
+/// configuration, or a pi-ai `Provider` described as one.
 pub struct RegisteredProvider {
     /// The provider id.
     pub name: String,
-    /// Its configuration in `models.json`'s shape.
+    /// Its configuration in `models.json`'s shape, with models of every type.
     pub config: Value,
-    /// Its `streamSimple`, which streams the provider's models of the
-    /// configuration's `api`.
-    pub stream: Option<Arc<dyn Provider>>,
+    /// Its `streamSimple`, once for each API it streams the provider's models of.
+    pub streams: Vec<Arc<dyn Provider>>,
     /// Its `oauth` sign-in.
     pub oauth: Option<Arc<dyn OAuthProvider>>,
+    /// A pi-ai `Provider`'s API-key auth, with where its credential comes
+    /// from when nothing is stored, as it checked while the extension loaded.
+    pub key_auth: Option<(Arc<dyn KeyAuth>, Option<String>)>,
+    /// Its classifier and image implementations, with their APIs.
+    pub operations: Option<(Vec<String>, Arc<dyn ModelOperations>)>,
+}
+
+impl RegisteredProvider {
+    /// Adds the provider to `registry`, and its streams to `apis`. Fails,
+    /// adding nothing, when its configuration is invalid.
+    pub fn install(
+        self,
+        registry: &mut ModelRegistry,
+        apis: &mut Apis,
+    ) -> Result<(), serde_json::Error> {
+        registry.register_config(&self.name, serde_json::from_value(self.config)?);
+        for stream in self.streams {
+            apis.register_for(&self.name, stream);
+        }
+        if let Some(oauth) = self.oauth {
+            registry.register_oauth(&self.name, oauth);
+        }
+        if let Some((auth, source)) = self.key_auth {
+            registry.register_key_auth(&self.name, auth, source);
+        }
+        if let Some((apis, own)) = self.operations {
+            registry.register_operations(&self.name, apis, own);
+        }
+        Ok(())
+    }
 }
 
 /// An extension stream the host is running.
@@ -631,7 +688,7 @@ impl OAuthProvider for JsOAuth {
         credential: &'a OAuthCredential,
     ) -> BoxFuture<'a, Result<OAuthAuth, AuthError>> {
         Box::pin(async move {
-            let key = self
+            let auth = self
                 .call(
                     "oauthApiKey",
                     json!({"credential": credential}),
@@ -639,9 +696,118 @@ impl OAuthProvider for JsOAuth {
                     &CancellationToken::new(),
                 )
                 .await?;
+            // The legacy `getApiKey` returns the key, pi-ai's `toAuth` the credentials.
+            let auth = match auth {
+                Value::String(key) => ModelAuth {
+                    api_key: Some(key),
+                    ..ModelAuth::default()
+                },
+                auth => serde_json::from_value(auth).unwrap_or_default(),
+            };
             Ok(OAuthAuth {
-                api_key: key.as_str().map(str::to_owned),
-                ..OAuthAuth::default()
+                api_key: auth.api_key,
+                headers: auth.headers,
+                base_url: auth.base_url,
+            })
+        })
+    }
+}
+
+/// A pi-ai `Provider`'s `auth.apiKey`, whose `resolve` runs in the guest.
+struct JsKeyAuth {
+    host: Weak<ExtensionHost>,
+    provider: String,
+}
+
+impl KeyAuth for JsKeyAuth {
+    fn resolve<'a>(
+        &'a self,
+        credential: Option<&'a ApiKeyCredential>,
+    ) -> BoxFuture<'a, Result<Option<Resolved>, String>> {
+        Box::pin(async move {
+            let host = self
+                .host
+                .upgrade()
+                .ok_or_else(|| Error::Stopped.to_string())?;
+            let payload = json!({"provider": self.provider, "credential": credential});
+            let result = host
+                .instance
+                .call("keyResolve", &payload)
+                .await
+                .map_err(|err| err.to_string())?;
+            if result.is_null() {
+                return Ok(None);
+            }
+            let result: AuthResult =
+                serde_json::from_value(result).map_err(|err| err.to_string())?;
+            Ok(Some(Resolved {
+                api_key: result.auth.api_key,
+                headers: result.auth.headers,
+                env: result.env,
+                source: result.source.unwrap_or_default(),
+                base_url: result.auth.base_url,
+            }))
+        })
+    }
+}
+
+/// An extension provider's classifier and image implementations, which run
+/// in the guest.
+struct JsOperations {
+    host: Weak<ExtensionHost>,
+}
+
+impl JsOperations {
+    /// Runs guest call `kind` with `payload` as an operation that `cancel`
+    /// aborts; its result, or why it failed.
+    async fn call<T: serde::de::DeserializeOwned>(
+        &self,
+        kind: &str,
+        mut payload: Value,
+        cancel: &CancellationToken,
+    ) -> Result<T, String> {
+        let host = self
+            .host
+            .upgrade()
+            .ok_or_else(|| Error::Stopped.to_string())?;
+        payload["id"] = json!(host.next_id());
+        let result = host.call_abortable(kind, &payload, cancel).await;
+        serde_json::from_value(result.map_err(|err| err.to_string())?)
+            .map_err(|err| err.to_string())
+    }
+}
+
+impl ModelOperations for JsOperations {
+    fn classify<'a>(
+        &'a self,
+        model: &'a ClassifierModel,
+        context: &'a ClassifierContext,
+        options: &'a ClassifyOptions,
+    ) -> BoxFuture<'a, ClassifierResult> {
+        Box::pin(async move {
+            let payload = json!({"model": model, "context": context, "options": {
+                "apiKey": options.api_key, "headers": options.headers, "temperature": options.temperature,
+            }});
+            let result = self.call("classify", payload, &options.cancel).await;
+            result.unwrap_or_else(|message| {
+                yapi_ai::api::classify::error_result(model, message, &options.cancel)
+            })
+        })
+    }
+
+    fn generate_images<'a>(
+        &'a self,
+        model: &'a ImageModel,
+        context: &'a ImagesContext,
+        options: &'a ImagesOptions,
+    ) -> BoxFuture<'a, AssistantImages> {
+        Box::pin(async move {
+            let payload = json!({"model": model, "context": context, "options": {
+                "apiKey": options.api_key, "headers": options.headers,
+            }});
+            let result = self.call("generateImages", payload, &options.cancel).await;
+            result.unwrap_or_else(|message| {
+                yapi_ai::api::images::error_result(model, message, &options.cancel)
             })
         })
     }
@@ -832,6 +998,43 @@ impl JsExtension {
             })
     }
 
+    /// pi's phases of `provider`'s `refreshModels`, adding each phase's new
+    /// list, or why it failed, to `lists`: offline with the stored
+    /// credential, then, when `options` allow the network and a credential
+    /// resolves, online with it.
+    async fn refresh_phases(
+        &self,
+        provider: &str,
+        registry: &ModelRegistry,
+        options: &RefreshOptions,
+        lists: &mut Vec<ModelList>,
+    ) {
+        let credential = registry.store().get(provider);
+        let offline = self
+            .refresh_phase(provider, registry, credential, false, options)
+            .await;
+        let failed = offline.is_err();
+        lists.extend(
+            offline
+                .transpose()
+                .map(|list| list.map(ModelUpdate::Definitions)),
+        );
+        if failed || !options.allow_network || options.cancel.is_cancelled() {
+            return;
+        }
+        let Some(credential) = registry.refresh_credential(provider).await else {
+            return;
+        };
+        let online = self
+            .refresh_phase(provider, registry, Some(credential), true, options)
+            .await;
+        lists.extend(
+            online
+                .transpose()
+                .map(|list| list.map(ModelUpdate::Definitions)),
+        );
+    }
+
     /// One `refreshModels` phase of `provider` in the guest: the model list
     /// it returned, if any. A catalog it published to persist is written to
     /// the registry's models store.
@@ -866,6 +1069,43 @@ impl JsExtension {
             return Ok(None);
         }
         serde_json::from_value(models.clone())
+            .map(Some)
+            .map_err(|err| format!("Invalid models from {provider}: {err}"))
+    }
+
+    /// `provider`'s chat models as its legacy `oauth.modifyModels` in the
+    /// guest makes them for the stored OAuth credential, from its own models
+    /// with the refreshed `lists`; `None` without an OAuth credential.
+    async fn modify_models(
+        &self,
+        provider: &str,
+        registry: &ModelRegistry,
+        lists: &[ModelList],
+    ) -> Result<Option<Vec<Model>>, String> {
+        let Some(Credential::OAuth(credential)) = registry.store().get(provider) else {
+            return Ok(None);
+        };
+        let mut own = registry.clone();
+        own.modify_models(provider, None);
+        for list in lists {
+            if let Ok(ModelUpdate::Definitions(models)) = list {
+                // Applying the refreshed lists reports an invalid one.
+                let _ = own.replace_models(provider, models.clone());
+            }
+        }
+        let models: Vec<&Model> = own
+            .models()
+            .iter()
+            .filter(|model| model.provider == provider)
+            .collect();
+        let payload = json!({"provider": provider, "models": models, "credential": credential});
+        let result = self
+            .shared
+            .instance
+            .call("modifyModels", &payload)
+            .await
+            .map_err(|err| err.to_string())?;
+        serde_json::from_value(result)
             .map(Some)
             .map_err(|err| format!("Invalid models from {provider}: {err}"))
     }
@@ -1074,35 +1314,26 @@ impl Extension for JsExtension {
         options: &'a RefreshOptions,
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
-            let providers: Vec<String> = list(&self.description["providers"])
-                .iter()
-                .filter(|provider| provider["config"]["hasRefreshModels"] == true)
-                .map(|provider| text(&provider["name"]))
-                .filter(|name| {
-                    options
-                        .providers
-                        .as_ref()
-                        .is_none_or(|selected| selected.contains(name))
-                })
-                .collect();
             let mut lists = Vec::new();
-            for provider in providers {
-                let credential = registry.store().get(&provider);
-                let offline = self
-                    .refresh_phase(&provider, registry, credential, false, options)
-                    .await;
-                let failed = offline.is_err();
-                lists.extend(offline.transpose().map(|list| (provider.clone(), list)));
-                if failed || !options.allow_network || options.cancel.is_cancelled() {
+            for provider in list(&self.description["providers"]) {
+                let (name, config) = (text(&provider["name"]), &provider["config"]);
+                if options
+                    .providers
+                    .as_ref()
+                    .is_some_and(|selected| !selected.contains(&name))
+                {
                     continue;
                 }
-                let Some(credential) = registry.refresh_credential(&provider).await else {
-                    continue;
-                };
-                let online = self
-                    .refresh_phase(&provider, registry, Some(credential), true, options)
-                    .await;
-                lists.extend(online.transpose().map(|list| (provider.clone(), list)));
+                let mut own = Vec::new();
+                if config["hasRefreshModels"] == true {
+                    self.refresh_phases(&name, registry, options, &mut own)
+                        .await;
+                }
+                if config["hasModifyModels"] == true && !options.cancel.is_cancelled() {
+                    let modified = self.modify_models(&name, registry, &own).await;
+                    own.push(modified.map(ModelUpdate::Modified));
+                }
+                lists.extend(own.into_iter().map(|list| (name.clone(), list)));
             }
             lists
         })
@@ -1835,6 +2066,14 @@ fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
+/// `value` without its null fields, as `JSON.stringify` drops undefined ones.
+fn defined(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        object.retain(|_, field| !field.is_null());
+    }
+    value
+}
+
 fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
     let arg = |index: usize| args[index].as_str().map(str::to_owned);
     session.with_session(|file| {
@@ -1872,6 +2111,48 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
                 })
             }
             other => return Err(format!("sessionManager.{other}() is not available in yapi extensions")),
+        })
+    })
+}
+
+/// pi's `SessionManager` appends that `newSession`'s `setup` makes: the new
+/// entry's id.
+fn session_write(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
+    session.with_session(|file| {
+        match method {
+            "appendMessage" => {
+                let message =
+                    serde_json::from_value(args[0].clone()).map_err(|err| err.to_string())?;
+                file.append_message(message)
+            }
+            "appendCustomEntry" => file.append_custom_entry(
+                &text(&args[0]),
+                Some(args[1].clone()).filter(|data| !data.is_null()),
+            ),
+            "appendSessionInfo" => file.append_session_info(&text(&args[0])),
+            other => {
+                return Err(format!(
+                    "sessionManager.{other}() is not available in yapi extensions"
+                ));
+            }
+        }
+        .map(Value::String)
+        .map_err(|err| err.to_string())
+    })
+}
+
+/// `newSession`'s `setup` `id`, which the guest runs against the replacement
+/// session before it binds.
+fn setup(owner: Weak<ExtensionHost>, id: u64) -> Setup {
+    Box::new(move |session| {
+        Box::pin(async move {
+            let Some(host) = owner.upgrade() else {
+                return;
+            };
+            // The guest's requests reach the replacement, which binds next.
+            *lock(&host.bridge.session) = session.downgrade();
+            // The guest rethrows setup's error from `newSession`; a restart reports a trap.
+            let _ = host.instance.call("setup", &json!({ "id": id })).await;
         })
     })
 }
@@ -2047,6 +2328,7 @@ impl Bridge for SessionBridge {
                 Ok(ctx_data(Some(&session), ui.as_ref(), mode, trusted, &CancellationToken::new()))
             }
             "session.read" => session_read(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
+            "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
                 session
@@ -2292,6 +2574,7 @@ impl Bridge for SessionBridge {
             ),
         };
         let codemode = self.codemode.clone();
+        let owner = self.owner.get().cloned().unwrap_or_default();
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -2405,6 +2688,71 @@ impl Bridge for SessionBridge {
                         None => Ok(Value::Null),
                     }
                 }
+                // pi's `AuthResult`, or nothing for an unknown provider or one
+                // without credentials.
+                "models.auth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let Some(auth) = registry.provider_level_auth(&provider).await else {
+                        return Ok(Value::Null);
+                    };
+                    if let Some(error) = auth.error {
+                        return Err(error);
+                    }
+                    if auth.source.is_none() {
+                        return Ok(Value::Null);
+                    }
+                    let headers = (!auth.headers.is_empty()).then_some(auth.headers);
+                    Ok(defined(json!({
+                        "auth": defined(json!({
+                            "apiKey": auth.api_key,
+                            "headers": headers,
+                            "baseUrl": auth.base_url,
+                        })),
+                        "env": auth.env,
+                        "source": auth.source,
+                    })))
+                }
+                // pi's `ResolvedRequestAuth`: what a request to the model sends.
+                "models.requestAuth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let model = registry.find(&provider, &text(&payload["id"])).cloned();
+                    let auth = match &model {
+                        Some(model) => Some(registry.auth(model).await),
+                        // shortcut: a model the registry lacks gets its provider's
+                        // credentials without its own headers; pass the guest's model to match pi.
+                        None => registry.provider_level_auth(&provider).await,
+                    }
+                    .unwrap_or_default();
+                    if let Some(error) = auth.error {
+                        return Ok(json!({"ok": false, "error": error}));
+                    }
+                    // The model's own headers, under the configured ones, as a request sends them.
+                    let mut headers = serde_json::Map::new();
+                    for (name, value) in model.and_then(|model| model.headers).into_iter().flatten()
+                    {
+                        headers.insert(name, Value::String(value));
+                    }
+                    for (name, value) in auth.headers {
+                        headers.insert(name, to_json(value));
+                    }
+                    let headers = (!headers.is_empty()).then_some(headers);
+                    if auth.source.is_none() {
+                        if registry.auth_header(&provider) {
+                            let error = format!("No API key found for \"{provider}\"");
+                            return Ok(json!({"ok": false, "error": error}));
+                        }
+                        return Ok(defined(json!({"ok": true, "headers": headers})));
+                    }
+                    Ok(defined(json!({
+                        "ok": true,
+                        "apiKey": auth.api_key,
+                        "headers": headers,
+                        "baseUrl": auth.base_url,
+                        "env": auth.env,
+                    })))
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)
@@ -2422,6 +2770,7 @@ impl Bridge for SessionBridge {
                     let action = match kind.as_str() {
                         "session.new" => SessionAction::New {
                             parent: payload["parentSession"].as_str().map(str::to_owned),
+                            setup: payload["setup"].as_u64().map(|id| setup(owner, id)),
                         },
                         "session.fork" => SessionAction::Fork {
                             entry_id: text(&payload["entryId"]),

@@ -27,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 use yapi_ai::model_catalog::RefreshOptions;
 use yapi_ai::registry::ModelRegistry;
 use yapi_types::autocomplete::ArgumentCompletions;
+use yapi_types::model::Model;
 use yapi_types::models::ModelDefinition;
 use yapi_types::rpc::SourceInfo;
 
@@ -484,8 +485,9 @@ pub trait Extension: Send + Sync {
     /// Refreshes the model lists of the providers it registered with
     /// `refreshModels` that `options` selects, as pi does: first offline
     /// with the stored credential, then, when `options` allow the network
-    /// and a credential resolves, online with it. Returns each phase's new
-    /// list, or why it failed, by provider in phase order.
+    /// and a credential resolves, online with it. Then those with the legacy
+    /// `oauth.modifyModels` project their models for the stored credential.
+    /// Returns each step's update, or why it failed, by provider in order.
     fn refresh_models<'a>(
         &'a self,
         _registry: &'a ModelRegistry,
@@ -495,14 +497,20 @@ pub trait Extension: Send + Sync {
     }
 }
 
+/// pi's `newSession` `setup`: runs with the replacement session once it is
+/// built, before its extensions start.
+pub type Setup =
+    Box<dyn FnOnce(crate::agent_session::AgentSession) -> BoxFuture<'static, ()> + Send>;
+
 /// A session change an extension command asks for; one of pi's
 /// `ExtensionCommandContextActions`.
-#[derive(Debug)]
 pub enum SessionAction {
     /// `newSession`, linked to a parent session file when given.
     New {
         /// The parent session file.
         parent: Option<String>,
+        /// What to write to the new session before it starts.
+        setup: Option<Setup>,
     },
     /// `fork` at an entry; `at` keeps the entry, as `/clone` does.
     Fork {
@@ -525,9 +533,8 @@ pub enum SessionAction {
     },
     /// `reload`.
     Reload,
-    /// The extension finished its `setup` and `withSession` work after a
-    /// replacement; the mode reports the change now, as pi does once they
-    /// return.
+    /// The extension finished its `withSession` work after a replacement;
+    /// the mode reports the change now, as pi does once it returns.
     Replaced,
 }
 
@@ -546,8 +553,18 @@ pub struct BashOperations {
     pub handle: Value,
 }
 
-/// A provider's model list from its `refreshModels`, or why it failed.
-pub type ModelList = Result<Vec<ModelDefinition>, String>;
+/// A provider's new models from a refresh, or why it failed.
+pub type ModelList = Result<ModelUpdate, String>;
+
+/// A provider's new models from a refresh.
+#[derive(Debug)]
+pub enum ModelUpdate {
+    /// The list its `refreshModels` returned.
+    Definitions(Vec<ModelDefinition>),
+    /// Its chat models as its legacy `oauth.modifyModels` made them for the
+    /// stored OAuth credential; `None` without one.
+    Modified(Option<Vec<Model>>),
+}
 
 /// The built-in extensions each session starts with.
 pub fn builtins() -> Vec<Arc<dyn Extension>> {

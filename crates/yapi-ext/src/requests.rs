@@ -378,6 +378,10 @@ impl Host {
                 Box::pin(async move { streams.start(&payload, env_keys, hooks) })
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
+            // Credentials are only good for requests, so they need the network grant.
+            "models.auth" | "models.requestAuth" if !self.options.grants.network => {
+                Box::pin(async { Err(denied("Network access")) })
+            }
             "ai.next" => {
                 let streams = self.ai_streams.clone();
                 let id = payload["id"].as_u64().unwrap_or_default();
