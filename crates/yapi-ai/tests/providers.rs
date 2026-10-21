@@ -773,6 +773,25 @@ async fn bedrock_reports_errors() {
             "Provider stopped with: guardrail_intervened",
             json!({"requestId": "req-1"}),
         ),
+        (
+            binary_exchange(
+                path,
+                200,
+                &[
+                    ("content-type", "application/vnd.amazon.eventstream"),
+                    ("x-amzn-requestid", "req-1"),
+                ],
+                &[
+                    event("messageStart", &json!({"role": "assistant"})),
+                    event("messageStop", &json!({"stopReason": "end_turn"})),
+                    // The connection drops inside the trailing `metadata` frame.
+                    event("metadata", &json!({"usage": {"inputTokens": 1}}))[..20].to_vec(),
+                ]
+                .concat(),
+            ),
+            "Truncated event message received.",
+            json!({"requestId": "req-1"}),
+        ),
     ];
     for (interaction, message, details) in cases {
         let server = mock(Cassette {

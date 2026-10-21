@@ -1151,6 +1151,7 @@ async fn consume(
                 Err(message) => return Err(plain(message)),
             };
         let Some(bytes) = chunk else {
+            decoder.finish().map_err(plain)?;
             break;
         };
         decoder.push(&bytes);
