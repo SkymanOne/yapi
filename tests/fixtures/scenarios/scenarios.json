@@ -645,7 +645,16 @@
       {"send": {"id": "model", "type": "set_model", "provider": "anthropic", "modelId": "claude-haiku-4-5"}},
       {"send": {"id": "nomodel", "type": "set_model", "provider": "anthropic", "modelId": "nope"}},
       {"send": {"id": "next", "type": "cycle_model"}},
-      {"send": {"id": "after", "type": "get_state"}}
+      {"send": {"id": "after", "type": "get_state"}},
+      {"send": {"id": "badSteering", "type": "set_steering_mode", "mode": "bogus"}},
+      {"send": {"id": "noFollow", "type": "set_follow_up_mode"}},
+      {"send": {"id": "yesCompaction", "type": "set_auto_compaction", "enabled": "yes"}},
+      {"send": {"id": "nullRetry", "type": "set_auto_retry", "enabled": null}},
+      {"send": {"id": "highThinking", "type": "set_thinking_level", "level": "high"}},
+      {"send": {"id": "badThinking", "type": "set_thinking_level", "level": "bogus"}},
+      {"send": {"id": "raw", "type": "get_state"}},
+      {"send": {"id": "fresh", "type": "new_session"}},
+      {"send": {"id": "reread", "type": "get_state"}}
     ]
   },
   {

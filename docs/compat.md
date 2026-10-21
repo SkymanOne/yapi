@@ -57,7 +57,6 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Markdown transformers | Change a message's Markdown before it shows | A message shows as written in its first frame, and each change while it streams shows transformed one frame late. |
 | Images in the terminal | A Herdr pane shows images when the outer terminal's variables reach it, such as Ghostty's. Image data reaches the terminal as written. | A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command. |
 | Mouse in fullscreen mode | Extension editors and components get mouse events. | Extension headers, message renderers and tool renderers get no mouse events. Other extension components get presses, clicks and the wheel, but no pointer moves, drags or releases, and a click does not give them the keyboard focus. |
-| RPC settings commands | `set_thinking_level`, `set_steering_mode`, `set_follow_up_mode`, `set_auto_compaction` and `set_auto_retry` take a value of any type and save it in the settings. | A value of the wrong type fails the command and changes nothing, so it never reaches `settings.json`. Other malformed commands get Pi's errors. |
 
 ## Tools and sessions
 

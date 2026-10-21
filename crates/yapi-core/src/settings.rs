@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize as _;
 use serde_json::{Map, Value};
 use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_ai::http::is_truthy;
 use yapi_types::config::ConfigFile;
 use yapi_types::settings::{CacheWarming, Settings};
 
@@ -54,6 +55,8 @@ pub struct SettingsManager {
     global: Map<String, Value>,
     project: Map<String, Value>,
     project_trusted: bool,
+    /// Both scopes merged as written, as pi's `settings`.
+    document: Map<String, Value>,
     merged: Settings,
     /// Files that failed to load, by scope; they read as empty and are never
     /// written, so a broken file is not overwritten.
@@ -228,6 +231,7 @@ impl SettingsManager {
             global,
             project,
             project_trusted,
+            document: Map::new(),
             merged: Settings::default(),
             broken,
             errors,
@@ -254,6 +258,19 @@ impl SettingsManager {
         ) {
             merged.insert("defaultTools".into(), tools);
         }
+        self.document = merged.clone();
+        // pi reads these switches by truthiness, so a value of another type
+        // keeps the rest of its object; `null` reads as unset.
+        for field in ["compaction", "retry"] {
+            if let Some(Value::Object(object)) = merged.get_mut(field)
+                && let Some(enabled) = object.get("enabled").filter(|value| !value.is_boolean())
+            {
+                match enabled {
+                    Value::Null => object.shift_remove("enabled"),
+                    value => object.insert("enabled".into(), is_truthy(value).into()),
+                };
+            }
+        }
         // Unknown or invalid fields are ignored, as in pi.
         self.merged = serde_json::from_value(Value::Object(merged.clone())).unwrap_or_else(|_| {
             let valid: Map<String, Value> = merged
@@ -270,6 +287,12 @@ impl SettingsManager {
     /// The merged settings.
     pub fn settings(&self) -> &Settings {
         &self.merged
+    }
+
+    /// Both scopes merged as written, values of any type included: pi's
+    /// `settings`.
+    pub fn merged_document(&self) -> &Map<String, Value> {
+        &self.document
     }
 
     /// `defaultThinkingLevel`, if set: a value that names no level becomes
@@ -380,20 +403,24 @@ impl SettingsManager {
     }
 
     /// Sets `key` inside the object setting `field` of `scope`, keeping its
-    /// other keys, and writes that scope's file.
+    /// other keys, and writes that scope's file. `None` removes the key and
+    /// keeps the object.
     pub fn set_nested(
         &mut self,
         scope: Scope,
         field: &str,
         key: &str,
-        value: Value,
+        value: Option<Value>,
     ) -> Result<(), SettingsError> {
         self.update(scope, |document| {
             let mut object = match document.get(field) {
                 Some(Value::Object(object)) => object.clone(),
                 _ => Map::new(),
             };
-            object.insert(key.to_owned(), value.clone());
+            match &value {
+                Some(value) => object.insert(key.to_owned(), value.clone()),
+                None => object.shift_remove(key),
+            };
             document.insert(field.to_owned(), Value::Object(object));
         })
     }
@@ -532,6 +559,7 @@ mod tests {
             "retry": "often",
             "steeringMode": "all",
             "markdown": {"codeBlockIndent": "    ", "mermaid": "bogus"},
+            "compaction": {"enabled": "", "reserveTokens": 7},
         })
         .as_object()
         .unwrap()
@@ -540,6 +568,12 @@ mod tests {
         let settings = manager.settings();
         assert_eq!(settings.theme.as_deref(), Some("dark"));
         assert!(settings.retry.is_none());
+        // pi reads a switch of another type by truthiness.
+        let compaction = settings.compaction.as_ref().unwrap();
+        assert_eq!(
+            (compaction.enabled, compaction.reserve_tokens),
+            (Some(false), Some(7))
+        );
         assert_eq!(
             settings.steering_mode,
             Some(yapi_types::settings::QueueMode::All)
@@ -585,7 +619,7 @@ mod tests {
             .set(Scope::Global, "defaultModel", Some(json!("m")))
             .unwrap();
         first
-            .set_nested(Scope::Global, "retry", "enabled", json!(false))
+            .set_nested(Scope::Global, "retry", "enabled", Some(json!(false)))
             .unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.join("settings.json")).unwrap(),

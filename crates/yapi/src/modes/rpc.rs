@@ -605,6 +605,14 @@ async fn handle(rpc: &Rpc, id: Option<&Value>, command: RpcCommand) -> Reply {
             data(&json!({ "models": value(&session.available_models())? }))
         }
         RpcCommand::SetThinkingLevel { level } => {
+            // pi clamps a level it does not know to the model's first one.
+            let level = serde_json::from_value(level).unwrap_or_else(|_| {
+                session
+                    .available_thinking_levels()
+                    .first()
+                    .copied()
+                    .unwrap_or(yapi_types::message::ThinkingLevel::Off)
+            });
             session.set_thinking_level(level);
             Ok(None)
         }

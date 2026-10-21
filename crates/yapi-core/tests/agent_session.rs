@@ -510,9 +510,7 @@ impl Provider for SteerOnce {
             let session = self.session.get().unwrap();
             session.steer("s1", Vec::new());
             session.steer("s2", Vec::new());
-            session
-                .set_steering_mode(yapi_types::settings::QueueMode::All)
-                .unwrap();
+            session.set_steering_mode(Some("all".into())).unwrap();
         }
         self.faux.stream(request)
     }

@@ -30,11 +30,11 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::{PromptDisposition, StreamingBehavior};
 use yapi_types::session::FileEntry;
-use yapi_types::settings::{QueueMode, Transport};
+use yapi_types::settings::Transport;
 use yapi_types::sync::{lock, read, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
-use crate::compaction::{BranchSummary, CompactionSettings};
+use crate::compaction::BranchSummary;
 use crate::extensions::{
     BashOperations, Extension, ExtensionUi, Loadout, LoadoutChanges, Mode, NoUi, NotifyKind,
     SessionActions, Tools,
@@ -298,6 +298,9 @@ struct Inner {
     listeners: Mutex<Vec<Listener>>,
     steering: Mutex<VecDeque<Message>>,
     follow_up: Mutex<VecDeque<Message>>,
+    /// The steering and follow-up modes as pi's agent holds them: any value
+    /// last set, `None` once set to nothing.
+    queue_modes: Mutex<(Option<Value>, Option<Value>)>,
     /// Texts of queued steering and follow-up messages until they start, as
     /// `queue_update` reports them.
     queued: Mutex<(Vec<String>, Vec<String>)>,
@@ -515,6 +518,19 @@ impl AgentSession {
             let _ = session.append_thinking_level_change(thinking_level.as_str());
         }
 
+        // pi's agent takes its queue modes from the settings: a value that
+        // is not truthy reads as `one-at-a-time`.
+        let queue_mode = |key: &str| {
+            Some(
+                settings
+                    .merged_document()
+                    .get(key)
+                    .filter(|mode| yapi_ai::http::is_truthy(mode))
+                    .cloned()
+                    .unwrap_or_else(|| "one-at-a-time".into()),
+            )
+        };
+        let queue_modes = (queue_mode("steeringMode"), queue_mode("followUpMode"));
         AgentSession {
             inner: Arc::new(Inner {
                 cwd,
@@ -543,6 +559,7 @@ impl AgentSession {
                 listeners: Mutex::new(Vec::new()),
                 steering: Mutex::new(VecDeque::new()),
                 follow_up: Mutex::new(VecDeque::new()),
+                queue_modes: Mutex::new(queue_modes),
                 queued: Mutex::new((Vec::new(), Vec::new())),
                 cancel: Mutex::new(None),
                 recovery: Mutex::new(Recovery::default()),
@@ -735,43 +752,71 @@ impl AgentSession {
         queued.0.len() + queued.1.len()
     }
 
-    /// How queued steering messages are delivered.
-    pub fn steering_mode(&self) -> QueueMode {
-        self.settings()
-            .steering_mode
-            .unwrap_or(QueueMode::OneAtATime)
+    /// How queued steering messages are delivered: `all`, or one at a time
+    /// for any other value. It is the mode last set, as pi's agent keeps it,
+    /// and `None` once set to nothing.
+    pub fn steering_mode(&self) -> Option<Value> {
+        lock(&self.inner.queue_modes).0.clone()
     }
 
-    /// How queued follow-up messages are delivered.
-    pub fn follow_up_mode(&self) -> QueueMode {
-        self.settings()
-            .follow_up_mode
-            .unwrap_or(QueueMode::OneAtATime)
+    /// How queued follow-up messages are delivered, as
+    /// [`AgentSession::steering_mode`].
+    pub fn follow_up_mode(&self) -> Option<Value> {
+        lock(&self.inner.queue_modes).1.clone()
     }
 
-    /// Sets the steering mode in the global settings.
-    pub fn set_steering_mode(&self, mode: QueueMode) -> Result<(), String> {
-        self.set_global_setting("steeringMode", serde_json::to_value(mode).ok())
+    /// Whether the steering and the follow-up queue each deliver all their
+    /// messages at once.
+    pub(super) fn drains_all(&self) -> (bool, bool) {
+        let all = |mode: &Option<Value>| mode.as_ref().and_then(Value::as_str) == Some("all");
+        let modes = lock(&self.inner.queue_modes);
+        (all(&modes.0), all(&modes.1))
     }
 
-    /// Sets the follow-up mode in the global settings.
-    pub fn set_follow_up_mode(&self, mode: QueueMode) -> Result<(), String> {
-        self.set_global_setting("followUpMode", serde_json::to_value(mode).ok())
+    /// Sets the steering mode, any value as pi takes it, and saves it in the
+    /// global settings; `None` removes the setting.
+    pub fn set_steering_mode(&self, mode: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.queue_modes).0.clone_from(&mode);
+        self.set_global_setting("steeringMode", mode)
     }
 
-    /// Whether threshold and overflow compaction run.
-    pub fn auto_compaction_enabled(&self) -> bool {
-        CompactionSettings::resolve(lock(&self.inner.settings).settings(), None).enabled
+    /// Sets the follow-up mode as [`AgentSession::set_steering_mode`] does.
+    pub fn set_follow_up_mode(&self, mode: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.queue_modes).1.clone_from(&mode);
+        self.set_global_setting("followUpMode", mode)
     }
 
-    /// Turns automatic compaction on or off in the global settings.
-    pub fn set_auto_compaction(&self, enabled: bool) -> Result<(), String> {
-        self.set_nested_global_setting("compaction", "enabled", enabled.into())
+    /// pi's `autoCompactionEnabled`: the setting as saved, `true` when unset
+    /// or `null`. Compaction runs when it is truthy.
+    pub fn auto_compaction_enabled(&self) -> Value {
+        lock(&self.inner.settings)
+            .merged_document()
+            .get("compaction")
+            .and_then(|compaction| compaction.get("enabled"))
+            .filter(|enabled| !enabled.is_null())
+            .cloned()
+            .unwrap_or(Value::Bool(true))
     }
 
-    /// Turns automatic retries on or off in the global settings.
-    pub fn set_auto_retry(&self, enabled: bool) -> Result<(), String> {
-        self.set_nested_global_setting("retry", "enabled", enabled.into())
+    /// Saves whether automatic compaction runs in the global settings, any
+    /// value as pi takes it; `None` removes the setting.
+    pub fn set_auto_compaction(&self, enabled: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.settings)
+            .set_nested(
+                crate::settings::Scope::Global,
+                "compaction",
+                "enabled",
+                enabled,
+            )
+            .map_err(|err| err.to_string())
+    }
+
+    /// Saves whether automatic retries run, as
+    /// [`AgentSession::set_auto_compaction`] does.
+    pub fn set_auto_retry(&self, enabled: Option<Value>) -> Result<(), String> {
+        lock(&self.inner.settings)
+            .set_nested(crate::settings::Scope::Global, "retry", "enabled", enabled)
+            .map_err(|err| err.to_string())
     }
 
     /// Sets `key` inside the global object setting `field` and writes
@@ -783,7 +828,7 @@ impl AgentSession {
         value: serde_json::Value,
     ) -> Result<(), String> {
         lock(&self.inner.settings)
-            .set_nested(crate::settings::Scope::Global, field, key, value)
+            .set_nested(crate::settings::Scope::Global, field, key, Some(value))
             .map_err(|err| err.to_string())
     }
 
@@ -1793,9 +1838,10 @@ impl AgentSession {
         let prompts = match prompts {
             Some(prompts) => Some(prompts),
             None if matches!(context.messages.last(), Some(Message::Assistant(_))) => {
-                let steering = drain(&self.inner.steering, settings.steering_mode);
+                let (steering_all, follow_up_all) = self.drains_all();
+                let steering = drain(&self.inner.steering, steering_all);
                 let queued = if steering.is_empty() {
-                    drain(&self.inner.follow_up, settings.follow_up_mode)
+                    drain(&self.inner.follow_up, follow_up_all)
                 } else {
                     steering
                 };
@@ -2311,11 +2357,12 @@ pub fn failed(message: &yapi_types::message::AssistantMessage) -> bool {
     matches!(message.stop_reason, StopReason::Error | StopReason::Aborted)
 }
 
-fn drain(queue: &Mutex<VecDeque<Message>>, mode: Option<QueueMode>) -> Vec<Message> {
+fn drain(queue: &Mutex<VecDeque<Message>>, all: bool) -> Vec<Message> {
     let mut queue = lock(queue);
-    match mode {
-        Some(QueueMode::All) => queue.drain(..).collect(),
-        _ => queue.pop_front().into_iter().collect(),
+    if all {
+        queue.drain(..).collect()
+    } else {
+        queue.pop_front().into_iter().collect()
     }
 }
 

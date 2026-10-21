@@ -436,14 +436,12 @@ impl AgentHooks for Hooks {
     // As pi's agent, each drain reads the current mode, so a change applies
     // to the running agent.
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let mode = lock(&self.session.inner.settings).settings().steering_mode;
-        let messages = drain(&self.session.inner.steering, mode);
+        let messages = drain(&self.session.inner.steering, self.session.drains_all().0);
         Box::pin(async move { messages })
     }
 
     fn follow_up_messages(&self) -> BoxFuture<'_, Vec<Message>> {
-        let mode = lock(&self.session.inner.settings).settings().follow_up_mode;
-        let messages = drain(&self.session.inner.follow_up, mode);
+        let messages = drain(&self.session.inner.follow_up, self.session.drains_all().1);
         Box::pin(async move { messages })
     }
 }
