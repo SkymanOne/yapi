@@ -212,6 +212,7 @@ export default function (pi: ExtensionAPI) {
 			);
 		},
 	});
+	pi.registerCommand("rebase", { handler: async () => pi.registerProvider("late", { baseUrl: "http://127.0.0.1:8", apiKey: undefined }) });
 	pi.registerCommand("proxy", { handler: async () => pi.registerProvider("anthropic", { baseUrl: "http://proxy.example" }) });
 	pi.registerCommand("drop", { handler: async (name) => pi.unregisterProvider(name) });
 }
@@ -938,6 +939,15 @@ async fn registers_after_load() {
         .await
         .unwrap();
     assert_eq!(reply.error_message, None);
+
+    // Registering it again merges the values given over the previous ones.
+    session.prompt("/rebase", Vec::new()).await.unwrap();
+    eventually("the merged provider", || {
+        let model = session.registry().find("late", "late-1").cloned();
+        model.is_some_and(|model| model.base_url == "http://127.0.0.1:8")
+    })
+    .await;
+    assert_eq!(available(&session, "late"), ["late-1"]);
 
     session.prompt("/drop late", Vec::new()).await.unwrap();
     eventually("the provider to go", || {

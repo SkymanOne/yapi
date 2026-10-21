@@ -229,6 +229,12 @@
 				let provider;
 				if (typeof nameOrProvider === "string") {
 					if (!config) throw new Error("Provider config is required when registering by name");
+					// As in pi, a configuration registered again takes the values it
+					// defines over the previous configuration's.
+					const previous = providerConfig(nameOrProvider, extension);
+					if (previous && !isProvider(previous)) {
+						config = { ...previous, ...Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)) };
+					}
 					provider = { name: nameOrProvider, config: describeProvider(config) };
 				} else provider = { name: nameOrProvider.id, native: true };
 				// The code stays here; the host gets the description.
@@ -482,10 +488,15 @@
 			hasFilter: typeof provider.filterModels === "function" || typeof provider.filterAllModels === "function",
 		};
 	}
-	/** The configuration of provider `name` as last registered, with its code. */
-	function providerConfig(name) {
+	/**
+	 * The configuration of provider `name` as last registered, with its code,
+	 * by the loaded extensions or `loading`, one whose factory runs.
+	 */
+	function providerConfig(name, loading) {
 		let found;
-		for (const extension of extensions.values()) {
+		const all = new Set(extensions.values());
+		if (loading) all.add(loading);
+		for (const extension of all) {
 			for (const provider of extension.providers) if (provider.name === name && provider.implementation) found = provider.implementation;
 		}
 		return found;
