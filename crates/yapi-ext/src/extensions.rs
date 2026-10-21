@@ -30,9 +30,9 @@ use yapi_ai::stream::{
 };
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
-    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup,
-    TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
+    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
+    LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
+    Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -510,6 +510,7 @@ impl ExtensionHost {
                     description: description.clone(),
                     completions: Arc::default(),
                     crashed: Mutex::default(),
+                    loadout: Mutex::default(),
                 }) as Arc<dyn Extension>
             })
             .collect()
@@ -1060,6 +1061,8 @@ struct JsExtension {
     completions: Arc<Mutex<HashMap<(String, String), Fetched>>>,
     /// The drawing requests that stopped the runtime, with their errors.
     crashed: Mutex<HashMap<String, String>>,
+    /// What its tools' `prepareLoadout` hooks made of the latest loadout.
+    loadout: Mutex<LoadoutChanges>,
 }
 
 /// An argument completion request: under way, or answered at a time.
@@ -1471,6 +1474,76 @@ impl Extension for JsExtension {
                 lists.extend(own.into_iter().map(|list| (name.clone(), list)));
             }
             lists
+        })
+    }
+
+    fn prepare_loadout(&self, _loadout: &Loadout) -> LoadoutChanges {
+        lock(&self.loadout).clone()
+    }
+
+    /// Runs the `prepareLoadout` hooks of its declared tools in the guest,
+    /// for [`Extension::prepare_loadout`] to give, and reports their errors
+    /// as pi does.
+    fn refresh_loadout<'a>(&'a self, loadout: &'a Loadout) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let hooked: Vec<String> = self.latest(|latest| {
+                list(&latest["tools"])
+                    .iter()
+                    .filter(|tool| tool["hasPrepareLoadout"] == true)
+                    .map(|tool| text(&tool["name"]))
+                    .collect()
+            });
+            let declares = loadout
+                .declared
+                .iter()
+                .any(|tool| hooked.iter().any(|name| name == tool.name()));
+            let session = self.shared.bridge.session();
+            let bound = *self.shared.bound.lock().await == self.generation + 1;
+            let (Some(session), true, true) = (session, declares, bound) else {
+                *lock(&self.loadout) = LoadoutChanges::default();
+                return;
+            };
+            let infos = |tools: &[RegisteredTool]| tools.iter().map(tool_info).collect::<Vec<_>>();
+            let registered = session.tools().with(|registry| registry.all());
+            let payload = json!({"extension": self.id, "loadout": {
+                "declared": infos(&loadout.declared),
+                "callable": infos(&loadout.callable),
+                "registered": infos(&registered),
+            }});
+            let (ui, _) = session.extension_binding();
+            let result = match self.shared.instance.call("loadout", &payload).await {
+                Ok(result) => result,
+                Err(err) => {
+                    ui.extension_error(
+                        &self.path_text(),
+                        "prepare_loadout",
+                        &err.to_string(),
+                        None,
+                    );
+                    Value::Null
+                }
+            };
+            for error in list(&result["errors"]) {
+                ui.extension_error(
+                    &self.path_text(),
+                    "prepare_loadout",
+                    &text(&error["error"]),
+                    error["stack"].as_str(),
+                );
+            }
+            let descriptions = result["descriptions"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, description)| {
+                    Some((name.clone(), description.as_str()?.to_owned()))
+                })
+                .collect();
+            let hidden = list(&result["hidden"]).iter().map(text).collect();
+            *lock(&self.loadout) = LoadoutChanges {
+                descriptions,
+                hidden,
+            };
         })
     }
 
@@ -2608,6 +2681,14 @@ impl Bridge for SessionBridge {
                 let extension = payload["extension"].as_u64().unwrap_or_default();
                 for tool in list(&payload["tools"]) {
                     session.tools().register(js_tool(&owner, extension, tool));
+                }
+                // Loadout hooks of tools registered since run too.
+                if let Some(Value::Array(tools)) = lock(&owner.loaded)
+                    .iter_mut()
+                    .find(|description| description["id"].as_u64() == Some(extension))
+                    .map(|description| &mut description["tools"])
+                {
+                    tools.extend(list(&payload["tools"]).iter().cloned());
                 }
                 Ok(Value::Null)
             }

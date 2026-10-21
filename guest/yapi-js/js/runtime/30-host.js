@@ -425,6 +425,7 @@
 			annotations: tool.annotations,
 			defaultActive: tool.defaultActive,
 			executionMode: tool.executionMode,
+			hasPrepareLoadout: typeof tool.prepareLoadout === "function",
 			hasRenderCall: typeof tool.renderCall === "function",
 			hasRenderResult: typeof tool.renderResult === "function",
 		};
@@ -1751,6 +1752,38 @@
 				}
 			}
 			return null;
+		},
+		/**
+		 * pi's `prepareLoadout` hooks of extension `extension`'s declared tools
+		 * for `loadout`, `{ declared, callable, registered }` as `getAllTools`
+		 * describes tools: `{ descriptions, hidden, errors }`.
+		 */
+		loadout(payload) {
+			const extension = extensionOf(payload.extension);
+			const { declared, callable, registered } = payload.loadout;
+			const byName = new Map(registered.map((tool) => [tool.name, tool]));
+			const loadout = {
+				declared,
+				callable,
+				registered,
+				getExposure: (name) => byName.get(name)?.exposure ?? "direct",
+				getNamespace: (name) => byName.get(name)?.namespace,
+			};
+			const descriptions = {};
+			const hidden = [];
+			const errors = [];
+			for (const tool of declared) {
+				const hook = extension.tools.get(tool.name)?.prepareLoadout;
+				if (typeof hook !== "function") continue;
+				try {
+					const changes = hook(loadout);
+					Object.assign(descriptions, changes?.descriptions);
+					hidden.push(...(changes?.hiddenDeclarations ?? []));
+				} catch (error) {
+					errors.push(errorInfo(error));
+				}
+			}
+			return { descriptions: plain(descriptions), hidden, errors };
 		},
 		async complete(payload) {
 			const command = extensionOf(payload.extension).commands.get(payload.name);

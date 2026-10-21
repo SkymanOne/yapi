@@ -41,6 +41,10 @@ export default function (pi: ExtensionAPI) {
 		description: "Greets someone",
 		promptSnippet: "Greet people",
 		parameters: Type.Object({ name: Type.String() }),
+		prepareLoadout: (loadout) => ({
+			descriptions: { greet: `Greets someone; calls ${loadout.callable.map((tool) => tool.name).join(", ")}` },
+			hiddenDeclarations: ["read"],
+		}),
 		async execute(_id, params: { name: string }, _signal, onUpdate) {
 			onUpdate?.({ content: [{ type: "text", text: "working" }] });
 			return { content: [{ type: "text", text: `Hello, ${params.name}!` }], details: { greeted: params.name } };
@@ -130,6 +134,14 @@ async fn session_runs_extension_tools() {
         "{}",
         system.text()
     );
+    // The tool's loadout hook describes it and hides `read` from requests.
+    let declared: Vec<(&str, &str)> = system
+        .tools_added
+        .iter()
+        .flatten()
+        .map(|tool| (tool.name.as_str(), tool.description.as_str()))
+        .collect();
+    assert_eq!(declared, [("greet", "Greets someone; calls read, greet")]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

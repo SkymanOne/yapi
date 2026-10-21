@@ -423,6 +423,13 @@ pub trait Extension: Send + Sync {
         LoadoutChanges::default()
     }
 
+    /// Runs before a request's [`Extension::prepare_loadout`] for
+    /// `loadout`, for hooks that run elsewhere and answer later, so that
+    /// `prepare_loadout` can give what they made of it.
+    fn refresh_loadout<'a>(&'a self, _loadout: &'a Loadout) -> BoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
     /// What it draws in the transcript.
     fn renderers(&self) -> Renderers {
         Renderers::default()

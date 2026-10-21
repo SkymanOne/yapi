@@ -296,13 +296,16 @@ impl AgentHooks for Hooks {
         Box::pin(async move { registry.auth(model).await })
     }
 
-    fn current_tools(&self) -> Option<Vec<Arc<dyn Tool>>> {
-        let declared = self
-            .session
-            .inner
-            .tools
-            .with(|registry| registry.declared());
-        Some(self.session.loadout(declared))
+    fn current_tools(&self) -> BoxFuture<'_, Option<Vec<Arc<dyn Tool>>>> {
+        Box::pin(async move {
+            let declared = self
+                .session
+                .inner
+                .tools
+                .with(|registry| registry.declared());
+            self.session.refresh_loadouts(declared.clone()).await;
+            Some(self.session.loadout(declared))
+        })
     }
 
     fn before_tool_call<'a>(

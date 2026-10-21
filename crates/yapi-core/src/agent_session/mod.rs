@@ -1289,6 +1289,18 @@ impl AgentSession {
         options
     }
 
+    /// Has the extensions' loadout hooks that answer later look at the
+    /// `declared` tools, before a request presents them.
+    pub(super) async fn refresh_loadouts(&self, declared: Vec<RegisteredTool>) {
+        let loadout = Loadout {
+            declared,
+            callable: self.callable_tools(),
+        };
+        for extension in &self.inner.extensions {
+            extension.refresh_loadout(&loadout).await;
+        }
+    }
+
     /// The extensions' loadout hooks' changes for `declared` tools, with the
     /// loadout they saw.
     fn loadout_changes(&self, declared: Vec<RegisteredTool>) -> (Loadout, LoadoutChanges) {
@@ -1541,6 +1553,8 @@ impl AgentSession {
             format!("{expanded}\n\n{}", hints.join("\n"))
         };
         let messages = self.messages();
+        // The prompt leaves out the snippets of tools the hooks hide.
+        self.refresh_loadouts(self.active_tools(&active)).await;
         let mut prompts = Vec::new();
         if let Some(update) = self.system_update(&messages, &active)? {
             prompts.push(update);
