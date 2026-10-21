@@ -990,6 +990,12 @@ impl AgentSession {
         })
     }
 
+    /// What [`AgentSession::abort`] cancels: the current run's token, or
+    /// `None` while no run is active, as pi's `agent.signal`.
+    pub fn run_cancel(&self) -> Option<CancellationToken> {
+        lock(&self.inner.cancel).clone()
+    }
+
     /// Cancels the current run.
     pub fn abort(&self) {
         if let Some(cancel) = lock(&self.inner.cancel).as_ref() {

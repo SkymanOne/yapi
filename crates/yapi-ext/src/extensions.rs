@@ -1020,6 +1020,9 @@ fn ctx_data(
         "cwd": session.map(|session| session.cwd().to_path_buf()),
         "model": session.and_then(AgentSession::model),
         "thinkingLevel": session.map(|session| session.thinking_level().as_str()),
+        "scopedModels": session.map(|session| session.scoped_models().into_iter().map(|scoped| {
+            defined(json!({"model": scoped.model, "thinkingLevel": scoped.thinking_level.map(ThinkingLevel::as_str)}))
+        }).collect::<Vec<_>>()),
         "projectTrusted": trusted,
         "projectDir": session.map(AgentSession::project_dir),
         "aborted": cancel.is_cancelled(),
@@ -1768,6 +1771,9 @@ struct SessionBridge {
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
     /// The project directory of the sessions the factories run for.
     project_dir: PathBuf,
+    /// The run whose abort signal the guest holds, its id, and the task
+    /// that aborts it with the run.
+    run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
 }
 
 fn not_bound() -> String {
@@ -1797,6 +1803,7 @@ impl SessionBridge {
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
+            run_signal: Mutex::default(),
         })
     }
 
@@ -1898,6 +1905,36 @@ impl SessionBridge {
         }
         *lock(&self.held_mcp_servers) = Some(servers);
         Ok(())
+    }
+
+    /// pi's `ctx.signal` for the guest: `{ id, aborted }` of the session's
+    /// current run, whose `abort` the guest gets as the run is aborted, or
+    /// `null` while no run is active.
+    fn run_signal(&self, session: &AgentSession) -> Value {
+        let Some(token) = session.run_cancel() else {
+            return Value::Null;
+        };
+        let mut watched = lock(&self.run_signal);
+        if let Some((current, id, _)) = &*watched
+            && *current == token
+        {
+            return json!({"id": id, "aborted": token.is_cancelled()});
+        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let owner = self.owner.get().cloned().unwrap_or_default();
+        let cancelled = token.clone();
+        let watch = self.runtime.spawn(async move {
+            cancelled.cancelled().await;
+            if let Some(host) = owner.upgrade() {
+                let _ = host.instance.call("abort", &json!({ "id": id })).await;
+            }
+        });
+        let aborted = token.is_cancelled();
+        // Only the latest run's signal can still abort.
+        if let Some((_, _, previous)) = watched.replace((token, id, watch)) {
+            previous.abort();
+        }
+        json!({"id": id, "aborted": aborted})
     }
 
     /// Holds `job`, an update or a nested call of tool call `id` in the
@@ -2603,6 +2640,7 @@ impl Bridge for SessionBridge {
                 let options = serde_json::from_value(payload["options"].clone()).map_err(|err| err.to_string())?;
                 session.render_prompt(&options).map(Value::String)
             }
+            "agent.signal" => Ok(self.run_signal(&session)),
             "agent.shutdown" => {
                 session.extension_binding().0.shutdown();
                 Ok(Value::Null)

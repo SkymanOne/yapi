@@ -1015,8 +1015,37 @@
 	function ofType(type, provider, id) {
 		return (yapi.request("models.ofType", { type, provider }) ?? []).find((model) => model.id === id);
 	}
+	// The current run's abort signal, by the host's id, as pi's `ctx.signal`.
+	let runAbort;
+	function runSignal() {
+		let run = null;
+		try {
+			run = yapi.request("agent.signal", {});
+		} catch {
+			// Hosts without a session have no run.
+		}
+		if (!run) return undefined;
+		if (runAbort?.id !== run.id) {
+			if (runAbort) aborts.delete(runAbort.id);
+			runAbort = { id: run.id, controller: new AbortController() };
+			aborts.set(run.id, runAbort.controller);
+		}
+		if (run.aborted) runAbort.controller.abort();
+		return runAbort.controller.signal;
+	}
+	/** What the session holds now for the `key` of the host's context data, else `data`'s. */
+	function current(data, key) {
+		if (bound) {
+			try {
+				return yapi.request("session.context", {})?.[key] ?? undefined;
+			} catch {
+				// Hosts without a session answer from the call's data.
+			}
+		}
+		return data[key] ?? undefined;
+	}
 	function createContext(data = {}, extra = {}) {
-		const controller = new AbortController();
+		// pi reads the model, thinking level, scoped models and run signal as they are read.
 		const context = {
 			ui: createUi(data),
 			mode: data.mode ?? "print",
@@ -1024,10 +1053,18 @@
 			cwd: data.cwd ?? yapi.cwd,
 			sessionManager: createSessionManager(),
 			modelRegistry: createModelRegistry(),
-			model: data.model ?? undefined,
-			scopedModels: data.scopedModels ?? [],
-			thinkingLevel: data.thinkingLevel,
-			signal: data.aborted ? AbortSignal.abort() : controller.signal,
+			get model() {
+				return current(data, "model");
+			},
+			get scopedModels() {
+				return current(data, "scopedModels") ?? [];
+			},
+			get thinkingLevel() {
+				return current(data, "thinkingLevel");
+			},
+			get signal() {
+				return runSignal();
+			},
 			isIdle: () => !!yapi.request("agent.isIdle", {}),
 			isProjectTrusted: () => !!data.projectTrusted,
 			abort: () => yapi.request("agent.abort", {}),
@@ -1046,12 +1083,13 @@
 		// Every member throws once the session is replaced.
 		const born = generation;
 		const guarded = {};
-		for (const [key, value] of Object.entries(context)) {
+		for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(context))) {
+			const read = descriptor.get ?? (() => descriptor.value);
 			Object.defineProperty(guarded, key, {
 				enumerable: true,
 				get() {
 					assertActive(born);
-					return value;
+					return read();
 				},
 			});
 		}
@@ -1135,10 +1173,10 @@
 
 	// ----- emitting to one extension -----------------------------------------------------------
 	/** Runs `extension`'s handlers for `event` as pi's runner does for each handler. */
-	async function emit(extension, event, ctx) {
+	async function emit(extension, event, ctx, signal) {
 		const handlers = [...(extension.handlers.get(event.type) ?? [])];
 		// What JSON cannot carry: the abort signal and pi's file operation sets.
-		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = ctx.signal;
+		if (event.type === "session_before_compact" || event.type === "session_before_tree") event.signal = signal;
 		const fileOps = event.type === "session_before_compact" ? event.preparation?.fileOps : undefined;
 		if (fileOps) for (const key of ["read", "written", "edited"]) fileOps[key] = new Set(fileOps[key] ?? []);
 		const errors = [];
@@ -1550,7 +1588,8 @@
 			return null;
 		},
 		emit(payload) {
-			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx));
+			const signal = payload.ctx?.aborted ? AbortSignal.abort() : new AbortController().signal;
+			return emit(extensionOf(payload.extension), payload.event, createContext(payload.ctx), signal);
 		},
 		async tool(payload) {
 			const extension = extensionOf(payload.extension);

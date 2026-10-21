@@ -100,6 +100,80 @@ async fn commands_list_resources() {
     );
 }
 
+/// `ctx.model` and `ctx.thinkingLevel` read the session when read, so a
+/// command sees the model and level it just set (#207).
+#[tokio::test(flavor = "multi_thread")]
+async fn context_reads_live_state() {
+    let dir = scratch("api-live-state");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.registerCommand("probe", {
+		handler: async (_args, ctx) => {
+			const before = ctx.model.id;
+			await pi.setModel(ctx.modelRegistry.find("faux", "faux-2"));
+			pi.setThinkingLevel("low");
+			pi.appendEntry("state", { before, after: ctx.model.id, level: ctx.thinkingLevel });
+		},
+	});
+}"#,
+    )
+    .await;
+    let mut config = common::session_config(&Faux::new([]), &dir, host.for_session(), &["read"]);
+    let mut second = common::faux_model();
+    second.id = "faux-2".into();
+    second.reasoning = true;
+    config
+        .registry
+        .register_provider("faux", vec![common::faux_model(), second]);
+    let session = AgentSession::new(config);
+    bind(&session).await;
+    assert_eq!(
+        probe(&session, "/probe", "state").await,
+        json!({"before": "faux-1", "after": "faux-2", "level": "low"})
+    );
+}
+
+/// `ctx.signal` is the run's abort signal, which `ctx.abort()` aborts, and
+/// `undefined` while no run is active (#204).
+#[tokio::test(flavor = "multi_thread")]
+async fn context_signal_aborts() {
+    let dir = scratch("api-signal");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.on("tool_call", async (_event, ctx) => {
+		const signal = ctx.signal;
+		let heard = false;
+		signal?.addEventListener("abort", () => (heard = true));
+		ctx.abort();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		pi.appendEntry("signal", { aborted: signal?.aborted ?? null, heard });
+	});
+	pi.registerCommand("probe", {
+		handler: async (_args, ctx) => pi.appendEntry("idle", { signal: ctx.signal === undefined }),
+	});
+}"#,
+    )
+    .await;
+    let faux = Faux::new([
+        Response::tool_call("call-1", "read", json!({"path": "a.txt"})),
+        Response::text("done"),
+    ]);
+    let session = common::session(&faux, &dir, host.for_session());
+    bind(&session).await;
+    assert_eq!(
+        probe(&session, "/probe", "idle").await,
+        json!({"signal": true})
+    );
+    session.prompt("go", Vec::new()).await.unwrap();
+    eventually("signal", || !custom_entries(&session, "signal").is_empty()).await;
+    assert_eq!(
+        custom_entries(&session, "signal"),
+        [json!({"aborted": true, "heard": true})]
+    );
+}
+
 /// The request's system prompt, as the model reads it.
 fn request_prompt(faux: &Faux) -> String {
     let requests = faux.requests();
