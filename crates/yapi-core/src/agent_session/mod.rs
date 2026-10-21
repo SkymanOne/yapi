@@ -975,19 +975,25 @@ impl AgentSession {
     }
 
     /// pi's `getLastAssistantText`: the text of the last assistant message,
-    /// skipping aborted ones without content.
+    /// skipping aborted ones without content; `None` when that message has no
+    /// text.
     pub fn last_assistant_text(&self) -> Option<String> {
-        self.messages().into_iter().rev().find_map(|message| {
-            let Message::Assistant(assistant) = message else {
-                return None;
-            };
-            if assistant.stop_reason == StopReason::Aborted && assistant.content.is_empty() {
-                return None;
-            }
-            let text = assistant_text(&assistant);
-            let text = text.trim();
-            (!text.is_empty()).then(|| text.to_owned())
-        })
+        let assistant = self
+            .messages()
+            .into_iter()
+            .rev()
+            .find_map(|message| match message {
+                Message::Assistant(assistant)
+                    if !(assistant.stop_reason == StopReason::Aborted
+                        && assistant.content.is_empty()) =>
+                {
+                    Some(assistant)
+                }
+                _ => None,
+            })?;
+        let text = assistant_text(&assistant);
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_owned())
     }
 
     /// Cancels the current run.

@@ -386,3 +386,14 @@ async fn write_error_reported_once() {
         "{notes:?}"
     );
 }
+
+/// pi's `getLastAssistantText` reads only the last assistant message.
+#[tokio::test]
+async fn last_text_after_error() {
+    let faux = Faux::new([Response::text("one"), Response::error("boom")]);
+    let session = session(&faux);
+    session.prompt("first", Vec::new()).await.unwrap();
+    assert_eq!(session.last_assistant_text().as_deref(), Some("one"));
+    session.prompt("second", Vec::new()).await.unwrap();
+    assert_eq!(session.last_assistant_text(), None);
+}
