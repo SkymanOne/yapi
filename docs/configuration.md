@@ -6,7 +6,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 |---|---|
 | Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
 | Project instructions | `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` in the project, its parent folders and `~/.yapi/agent` |
-| System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/` |
+| System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/`. `--append-system-prompt` extends it in place of `APPEND_SYSTEM.md`. |
 | Skills | `~/.yapi/agent/skills`, `~/.agents/skills`, `.yapi/skills` and `.agents/skills` |
 | Prompt templates | `~/.yapi/agent/prompts` and `.yapi/prompts` |
 | Themes | `~/.yapi/agent/themes` and `.yapi/themes` |

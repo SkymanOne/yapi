@@ -68,6 +68,20 @@ fn prompt_input(input: &str) -> String {
     input.to_owned()
 }
 
+/// The texts appended to the system prompt: the `--append-system-prompt`
+/// values, each a file or text, else the `discovered` `APPEND_SYSTEM.md`.
+/// An empty value adds nothing.
+fn append_prompts(flags: &[String], discovered: impl FnOnce() -> Option<String>) -> Vec<String> {
+    if flags.is_empty() {
+        return discovered().into_iter().collect();
+    }
+    flags
+        .iter()
+        .filter(|input| !input.is_empty())
+        .map(|input| prompt_input(input))
+        .collect()
+}
+
 fn file_arguments(files: &[String], cwd: &Path) -> anyhow::Result<(String, Vec<ImageContent>)> {
     let mut text = String::new();
     let mut images = Vec::new();
@@ -714,15 +728,9 @@ fn build(
         args.no_themes,
         theme_paths,
     );
-    let mut appends: Vec<String> =
+    let appends = append_prompts(&args.append_system_prompt, || {
         system_prompt_file(&project, &agent_dir, trusted, "APPEND_SYSTEM.md")
-            .into_iter()
-            .collect();
-    appends.extend(
-        args.append_system_prompt
-            .iter()
-            .map(|input| prompt_input(input)),
-    );
+    });
     let (skills, skill_diagnostics) = yapi_core::resources::skills_from(&skill_sources);
     let (templates, mut template_diagnostics) =
         yapi_core::resources::templates_from(&template_sources);
@@ -1370,5 +1378,14 @@ mod tests {
         };
         assert_eq!(custom_session_dir(&args, &settings, &dir), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn append_flags_replace_file() {
+        let discovered = || Some("GLOBAL APPEND".to_owned());
+        assert_eq!(append_prompts(&[], discovered), ["GLOBAL APPEND"]);
+        let flags = ["literal".to_owned(), String::new()];
+        assert_eq!(append_prompts(&flags, discovered), ["literal"]);
+        assert!(append_prompts(&[String::new()], discovered).is_empty());
     }
 }
