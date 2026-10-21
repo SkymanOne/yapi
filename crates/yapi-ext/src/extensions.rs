@@ -47,6 +47,7 @@ use yapi_types::message::{
 use yapi_types::model::{ClassifierModel, ImageModel, Model};
 use yapi_types::models::ModelDefinition;
 use yapi_types::rpc::{SourceInfo, StreamingBehavior};
+use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
 use crate::{Bridge, Engine, Error, Instance, Options};
@@ -1582,7 +1583,37 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         exposure,
         namespace,
         default_active: tool["defaultActive"] != false,
+        annotations: Some(tool["annotations"].clone()).filter(Value::is_object),
+        source: usize::try_from(extension)
+            .ok()
+            .and_then(|id| lock(&shared.sources).get(id).cloned()),
     }
+}
+
+/// pi's `ToolInfo` of `tool`, as `pi.getAllTools()` gives it.
+fn tool_info(tool: &RegisteredTool) -> Value {
+    let declaration = tool.tool.declaration();
+    let namespace = tool.namespace.as_ref().map(|namespace| {
+        defined(json!({
+            "name": namespace.name,
+            "description": namespace.description,
+            "instructions": namespace.instructions,
+        }))
+    });
+    let source = tool
+        .source
+        .clone()
+        .unwrap_or_else(|| yapi_core::extensions::builtin_source(&declaration.name));
+    defined(json!({
+        "name": declaration.name,
+        "description": declaration.description,
+        "parameters": declaration.parameters,
+        "promptGuidelines": Some(&tool.guidelines).filter(|guidelines| !guidelines.is_empty()),
+        "exposure": tool.exposure,
+        "namespace": namespace,
+        "annotations": tool.annotations,
+        "sourceInfo": source,
+    }))
 }
 
 /// A tool an extension registered; runs in the guest.
@@ -2272,8 +2303,29 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
             "getEntry" => to_json(arg(0).and_then(|id| file.entry(&id).cloned())),
             "getLabel" => to_json(arg(0).and_then(|id| file.label(&id).map(str::to_owned))),
             "getBranch" => to_json(file.branch_path(arg(0).as_deref())),
-            "getHeader" => to_json(file.header()),
+            "getHeader" => to_json(file.header().cloned().map(FileEntry::Session)),
             "getEntries" => to_json(file.entries().collect::<Vec<_>>()),
+            "buildContextEntries" => to_json(
+                file.build_projection()
+                    .entries
+                    .iter()
+                    .map(|entry| entry.source)
+                    .collect::<Vec<_>>(),
+            ),
+            "buildSessionProjection" => {
+                let projection = file.build_projection();
+                let entries: Vec<Value> = projection
+                    .entries
+                    .iter()
+                    .map(|entry| json!({"sourceEntry": entry.source, "messages": entry.messages}))
+                    .collect();
+                json!({
+                    "entries": entries,
+                    "messages": projection.messages,
+                    "thinkingLevel": projection.thinking_level,
+                    "model": projection.model.map(|(provider, id)| json!({"provider": provider, "modelId": id})),
+                })
+            }
             "getSessionName" => to_json(file.name()),
             "isPersisted" => Value::Bool(file.is_persisted()),
             "getChildren" => {
@@ -2523,12 +2575,7 @@ impl Bridge for SessionBridge {
             "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
-                session
-                    .tools()
-                    .all()
-                    .into_iter()
-                    .map(|tool| json!({"name": tool.name, "description": tool.description, "parameters": tool.parameters}))
-                    .collect(),
+                session.tools().with(|registry| registry.all()).iter().map(tool_info).collect(),
             )),
             "tools.setActive" => {
                 let names = list(&payload["names"]).iter().map(text).collect();

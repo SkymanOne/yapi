@@ -368,3 +368,49 @@ export default function (pi) {
         json!({"stdout": "started\n", "code": 0, "output": "started\n", "exitCode": 0, "quick": true})
     );
 }
+
+/// `pi.getAllTools()`, `getHeader()` and the session manager's context
+/// builders give pi's shapes (#210).
+#[tokio::test(flavor = "multi_thread")]
+async fn tools_and_session_shapes() {
+    let dir = scratch("api-shapes");
+    let host = load(
+        &dir,
+        r#"export default function (pi) {
+	pi.registerTool({
+		name: "probe_tool", label: "Probe", description: "Probes", parameters: { type: "object", properties: {} },
+		promptGuidelines: ["Probe first."], annotations: { readOnlyHint: true }, exposure: "deferred",
+		async execute() { return { content: [] }; },
+	});
+	pi.registerCommand("probe", {
+		handler: async (_args, ctx) => {
+			const tools = pi.getAllTools();
+			const own = tools.find((tool) => tool.name === "probe_tool");
+			const read = tools.find((tool) => tool.name === "read");
+			const sm = ctx.sessionManager;
+			const projection = sm.buildSessionProjection();
+			pi.appendEntry("shapes", {
+				own: [own.promptGuidelines, own.annotations, own.exposure, own.sourceInfo.source],
+				read: [read.exposure, read.sourceInfo.path, read.sourceInfo.source, "annotations" in read],
+				header: sm.getHeader().type,
+				entries: sm.buildContextEntries().map((entry) => entry.type),
+				projection: [projection.entries.length, projection.messages.length, projection.thinkingLevel, projection.model.modelId],
+			});
+		},
+	});
+}"#,
+    )
+    .await;
+    let session = common::session(&Faux::new([]), &dir, host.for_session());
+    bind(&session).await;
+    assert_eq!(
+        probe(&session, "/probe", "shapes").await,
+        json!({
+            "own": [["Probe first."], {"readOnlyHint": true}, "deferred", "cli"],
+            "read": ["direct", "builtin:read", "builtin", false],
+            "header": "session",
+            "entries": ["model_change", "thinking_level_change"],
+            "projection": [2, 0, "off", "faux-1"],
+        })
+    );
+}

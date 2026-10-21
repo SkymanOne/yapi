@@ -303,6 +303,28 @@ fn parameters(schema: &Map<String, Value>) -> Value {
     Value::Object(parameters)
 }
 
+/// pi's `toToolAnnotations`: the boolean hints of `tool`'s annotations, or
+/// `None` when it has none.
+pub fn annotations(tool: &super::Tool) -> Option<Value> {
+    const HINTS: [&str; 4] = [
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    ];
+    let given = tool.annotations.as_ref()?;
+    let hints: serde_json::Map<String, Value> = HINTS
+        .iter()
+        .filter_map(|hint| {
+            Some((
+                (*hint).to_owned(),
+                given.get(*hint).filter(|value| value.is_boolean())?.clone(),
+            ))
+        })
+        .collect();
+    (!hints.is_empty()).then_some(Value::Object(hints))
+}
+
 /// An MCP server's tool.
 pub struct McpTool {
     declaration: ToolDeclaration,

@@ -991,6 +991,8 @@
 		"getEntry",
 		"getLabel",
 		"getBranch",
+		"buildContextEntries",
+		"buildSessionProjection",
 		"getHeader",
 		"getEntries",
 		"getTree",
