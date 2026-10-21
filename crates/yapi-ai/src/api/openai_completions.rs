@@ -1090,7 +1090,9 @@ async fn connect(
 
 fn failure_message(failure: Failure) -> String {
     let Failure::Status { status, body } = failure else {
-        return failure.plain_message().unwrap_or_default();
+        return failure
+            .plain_message(http::openai_sdk_message)
+            .unwrap_or_default();
     };
     let mut message = http::openai_status_message(status, &body, None);
     let json = serde_json::from_str::<Value>(&body).ok();

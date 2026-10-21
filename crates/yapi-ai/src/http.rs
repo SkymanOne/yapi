@@ -171,17 +171,31 @@ pub enum Failure {
     Connection(String),
     /// Cancelled by the caller.
     Aborted,
-    /// The server asked to retry later than the limit allows; the message says why.
-    RetryDelay(String),
+    /// A status failure whose server asked to retry later than the limit allows.
+    RetryDelay {
+        /// `Server requested <n>s retry delay (max: <m>s).`
+        delay: String,
+        /// HTTP status code.
+        status: u16,
+        /// Response body as text.
+        body: String,
+    },
 }
 
 impl Failure {
-    /// The message pi reports for failures that carry no provider error body.
-    pub fn plain_message(&self) -> Option<String> {
+    /// The message pi reports for failures other than a status. A refused
+    /// retry delay reads as the delay and then `sdk_message`, the SDK's
+    /// message for the status and body that asked for it.
+    pub fn plain_message(&self, sdk_message: impl FnOnce(u16, &str) -> String) -> Option<String> {
         match self {
             Failure::Status { .. } => None,
-            Failure::Connection(message) | Failure::RetryDelay(message) => Some(message.clone()),
+            Failure::Connection(message) => Some(message.clone()),
             Failure::Aborted => Some(ABORTED_BEFORE_RESPONSE.to_owned()),
+            Failure::RetryDelay {
+                delay,
+                status,
+                body,
+            } => Some(format!("{delay} {}", sdk_message(*status, body))),
         }
     }
 }
@@ -196,7 +210,7 @@ fn retryable(failure: &Failure, headers: &HeaderMap) -> bool {
             }
         }
         Failure::Connection(_) => true,
-        Failure::Aborted | Failure::RetryDelay(_) => false,
+        Failure::Aborted | Failure::RetryDelay { .. } => false,
     }
 }
 
@@ -250,7 +264,20 @@ pub async fn send(
         if retry >= options.max_retries || !retryable(&failure, &headers) {
             return Err(failure);
         }
-        let delay = retry_delay(&headers, retry, options.max_retry_delay_ms)?;
+        let delay = match retry_delay(&headers, retry, options.max_retry_delay_ms) {
+            Ok(delay) => delay,
+            Err(delay) => {
+                return Err(match failure {
+                    Failure::Status { status, body } => Failure::RetryDelay {
+                        delay,
+                        status,
+                        body,
+                    },
+                    // Only a status failure carries headers.
+                    other => other,
+                });
+            }
+        };
         retry += 1;
         options
             .cancel
@@ -304,23 +331,26 @@ fn connection_message(err: &reqwest::Error) -> String {
     }
 }
 
-fn retry_delay(headers: &HeaderMap, retry: u32, max_ms: Option<u64>) -> Result<Duration, Failure> {
+/// The wait before retry number `retry`, or why the requested wait is refused.
+fn retry_delay(headers: &HeaderMap, retry: u32, max_ms: Option<u64>) -> Result<Duration, String> {
     let header = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
     let requested = header("retry-after-ms")
         .and_then(|value| value.trim().parse::<f64>().ok())
         .or_else(|| {
-            header("retry-after")
-                .and_then(|value| value.trim().parse::<f64>().ok())
-                .map(|seconds| seconds * 1000.0)
+            header("retry-after").and_then(|value| match value.trim().parse::<f64>() {
+                Ok(seconds) => Some(seconds * 1000.0),
+                Err(_) => crate::model_catalog::http_date_ms(value)
+                    .map(|date| date as f64 - yapi_types::time::now_ms() as f64),
+            })
         });
     if let Some(ms) = requested.filter(|ms| ms.is_finite()) {
         let max = max_ms.unwrap_or(DEFAULT_MAX_RETRY_DELAY_MS);
         if max > 0 && ms > max as f64 {
-            return Err(Failure::RetryDelay(format!(
+            return Err(format!(
                 "Server requested {}s retry delay (max: {}s).",
                 (ms / 1000.0).ceil(),
                 max.div_ceil(1000)
-            )));
+            ));
         }
         return Ok(Duration::from_millis(ms.max(0.0) as u64));
     }
@@ -352,8 +382,20 @@ pub fn sdk_status_message(status: u16, error: Option<&Value>, raw: Option<&str>)
 pub(crate) fn openai_status_message(status: u16, body: &str, prefix: Option<&str>) -> String {
     let json = serde_json::from_str::<Value>(body).ok();
     let error = json.as_ref().and_then(|json| json.get("error"));
-    let message = sdk_status_message(status, error, json.is_none().then_some(body));
-    provider_error_message(&message, Some(status), error, prefix)
+    provider_error_message(
+        &openai_sdk_message(status, body),
+        Some(status),
+        error,
+        prefix,
+    )
+}
+
+/// The OpenAI SDK's message for a failed status: [`sdk_status_message`] of
+/// the body's `error`, or of the raw body when it is not JSON.
+pub(crate) fn openai_sdk_message(status: u16, body: &str) -> String {
+    let json = serde_json::from_str::<Value>(body).ok();
+    let error = json.as_ref().and_then(|json| json.get("error"));
+    sdk_status_message(status, error, json.is_none().then_some(body))
 }
 
 /// The message of an error the OpenAI SDK raises without a status, such as an
@@ -616,9 +658,29 @@ mod tests {
             retry_delay(&headers, 0, None).unwrap(),
             Duration::from_secs(2)
         );
-        assert!(matches!(
-            retry_delay(&headers, 0, Some(1000)),
-            Err(Failure::RetryDelay(_))
-        ));
+        assert!(retry_delay(&headers, 0, Some(1000)).is_err());
+    }
+
+    #[test]
+    fn retry_after_date() {
+        // `2026-10-21T12:34:56.789Z` as `Wed, 21 Oct 2026 12:34:56 GMT`; the weekday is not read.
+        let iso = yapi_types::time::iso(yapi_types::time::now_ms() + 120_000);
+        let months = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ];
+        let month = months[iso[5..7].parse::<usize>().unwrap() - 1];
+        let date = format!(
+            "Mon, {} {month} {} {} GMT",
+            &iso[8..10],
+            &iso[..4],
+            &iso[11..19]
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert("retry-after", date.parse().unwrap());
+        assert!(retry_delay(&headers, 0, Some(0)).unwrap() > Duration::from_secs(110));
+        assert_eq!(
+            retry_delay(&headers, 0, None).unwrap_err(),
+            "Server requested 120s retry delay (max: 60s)."
+        );
     }
 }

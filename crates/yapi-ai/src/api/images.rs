@@ -166,7 +166,11 @@ async fn openrouter(
         Err(Failure::Status { status, body }) => {
             return Err(http::openai_status_message(status, &body, None));
         }
-        Err(other) => return Err(other.plain_message().unwrap_or_default()),
+        Err(other) => {
+            return Err(other
+                .plain_message(http::openai_sdk_message)
+                .unwrap_or_default());
+        }
     };
     let Some(bytes) = options.cancel.run_until_cancelled(response.bytes()).await else {
         return Err(http::ABORTED_DURING_STREAM.into());

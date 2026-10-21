@@ -14,7 +14,7 @@ use yapi_ai::credentials::ProviderEnv;
 use yapi_ai::registry::ModelRegistry;
 use yapi_ai::stream::{Request, StreamOptions};
 use yapi_mock::{Cassette, Interaction, MockServer, REDACTED, RequestMatch, Response};
-use yapi_types::message::{Content, Message, StopReason, UserMessage};
+use yapi_types::message::{AssistantMessage, Content, Message, StopReason, UserMessage};
 
 fn agent_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("yapi-providers-{name}-{}", std::process::id()));
@@ -885,4 +885,55 @@ async fn aws_credential_chain() {
     );
     assert_eq!(requests[2].headers["authorization"], REDACTED);
     std::fs::remove_dir_all(&home).unwrap();
+}
+
+/// Streams "hi" to a built-in model at the mock server, retrying once.
+async fn retried(server: &MockServer, provider: &str, id: &str, path: &str) -> AssistantMessage {
+    let mut model = builtin_models(provider)
+        .into_iter()
+        .find(|model| model.id == id)
+        .unwrap();
+    model.base_url = format!("{}{path}", server.url());
+    let request = Request {
+        model,
+        messages: vec![user("hi")],
+        options: StreamOptions {
+            api_key: Some("key".into()),
+            max_retries: 1,
+            ..StreamOptions::default()
+        },
+    };
+    Apis::default().stream(request).result().await.unwrap()
+}
+
+/// A JSON error response with `headers`.
+fn refusal(path: &str, status: u16, headers: &[(&str, &str)], body: Value) -> Interaction {
+    let mut interaction = Interaction::json("POST", path, status, &body);
+    for (name, value) in headers {
+        interaction
+            .response
+            .headers
+            .insert((*name).to_owned(), (*value).to_owned());
+    }
+    interaction
+}
+
+#[tokio::test]
+async fn retry_delay_message() {
+    let quota = json!({"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}});
+    let server = mock(Cassette {
+        interactions: vec![refusal(
+            "/chat/completions",
+            429,
+            &[("retry-after", "3600")],
+            quota,
+        )],
+    })
+    .await;
+    let message = retried(&server, "groq", "openai/gpt-oss-120b", "").await;
+    assert_eq!(
+        message.error_message.as_deref(),
+        Some("Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota")
+    );
+    server.finish().unwrap();
 }

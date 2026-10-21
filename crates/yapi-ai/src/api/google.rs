@@ -477,7 +477,7 @@ fn failure_message(failure: Failure) -> String {
         Failure::Status { status, body } => status_message(status, &body),
         Failure::Connection(_) => "fetch failed".to_owned(),
         Failure::Aborted => ABORTED.to_owned(),
-        Failure::RetryDelay(message) => message,
+        Failure::RetryDelay { delay, .. } => delay,
     }
 }
 
