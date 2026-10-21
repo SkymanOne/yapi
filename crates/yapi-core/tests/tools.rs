@@ -250,6 +250,37 @@ async fn bash_output_exit_codes() {
     assert_eq!(err, "start\n\n\nCommand timed out after 0.2 seconds");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn bash_shell_settings() {
+    let dir = Scratch::new("bash-shell");
+    let runtime = yapi_core::tools::Runtime {
+        shell_path: Some("/bin/sh".into()),
+        shell_command_prefix: Some("FOO=bar".into()),
+        ..Default::default()
+    };
+    let env = ToolEnv {
+        runtime: Arc::new(std::sync::RwLock::new(runtime)),
+        ..env(&dir.0)
+    };
+    let tool = builtin("bash", &env).unwrap().tool;
+    let (updates, _) = sink();
+    let result = tool
+        .execute(
+            "id".into(),
+            json!({"command": "echo $FOO; echo $0"}),
+            CancellationToken::new(),
+            updates,
+        )
+        .await
+        .unwrap();
+    assert_eq!(text(&result), "bar\n/bin/sh\n");
+    // `~` in `shellPath` names the home directory.
+    let home = yapi_core::tools::path::home_dir();
+    let (shell, _) = yapi_core::tools::bash::shell_with(Some("~")).unwrap();
+    assert_eq!(Path::new(&shell), home);
+}
+
 #[tokio::test]
 async fn bash_abort_and_updates() {
     let dir = Scratch::new("abort");

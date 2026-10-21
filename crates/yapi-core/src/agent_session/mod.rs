@@ -823,10 +823,8 @@ impl AgentSession {
         let cancel = CancellationToken::new();
         lock(&self.inner.bash).push((token, cancel.clone()));
         let settings = self.settings();
-        let resolved = match settings.shell_command_prefix.as_deref() {
-            Some(prefix) if !prefix.is_empty() => format!("{prefix}\n{command}"),
-            _ => command.to_owned(),
-        };
+        let resolved =
+            crate::tools::bash::with_prefix(settings.shell_command_prefix.as_deref(), command);
         let cwd = self.with_session(|session| session.cwd().to_path_buf());
         let on_chunk = |delta: &str| {
             on_chunk(delta);
@@ -1738,6 +1736,8 @@ impl AgentSession {
             session_id: Some(session_id.clone()),
             session_file,
             auto_resize_images: settings.image_auto_resize(),
+            shell_path: settings.shell_path.clone(),
+            shell_command_prefix: settings.shell_command_prefix.clone(),
         };
         let apis = self.inner.apis.clone();
         let session = self.downgrade();
