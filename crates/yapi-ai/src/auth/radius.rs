@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use yapi_types::auth::OAuthCredential;
 
-use super::callback::{Reply, Server, error_page, query, success_page};
+use super::callback::start_code_server;
 use super::device::{DEVICE_CODE_GRANT, Poll, poll_device_code};
 use super::{
     AuthError, AuthEvent, AuthPrompt, BoxFuture, Interaction, LoginOptions, OAuthProvider, form,
@@ -167,39 +167,14 @@ impl RadiusOAuth {
             ("handoff", "url"),
             ("state", &state),
         ])));
-        let expected_state = state.clone();
-        let handler = move |method: &str, url: &Url| -> Reply<String> {
-            if method != "GET" || url.path() != CALLBACK_PATH {
-                return Reply::page(404, error_page("Callback route not found.", None));
-            }
-            if query(url, "state").as_deref() != Some(expected_state.as_str()) {
-                return Reply::page(400, error_page("State mismatch.", None));
-            }
-            if let Some(error) = query(url, "error") {
-                let description = query(url, "error_description").unwrap_or(error);
-                return Reply {
-                    status: 400,
-                    html: error_page("Radius authorization failed.", Some(&description)),
-                    outcome: Some(Err(AuthError::Failed(format!(
-                        "Radius authorization failed: {description}"
-                    )))),
-                };
-            }
-            match query(url, "code").filter(|code| !code.is_empty()) {
-                Some(code) => Reply {
-                    status: 200,
-                    html: success_page("Signed in to Radius. You may now close this page."),
-                    outcome: Some(Ok(code)),
-                },
-                None => Reply::page(400, error_page("Missing authorization code.", None)),
-            }
-        };
-        let mut server = Server::start_pending(
+        let mut server = start_code_server(
+            "Radius",
             CALLBACK_HOST,
             self.callback_port,
             CALLBACK_PATH,
+            Some(state),
+            true,
             cancel,
-            Box::new(handler),
         )
         .await
         .map_err(|err| AuthError::Failed(err.to_string()))?;

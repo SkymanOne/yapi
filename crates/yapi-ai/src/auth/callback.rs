@@ -65,8 +65,10 @@ impl<T> Reply<T> {
     }
 }
 
-/// Answers one request, given its method and URL.
-pub type Handler<T> = Box<dyn FnMut(&str, &Url) -> Reply<T> + Send>;
+/// Answers one request, given its method, its URL and whether the sign-in
+/// is already handled: an earlier reply ended the wait, or the waiter
+/// cancelled it.
+pub type Handler<T> = Box<dyn FnMut(&str, &Url, bool) -> Reply<T> + Send>;
 
 /// The browser's page for a callback whose sign-in finishes first.
 pub struct PendingPage {
@@ -124,19 +126,9 @@ impl<T: Send + 'static> Server<T> {
         Self::listen(host, port, path, cancel, handler, false).await
     }
 
-    /// [`Server::start`] for a sign-in that finishes before the browser's
-    /// page, as pi's `complete` option: the reply that yields a value waits
-    /// for the [`PendingPage`] from [`Server::wait_pending`].
-    pub async fn start_pending(
-        host: &str,
-        port: u16,
-        path: &str,
-        cancel: &CancellationToken,
-        handler: Handler<T>,
-    ) -> std::io::Result<Server<T>> {
-        Self::listen(host, port, path, cancel, handler, true).await
-    }
-
+    /// [`Server::start`], where with `pending` the reply that yields a value
+    /// waits for the [`PendingPage`] from [`Server::wait_pending`], as pi's
+    /// `complete` option.
     async fn listen(
         host: &str,
         port: u16,
@@ -180,13 +172,25 @@ impl<T: Send + 'static> Server<T> {
         self.wait_pending().await.map(|(value, _)| value)
     }
 
-    /// [`Server::wait`], with the page a server from
-    /// [`Server::start_pending`] holds until the sign-in finishes.
+    /// [`Server::wait`], with the page a pending server holds until the
+    /// sign-in finishes.
     pub async fn wait_pending(&mut self) -> Result<(T, Option<PendingPage>), AuthError> {
         match self.cancel.run_until_cancelled(&mut self.outcome).await {
             Some(Ok((outcome, page))) => outcome.map(|value| (value, page)),
             Some(Err(_)) => Err(AuthError::failed("OAuth callback server closed")),
             None => Err(AuthError::Cancelled),
+        }
+    }
+
+    /// pi's `cancel()`: stops waiting unless a request already ended the
+    /// wait, whose outcome it returns. Later requests are handled.
+    fn cancel(&mut self) -> Option<Result<(T, Option<PendingPage>), AuthError>> {
+        match self.outcome.try_recv() {
+            Ok((outcome, page)) => Some(outcome.map(|value| (value, page))),
+            Err(_) => {
+                self.outcome.close();
+                None
+            }
         }
     }
 }
@@ -223,7 +227,8 @@ async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let (handler, sender, pending) = &mut *guard;
-            let reply = handler(&method, &url);
+            let handled = sender.as_ref().is_none_or(oneshot::Sender::is_closed);
+            let reply = handler(&method, &url, handled);
             let outcome = reply
                 .outcome
                 .and_then(|outcome| sender.take().map(|sender| (sender, outcome)));
@@ -281,19 +286,20 @@ pub fn query(url: &Url, name: &str) -> Option<String> {
 }
 
 /// A server for pi's shared callback: GET `path` with `code` (and `state` when
-/// expected) yields the code.
+/// expected) yields the code, and a request after the sign-in is handled gets
+/// 409. With `pending`, the code's page waits for the sign-in to finish.
 pub(crate) async fn start_code_server(
     provider_name: &str,
     host: &str,
     port: u16,
     path: &str,
     state: Option<String>,
+    pending: bool,
     cancel: &CancellationToken,
 ) -> std::io::Result<Server<String>> {
     let provider = provider_name.to_owned();
     let expected_path = path.to_owned();
-    let mut claimed = false;
-    let handler = move |method: &str, url: &Url| -> Reply<String> {
+    let handler = move |method: &str, url: &Url, handled: bool| -> Reply<String> {
         if method != "GET" || url.path() != expected_path {
             return Reply::page(404, error_page("Callback route not found.", None));
         }
@@ -302,7 +308,7 @@ pub(crate) async fn start_code_server(
         {
             return Reply::page(400, error_page("State mismatch.", None));
         }
-        if claimed {
+        if handled {
             return Reply::page(
                 409,
                 error_page("This sign-in has already been handled.", None),
@@ -310,7 +316,6 @@ pub(crate) async fn start_code_server(
         }
         if let Some(error) = query(url, "error") {
             let description = query(url, "error_description").unwrap_or(error);
-            claimed = true;
             return Reply {
                 status: 400,
                 html: error_page(
@@ -322,10 +327,9 @@ pub(crate) async fn start_code_server(
                 )))),
             };
         }
-        let Some(code) = query(url, "code") else {
+        let Some(code) = query(url, "code").filter(|code| !code.is_empty()) else {
             return Reply::page(400, error_page("Missing authorization code.", None));
         };
-        claimed = true;
         Reply {
             status: 200,
             html: success_page(&format!(
@@ -334,7 +338,7 @@ pub(crate) async fn start_code_server(
             outcome: Some(Ok(code)),
         }
     };
-    Server::start(host, port, path, cancel, Box::new(handler)).await
+    Server::listen(host, port, path, cancel, Box::new(handler), pending).await
 }
 
 /// Where the authorization arrived from.
@@ -354,7 +358,7 @@ pub(crate) async fn callback_or_manual<T: Send + 'static>(
     server: Option<&mut Server<T>>,
     message: &str,
     placeholder: &str,
-) -> Result<Received<T>, AuthError> {
+) -> Result<Received<(T, Option<PendingPage>)>, AuthError> {
     let withdraw = interaction.cancel().child_token();
     let _withdraw_on_return = withdraw.clone().drop_guard();
     let manual = interaction.prompt_until(
@@ -368,8 +372,13 @@ pub(crate) async fn callback_or_manual<T: Send + 'static>(
         return manual.await.map(Received::Manual);
     };
     tokio::select! {
-        value = server.wait() => value.map(Received::Callback),
-        input = manual => input.map(Received::Manual),
+        value = server.wait_pending() => value.map(Received::Callback),
+        // A callback that arrived first still wins, unless the prompt failed.
+        input = manual => match (server.cancel(), input) {
+            (Some(Err(err)), _) => Err(err),
+            (Some(Ok(value)), Ok(_)) => Ok(Received::Callback(value)),
+            (_, input) => input.map(Received::Manual),
+        },
     }
 }
 
@@ -392,6 +401,7 @@ mod tests {
             0,
             "/callback",
             Some("s1".into()),
+            false,
             &cancel,
         )
         .await
@@ -402,9 +412,13 @@ mod tests {
         assert_eq!(get(&format!("{root}/other")).await.0, 404);
         assert_eq!(get(&format!("{base}?code=c&state=bad")).await.0, 400);
         assert_eq!(get(&format!("{base}?state=s1")).await.0, 400);
+        assert_eq!(get(&format!("{base}?code=&state=s1")).await.0, 400);
         let (status, body) = get(&format!("{base}?code=abc&state=s1")).await;
         assert_eq!(status, 200);
         assert!(body.contains("Signed in to Example. You may now close this page."));
+        let (status, body) = get(&format!("{base}?code=again&state=s1")).await;
+        assert_eq!(status, 409);
+        assert!(body.contains("This sign-in has already been handled."));
         assert_eq!(server.wait().await, Ok("abc".to_owned()));
     }
 
@@ -412,7 +426,7 @@ mod tests {
     async fn pasted_input_wins() {
         let cancel = CancellationToken::new();
         let (interaction, mut requests) = Interaction::new(cancel.clone());
-        let mut server = start_code_server("Example", "127.0.0.1", 0, "/cb", None, &cancel)
+        let mut server = start_code_server("Example", "127.0.0.1", 0, "/cb", None, false, &cancel)
             .await
             .unwrap();
         let answer = tokio::spawn(async move {
@@ -425,6 +439,9 @@ mod tests {
             .await
             .unwrap();
         answer.await.unwrap();
-        assert_eq!(received, Received::Manual("pasted".into()));
+        assert!(matches!(received, Received::Manual(input) if input == "pasted"));
+        // pi's `cancel()`: the browser arriving later finds the sign-in handled.
+        let late = get(&format!("{}?code=late", server.redirect_uri())).await;
+        assert_eq!(late.0, 409);
     }
 }

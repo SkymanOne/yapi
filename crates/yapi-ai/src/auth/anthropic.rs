@@ -159,6 +159,7 @@ impl AnthropicOAuth {
             self.callback_port,
             "/callback",
             Some(pkce.verifier.clone()),
+            false,
             interaction.cancel(),
         )
         .await
@@ -174,9 +175,8 @@ impl AnthropicOAuth {
             &self.redirect_uri,
         )
         .await?;
-        drop(server);
         let (code, state) = match received {
-            Received::Callback(code) => (Some(code), pkce.verifier.clone()),
+            Received::Callback((code, _)) => (Some(code), pkce.verifier.clone()),
             Received::Manual(input) => {
                 let (code, state) = parse_authorization_input(&input);
                 if state.as_ref().is_some_and(|state| *state != pkce.verifier) {

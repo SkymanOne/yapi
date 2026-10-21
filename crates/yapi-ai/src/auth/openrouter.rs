@@ -8,10 +8,10 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use yapi_types::auth::OAuthCredential;
 
-use super::callback::{Reply, Server, error_page, query, success_page};
+use super::callback::{Received, callback_or_manual, query, start_code_server};
 use super::{
-    AuthError, AuthEvent, AuthPrompt, BoxFuture, Interaction, LoginOptions, OAuthProvider,
-    callback_host, form, pkce, send,
+    AuthError, AuthEvent, BoxFuture, Interaction, LoginOptions, OAuthProvider, callback_host, form,
+    pkce, send,
 };
 
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
@@ -126,36 +126,14 @@ impl OpenRouterOAuth {
         // from completing the sign-in.
         let uuid = yapi_types::time::try_uuid_v4().map_err(AuthError::random)?;
         let path = format!("/oauth/callback/{uuid}");
-        let route = path.clone();
-        let handler = move |method: &str, url: &Url| -> Reply<String> {
-            if method != "GET" || url.path() != route {
-                return Reply::page(404, error_page("Callback route not found.", None));
-            }
-            if let Some(error) = query(url, "error") {
-                let description = query(url, "error_description").unwrap_or(error);
-                return Reply {
-                    status: 400,
-                    html: error_page("OpenRouter authorization failed.", Some(&description)),
-                    outcome: Some(Err(AuthError::Failed(format!(
-                        "OpenRouter authorization failed: {description}"
-                    )))),
-                };
-            }
-            match query(url, "code").filter(|code| !code.is_empty()) {
-                Some(code) => Reply {
-                    status: 200,
-                    html: success_page("Signed in to OpenRouter. You may now close this page."),
-                    outcome: Some(Ok(code)),
-                },
-                None => Reply::page(400, error_page("Missing authorization code.", None)),
-            }
-        };
-        let mut server = Server::start_pending(
+        let mut server = start_code_server(
+            "OpenRouter",
             &callback_host(),
             0,
             &path,
+            None,
+            true,
             interaction.cancel(),
-            Box::new(handler),
         )
         .await
         .map_err(|err| AuthError::Failed(err.to_string()))?;
@@ -172,34 +150,26 @@ impl OpenRouterOAuth {
             url: format!("{}?{query}", self.authorize_url),
             instructions: Some("Complete sign-in in your browser. If the browser is on another machine, paste the final redirect URL here.".into()),
         });
-        let withdraw = interaction.cancel().child_token();
-        let _withdraw_on_return = withdraw.clone().drop_guard();
-        let manual = async {
-            let input = interaction
-                .prompt_until(
-                    AuthPrompt::ManualCode {
-                        message: "Complete sign-in in your browser, or paste the authorization code / redirect URL here:".into(),
-                        placeholder: Some(redirect_uri.clone()),
-                    },
-                    withdraw,
-                )
-                .await?;
-            let code = parse_input(&input)
-                .ok_or_else(|| AuthError::failed("Missing authorization code"))?;
-            interaction.notify(AuthEvent::Progress {
-                message: "Exchanging authorization code for an API key...".into(),
-            });
-            Ok::<String, AuthError>(code)
-        };
-        let race = async {
-            tokio::select! {
-                result = server.wait_pending() => result,
-                result = manual => result.map(|code| (code, None)),
-            }
-        };
-        let (code, page) = tokio::time::timeout(LOGIN_TIMEOUT, race)
+        let received = callback_or_manual(
+            interaction,
+            Some(&mut server),
+            "Complete sign-in in your browser, or paste the authorization code / redirect URL here:",
+            &redirect_uri,
+        );
+        let received = tokio::time::timeout(LOGIN_TIMEOUT, received)
             .await
             .unwrap_or_else(|_| Err(AuthError::failed("OpenRouter sign-in timed out")))?;
+        let (code, page) = match received {
+            Received::Callback(callback) => callback,
+            Received::Manual(input) => {
+                let code = parse_input(&input)
+                    .ok_or_else(|| AuthError::failed("Missing authorization code"))?;
+                interaction.notify(AuthEvent::Progress {
+                    message: "Exchanging authorization code for an API key...".into(),
+                });
+                (code, None)
+            }
+        };
         // pi exchanges the code before the browser's page, which then shows the result.
         let result = self
             .exchange(&code, &pkce.verifier, interaction.cancel())

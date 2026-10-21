@@ -171,6 +171,7 @@ impl CodexOAuth {
             self.callback_port,
             "/auth/callback",
             Some(state.clone()),
+            false,
             interaction.cancel(),
         )
         .await
@@ -186,9 +187,8 @@ impl CodexOAuth {
             &self.redirect_uri,
         )
         .await?;
-        drop(server);
         let code = match received {
-            Received::Callback(code) => Some(code),
+            Received::Callback((code, _)) => Some(code),
             Received::Manual(input) => {
                 let (code, pasted_state) = parse_authorization_input(&input);
                 if pasted_state.is_some_and(|pasted| pasted != state) {

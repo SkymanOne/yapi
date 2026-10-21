@@ -168,7 +168,7 @@ impl ChatGptOAuth {
         state: String,
         cancel: &CancellationToken,
     ) -> std::io::Result<Server<Authorization>> {
-        let handler = move |_method: &str, url: &Url| -> Reply<Authorization> {
+        let handler = move |_method: &str, url: &Url, _handled: bool| -> Reply<Authorization> {
             if url.path() != CALLBACK_PATH {
                 return Reply::page(404, error_page("Callback route not found.", None));
             }

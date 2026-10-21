@@ -982,20 +982,22 @@ async fn radius_browser_login() {
             &json!({"authorizationEndpoint": "https://radius.example/authorize"}),
         )
     };
+    // A slow token exchange, so a second callback arrives during it.
+    let token = |status: u16, body: Value| {
+        let mut exchange = Exchange::json("POST", "/v1/oauth/token", status, &body);
+        exchange.response.chunk_delay_ms = 200;
+        exchange
+    };
     let server = mock(vec![
         discovery(),
-        Exchange::json(
-            "POST",
-            "/v1/oauth/token",
+        token(
             200,
-            &json!({"access_token": "rad-access", "refresh_token": "rad-refresh", "expires_in": 3600}),
+            json!({"access_token": "rad-access", "refresh_token": "rad-refresh", "expires_in": 3600}),
         ),
         discovery(),
-        Exchange::json(
-            "POST",
-            "/v1/oauth/token",
+        token(
             400,
-            &json!({"error": "invalid_grant", "error_description": "bad code"}),
+            json!({"error": "invalid_grant", "error_description": "bad code"}),
         ),
         discovery(),
     ])
@@ -1031,9 +1033,21 @@ async fn radius_browser_login() {
             .await
             .unwrap();
         assert_eq!(wrong.status().as_u16(), 400);
-        let right = reqwest::get(format!("{redirect}?{callback}&state={state}"))
-            .await
-            .unwrap();
+        let before = server.requests().len();
+        let right = tokio::spawn(reqwest::get(format!("{redirect}?{callback}&state={state}")));
+        if callback.starts_with("code=") {
+            // pi turns away a callback during the exchange, which goes on.
+            while server.requests().len() == before {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            let again = reqwest::get(format!("{redirect}?code=c2&state={state}"))
+                .await
+                .unwrap();
+            assert_eq!(again.status().as_u16(), 409);
+            let html = again.text().await.unwrap();
+            assert!(html.contains("This sign-in has already been handled."));
+        }
+        let right = right.await.unwrap().unwrap();
         assert_eq!(right.status().as_u16(), page_status);
         assert_eq!(login.await.unwrap().ok().as_deref(), access);
         redirects.push(redirect);
