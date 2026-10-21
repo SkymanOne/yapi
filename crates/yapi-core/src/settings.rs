@@ -172,21 +172,52 @@ fn deep_merge(base: &Map<String, Value>, overrides: &Map<String, Value>) -> Map<
     result
 }
 
-/// `defaultTools`: a list of plain names replaces the inherited one; a list of
-/// only `+name` and `-name` entries is appended to it.
+fn is_tool_modifier(entry: &str) -> bool {
+    entry.starts_with('+') || entry.starts_with('-')
+}
+
+/// `defaultTools`: a list of plain names, or any other value, replaces the
+/// inherited one; a list of only `+name` and `-name` entries is appended to it.
 fn merge_default_tools(base: Option<&Value>, overrides: Option<&Value>) -> Option<Value> {
-    let overrides = overrides?.as_array()?;
-    let modifiers_only = overrides.iter().all(|entry| {
-        entry
-            .as_str()
-            .is_some_and(|name| name.starts_with('+') || name.starts_with('-'))
-    });
-    if !modifiers_only {
-        return Some(Value::Array(overrides.clone()));
+    let Some(overrides) = overrides else {
+        return base.cloned();
+    };
+    match (base.and_then(Value::as_array), overrides.as_array()) {
+        (Some(base), Some(list))
+            if list
+                .iter()
+                .all(|entry| entry.as_str().is_some_and(is_tool_modifier)) =>
+        {
+            Some(Value::Array(base.iter().chain(list).cloned().collect()))
+        }
+        _ => Some(overrides.clone()),
     }
-    let mut merged = base.and_then(Value::as_array).cloned().unwrap_or_default();
-    merged.extend(overrides.iter().cloned());
-    Some(Value::Array(merged))
+}
+
+/// pi's `resolveDefaultTools`: the plain names, or the default tools when a
+/// list has only modifiers, then each `+name` adds and `-name` removes a tool
+/// in list order.
+fn resolve_default_tools(entries: &[&str]) -> Vec<String> {
+    let mut tools: Vec<String> = entries
+        .iter()
+        .filter(|entry| !is_tool_modifier(entry))
+        .map(|&entry| entry.to_owned())
+        .collect();
+    if tools.is_empty() && !entries.is_empty() {
+        tools = crate::tools::DEFAULT_TOOLS.map(str::to_owned).to_vec();
+    }
+    for entry in entries.iter().filter(|entry| is_tool_modifier(entry)) {
+        let name = &entry[1..];
+        let index = tools.iter().position(|tool| tool == name);
+        match index {
+            None if entry.starts_with('+') && !name.is_empty() => tools.push(name.to_owned()),
+            Some(index) if entry.starts_with('-') => {
+                tools.remove(index);
+            }
+            _ => {}
+        }
+    }
+    tools
 }
 
 impl SettingsManager {
@@ -270,6 +301,21 @@ impl SettingsManager {
     /// The merged settings.
     pub fn settings(&self) -> &Settings {
         &self.merged
+    }
+
+    /// pi's `getDefaultTools`: the tools the merged `defaultTools` enables, or
+    /// `None` when no scope sets it. A value that is not a list enables none,
+    /// and entries that are not strings are skipped.
+    pub fn default_tools(&self) -> Option<Vec<String>> {
+        let merged = merge_default_tools(
+            self.global.get("defaultTools"),
+            self.project.get("defaultTools"),
+        )?;
+        let entries: Vec<&str> = match &merged {
+            Value::Array(entries) => entries.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        Some(resolve_default_tools(&entries))
     }
 
     /// `defaultThinkingLevel`, if set: a value that names no level becomes
@@ -468,6 +514,26 @@ mod tests {
             merge_default_tools(Some(&json!(["read"])), Some(&json!(["ls"]))),
             Some(json!(["ls"]))
         );
+        // pi's getDefaultTools resolves the merged list.
+        let resolved = |global: &Value, project: &Value| {
+            let mut manager = SettingsManager::in_memory();
+            manager.global = Map::from_iter([("defaultTools".to_owned(), global.clone())]);
+            manager.project = Map::from_iter([("defaultTools".to_owned(), project.clone())]);
+            manager.default_tools().unwrap()
+        };
+        let (global, project) = (&global["defaultTools"], &project["defaultTools"]);
+        assert_eq!(resolved(global, project), ["read", "grep"]);
+        let plain = json!(["read", "+ls"]);
+        assert_eq!(resolved(&plain, &json!(["+find"])), ["read", "ls", "find"]);
+        let modifiers = json!(["-bash"]);
+        assert_eq!(
+            resolved(&modifiers, &json!(["+grep"])),
+            ["read", "edit", "write", "grep"]
+        );
+        // An empty list, or a value that is not a list, enables no tool.
+        assert!(resolved(&json!([]), &json!([])).is_empty());
+        assert!(resolved(&plain, &json!("read")).is_empty());
+        assert_eq!(SettingsManager::in_memory().default_tools(), None);
     }
 
     /// pi's legacy setting forms, migrated as pi writes them back.

@@ -243,28 +243,9 @@ fn tool_names(args: &Args, settings: &SettingsManager) -> Vec<String> {
     if args.no_tools || args.no_builtin_tools {
         return Vec::new();
     }
-    let mut names: Vec<String> = yapi_core::tools::DEFAULT_TOOLS
-        .iter()
-        .map(|name| (*name).to_owned())
-        .collect();
-    if let Some(configured) = &settings.settings().default_tools {
-        for entry in configured {
-            if let Some(name) = entry.strip_prefix('+') {
-                if !names.iter().any(|existing| existing == name) {
-                    names.push(name.to_owned());
-                }
-            } else if let Some(name) = entry.strip_prefix('-') {
-                names.retain(|existing| existing != name);
-            } else {
-                names = configured
-                    .iter()
-                    .filter(|entry| !entry.starts_with('+') && !entry.starts_with('-'))
-                    .cloned()
-                    .collect();
-                break;
-            }
-        }
-    }
+    let mut names = settings
+        .default_tools()
+        .unwrap_or_else(|| yapi_core::tools::DEFAULT_TOOLS.map(str::to_owned).to_vec());
     if let Some(tools) = &args.tools {
         names = tools.clone();
     }
@@ -1368,24 +1349,27 @@ mod tests {
         SettingsManager::load(dir, dir, false)
     }
 
+    /// The session directory, the tools and the appended system prompt
+    /// read from settings and flags as pi reads them.
     #[test]
-    fn empty_session_dir() {
-        let dir = std::env::temp_dir().join(format!("yapi-session-dir-{}", std::process::id()));
-        let settings = settings(&dir, r#"{"sessionDir": ""}"#);
+    fn startup_inputs() {
+        let dir = std::env::temp_dir().join(format!("yapi-startup-inputs-{}", std::process::id()));
+        // An empty session directory is unset.
         let args = Args {
             session_dir: Some(String::new()),
             ..Args::default()
         };
-        assert_eq!(custom_session_dir(&args, &settings, &dir), None);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn append_flags_replace_file() {
+        let empty = settings(&dir, r#"{"sessionDir": ""}"#);
+        assert_eq!(custom_session_dir(&args, &empty, &dir), None);
+        // `+name` applies next to plain names.
+        let tools = settings(&dir, r#"{"defaultTools": ["read", "+ls"]}"#);
+        assert_eq!(tool_names(&Args::default(), &tools), ["read", "ls"]);
+        // `--append-system-prompt` replaces `APPEND_SYSTEM.md`.
         let discovered = || Some("GLOBAL APPEND".to_owned());
         assert_eq!(append_prompts(&[], discovered), ["GLOBAL APPEND"]);
         let flags = ["literal".to_owned(), String::new()];
         assert_eq!(append_prompts(&flags, discovered), ["literal"]);
         assert!(append_prompts(&[String::new()], discovered).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
