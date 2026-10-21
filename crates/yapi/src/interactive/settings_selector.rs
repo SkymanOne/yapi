@@ -1619,25 +1619,29 @@ impl super::App {
         level: Option<ThinkingLevel>,
     ) {
         let key = format!("{provider}/{id}");
-        let mut levels = self
-            .session
-            .settings()
-            .model_thinking_levels
-            .unwrap_or_default();
+        // As pi, only the global levels change, so a project's stay in it.
+        let manager = self.session.settings_manager();
+        let global = manager
+            .document(yapi_core::settings::Scope::Global)
+            .get("modelThinkingLevels");
+        let mut levels = match global {
+            Some(serde_json::Value::Object(levels)) => levels.clone(),
+            _ => serde_json::Map::new(),
+        };
         match level {
             Some(level) => {
-                levels.insert(key, level);
+                levels.insert(key, level.as_str().into());
             }
             None => {
                 levels.shift_remove(&key);
             }
         }
-        let value = (!levels.is_empty())
-            .then(|| serde_json::to_value(&levels).ok())
-            .flatten();
-        let _ = self
-            .session
-            .set_global_setting("modelThinkingLevels", value);
+        if level.is_some() || global.is_some() {
+            let value = (!levels.is_empty()).then_some(serde_json::Value::Object(levels));
+            let _ = self
+                .session
+                .set_global_setting("modelThinkingLevels", value);
+        }
         let current = self
             .session
             .model()

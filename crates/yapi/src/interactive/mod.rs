@@ -5177,6 +5177,30 @@ mod tests {
         );
     }
 
+    /// A per-model thinking level changes the global settings alone, so a
+    /// trusted project's levels stay in the project.
+    #[tokio::test]
+    async fn model_thinking_global_only() {
+        use yapi_types::message::ThinkingLevel;
+        let dir = std::env::temp_dir().join(format!("yapi-model-thinking-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".yapi")).unwrap();
+        let project = r#"{"modelThinkingLevels": {"openai/gpt-5": "high"}}"#;
+        std::fs::write(dir.join(".yapi/settings.json"), project).unwrap();
+        let mut config = config(SessionManager::in_memory(Path::new("/work")));
+        config.settings = yapi_core::settings::SettingsManager::load(&dir, &dir, true);
+        let (mut app, _events) = app_with(AgentSession::new(config));
+        let global = || std::fs::read_to_string(dir.join("settings.json")).unwrap();
+        app.set_model_thinking("anthropic", "claude-opus-4-8", Some(ThinkingLevel::Low));
+        assert_eq!(
+            global(),
+            "{\n  \"modelThinkingLevels\": {\n    \"anthropic/claude-opus-4-8\": \"low\"\n  }\n}"
+        );
+        app.set_model_thinking("anthropic", "claude-opus-4-8", None);
+        assert_eq!(global(), "{}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     /// Clicks on the chat's items against pi's, recorded by
     /// `tests/fixtures/pi/generator/selection.mjs`: the screen text after
     /// each click.
