@@ -44,7 +44,8 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 
 | Area | Pi | yapi |
 |---|---|---|
-| `/share` and `/bug` | Use Pi's services | Not available. |
+| `/share` | Shares a session through Pi's services | Not available. |
+| `/bug` | Uploads a private report to Pi's service at radius.pi.dev, or exports it as a zip file | Always writes the zip file to the working folder, then offers to post a public issue on [SkymanOne/yapi](https://github.com/SkymanOne/yapi/issues) with the GitHub CLI. The report has no crash log. Its diagnostics come from the current branch, and its `session.jsonl` holds the branch without Pi's system prompt and tool list. The session records the report as a `yapi.bug-report` entry. |
 | Clipboard paste | Copied files, images and text on every platform | Nothing on Windows, and images copied in Windows do not reach WSL. |
 | Word motions in Chinese, Japanese and Thai | By dictionary word | By character, to keep ICU's dictionaries out of the binary. |
 | Time zones | Node's own time zone data | The system's time zone database. With `TZ` set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless `TZ` holds a POSIX rule such as `EST5EDT`. |

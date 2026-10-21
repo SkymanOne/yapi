@@ -43,7 +43,7 @@ oxc_resolver = { version = "=11.24.3", default-features = false }
 percent-encoding = "2.3"
 pulldown-cmark = { version = "0.13", default-features = false }
 ratatui-core = { version = "0.1", features = ["std", "underline-color"] }
-rustix = { version = "1", features = ["process"] }
+rustix = { version = "1", features = ["process", "system"] }
 ryu-js = "1"
 ruzstd = { version = "0.9.1", default-features = false, features = ["std"] }
 md-5 = "0.11"

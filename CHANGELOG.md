@@ -4,6 +4,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+- Add `/bug`, which saves a bug report as a zip file and can post it as a public issue on SkymanOne/yapi with the GitHub CLI ([#192](https://github.com/SkymanOne/yapi/pull/192)).
 - Add complete pi-ai `Provider` objects, image and classifier models with their implementations, and the legacy `oauth.modifyModels` to extensions' `registerProvider` ([#191](https://github.com/SkymanOne/yapi/pull/191)).
 - Fix `newSession`'s `setup` running after the new session started, with a session manager it could not write to. As in Pi, the entries it appends are in place for `session_start` and the first prompt ([#190](https://github.com/SkymanOne/yapi/pull/190)).
 - Add `ctx.modelRegistry.getProviderAuth` and `getApiKeyAndHeaders`, which give extensions a provider's or a model's API key and headers as in Pi. They need the network grant ([#189](https://github.com/SkymanOne/yapi/pull/189)).

@@ -201,6 +201,8 @@ pub struct ModelRegistry {
     runtime_keys: IndexMap<String, String>,
     /// Providers whose `apiKey` an extension configures.
     extension_keys: HashSet<String>,
+    /// Providers extensions register.
+    extension_providers: HashSet<String>,
     error: Option<String>,
     /// Classifier models, built-in and refreshed.
     classifiers: Vec<ClassifierModel>,
@@ -1023,6 +1025,7 @@ impl ModelRegistry {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
         }
+        self.extension_providers.insert(provider.to_owned());
         match config.models.as_mut() {
             Some(models) => {
                 let typed = models.extract_if(.., |model| is_typed(model)).collect();
@@ -1593,11 +1596,19 @@ impl ModelRegistry {
             .unwrap_or_else(|| provider.to_owned())
     }
 
+    /// The `models.json` or extension configuration of `provider`.
+    pub fn provider_config(&self, provider: &str) -> Option<&ProviderConfig> {
+        self.config.providers.get(provider)
+    }
+
+    /// Whether an extension registered `provider`.
+    pub fn registered_by_extension(&self, provider: &str) -> bool {
+        self.extension_providers.contains(provider)
+    }
+
     /// Whether `models.json` or an extension sets `authHeader` for `provider`.
     pub fn auth_header(&self, provider: &str) -> bool {
-        self.config
-            .providers
-            .get(provider)
+        self.provider_config(provider)
             .and_then(|config| config.auth_header)
             .unwrap_or(false)
     }
