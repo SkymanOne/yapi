@@ -368,6 +368,8 @@ impl HttpTransport {
     fn headers(&self, extra: &HeaderMap, token: Option<&str>) -> HeaderMap {
         let mut headers = HeaderMap::new();
         for (name, value) in &self.inner.options.headers {
+            // Node's `Headers` strips leading and trailing HTTP whitespace.
+            let value = value.trim_matches([' ', '\t', '\r', '\n']);
             if let (Ok(name), Ok(value)) = (
                 HeaderName::from_bytes(name.as_bytes()),
                 HeaderValue::from_str(value),

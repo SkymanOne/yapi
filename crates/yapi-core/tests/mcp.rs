@@ -630,6 +630,13 @@ async fn auth_provider_tokens_sent() {
     );
     assert_eq!(connection.snapshot().state, State::NeedsAuth);
     assert!(!agent_dir.join("mcp-auth.json").exists());
+
+    // A configured header is trimmed, as Node's `Headers` trims it, such as
+    // a token read from a CRLF `.env` file.
+    let config = json!({"headers": {"Authorization": "Bearer secret\r"}});
+    let connection = http_connection(&url, config, &agent_dir, None);
+    assert_eq!(echo(&connection).await.unwrap()["content"][0]["text"], "hi");
+    connection.close().await;
 }
 
 /// Credentials pi stored are read and written back unchanged.
