@@ -477,7 +477,7 @@ fn failure_message(failure: Failure) -> String {
         Failure::Status { status, body } => status_message(status, &body),
         Failure::Connection(_) => "fetch failed".to_owned(),
         Failure::Aborted => ABORTED.to_owned(),
-        Failure::RetryDelay(message) => message,
+        Failure::RetryDelay { delay, .. } => delay,
     }
 }
 
@@ -804,7 +804,9 @@ async fn connect(
         timeout_ms: None,
         ..options.clone()
     };
-    http::send(build, &options).await.map_err(failure_message)
+    http::send_with(build, &options, false)
+        .await
+        .map_err(failure_message)
 }
 
 /// Where a request goes and how it authenticates.

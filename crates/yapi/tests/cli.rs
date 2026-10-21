@@ -526,6 +526,68 @@ fn no_service_commands() {
     pty.finish().unwrap();
 }
 
+/// Input split across reads waits as in pi-tui: a startup picker reads ESC
+/// and `[B` written apart as Down, not Escape, and a device attributes reply
+/// in two pieces is read as the reply, not typed into the editor.
+#[test]
+fn split_terminal_input() {
+    use std::time::Duration;
+    let root = common::scratch("split-input");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let env = [
+        ("HOME", root.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", agent.into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
+        // A long escape timeout keeps the split inside it on a slow machine.
+        ("PI_TUI_ESC_TIMEOUT", "2000".into()),
+    ];
+    let spawn = |args: &[&str], answer: bool| {
+        let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), answer).unwrap()
+    };
+
+    let mut pty = spawn(&["config"], true);
+    let selected = |rows: &[String]| {
+        rows.iter()
+            .position(|row| row.starts_with('>') && row.contains("[x]"))
+    };
+    let first = pty.wait_for(Duration::from_secs(20), |rows| selected(rows).is_some());
+    assert!(first.is_some(), "{:#?}", pty.rows());
+    let first = selected(&pty.rows());
+    pty.write("\x1b").unwrap();
+    std::thread::sleep(Duration::from_millis(30));
+    pty.write("[B").unwrap();
+    let moved = pty.wait_for(Duration::from_secs(5), |rows| {
+        selected(rows).is_some_and(|row| Some(row) > first)
+    });
+    assert!(moved.is_some(), "{:#?}", pty.rows());
+    assert_eq!(pty.finish().unwrap(), -1);
+
+    // Silent, so the only device attributes reply is the split one.
+    let mut pty = spawn(
+        &["--model", "anthropic/claude-sonnet-4-5", "--no-session"],
+        false,
+    );
+    let shown =
+        |text: &'static str| move |rows: &[String]| rows.iter().any(|row| row.contains(text));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("claude-sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x1b[?62;").unwrap();
+    // Longer than the input buffer's 50 ms, shorter than the reply's 150 ms.
+    std::thread::sleep(Duration::from_millis(100));
+    pty.write("22ctyped").unwrap();
+    let typed = pty.wait_for(Duration::from_secs(5), shown("typed"));
+    assert!(typed.is_some(), "{:#?}", pty.rows());
+    let rows = pty.rows();
+    assert!(!rows.iter().any(|row| row.contains("22c")), "{rows:#?}");
+    pty.finish().unwrap();
+}
+
 /// Extension console output goes to stderr in print mode. In interactive
 /// mode it stays off the screen, and `/debug` writes it.
 #[test]

@@ -65,15 +65,50 @@ impl<T> Reply<T> {
     }
 }
 
-/// Answers one request, given its method and URL.
-pub type Handler<T> = Box<dyn FnMut(&str, &Url) -> Reply<T> + Send>;
+/// Answers one request, given its method, its URL and whether the sign-in
+/// is already handled: an earlier reply ended the wait, or the waiter
+/// cancelled it.
+pub type Handler<T> = Box<dyn FnMut(&str, &Url, bool) -> Reply<T> + Send>;
+
+/// The browser's page for a callback whose sign-in finishes first.
+pub struct PendingPage {
+    page: oneshot::Sender<(u16, String)>,
+    sent: oneshot::Receiver<()>,
+}
+
+impl PendingPage {
+    /// Answers with pi's page for `result`, signed in or 502 with the error,
+    /// and waits until it is sent.
+    pub async fn finish<U>(self, provider: &str, result: &Result<U, AuthError>) {
+        let page = match result {
+            Ok(_) => (
+                200,
+                success_page(&format!(
+                    "Signed in to {provider}. You may now close this page."
+                )),
+            ),
+            Err(err) => (
+                502,
+                error_page(
+                    &format!("{provider} sign-in failed."),
+                    Some(&err.to_string()),
+                ),
+            ),
+        };
+        if self.page.send(page).is_ok() {
+            let _ = self.sent.await;
+        }
+    }
+}
+
+type Outcome<T> = (Result<T, AuthError>, Option<PendingPage>);
 
 /// A running loopback server. Dropping it closes the listener and every open
 /// connection.
 pub struct Server<T> {
     port: u16,
     redirect_uri: String,
-    outcome: oneshot::Receiver<Result<T, AuthError>>,
+    outcome: oneshot::Receiver<Outcome<T>>,
     cancel: CancellationToken,
     tasks: tokio::task::JoinHandle<()>,
 }
@@ -88,11 +123,25 @@ impl<T: Send + 'static> Server<T> {
         cancel: &CancellationToken,
         handler: Handler<T>,
     ) -> std::io::Result<Server<T>> {
+        Self::listen(host, port, path, cancel, handler, false).await
+    }
+
+    /// [`Server::start`], where with `pending` the reply that yields a value
+    /// waits for the [`PendingPage`] from [`Server::wait_pending`], as pi's
+    /// `complete` option.
+    async fn listen(
+        host: &str,
+        port: u16,
+        path: &str,
+        cancel: &CancellationToken,
+        handler: Handler<T>,
+        pending: bool,
+    ) -> std::io::Result<Server<T>> {
         let listener = TcpListener::bind((host, port)).await?;
         let port = listener.local_addr()?.port();
         let redirect_uri = format!("http://{host}:{port}{path}");
         let (sender, outcome) = oneshot::channel();
-        let state = Arc::new(Mutex::new((handler, Some(sender))));
+        let state = Arc::new(Mutex::new((handler, Some(sender), pending)));
         let tasks = tokio::spawn(async move {
             let mut connections = JoinSet::new();
             while let Ok((stream, _)) = listener.accept().await {
@@ -120,11 +169,28 @@ impl<T: Send + 'static> Server<T> {
 
     /// The outcome of the first conclusive request.
     pub async fn wait(&mut self) -> Result<T, AuthError> {
+        self.wait_pending().await.map(|(value, _)| value)
+    }
+
+    /// [`Server::wait`], with the page a pending server holds until the
+    /// sign-in finishes.
+    pub async fn wait_pending(&mut self) -> Result<(T, Option<PendingPage>), AuthError> {
         match self.cancel.run_until_cancelled(&mut self.outcome).await {
-            Some(outcome) => {
-                outcome.unwrap_or_else(|_| Err(AuthError::failed("OAuth callback server closed")))
-            }
+            Some(Ok((outcome, page))) => outcome.map(|value| (value, page)),
+            Some(Err(_)) => Err(AuthError::failed("OAuth callback server closed")),
             None => Err(AuthError::Cancelled),
+        }
+    }
+
+    /// pi's `cancel()`: stops waiting unless a request already ended the
+    /// wait, whose outcome it returns. Later requests are handled.
+    fn cancel(&mut self) -> Option<Result<(T, Option<PendingPage>), AuthError>> {
+        match self.outcome.try_recv() {
+            Ok((outcome, page)) => Some(outcome.map(|value| (value, page))),
+            Err(_) => {
+                self.outcome.close();
+                None
+            }
         }
     }
 }
@@ -135,7 +201,8 @@ impl<T> Drop for Server<T> {
     }
 }
 
-type Shared<T> = Arc<Mutex<(Handler<T>, Option<oneshot::Sender<Result<T, AuthError>>>)>>;
+/// The handler, the sender of the outcome, and whether a value's page waits.
+type Shared<T> = Arc<Mutex<(Handler<T>, Option<oneshot::Sender<Outcome<T>>>, bool)>>;
 
 async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     let mut buffer = Vec::new();
@@ -154,19 +221,44 @@ async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     let method = parts.next().unwrap_or_default().to_owned();
     let target = parts.next().unwrap_or("/");
     let url = Url::parse("http://localhost").and_then(|base| base.join(target));
-    let (status, html, outcome) = match url {
+    let (mut status, mut html, outcome, pending) = match url {
         Ok(url) => {
             let mut guard = state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let (handler, sender) = &mut *guard;
-            let reply = handler(&method, &url);
+            let (handler, sender, pending) = &mut *guard;
+            let handled = sender.as_ref().is_none_or(oneshot::Sender::is_closed);
+            let reply = handler(&method, &url, handled);
             let outcome = reply
                 .outcome
                 .and_then(|outcome| sender.take().map(|sender| (sender, outcome)));
-            (reply.status, reply.html, outcome)
+            (reply.status, reply.html, outcome, *pending)
         }
-        Err(_) => (404, error_page("Callback route not found.", None), None),
+        Err(_) => (
+            404,
+            error_page("Callback route not found.", None),
+            None,
+            false,
+        ),
+    };
+    let mut sent = None;
+    let outcome = match outcome {
+        Some((sender, Ok(value))) if pending => {
+            let (page, chosen) = oneshot::channel();
+            let (done, waiting) = oneshot::channel();
+            sent = Some(done);
+            let page = PendingPage {
+                page,
+                sent: waiting,
+            };
+            let _ = sender.send((Ok(value), Some(page)));
+            // A sign-in that ends without choosing keeps the handler's page.
+            if let Ok(page) = chosen.await {
+                (status, html) = page;
+            }
+            None
+        }
+        outcome => outcome,
     };
     let reason = reqwest::StatusCode::from_u16(status)
         .ok()
@@ -178,8 +270,11 @@ async fn serve_connection<T>(mut stream: TcpStream, state: Shared<T>) {
     );
     let _ = stream.write_all(response.as_bytes()).await;
     let _ = stream.shutdown().await;
+    if let Some(sent) = sent {
+        let _ = sent.send(());
+    }
     if let Some((sender, outcome)) = outcome {
-        let _ = sender.send(outcome);
+        let _ = sender.send((outcome, None));
     }
 }
 
@@ -191,19 +286,20 @@ pub fn query(url: &Url, name: &str) -> Option<String> {
 }
 
 /// A server for pi's shared callback: GET `path` with `code` (and `state` when
-/// expected) yields the code.
+/// expected) yields the code, and a request after the sign-in is handled gets
+/// 409. With `pending`, the code's page waits for the sign-in to finish.
 pub(crate) async fn start_code_server(
     provider_name: &str,
     host: &str,
     port: u16,
     path: &str,
     state: Option<String>,
+    pending: bool,
     cancel: &CancellationToken,
 ) -> std::io::Result<Server<String>> {
     let provider = provider_name.to_owned();
     let expected_path = path.to_owned();
-    let mut claimed = false;
-    let handler = move |method: &str, url: &Url| -> Reply<String> {
+    let handler = move |method: &str, url: &Url, handled: bool| -> Reply<String> {
         if method != "GET" || url.path() != expected_path {
             return Reply::page(404, error_page("Callback route not found.", None));
         }
@@ -212,7 +308,7 @@ pub(crate) async fn start_code_server(
         {
             return Reply::page(400, error_page("State mismatch.", None));
         }
-        if claimed {
+        if handled {
             return Reply::page(
                 409,
                 error_page("This sign-in has already been handled.", None),
@@ -220,7 +316,6 @@ pub(crate) async fn start_code_server(
         }
         if let Some(error) = query(url, "error") {
             let description = query(url, "error_description").unwrap_or(error);
-            claimed = true;
             return Reply {
                 status: 400,
                 html: error_page(
@@ -232,10 +327,9 @@ pub(crate) async fn start_code_server(
                 )))),
             };
         }
-        let Some(code) = query(url, "code") else {
+        let Some(code) = query(url, "code").filter(|code| !code.is_empty()) else {
             return Reply::page(400, error_page("Missing authorization code.", None));
         };
-        claimed = true;
         Reply {
             status: 200,
             html: success_page(&format!(
@@ -244,7 +338,7 @@ pub(crate) async fn start_code_server(
             outcome: Some(Ok(code)),
         }
     };
-    Server::start(host, port, path, cancel, Box::new(handler)).await
+    Server::listen(host, port, path, cancel, Box::new(handler), pending).await
 }
 
 /// Where the authorization arrived from.
@@ -264,7 +358,7 @@ pub(crate) async fn callback_or_manual<T: Send + 'static>(
     server: Option<&mut Server<T>>,
     message: &str,
     placeholder: &str,
-) -> Result<Received<T>, AuthError> {
+) -> Result<Received<(T, Option<PendingPage>)>, AuthError> {
     let withdraw = interaction.cancel().child_token();
     let _withdraw_on_return = withdraw.clone().drop_guard();
     let manual = interaction.prompt_until(
@@ -278,8 +372,13 @@ pub(crate) async fn callback_or_manual<T: Send + 'static>(
         return manual.await.map(Received::Manual);
     };
     tokio::select! {
-        value = server.wait() => value.map(Received::Callback),
-        input = manual => input.map(Received::Manual),
+        value = server.wait_pending() => value.map(Received::Callback),
+        // A callback that arrived first still wins, unless the prompt failed.
+        input = manual => match (server.cancel(), input) {
+            (Some(Err(err)), _) => Err(err),
+            (Some(Ok(value)), Ok(_)) => Ok(Received::Callback(value)),
+            (_, input) => input.map(Received::Manual),
+        },
     }
 }
 
@@ -302,6 +401,7 @@ mod tests {
             0,
             "/callback",
             Some("s1".into()),
+            false,
             &cancel,
         )
         .await
@@ -312,9 +412,13 @@ mod tests {
         assert_eq!(get(&format!("{root}/other")).await.0, 404);
         assert_eq!(get(&format!("{base}?code=c&state=bad")).await.0, 400);
         assert_eq!(get(&format!("{base}?state=s1")).await.0, 400);
+        assert_eq!(get(&format!("{base}?code=&state=s1")).await.0, 400);
         let (status, body) = get(&format!("{base}?code=abc&state=s1")).await;
         assert_eq!(status, 200);
         assert!(body.contains("Signed in to Example. You may now close this page."));
+        let (status, body) = get(&format!("{base}?code=again&state=s1")).await;
+        assert_eq!(status, 409);
+        assert!(body.contains("This sign-in has already been handled."));
         assert_eq!(server.wait().await, Ok("abc".to_owned()));
     }
 
@@ -322,7 +426,7 @@ mod tests {
     async fn pasted_input_wins() {
         let cancel = CancellationToken::new();
         let (interaction, mut requests) = Interaction::new(cancel.clone());
-        let mut server = start_code_server("Example", "127.0.0.1", 0, "/cb", None, &cancel)
+        let mut server = start_code_server("Example", "127.0.0.1", 0, "/cb", None, false, &cancel)
             .await
             .unwrap();
         let answer = tokio::spawn(async move {
@@ -335,6 +439,9 @@ mod tests {
             .await
             .unwrap();
         answer.await.unwrap();
-        assert_eq!(received, Received::Manual("pasted".into()));
+        assert!(matches!(received, Received::Manual(input) if input == "pasted"));
+        // pi's `cancel()`: the browser arriving later finds the sign-in handled.
+        let late = get(&format!("{}?code=late", server.redirect_uri())).await;
+        assert_eq!(late.0, 409);
     }
 }

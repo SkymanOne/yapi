@@ -173,7 +173,9 @@ fn is_stale(dir: &Path) -> bool {
 
 /// A value in `[0, 1)`; spreads retries of competing processes.
 fn jitter() -> f64 {
-    f64::from(u16::from_le_bytes(yapi_types::time::random_bytes())) / 65536.0
+    // Like pi's `Math.random`, jitter never fails; without the generator it is 0.
+    let bytes = yapi_types::time::try_random_bytes().unwrap_or_default();
+    f64::from(u16::from_le_bytes(bytes)) / 65536.0
 }
 
 #[cfg(test)]

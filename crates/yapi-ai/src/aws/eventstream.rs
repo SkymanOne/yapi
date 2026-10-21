@@ -71,6 +71,15 @@ impl Decoder {
             payload: message[12 + headers_len..total - 4].to_vec(),
         }))
     }
+
+    /// Checks the end of the stream: a message whose length arrived but not
+    /// all of its bytes is an error, as in smithy's `getChunkedStream`.
+    pub fn finish(&self) -> Result<(), String> {
+        match self.buffer.len() {
+            0..4 => Ok(()),
+            _ => Err("Truncated event message received.".into()),
+        }
+    }
 }
 
 fn parse_headers(mut bytes: &[u8]) -> Result<IndexMap<String, String>, String> {
@@ -164,6 +173,12 @@ mod tests {
             Some("exception")
         );
         assert!(decoder.buffer.is_empty());
+        assert_eq!(decoder.finish(), Ok(()));
+        decoder.push(&stream[..3]);
+        assert_eq!(decoder.finish(), Ok(()));
+        decoder.push(&stream[3..4]);
+        assert!(decoder.finish().unwrap_err().contains("Truncated"));
+        decoder.buffer.clear();
         let mut corrupt = first;
         let last = corrupt.len() - 5;
         corrupt[last] ^= 1;
