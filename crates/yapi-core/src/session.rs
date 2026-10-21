@@ -10,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use indexmap::IndexMap;
 use serde_json::Value;
 use yapi_types::message::{
     BranchSummaryMessage, CompactionSummaryMessage, Content, ContentBlock, CustomMessage, Message,
@@ -149,7 +150,9 @@ pub struct SessionManager {
     write_failed: bool,
     entries: Vec<Entry>,
     by_id: HashMap<String, usize>,
-    labels: HashMap<String, (String, String)>,
+    /// Label and timestamp by target, in pi's `Map` order: a relabelled
+    /// target keeps its place.
+    labels: IndexMap<String, (String, String)>,
     leaf: Option<String>,
 }
 
@@ -306,7 +309,7 @@ impl SessionManager {
             write_failed: false,
             entries: Vec::new(),
             by_id: HashMap::new(),
-            labels: HashMap::new(),
+            labels: IndexMap::new(),
             leaf: None,
         }
     }
@@ -423,7 +426,7 @@ impl SessionManager {
                         );
                     }
                     _ => {
-                        self.labels.remove(&label.target_id);
+                        self.labels.shift_remove(&label.target_id);
                     }
                 }
             }
@@ -736,7 +739,7 @@ impl SessionManager {
                 self.labels.insert(target_id.to_owned(), (label, timestamp));
             }
             None => {
-                self.labels.remove(target_id);
+                self.labels.shift_remove(target_id);
             }
         }
         appended
@@ -1030,13 +1033,12 @@ impl SessionManager {
             .iter()
             .filter_map(|doc| doc["id"].as_str().map(str::to_owned))
             .collect();
-        let mut labels: Vec<(String, String, String)> = self
+        let labels: Vec<(String, String, String)> = self
             .labels
             .iter()
             .filter(|(target, _)| kept_ids.contains(target))
             .map(|(target, (label, timestamp))| (target.clone(), label.clone(), timestamp.clone()))
             .collect();
-        labels.sort_by(|a, b| a.2.cmp(&b.2));
 
         let previous_dir = self.dir.clone();
         let persist = self.persist;

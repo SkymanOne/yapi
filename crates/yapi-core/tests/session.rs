@@ -106,7 +106,7 @@ fn user(text: &str) -> Message {
 fn lazy_file_and_branch() {
     let scratch = Scratch::new("lazy");
     let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
-    session.append_model_change("anthropic", "m").unwrap();
+    let model = session.append_model_change("anthropic", "m").unwrap();
     let file = session.file().unwrap().to_path_buf();
     assert!(!file.exists(), "no file before a conversation");
     let first = session.append_message(user("one")).unwrap();
@@ -127,16 +127,49 @@ fn lazy_file_and_branch() {
         .collect();
     assert_eq!(texts, ["one", "three"]);
 
+    // Listing reads a file whose last line lost its newline without
+    // repairing it, as pi's listing does. Opening it repairs it.
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, text.trim_end()).unwrap();
+    assert_eq!(list(&scratch.0, None)[0].first_message, "one");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text.trim_end());
+
     // A file written by yapi reopens with the same tree.
     let reopened = SessionManager::open(&file, None, None).unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
     assert_eq!(reopened.build_context(), session.build_context());
     assert_eq!(reopened.id(), session.id());
-    assert_eq!(list(&scratch.0, None)[0].first_message, "one");
 
-    // Branching off into a new file keeps only the path.
+    // Branching off into a new file keeps only the path, with its labels in
+    // pi's order: a relabelled entry keeps its place.
+    session.append_label(&first, Some("a".into())).unwrap();
+    session.append_label(&model, Some("b".into())).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    session.append_label(&first, Some("c".into())).unwrap();
     let branched = session.create_branched_session(&first).unwrap().unwrap();
-    let lines = std::fs::read_to_string(&branched).unwrap().lines().count();
-    assert_eq!(lines, 3, "header, model change, first message");
+    let lines: Vec<Value> = std::fs::read_to_string(&branched)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let types: Vec<&str> = lines
+        .iter()
+        .map(|line| line["type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        ["session", "model_change", "message", "label", "label"]
+    );
+    let labels: Vec<(&str, &str)> = lines[3..]
+        .iter()
+        .map(|line| {
+            (
+                line["targetId"].as_str().unwrap(),
+                line["label"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(labels, [(first.as_str(), "c"), (model.as_str(), "b")]);
 }
 
 fn user_texts(session: &SessionManager) -> Vec<String> {
@@ -196,23 +229,4 @@ fn lone_surrogates_load() {
         user_texts(&reopened),
         ["one", "cut \u{fffd} \u{fffd} \u{1f600} \\ud83d", "three"]
     );
-}
-
-/// Listing reads a file whose last line lacks its newline without repairing it.
-#[test]
-fn listing_never_writes() {
-    let scratch = Scratch::new("listing");
-    let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
-    session.append_message(user("one")).unwrap();
-    let file = session.file().unwrap().to_path_buf();
-    let cut = std::fs::read_to_string(&file)
-        .unwrap()
-        .trim_end()
-        .to_owned();
-    std::fs::write(&file, &cut).unwrap();
-
-    assert_eq!(list(&scratch.0, None).len(), 1);
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), cut);
-    SessionManager::open(&file, None, None).unwrap();
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), cut + "\n");
 }
