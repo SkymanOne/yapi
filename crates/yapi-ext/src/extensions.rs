@@ -30,8 +30,8 @@ use yapi_ai::stream::{
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
     Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Mode, ModelList,
-    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, TerminalState,
-    ToolRenderers, Tools, Widget, WorkingIndicator,
+    ModelUpdate, NotifyKind, Placement, RemoteComponent, Renderers, SessionAction, Setup,
+    TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -2066,6 +2066,14 @@ fn to_json(value: impl serde::Serialize) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
+/// `value` without its null fields, as `JSON.stringify` drops undefined ones.
+fn defined(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        object.retain(|_, field| !field.is_null());
+    }
+    value
+}
+
 fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
     let arg = |index: usize| args[index].as_str().map(str::to_owned);
     session.with_session(|file| {
@@ -2103,6 +2111,48 @@ fn session_read(session: &AgentSession, method: &str, args: &Value) -> Result<Va
                 })
             }
             other => return Err(format!("sessionManager.{other}() is not available in yapi extensions")),
+        })
+    })
+}
+
+/// pi's `SessionManager` appends that `newSession`'s `setup` makes: the new
+/// entry's id.
+fn session_write(session: &AgentSession, method: &str, args: &Value) -> Result<Value, String> {
+    session.with_session(|file| {
+        match method {
+            "appendMessage" => {
+                let message =
+                    serde_json::from_value(args[0].clone()).map_err(|err| err.to_string())?;
+                file.append_message(message)
+            }
+            "appendCustomEntry" => file.append_custom_entry(
+                &text(&args[0]),
+                Some(args[1].clone()).filter(|data| !data.is_null()),
+            ),
+            "appendSessionInfo" => file.append_session_info(&text(&args[0])),
+            other => {
+                return Err(format!(
+                    "sessionManager.{other}() is not available in yapi extensions"
+                ));
+            }
+        }
+        .map(Value::String)
+        .map_err(|err| err.to_string())
+    })
+}
+
+/// `newSession`'s `setup` `id`, which the guest runs against the replacement
+/// session before it binds.
+fn setup(owner: Weak<ExtensionHost>, id: u64) -> Setup {
+    Box::new(move |session| {
+        Box::pin(async move {
+            let Some(host) = owner.upgrade() else {
+                return;
+            };
+            // The guest's requests reach the replacement, which binds next.
+            *lock(&host.bridge.session) = session.downgrade();
+            // The guest rethrows setup's error from `newSession`; a restart reports a trap.
+            let _ = host.instance.call("setup", &json!({ "id": id })).await;
         })
     })
 }
@@ -2278,6 +2328,7 @@ impl Bridge for SessionBridge {
                 Ok(ctx_data(Some(&session), ui.as_ref(), mode, trusted, &CancellationToken::new()))
             }
             "session.read" => session_read(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
+            "session.write" => session_write(&session, payload["method"].as_str().unwrap_or_default(), &payload["args"]),
             "tools.getActive" => Ok(to_json(session.active_tool_names())),
             "tools.getAll" => Ok(Value::Array(
                 session
@@ -2523,6 +2574,7 @@ impl Bridge for SessionBridge {
             ),
         };
         let codemode = self.codemode.clone();
+        let owner = self.owner.get().cloned().unwrap_or_default();
         let kind = kind.to_owned();
         let operation = Box::pin(async move {
             match kind.as_str() {
@@ -2636,6 +2688,71 @@ impl Bridge for SessionBridge {
                         None => Ok(Value::Null),
                     }
                 }
+                // pi's `AuthResult`, or nothing for an unknown provider or one
+                // without credentials.
+                "models.auth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let Some(auth) = registry.provider_level_auth(&provider).await else {
+                        return Ok(Value::Null);
+                    };
+                    if let Some(error) = auth.error {
+                        return Err(error);
+                    }
+                    if auth.source.is_none() {
+                        return Ok(Value::Null);
+                    }
+                    let headers = (!auth.headers.is_empty()).then_some(auth.headers);
+                    Ok(defined(json!({
+                        "auth": defined(json!({
+                            "apiKey": auth.api_key,
+                            "headers": headers,
+                            "baseUrl": auth.base_url,
+                        })),
+                        "env": auth.env,
+                        "source": auth.source,
+                    })))
+                }
+                // pi's `ResolvedRequestAuth`: what a request to the model sends.
+                "models.requestAuth" => {
+                    let registry = session.registry();
+                    let provider = text(&payload["provider"]);
+                    let model = registry.find(&provider, &text(&payload["id"])).cloned();
+                    let auth = match &model {
+                        Some(model) => Some(registry.auth(model).await),
+                        // shortcut: a model the registry lacks gets its provider's
+                        // credentials without its own headers; pass the guest's model to match pi.
+                        None => registry.provider_level_auth(&provider).await,
+                    }
+                    .unwrap_or_default();
+                    if let Some(error) = auth.error {
+                        return Ok(json!({"ok": false, "error": error}));
+                    }
+                    // The model's own headers, under the configured ones, as a request sends them.
+                    let mut headers = serde_json::Map::new();
+                    for (name, value) in model.and_then(|model| model.headers).into_iter().flatten()
+                    {
+                        headers.insert(name, Value::String(value));
+                    }
+                    for (name, value) in auth.headers {
+                        headers.insert(name, to_json(value));
+                    }
+                    let headers = (!headers.is_empty()).then_some(headers);
+                    if auth.source.is_none() {
+                        if registry.auth_header(&provider) {
+                            let error = format!("No API key found for \"{provider}\"");
+                            return Ok(json!({"ok": false, "error": error}));
+                        }
+                        return Ok(defined(json!({"ok": true, "headers": headers})));
+                    }
+                    Ok(defined(json!({
+                        "ok": true,
+                        "apiKey": auth.api_key,
+                        "headers": headers,
+                        "baseUrl": auth.base_url,
+                        "env": auth.env,
+                    })))
+                }
                 "agent.waitForIdle" => {
                     session.wait_for_idle().await;
                     Ok(Value::Null)
@@ -2653,6 +2770,7 @@ impl Bridge for SessionBridge {
                     let action = match kind.as_str() {
                         "session.new" => SessionAction::New {
                             parent: payload["parentSession"].as_str().map(str::to_owned),
+                            setup: payload["setup"].as_u64().map(|id| setup(owner, id)),
                         },
                         "session.fork" => SessionAction::Fork {
                             entry_id: text(&payload["entryId"]),

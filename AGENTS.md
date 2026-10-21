@@ -147,7 +147,7 @@ Module loading runs on the host, in `yapi-ext`:
 - Planned, alongside a package registry and project manifests:
   - packages declare the grants they need in their own manifest, the user approves them, and each trust domain gets its own instance;
   - a project's `yapi.toml` lists its packages, extensions and skills, so a checkout installs the same set, as `Cargo.toml` does;
-  - before grants can be restricted, the host requests that ignore them must check them: `tool.execute`, `models.apiKey`, the extension event bus and session actions. The event bus then stays within a trust domain unless the user's settings allow crossing, never a package's manifest;
+  - before grants can be restricted, the host requests that ignore them must check them: `tool.execute`, `models.apiKey`, `models.auth`, `models.requestAuth`, the extension event bus and session actions. The event bus then stays within a trust domain unless the user's settings allow crossing, never a package's manifest;
   - filesystem grants scoped to paths and read-only access, and network grants scoped to hosts.
 
 ### Concurrency

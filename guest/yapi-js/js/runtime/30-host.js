@@ -918,7 +918,27 @@
 		"isPersisted",
 		"getChildren",
 	];
-	function createSessionManager() {
+	// pi's writes, for `newSession`'s `setup` only. The host makes appendMessage,
+	// appendCustomEntry and appendSessionInfo and names the others in its error.
+	const sessionWrites = [
+		"setSessionFile",
+		"newSession",
+		"appendMessage",
+		"appendThinkingLevelChange",
+		"appendModelChange",
+		"appendUsage",
+		"appendCompaction",
+		"appendCustomEntry",
+		"appendSessionInfo",
+		"appendCustomMessageEntry",
+		"appendContextEdit",
+		"appendLabelChange",
+		"branch",
+		"resetLeaf",
+		"branchWithSummary",
+		"createBranchedSession",
+	];
+	function createSessionManager(writable = false) {
 		const manager = {};
 		for (const method of sessionMethods) {
 			manager[method] = (...args) => {
@@ -926,6 +946,11 @@
 				// pi answers a missing value with undefined, except a missing leaf or header.
 				return value === null && method !== "getLeafId" && method !== "getHeader" ? undefined : value;
 			};
+		}
+		if (writable) {
+			for (const method of sessionWrites) {
+				manager[method] = (...args) => yapi.request("session.write", { method, args: plain(args) });
+			}
 		}
 		return manager;
 	}
@@ -936,7 +961,12 @@
 			getAvailable: () => yapi.request("models.available", {}),
 			getApiKey: (model) => yapi.op("models.apiKey", { provider: model.provider, id: model.id }),
 			getApiKeyForProvider: (provider) => yapi.op("models.apiKey", { provider }),
-			getProviderAuth: (provider) => yapi.op("models.auth", { provider }),
+			getProviderAuth: async (provider) => (await yapi.op("models.auth", { provider })) ?? undefined,
+			// pi reports a failure in the result and never rejects.
+			getApiKeyAndHeaders: (model) =>
+				yapi
+					.op("models.requestAuth", { provider: model.provider, id: model.id })
+					.catch((error) => ({ ok: false, error: error.message })),
 			isUsingOAuth: (model) => !!yapi.request("models.usingOAuth", { provider: model.provider }),
 			hasConfiguredAuth: (model) => !!yapi.request("models.hasAuth", { provider: model.provider }),
 			getError: () => yapi.request("models.error", {}) ?? undefined,
@@ -1011,13 +1041,21 @@
 		}
 		return guarded;
 	}
+	// `newSession`'s `setup`s, by id, until the host runs them against the replacement.
+	const setups = new Map();
+	let nextSetup = 1;
 	function createCommandContext(data, extra = {}) {
-		// pi's session replacements: `setup` and `withSession` run once the
-		// replacement has started, `withSession` with a context bound to it.
+		// pi's session replacements: the host runs `newSession`'s `setup`
+		// before the replacement starts, and `withSession` runs once it has,
+		// with a context bound to it.
 		const replace = async (kind, payload, options) => {
-			const result = await yapi.op(kind, payload);
+			const setup = typeof options?.setup === "function" ? { run: options.setup } : undefined;
+			const id = setup ? nextSetup++ : undefined;
+			if (setup) setups.set(id, setup);
+			const result = await yapi.op(kind, { ...payload, setup: id }).finally(() => setups.delete(id));
+			// pi's `newSession` rejects with what `setup` threw.
+			await setup?.done;
 			if (!result?.cancelled) {
-				if (typeof options?.setup === "function") await options.setup(createSessionManager());
 				if (typeof options?.withSession === "function") await options.withSession(createReplacedContext());
 				await yapi.op("session.replaced", {});
 			}
@@ -1429,6 +1467,14 @@
 				tuiModule.setKeybindings(new tuiModule.KeybindingsManager(definitions));
 				editorActions = keys.actions ?? [];
 			}
+			return null;
+		},
+		/** Runs `newSession`'s `setup` `{ id }` with the replacement's writable session manager. */
+		async setup(payload) {
+			const setup = setups.get(payload.id);
+			setup.done = (async () => setup.run(createSessionManager(true)))();
+			// `newSession` rethrows it.
+			await setup.done.catch(() => {});
 			return null;
 		},
 		/** Runs the extensions of `{ extensions }`, entries as `load` takes them, for the next session. */

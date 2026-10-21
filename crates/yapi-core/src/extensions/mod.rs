@@ -497,14 +497,20 @@ pub trait Extension: Send + Sync {
     }
 }
 
+/// pi's `newSession` `setup`: runs with the replacement session once it is
+/// built, before its extensions start.
+pub type Setup =
+    Box<dyn FnOnce(crate::agent_session::AgentSession) -> BoxFuture<'static, ()> + Send>;
+
 /// A session change an extension command asks for; one of pi's
 /// `ExtensionCommandContextActions`.
-#[derive(Debug)]
 pub enum SessionAction {
     /// `newSession`, linked to a parent session file when given.
     New {
         /// The parent session file.
         parent: Option<String>,
+        /// What to write to the new session before it starts.
+        setup: Option<Setup>,
     },
     /// `fork` at an entry; `at` keeps the entry, as `/clone` does.
     Fork {
@@ -527,9 +533,8 @@ pub enum SessionAction {
     },
     /// `reload`.
     Reload,
-    /// The extension finished its `setup` and `withSession` work after a
-    /// replacement; the mode reports the change now, as pi does once they
-    /// return.
+    /// The extension finished its `withSession` work after a replacement;
+    /// the mode reports the change now, as pi does once it returns.
     Replaced,
 }
 
