@@ -378,6 +378,13 @@ fn decode_input(
     keys
 }
 
+/// A terminal behavior's setting, else whether the pi environment variable
+/// `name` is `1`, as pi's `getShowHardwareCursor` and `getClearOnShrink` read
+/// them.
+fn setting_or_env(setting: Option<bool>, name: &str) -> bool {
+    setting.unwrap_or_else(|| std::env::var(name).as_deref() == Ok("1"))
+}
+
 /// pi-tui's `trueColor` capability: the `terminal.trueColor` setting when
 /// true or false, else `PI_TRUE_COLOR` as `1` or `0`, else whether the
 /// terminal the environment names shows 24-bit color, as pi-tui detects it.
@@ -4625,9 +4632,10 @@ impl App {
         };
         app.style_alt_screen();
         app.alt.bottom_key = keybindings::keys_display(&app.keys, "tui.altScreen.bottom");
-        app.main.show_hardware_cursor = settings.show_hardware_cursor.unwrap_or(false);
+        app.main.show_hardware_cursor =
+            setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR");
         app.alt.show_hardware_cursor = app.main.show_hardware_cursor;
-        app.main.clear_on_shrink = terminal.clear_on_shrink.unwrap_or(false);
+        app.main.clear_on_shrink = setting_or_env(terminal.clear_on_shrink, "PI_CLEAR_ON_SHRINK");
         app.alt.kitty_images = app.image_protocol == Some(Protocol::Kitty);
         (app, theme_error)
     }

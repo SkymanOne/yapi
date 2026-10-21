@@ -473,6 +473,37 @@ fn no_service_commands() {
     pty.finish().unwrap();
 }
 
+/// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset.
+#[test]
+fn hardware_cursor_env() {
+    use std::time::Duration;
+    let root = common::scratch("hardware-cursor");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let env = [
+        ("HOME", root.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", agent.into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
+        ("PI_HARDWARE_CURSOR", "1".into()),
+    ];
+    let args = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"].map(str::to_owned);
+    let pty = yapi_mock::pty::Pty::spawn(
+        std::path::Path::new(env!("CARGO_BIN_EXE_yapi")),
+        &args,
+        &root,
+        &env,
+        (100, 30),
+        true,
+    )
+    .unwrap();
+    let painted = |rows: &[String]| rows.iter().any(|row| row.contains("claude-sonnet-4-5"));
+    assert!(pty.wait_for(Duration::from_secs(20), painted).is_some());
+    pty.settle();
+    assert!(!pty.cursor_hidden());
+    pty.finish().unwrap();
+}
+
 /// Extension console output goes to stderr in print mode. In interactive
 /// mode it stays off the screen, and `/debug` writes it.
 #[test]

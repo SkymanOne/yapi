@@ -873,9 +873,7 @@ impl SettingsSelector {
                 "show-hardware-cursor",
                 "Show hardware cursor",
                 "Show the terminal cursor while still positioning it for IME support",
-                settings
-                    .show_hardware_cursor
-                    .unwrap_or_else(|| std::env::var("PI_HARDWARE_CURSOR").as_deref() == Ok("1")),
+                super::setting_or_env(settings.show_hardware_cursor, "PI_HARDWARE_CURSOR"),
             ),
             item(
                 "editor-padding",
@@ -907,9 +905,7 @@ impl SettingsSelector {
                 "clear-on-shrink",
                 "Clear on shrink",
                 "Clear empty rows when content shrinks (may cause flicker)",
-                terminal
-                    .clear_on_shrink
-                    .unwrap_or_else(|| std::env::var("PI_CLEAR_ON_SHRINK").as_deref() == Ok("1")),
+                super::setting_or_env(terminal.clear_on_shrink, "PI_CLEAR_ON_SHRINK"),
             ),
             bool_item(
                 "terminal-progress",
