@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f9bbd770.js";
+            window.path_to_searchindex_js = "searchindex-3cb7a343.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -199,7 +199,7 @@
 <h2 id="security"><a class="header" href="#security">Security</a></h2>
 <p>yapi reads files, edits them and runs commands with the user’s permissions, and it does not ask before each tool call. Extensions run in a WebAssembly sandbox with memory and compute limits. Read <a href="#security-model-and-sandboxing">Security model and sandboxing</a> before using yapi with untrusted repositories, packages or unattended automation.</p>
 <h2 id="project-status"><a class="header" href="#project-status">Project status</a></h2>
-<p><a href="#differences-from-pi">Differences from Pi</a> lists every known difference, including Pi features not yet ported. The <a href="#roadmap">Roadmap</a> lists planned work, and <a href="#performance">Performance</a> compares startup time, memory and install size with Pi. Report problems in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>.</p>
+<p><a href="#differences-from-pi">Differences from Pi</a> lists every known difference. The <a href="#roadmap">Roadmap</a> lists planned work, and <a href="#performance">Performance</a> compares startup time, memory and install size with Pi. Report problems in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
 <p>yapi runs in your terminal and works with the files on your machine. It needs a model, through a subscription, an API key or a local server.</p>
@@ -535,6 +535,7 @@ yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 </code></pre>
+<p><code>print-bearer-token</code> refreshes a token that expires within <code>--min-expiry</code>, which is 30 minutes by default and at least five minutes. It fails when the refreshed token does not last that long.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="manage-sessions"><a class="header" href="#manage-sessions">Manage sessions</a></h1>
 <p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s, so Pi and yapi open each other’s sessions.</p>
@@ -602,7 +603,7 @@ yapi --no-session            # do not save this run
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
 <p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
-<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code> only with the network grant.</p>
+<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code> or <code>streamSimple</code>, only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
 <p>Extensions share Pi’s <code>pi.events</code> bus, so every extension receives the events of every other extension.</p>
@@ -779,7 +780,7 @@ yapi mcp remove docs
 <p>Inside yapi, <code>/mcp</code> opens a manager that lists each server with its state, tool count, exposure and configuration file. Select a server to see its tools, reconnect, sign in or out, change its exposure, or enable or disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server. Outside interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
 <h2 id="sign-in"><a class="header" href="#sign-in">Sign in</a></h2>
 <p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that needs a sign-in shows it in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code>, or run <code>/mcp login &lt;server&gt;</code> inside yapi or <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>logout</code> deletes the stored credentials.</p>
-<p>yapi opens the authorization page in your browser and waits for the redirect. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
+<p>yapi opens the authorization page in your browser and waits for the redirect. It opens only <code>http</code> and <code>https</code> pages and fails the sign-in when a server names another scheme. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
 <p>yapi stores credentials in <code>~/.yapi/agent/mcp-auth.json</code>, in Pi’s format, and refreshes access tokens before they expire. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
 <p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>.</p>
 <h2 id="servers-from-extensions"><a class="header" href="#servers-from-extensions">Servers from extensions</a></h2>
@@ -912,7 +913,7 @@ export default function (pi: ExtensionAPI) {
 <h2 id="crashes"><a class="header" href="#crashes">Crashes</a></h2>
 <p><a href="#sandboxing">Security model and sandboxing</a> describes the limits of each instance and what extensions may access. A crashed instance restarts and its extensions reload. yapi reports the crash as an extension error, closes the instance’s dialogs and widgets, and restores the built-in editor, footer and header. Tool calls and messages it drew stay in the transcript and are drawn again by the restarted instance.</p>
 <h2 id="providers-from-extensions"><a class="header" href="#providers-from-extensions">Providers from extensions</a></h2>
-<p><code>pi.registerProvider()</code> adds a provider and its models. They appear in <code>/model</code> and work with <code>--model</code> and RPC’s <code>set_model</code>.</p>
+<p><code>pi.registerProvider()</code> adds a provider and its models. They appear in <code>/model</code> and work with <code>--model</code> and RPC’s <code>set_model</code>. An extension can register a provider at any time, such as from a command or an event handler, and the change applies at once. A configuration registered again for the same provider keeps the previous configuration’s values for the keys it leaves undefined. <code>pi.unregisterProvider()</code> removes a provider whichever extension registered it, and restores the built-in or <code>models.json</code> provider it replaced.</p>
 <ul>
 <li>A provider configured like a <code>models.json</code> entry streams through yapi’s implementation of its <code>api</code>.</li>
 <li>A provider with its own <code>streamSimple</code> can implement an API yapi does not have, or hand requests to pi-ai’s built-in APIs, such as <code>anthropicMessagesApi()</code>. A stream registered with pi-ai’s <code>registerApiProvider</code> serves every model of its API, including ones from <code>models.json</code>. Provider hooks such as <code>before_provider_request</code> run either way.</li>
@@ -920,7 +921,8 @@ export default function (pi: ExtensionAPI) {
 <li>A provider with <code>refreshModels</code> updates its model list whenever yapi refreshes model catalogs.</li>
 <li>A provider with the legacy <code>oauth.modifyModels</code> adjusts its models for the signed-in account whenever yapi refreshes model catalogs.</li>
 <li>Image and classifier models run through the provider’s <code>images</code> and <code>classifiers</code> implementations for their <code>api</code>. Codemode scripts and extensions use them with <code>generateImages</code> and <code>classify</code>.</li>
-<li>A complete pi-ai <code>Provider</code>, such as one <code>createProvider</code> builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh.</li>
+<li>A complete pi-ai <code>Provider</code>, such as one <code>createProvider</code> builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh. <code>/login</code> asks for its API key with the provider’s own <code>login</code>, or says the key is set up outside yapi when it has none.</li>
+<li>A pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> decide which of its models are available for the stored credential, or for the key <code>--api-key</code> gives. They run as the extension loads, whenever yapi refreshes model catalogs, after you sign in or out, and after an extension registers or unregisters a provider. See <a href="#extensions-1">Differences from Pi</a>.</li>
 </ul>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider documentation</a> describes the configuration.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1075,7 +1077,7 @@ yapi install . -l    # for this project only
 <li><code>code</code> is <code>null</code> when a signal ended the process, and <code>killed</code> is <code>true</code> when the timeout did.</li>
 <li>A process that cannot start answers <code>{"stdout": "", "stderr": "", "code": null, "error"}</code>, where <code>error</code> is Node’s spawn error, such as <code>spawn git ENOENT</code>. The request fails when the extension may not run processes.</li>
 </ul>
-<p><code>session.read</code> takes the method’s arguments as the array <code>args</code>, such as <code>["&lt;entry id&gt;"]</code> for <code>getEntry</code>. The methods are <code>getCwd</code>, <code>getSessionDir</code>, <code>getSessionId</code>, <code>getSessionFile</code>, <code>getSessionName</code>, <code>isPersisted</code>, <code>getHeader</code>, <code>getEntries</code>, <code>getEntry</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getLeafId</code>, <code>getLeafEntry</code>, <code>getBranch</code> and <code>buildSessionContext</code>. Entries have the shapes of Pi’s session files.</p>
+<p><code>session.read</code> takes the method’s arguments as the array <code>args</code>, such as <code>["&lt;entry id&gt;"]</code> for <code>getEntry</code>. The methods are <code>getCwd</code>, <code>getSessionDir</code>, <code>getSessionId</code>, <code>getSessionFile</code>, <code>getSessionName</code>, <code>isPersisted</code>, <code>getHeader</code>, <code>getEntries</code>, <code>getEntry</code>, <code>getChildren</code>, <code>getLabel</code>, <code>getLeafId</code>, <code>getLeafEntry</code>, <code>getBranch</code>, <code>buildContextEntries</code>, <code>buildSessionProjection</code> and <code>buildSessionContext</code>. Entries have the shapes of Pi’s session files.</p>
 <p><code>ui.notify</code> and the <code>session</code> requests fail while the init function runs, before yapi binds the extension to a session. Every other kind is internal to yapi and may change or disappear in any release.</p>
 <h3 id="host-operations"><a class="header" href="#host-operations">Host operations</a></h3>
 <p><code>op(kind, payload)</code> starts an operation and returns a future of its JSON answer. Other handlers and background tasks run while it waits. yapi supports these kinds for native extensions:</p>
@@ -1663,8 +1665,11 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td><code>newSession</code> setup</td><td><code>setup</code> gets the new session’s whole <code>SessionManager</code></td><td>It reads the session and writes with <code>appendMessage</code>, <code>appendCustomEntry</code> and <code>appendSessionInfo</code>. Other writes throw.</td></tr>
 <tr><td>Failing session actions</td><td>A throwing <code>setup</code> or <code>withSession</code> callback ends interactive mode</td><td>yapi reports the error and keeps the current session.</td></tr>
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
+<tr><td>Clipboard</td><td><code>copyToClipboard</code> writes its OSC 52 fallback to stdout in every mode</td><td>Only in interactive mode. In print, JSON and RPC modes stdout carries their output.</td></tr>
+<tr><td><code>ctx.modelRegistry.getProvider</code></td><td>The pi-ai <code>Provider</code> itself</td><td>Its id, name, models, <code>stream</code> and <code>streamSimple</code>. yapi’s built-in providers are not JavaScript objects, and an extension’s <code>Provider</code> stays in the runtime instance that registered it.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
 <tr><td>Codemode scripts</td><td>May compute without limit</td><td>Stop after 60 seconds of computing without awaiting a call.</td></tr>
+<tr><td>Model availability of extension providers</td><td><code>getAvailableOfType</code> runs a pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> on each call</td><td><code>getAvailableOfType</code> returns what they kept at the last refresh. They run in the extension’s runtime instance as extensions load, on <code>/login</code>, <code>/logout</code> and <code>--api-key</code>, when the model selector opens, on <code>/reload</code>, on <code>ctx.modelRegistry.refresh</code> and after an extension registers or unregisters a provider. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them.</td></tr>
 <tr><td>Native extensions</td><td>None</td><td>WebAssembly components written in Rust. See <a href="#native-extensions-in-rust">Native extensions</a>. Unstable until 1.0.</td></tr>
 </tbody>
 </table>
@@ -1703,6 +1708,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
+<tr><td>MCP sign-in page</td><td>Opens the authorization endpoint an MCP server names with any scheme but <code>javascript</code>, <code>data</code> and <code>vbscript</code></td><td>Opens only <code>http</code> and <code>https</code> endpoints and fails the sign-in on another scheme. The page opens without a click, and another scheme could launch an app or run a program.</td></tr>
 <tr><td>Syntax highlighting</td><td>Highlights code in messages and tool rows</td><td>Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with <a href="#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>.</td></tr>
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
@@ -1725,23 +1731,9 @@ api.on("session_start", |_event, ctx| async move {
 </tbody>
 </table>
 </div>
-<h2 id="open-gaps"><a class="header" href="#open-gaps">Open gaps</a></h2>
-<p>Pi features yapi does not have yet, or has only in part. Each row links its issue.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Area</th><th>Pi</th><th>yapi today</th><th>Issue</th></tr>
-</thead>
-<tbody>
-<tr><td>Complete pi-ai providers</td><td>A <code>Provider</code> passed to <code>registerProvider</code> can limit its models per account with <code>filterModels</code>, and checks for an API key on every availability refresh. <code>/login</code> asks for its key with its own prompt.</td><td><code>filterModels</code> and <code>filterAllModels</code> are ignored. The API key check runs once as the extension loads, and <code>/login</code> asks for the key with yapi’s prompt.</td><td><a href="https://github.com/SkymanOne/yapi/issues/54">#54</a></td></tr>
-</tbody>
-</table>
-</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
-<h2 id="pi-features-not-yet-ported"><a class="header" href="#pi-features-not-yet-ported">Pi features not yet ported</a></h2>
-<p>Some Pi features are missing or incomplete, such as complete provider objects from extensions. <a href="#open-gaps">Differences from Pi</a> lists each gap with its issue.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>In v0.1, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
