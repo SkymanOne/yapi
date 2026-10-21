@@ -420,22 +420,12 @@ async fn run(parsed: &mut args::Args) -> u8 {
         // then fail with the missing-key message.
         return modes::rpc::run(startup.session, startup::factory(parsed, extensions, false)).await;
     }
-    // pi's print mode kills running commands and exits with the signal's
-    // code on SIGTERM and SIGHUP. The run stays alive until they are killed:
-    // dropping it would stop tracking its commands without killing them.
-    let print = modes::print::run(
+    modes::print::run(
         startup,
         parsed.mode == Some(Mode::Json),
         startup::factory(parsed, extensions, false),
-    );
-    tokio::pin!(print);
-    tokio::select! {
-        code = &mut print => code,
-        code = modes::rpc::termination() => {
-            yapi_core::tools::bash::kill_tracked_children();
-            code
-        }
-    }
+    )
+    .await
 }
 
 /// [`startup::start`], or the exit code once its error is printed; a

@@ -60,24 +60,45 @@ pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
         prompts.push((message, initial_images));
     }
     prompts.extend(messages.into_iter().map(|message| (message, Vec::new())));
+    // Signals that arrive while the session starts end it once it has.
+    let termination = super::rpc::termination();
     let local = tokio::task::LocalSet::new();
     let session = local
         .run_until(async move {
             let runtime = Runtime::start(session, factory, bind).await;
-            for (message, images) in prompts {
-                if let Err(error) = runtime.session().prompt(&message, images).await {
-                    eprintln!("{error}");
-                    runtime.session().shutdown().await;
-                    return None;
+            let run = async {
+                for (message, images) in prompts {
+                    if let Err(error) = runtime.session().prompt(&message, images).await {
+                        eprintln!("{error}");
+                        return false;
+                    }
                 }
+                true
+            };
+            // pi kills running commands and ends the session on SIGTERM and
+            // SIGHUP, then exits with the signal's code. The run stays alive
+            // until they are killed: dropping it would stop tracking its
+            // commands without killing them.
+            tokio::pin!(run);
+            let outcome = tokio::select! {
+                ok = &mut run => Ok(ok),
+                code = termination => {
+                    yapi_core::tools::bash::kill_tracked_children();
+                    Err(code)
+                }
+            };
+            runtime.session().shutdown().await;
+            match outcome {
+                Ok(true) => Ok(runtime.session()),
+                Ok(false) => Err(1),
+                Err(code) => Err(code),
             }
-            Some(runtime.session())
         })
         .await;
-    let Some(session) = session else {
-        return 1;
+    let session = match session {
+        Ok(session) => session,
+        Err(code) => return code,
     };
-    session.shutdown().await;
 
     if !json
         && let Some(last) = session.messages().last()

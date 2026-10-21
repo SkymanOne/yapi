@@ -981,25 +981,29 @@ pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
     code
 }
 
-/// Resolves to pi's exit code for SIGTERM (143) or SIGHUP (129).
-pub(crate) async fn termination() -> u8 {
+/// Resolves to pi's exit code for SIGTERM (143) or SIGHUP (129). The
+/// signals are caught from the call on, before the future is polled.
+pub(crate) fn termination() -> impl std::future::Future<Output = u8> {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let (Ok(mut term), Ok(mut hup)) = (
+        let signals = (
             signal(SignalKind::terminate()),
             signal(SignalKind::hangup()),
-        ) else {
-            return std::future::pending().await;
-        };
-        tokio::select! {
-            _ = term.recv() => 143,
-            _ = hup.recv() => 129,
+        );
+        async move {
+            let (Ok(mut term), Ok(mut hup)) = signals else {
+                return std::future::pending().await;
+            };
+            tokio::select! {
+                _ = term.recv() => 143,
+                _ = hup.recv() => 129,
+            }
         }
     }
     #[cfg(not(unix))]
     {
-        std::future::pending().await
+        std::future::pending()
     }
 }
 
