@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4392f2af.js";
+            window.path_to_searchindex_js = "searchindex-205fc62e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -535,6 +535,7 @@ yapi --models "sonnet,gpt-5*"        # the models Ctrl+P cycles through
 yapi auth print-api-key --provider openai
 yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 </code></pre>
+<p><code>print-bearer-token</code> refreshes a token that expires within <code>--min-expiry</code>, which is 30 minutes by default and at least five minutes. It fails when the refreshed token does not last that long.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="manage-sessions"><a class="header" href="#manage-sessions">Manage sessions</a></h1>
 <p>yapi saves every conversation as a JSONL file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s, so Pi and yapi open each other’s sessions.</p>
@@ -777,7 +778,7 @@ yapi mcp remove docs
 <p>Inside yapi, <code>/mcp</code> opens a manager that lists each server with its state, tool count, exposure and configuration file. Select a server to see its tools, reconnect, sign in or out, change its exposure, or enable or disable it. Exposure and enabled changes are saved to the <code>mcp.json</code> that defines the server. Outside interactive mode, <code>/mcp</code> prints the status, and <code>/mcp login</code>, <code>/mcp logout</code> and <code>/mcp reconnect</code> act on a server directly.</p>
 <h2 id="sign-in"><a class="header" href="#sign-in">Sign in</a></h2>
 <p>HTTP servers without an <code>Authorization</code> header sign in with OAuth. A server that needs a sign-in shows it in <code>/mcp</code> and <code>yapi mcp list</code>. Select it in <code>/mcp</code>, or run <code>/mcp login &lt;server&gt;</code> inside yapi or <code>yapi mcp login &lt;server&gt;</code> in a terminal. <code>logout</code> deletes the stored credentials.</p>
-<p>yapi opens the authorization page in your browser and waits for the redirect. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
+<p>yapi opens the authorization page in your browser and waits for the redirect. It opens only <code>http</code> and <code>https</code> pages and fails the sign-in when a server names another scheme. If the browser runs on another machine, paste the URL it was redirected to. yapi registers itself with servers that allow it. For other servers, set a pre-registered client in the server’s <code>oauth</code> object (<code>clientId</code>, <code>clientSecret</code>, <code>callbackPort</code> or <code>callbackUrl</code>, <code>scope</code>, <code>clientName</code>, <code>authServerMetadataUrl</code>), or pass <code>--oauth-client-id</code> and the related options to <code>yapi mcp add</code>.</p>
 <p>yapi stores credentials in <code>~/.yapi/agent/mcp-auth.json</code>, in Pi’s format, and refreshes access tokens before they expire. A running session picks up a sign-in made with <code>yapi mcp login</code> on its next turn.</p>
 <p>To send the token of a provider you signed in to with <code>/login</code> instead, add <code>"auth": { "provider": "&lt;provider&gt;" }</code> to a server in the global <code>mcp.json</code>.</p>
 <h2 id="servers-from-extensions"><a class="header" href="#servers-from-extensions">Servers from extensions</a></h2>
@@ -1703,6 +1704,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
 <tr><td>Links</td><td>A click in fullscreen mode opens any link in its default app. Link URLs reach the terminal as written.</td><td>A click opens only <code>http</code>, <code>https</code> and <code>mailto</code> links, and shows a linked file in its folder. Opening a link to a script or an app, or with another scheme, could run a program. A link whose URL holds a control character shows as plain text, because the character could end the link and reach the terminal as a command.</td></tr>
+<tr><td>MCP sign-in page</td><td>Opens the authorization endpoint an MCP server names with any scheme but <code>javascript</code>, <code>data</code> and <code>vbscript</code></td><td>Opens only <code>http</code> and <code>https</code> endpoints and fails the sign-in on another scheme. The page opens without a click, and another scheme could launch an app or run a program.</td></tr>
 <tr><td>Syntax highlighting</td><td>Highlights code in messages and tool rows</td><td>Shows code in one color, to keep memory use and install size low. Extensions can add highlighting with <a href="#code-renderers"><code>pi.yapi.registerCodeRenderer</code></a>.</td></tr>
 <tr><td>Markdown transformers</td><td>Change a message’s Markdown before it shows</td><td>A message shows as written in its first frame, and each change while it streams shows transformed one frame late.</td></tr>
 <tr><td>Images in the terminal</td><td>A Herdr pane shows images when the outer terminal’s variables reach it, such as Ghostty’s. Image data reaches the terminal as written.</td><td>A Herdr pane shows Kitty images in any terminal, as Herdr draws them itself. An image whose data is not base64 shows as a note, because such data could reach the terminal as a command.</td></tr>
