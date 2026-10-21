@@ -4,7 +4,7 @@ yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned
 
 ## Pi features not yet ported
 
-Some Pi features are missing or incomplete, such as complete provider objects from extensions. [Differences from Pi](compat.md#open-gaps) lists each gap with its issue.
+Some Pi features are missing or incomplete, such as model filters and login prompts of pi-ai providers from extensions. [Differences from Pi](compat.md#open-gaps) lists each gap with its issue.
 
 ## Capability-based sandboxing
 
