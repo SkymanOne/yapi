@@ -14,7 +14,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
-- Fix `pi.registerProvider` and `pi.unregisterProvider` having no effect when an extension calls them after it loads.
+- Fix `pi.registerProvider` and `pi.unregisterProvider` having no effect when an extension calls them after it loads ([#198](https://github.com/SkymanOne/yapi/pull/198)).
 - Fix pi-ai providers from extensions ignoring `filterModels` and `filterAllModels`, checking their API key only once, and `/login` asking for their key with yapi's prompt instead of the provider's own ([#198](https://github.com/SkymanOne/yapi/pull/198)).
 - Fix Mistral responses that contain non-ASCII text ending with "Provider stream ended without a result" ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix high CPU use while a model streams large tool-call arguments ([#195](https://github.com/SkymanOne/yapi/pull/195)).
