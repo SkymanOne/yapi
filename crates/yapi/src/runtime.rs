@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{mpsc, oneshot};
 use yapi_core::agent_session::{AgentSession, Replacement, SessionChange};
-use yapi_core::extensions::{SessionAction, SessionActions};
+use yapi_core::extensions::{SessionAction, SessionActions, Setup};
 use yapi_core::session::SessionManager;
 use yapi_types::event::AgentEvent;
 use yapi_types::message::Message;
@@ -304,7 +304,7 @@ impl Runtime {
     /// print modes do: whether an extension cancelled it.
     async fn act(&self, action: SessionAction) -> Result<bool, String> {
         match action {
-            SessionAction::New { parent } => self.new_session(parent).await,
+            SessionAction::New { parent, setup } => self.new_session(parent, setup).await,
             SessionAction::Fork { entry_id, at } => Ok(self.fork(&entry_id, at).await?.is_none()),
             SessionAction::Tree { target_id, options } => self
                 .session()
@@ -323,21 +323,24 @@ impl Runtime {
         &self,
         change: SessionChange,
         build: impl FnOnce(&AgentSession) -> Result<SessionManager, String>,
+        setup: Option<Setup>,
     ) -> Result<bool, String> {
         if self.session().cancels(&change).await {
             return Ok(true);
         }
-        self.replace(change.reason(), build).await?;
+        self.replace(change.reason(), build, setup).await?;
         Ok(false)
     }
 
     /// pi's runtime replacement: `build` makes the session file, the current
     /// run settles and is persisted, the current session's extensions stop,
-    /// and a session built around the file takes over for `reason`.
+    /// a session built around the file runs `setup`, and takes over for
+    /// `reason`.
     async fn replace(
         &self,
         reason: Replacement,
         build: impl FnOnce(&AgentSession) -> Result<SessionManager, String>,
+        setup: Option<Setup>,
     ) -> Result<(), String> {
         let current = self.session();
         let previous = current.with_session(|manager| file_of(manager));
@@ -352,15 +355,25 @@ impl Runtime {
         if reason == Replacement::Reload {
             session.keep_selection(&current);
         }
+        if let Some(setup) = setup {
+            setup(session.clone()).await;
+        }
         self.bind(session, Some((reason, previous))).await;
         Ok(())
     }
 
-    /// pi's `newSession`: whether an extension cancelled it.
-    pub async fn new_session(&self, parent: Option<String>) -> Result<bool, String> {
-        self.change(SessionChange::New, |current| {
-            new_session(current, parent).map_err(|error| error.to_string())
-        })
+    /// pi's `newSession`, which runs `setup` before the new session starts:
+    /// whether an extension cancelled it.
+    pub async fn new_session(
+        &self,
+        parent: Option<String>,
+        setup: Option<Setup>,
+    ) -> Result<bool, String> {
+        self.change(
+            SessionChange::New,
+            |current| new_session(current, parent).map_err(|error| error.to_string()),
+            setup,
+        )
         .await
     }
 
@@ -373,11 +386,15 @@ impl Runtime {
             at,
         };
         let cancelled = self
-            .change(change, |current| {
-                let fork = plan_fork(current, entry_id, at)?;
-                text = fork.text.clone();
-                fork.build(current)
-            })
+            .change(
+                change,
+                |current| {
+                    let fork = plan_fork(current, entry_id, at)?;
+                    text = fork.text.clone();
+                    fork.build(current)
+                },
+                None,
+            )
             .await?;
         Ok((!cancelled).then_some(text))
     }
@@ -386,16 +403,25 @@ impl Runtime {
     /// whether an extension cancelled it.
     pub async fn switch_session(&self, path: &str) -> Result<bool, String> {
         let fallback = self.session().cwd().to_path_buf();
-        self.change(SessionChange::Resume(path.to_owned()), |_| {
-            open_session(&session_path(path), None, &fallback).map_err(|error| error.to_string())
-        })
+        self.change(
+            SessionChange::Resume(path.to_owned()),
+            |_| {
+                open_session(&session_path(path), None, &fallback)
+                    .map_err(|error| error.to_string())
+            },
+            None,
+        )
         .await
     }
 
     /// pi's `reload`: the session again, with its extensions, resources and
     /// settings loaded anew, keeping its model and thinking level.
     pub async fn reload(&self) -> Result<(), String> {
-        self.replace(Replacement::Reload, |current| Ok(current.take_session()))
-            .await
+        self.replace(
+            Replacement::Reload,
+            |current| Ok(current.take_session()),
+            None,
+        )
+        .await
     }
 }
