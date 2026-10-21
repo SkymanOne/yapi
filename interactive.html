@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-db591939.js";
+            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -259,11 +259,13 @@
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
 <tr><td><code>/debug</code></td><td>Write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code></td></tr>
+<tr><td><code>/bug</code></td><td>Report a bug as a zip file, and optionally as a public GitHub issue</td></tr>
 <tr><td><code>/quit</code></td><td>Quit yapi</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
+<p><code>/bug</code> writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, <code>/bug</code> then offers to post a public issue with your description, the summary and <code>report.json</code>, never the transcript. See <a href="troubleshooting.html#reporting-a-problem">Reporting a problem</a>.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status

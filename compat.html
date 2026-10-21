@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-db591939.js";
+            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -234,7 +234,8 @@
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/share</code> and <code>/bug</code></td><td>Use Pi’s services</td><td>Not available.</td></tr>
+<tr><td><code>/share</code></td><td>Shares a session through Pi’s services</td><td>Not available.</td></tr>
+<tr><td><code>/bug</code></td><td>Uploads a private report to Pi’s service at radius.pi.dev, or exports it as a zip file</td><td>Always writes the zip file to the working folder, then offers to post a public issue on <a href="https://github.com/SkymanOne/yapi/issues">SkymanOne/yapi</a> with the GitHub CLI. The report has no crash log. Its diagnostics come from the current branch, and its <code>session.jsonl</code> holds the branch without Pi’s system prompt and tool list. The session records the report as a <code>yapi.bug-report</code> entry.</td></tr>
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>

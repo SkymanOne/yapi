@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-db591939.js";
+            window.path_to_searchindex_js = "searchindex-8e7e1408.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -451,11 +451,13 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
 <tr><td><code>/debug</code></td><td>Write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code></td></tr>
+<tr><td><code>/bug</code></td><td>Report a bug as a zip file, and optionally as a public GitHub issue</td></tr>
 <tr><td><code>/quit</code></td><td>Quit yapi</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
+<p><code>/bug</code> writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, <code>/bug</code> then offers to post a public issue with your description, the summary and <code>report.json</code>, never the transcript. See <a href="#reporting-a-problem">Reporting a problem</a>.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status
@@ -1687,7 +1689,8 @@ api.on("session_start", |_event, ctx| async move {
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/share</code> and <code>/bug</code></td><td>Use Pi’s services</td><td>Not available.</td></tr>
+<tr><td><code>/share</code></td><td>Shares a session through Pi’s services</td><td>Not available.</td></tr>
+<tr><td><code>/bug</code></td><td>Uploads a private report to Pi’s service at radius.pi.dev, or exports it as a zip file</td><td>Always writes the zip file to the working folder, then offers to post a public issue on <a href="https://github.com/SkymanOne/yapi/issues">SkymanOne/yapi</a> with the GitHub CLI. The report has no crash log. Its diagnostics come from the current branch, and its <code>session.jsonl</code> holds the branch without Pi’s system prompt and tool list. The session records the report as a <code>yapi.bug-report</code> entry.</td></tr>
 <tr><td>Clipboard paste</td><td>Copied files, images and text on every platform</td><td>Nothing on Windows, and images copied in Windows do not reach WSL.</td></tr>
 <tr><td>Word motions in Chinese, Japanese and Thai</td><td>By dictionary word</td><td>By character, to keep ICU’s dictionaries out of the binary.</td></tr>
 <tr><td>Time zones</td><td>Node’s own time zone data</td><td>The system’s time zone database. With <code>TZ</code> set to a zone name on a system without one, times show in UTC. On Windows they show in UTC unless <code>TZ</code> holds a POSIX rule such as <code>EST5EDT</code>.</td></tr>
@@ -1822,6 +1825,14 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <h2 id="an-extension-breaks-startup"><a class="header" href="#an-extension-breaks-startup">An extension breaks startup</a></h2>
 <p><code>yapi -ne</code> starts without extensions, including the built-in MCP and llama.cpp extensions. <code>yapi config</code> then turns the failing extension off.</p>
 <h2 id="reporting-a-problem"><a class="header" href="#reporting-a-problem">Reporting a problem</a></h2>
+<p>Run <code>/bug</code>, or <code>/bug &lt;description&gt;</code>, to report a problem:</p>
+<ol>
+<li>Describe what went wrong, or leave the description empty.</li>
+<li>Choose whether to include the session transcript. It holds your messages, model output, tool calls and their results, including file contents and command output.</li>
+<li>Without the transcript, the current model can write a summary instead. yapi sends the transcript to the model’s provider with your credentials and keeps only the summary.</li>
+</ol>
+<p>yapi writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its <code>report.json</code> leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.</p>
+<p>Unless yapi runs with <code>--offline</code> or <code>PI_OFFLINE</code>, and when the <a href="https://cli.github.com/">GitHub CLI</a> is signed in, <code>/bug</code> then offers to open an issue on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. A GitHub issue is public, unlike Pi’s private upload to radius.pi.dev. The issue holds your description, the summary and <code>report.json</code>, with your home folder written as <code>~</code>. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.</p>
 <p>Run <code>/debug</code> to write the screen, the session’s messages and recent extension output to <code>~/.yapi/agent/yapi-debug.log</code>. Check it for private data, then attach it to a report on the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> with the output of <code>yapi --version</code> and your operating system.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
