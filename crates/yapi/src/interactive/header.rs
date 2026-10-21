@@ -688,7 +688,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn logo_draws_yapi_in_two_rows_of_half_blocks() {
+    fn logo_half_block_rows() {
         let text = |row: &[Span<'_>]| {
             row.iter()
                 .map(|span| span.content.as_ref())
@@ -705,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn ends_with_the_docs_tip() {
+    fn ends_with_docs_tip() {
         let theme = Theme::builtin("dark", ColorMode::TrueColor).unwrap();
         let keys = Keybindings::new(
             yapi_tui::keys::Keys::default(),

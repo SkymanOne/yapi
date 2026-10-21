@@ -577,10 +577,18 @@ impl McpClient {
                 touched: Arc::clone(&touched),
             },
         );
-        if let Err(error) = self.inner.transport.send(&message).await {
-            self.remove_pending(&key);
-            return Err(error);
-        }
+        // The send runs on its own, as pi's does, so the timeout and
+        // cancellation apply while a server is slow to take the message; a
+        // stdio write is never dropped half way. Its failure fails the request.
+        let client = self.clone();
+        let sent = key.clone();
+        tokio::spawn(async move {
+            if let Err(error) = client.inner.transport.send(&message).await
+                && let Some(entry) = client.remove_pending(&sent)
+            {
+                let _ = entry.reply.send(Err(error));
+            }
+        });
         let timeout = options
             .timeout
             .unwrap_or(self.inner.options.request_timeout);

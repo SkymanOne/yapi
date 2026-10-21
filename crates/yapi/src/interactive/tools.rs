@@ -1594,7 +1594,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn reads_image_sizes_as_pi_tui() {
+    fn reads_image_sizes() {
         // A 1×1 PNG and a 3×2 GIF.
         let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
         assert_eq!(image_dimensions(png, "image/png"), (1, 1));
@@ -1614,7 +1614,7 @@ mod tests {
     }
 
     #[test]
-    fn text_output_sanitizes_as_pi() {
+    fn sanitizes_text_output() {
         let result = |text: &str| ToolResult {
             content: vec![ContentBlock::text(text)],
             ..ToolResult::default()
@@ -1635,7 +1635,7 @@ mod tests {
     /// renderer, with the language of the file or `javascript`, and cut and
     /// count what it draws as pi does with its highlighted lines.
     #[test]
-    fn code_rows_draw_through_the_code_renderer() {
+    fn code_rows_use_renderer() {
         use std::sync::{Arc, Mutex};
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
         let asked = Arc::new(Mutex::new(Vec::new()));
@@ -1725,7 +1725,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_result_images_after_the_box_as_pi() {
+    fn result_images_after_box() {
         use yapi_tui::image::Protocol;
         const GIF: &str = "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
@@ -1788,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn previews_mcp_output_as_pi() {
+    fn previews_mcp_output() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
         let markdown = yapi_tui::markdown::MarkdownTheme::default();
         let mut ctx = RenderContext {
@@ -1865,7 +1865,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_skill_docs_and_context_reads_compactly_as_pi() {
+    fn compact_skill_context_reads() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
         let markdown = yapi_tui::markdown::MarkdownTheme::default();
         let mut ctx = RenderContext {

@@ -15,10 +15,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use aws_lc_rs::digest::{SHA256, digest};
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 use serde_json::Value;
-use sha2::Digest as _;
 use tokio_util::sync::CancellationToken;
 use yapi_ai::auth::AuthError;
 use yapi_ai::auth::callback::{Reply, Server, error_page, query, success_page};
@@ -189,8 +189,8 @@ impl ServerStore {
         &self,
         run: impl Future<Output = Result<T, McpError>>,
     ) -> Result<T, McpError> {
-        let digest = sha2::Sha256::digest(self.key.as_bytes());
-        let hash = yapi_types::time::hex(&digest[..8]);
+        let digest = digest(&SHA256, self.key.as_bytes());
+        let hash = yapi_types::time::hex(&digest.as_ref()[..8]);
         let _lock = FileLock::acquire(
             &self
                 .store
@@ -655,7 +655,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn derives_callback_settings_like_pi() {
+    fn derives_callback_settings() {
         let settings = |url: Option<&str>, port: Option<u16>| {
             callback_settings(&OAuthConfig {
                 callback_url: url.map(str::to_owned),
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_pasted_redirect_urls_like_pi() {
+    fn reads_pasted_redirects() {
         assert_eq!(
             response_from_redirect_url(" http://127.0.0.1:1/callback?code=c&state=s&iss=i ", "s"),
             Ok(("c".into(), Some("i".into())))
@@ -738,7 +738,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_separate_credentials_for_servers_sharing_a_url() {
+    async fn shared_url_separate_credentials() {
         let (dir, store) = temp_store("shared");
         store
             .for_server("work", URL)
@@ -771,7 +771,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn moves_legacy_credentials_to_the_first_server_that_loads_them() {
+    async fn migrates_legacy_credentials() {
         let (dir, store) = temp_store("legacy");
         std::fs::create_dir_all(&dir).unwrap();
         let legacy = json!({URL: state("legacy-token")});

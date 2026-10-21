@@ -768,7 +768,8 @@ fn edit_servers(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
-    std::fs::write(path, format!("{json}\n")).map_err(|err| err.to_string())
+    yapi_ai::auth::lock::write_atomic(path, format!("{json}\n").as_bytes(), 0o666)
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(test)]

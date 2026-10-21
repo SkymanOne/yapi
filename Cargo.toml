@@ -50,7 +50,6 @@ md-5 = "0.11"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
-sha1 = "0.11"
 sha2 = "0.11"
 similar = "2"
 tar = { version = "0.4", default-features = false }

@@ -112,6 +112,9 @@ pub fn errno(kind: std::io::ErrorKind) -> Option<(&'static str, &'static str)> {
         ErrorKind::AlreadyExists => ("EEXIST", "file already exists"),
         ErrorKind::IsADirectory => ("EISDIR", "illegal operation on a directory"),
         ErrorKind::NotADirectory => ("ENOTDIR", "not a directory"),
+        ErrorKind::DirectoryNotEmpty => ("ENOTEMPTY", "directory not empty"),
+        ErrorKind::InvalidInput => ("EINVAL", "invalid argument"),
+        ErrorKind::ReadOnlyFilesystem => ("EROFS", "read-only file system"),
         _ => return None,
     })
 }
@@ -133,7 +136,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn indices_convert_between_bytes_and_utf16() {
+    fn byte_utf16_indices() {
         let text = "é😀x";
         assert_eq!(utf16_index(text, 2), 1);
         assert_eq!(utf16_index(text, 6), 3);
@@ -142,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn words_io_errors_as_node() {
+    fn io_errors_like_node() {
         let error = |kind| std::io::Error::from(kind);
         let path = std::path::Path::new("/a/b");
         assert_eq!(
@@ -157,11 +160,23 @@ mod tests {
             node_error(&error(std::io::ErrorKind::AlreadyExists), "mkdir", path),
             "EEXIST: file already exists, mkdir '/a/b'"
         );
+        assert_eq!(
+            node_error(&error(std::io::ErrorKind::ReadOnlyFilesystem), "open", path),
+            "EROFS: read-only file system, open '/a/b'"
+        );
+        assert_eq!(
+            node_error(&error(std::io::ErrorKind::DirectoryNotEmpty), "rmdir", path),
+            "ENOTEMPTY: directory not empty, rmdir '/a/b'"
+        );
+        assert_eq!(
+            errno(std::io::ErrorKind::InvalidInput),
+            Some(("EINVAL", "invalid argument"))
+        );
         assert_eq!(errno(std::io::ErrorKind::Other), None);
     }
 
     #[test]
-    fn counts_and_slices_utf16_units() {
+    fn counts_slices_utf16() {
         assert_eq!(len("a😀"), 3);
         assert_eq!(slice("a😀b", 0, 3), "a😀");
         assert_eq!(slice("a😀b", 0, 2), "a\u{fffd}");

@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn answers_like_pi_and_yields_the_code() {
+    async fn answers_and_yields_code() {
         let cancel = CancellationToken::new();
         let mut server = start_code_server(
             "Example",
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pasted_input_wins_when_first() {
+    async fn pasted_input_wins() {
         let cancel = CancellationToken::new();
         let (interaction, mut requests) = Interaction::new(cancel.clone());
         let mut server = start_code_server("Example", "127.0.0.1", 0, "/cb", None, &cancel)

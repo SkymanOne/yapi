@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_past_a_byte_order_mark() {
+    fn parses_past_bom() {
         assert_eq!(
             parse::<Value>("\u{feff}{\"a\":1}").ok(),
             Some(json!({"a": 1}))
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn large_integers_round_like_javascript() {
+    fn large_integers_round() {
         // `JSON.stringify(JSON.parse(text))` in JavaScript.
         let value: Value = serde_json::from_str(
             "[9007199254740991,9007199254740993,12345678901234567890,-12345678901234567]",
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn non_finite_numbers_are_null() {
+    fn non_finite_numbers_null() {
         assert_eq!(
             to_string(&[f64::NAN, f64::INFINITY]).unwrap(),
             "[null,null]"

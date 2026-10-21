@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use sha2::{Digest as _, Sha256};
+use aws_lc_rs::digest::{Context, SHA256};
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, EngineWeak};
 
@@ -94,10 +94,10 @@ fn cache_path(engine: &wasmtime::Engine, bytes: &[u8], dir: &Path, name: &str) -
     engine
         .precompile_compatibility_hash()
         .hash(&mut compatibility);
-    let mut digest = Sha256::new();
+    let mut digest = Context::new(&SHA256);
     digest.update(bytes);
-    digest.update(compatibility.finish().to_le_bytes());
-    let hex = yapi_types::time::hex(&digest.finalize()[..16]);
+    digest.update(&compatibility.finish().to_le_bytes());
+    let hex = yapi_types::time::hex(&digest.finish().as_ref()[..16]);
     dir.join(format!("{name}-{hex}.cwasm"))
 }
 

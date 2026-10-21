@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn the_newest_entry_is_this_version() {
+    fn newest_entry_matches_version() {
         let entries = parse(CHANGELOG);
         let (major, minor, patch) = entries[0].version;
         assert_eq!(
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn sections_without_a_version_are_skipped() {
+    fn skips_unversioned_sections() {
         let text = "# Changelog\n\nIntro.\n\n## [Unreleased]\n\n- Next.\n\n## [1.2.0] - 2026-01-02\n\n### Added\n\n- New.\n\n## 1.1.10\n\n- Old.\n\n[1.2.0]: https://example.com\n";
         let entries = parse(text);
         assert_eq!(versions(&entries), [(1, 2, 0), (1, 1, 10)]);
@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn newer_entries_follow_the_recorded_version() {
+    fn lists_newer_entries() {
         let entries = || parse("## [2.0.0]\n\n## [1.10.0]\n\n## [1.9.3]\n\n## [1.9.2]\n");
         assert_eq!(
             versions(&newer(entries(), "1.9.2")),

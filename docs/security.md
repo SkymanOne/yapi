@@ -32,11 +32,11 @@ Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from
 
 An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.
 
-Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded.
+Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.
 
 ### Grants
 
-The host checks every file, process, network and environment access against the extension's grants. In v0.1, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks every file, process, network and environment access against the extension's grants. Without the file grant, an extension cannot import modules from files either. In v0.1, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
 A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
@@ -55,6 +55,7 @@ Files in a project's `.yapi` folder can change how yapi behaves and can run code
 The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.
 
 - yapi saves the decision in `~/.yapi/agent/trust.json`. `/trust` changes it later.
+- If `trust.json` cannot be read or is not a JSON object, yapi reports the error and does not start in a project that needs trust, as Pi does, unless `--approve` or `--no-approve` decides. It never overwrites that file.
 - `--approve` and `--no-approve` decide for one run.
 - `"defaultProjectTrust"` in global settings set to `"always"` or `"never"` decides without asking.
 

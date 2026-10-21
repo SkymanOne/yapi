@@ -8,6 +8,10 @@ use unicode_width::UnicodeWidthStr;
 
 /// Terminal columns occupied by `text`, which has no escape sequences.
 pub fn visible_width(text: &str) -> usize {
+    // Printable ASCII is one column per byte; skips grapheme segmentation, as pi does.
+    if text.bytes().all(|b| (0x20..0x7f).contains(&b)) {
+        return text.len();
+    }
     text.graphemes(true).map(grapheme_width).sum()
 }
 

@@ -1856,7 +1856,7 @@ mod tests {
     use crate::keys::Keys;
 
     #[test]
-    fn wide_characters_wider_than_the_line_take_a_chunk_each() {
+    fn overwide_chars_chunked() {
         let chunks: Vec<String> = word_wrap_line("日本", 1, &[])
             .into_iter()
             .map(|chunk| "日本"[chunk].to_owned())
@@ -1905,7 +1905,7 @@ mod tests {
     /// Keys of one terminal read see the autocomplete list as it was before
     /// the read, as in pi: Enter right after typed text submits it.
     #[test]
-    fn keys_of_one_read_submit_before_suggestions() {
+    fn batched_keys_submit_first() {
         let provider = || {
             let model = crate::autocomplete::SlashCommand {
                 name: "model".into(),
@@ -1951,7 +1951,7 @@ mod tests {
     }
 
     #[test]
-    fn kill_ring_accumulates_and_yanks() {
+    fn kill_ring_yanks() {
         let mut e = editor();
         e.set_text("one two three");
         typed(&mut e, &["\x17", "\x17"]);
@@ -2006,7 +2006,7 @@ mod tests {
     /// A vertical move counts UTF-16 units as pi does: a column inside an
     /// emoji's surrogate pair snaps to the emoji's start.
     #[test]
-    fn vertical_moves_snap_inside_surrogate_pairs() {
+    fn vertical_surrogate_snap() {
         let mut e = editor();
         e.set_text("😀😀😀😀 end\nabc");
         e.render(40);
@@ -2019,7 +2019,7 @@ mod tests {
     }
 
     #[test]
-    fn sticky_column_and_scroll_indicator() {
+    fn sticky_column_scroll_indicator() {
         let mut e = editor();
         e.set_text("long line here\nab\nanother long line");
         e.set_terminal_rows(10);

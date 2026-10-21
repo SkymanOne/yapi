@@ -1368,7 +1368,7 @@ mod tests {
     }
 
     #[test]
-    fn today_uses_the_local_date_not_the_utc_date() {
+    fn today_uses_local_date() {
         // 23:30 UTC on the 12th is 18:30 on the 12th in EST, and "now" is still the 12th there.
         let got = label(
             "2026-10-12T23:30:00.000Z",
@@ -1387,7 +1387,7 @@ mod tests {
     }
 
     #[test]
-    fn same_year_shows_month_and_day() {
+    fn same_year_month_day() {
         assert_eq!(
             label(
                 "2026-03-02T09:05:00.000Z",
@@ -1399,7 +1399,7 @@ mod tests {
     }
 
     #[test]
-    fn other_year_shows_two_digit_year() {
+    fn other_year_two_digits() {
         assert_eq!(
             label(
                 "2025-06-01T00:00:00.000Z",
@@ -1420,7 +1420,7 @@ mod tests {
     }
 
     #[test]
-    fn offsets_follow_daylight_saving_per_instant() {
+    fn offsets_follow_daylight_saving() {
         let tz = "CET-1CEST,M3.5.0,M10.5.0/3";
         // Winter label (UTC+1) against a summer "now" (UTC+2).
         assert_eq!(

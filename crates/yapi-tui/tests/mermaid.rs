@@ -59,7 +59,7 @@ fn art(value: &Value) -> Option<MermaidArt> {
 }
 
 #[test]
-fn renders_diagrams_like_grok_mermaid() {
+fn diagrams_like_grok_mermaid() {
     let cases = fixture("render.json");
     let failures: Vec<&str> = cases
         .as_array()

@@ -4949,7 +4949,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_prompt_ending_while_another_run_streams_keeps_the_app_busy() {
+    async fn busy_while_run_streams() {
         let mut config = config(SessionManager::in_memory(Path::new("/work")));
         let model: yapi_types::model::Model = serde_json::from_value(json!({
             "id": "faux-1", "name": "Faux", "api": "faux", "provider": "faux", "baseUrl": "",
@@ -5018,7 +5018,7 @@ mod tests {
     }
 
     #[test]
-    fn dock_components_outside_the_rows_shown_take_no_rows() {
+    fn offscreen_dock_no_rows() {
         // A part placed at dock row 1 that shows its rows 2 and 3.
         let placed = (1, 2, 2);
         assert_eq!(shown_rows(10, placed, 0, 2), None);
@@ -5028,7 +5028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_theme_object_applies_without_being_saved() {
+    async fn theme_object_not_saved() {
         use yapi_core::extensions::ExtensionUi as _;
         let (mut app, mut events) = app();
         app.share_themes();
@@ -5056,7 +5056,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_click_in_the_fullscreen_editor_moves_its_cursor() {
+    async fn click_moves_fullscreen_cursor() {
         let (mut app, _events) = app();
         app.fullscreen = true;
         app.size = (40, 12);
@@ -5096,7 +5096,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clicks_choose_settings_and_move_the_search_cursor() {
+    async fn clicks_choose_settings() {
         let (mut app, _events) = app();
         app.fullscreen = true;
         app.size = (80, 40);
@@ -5119,7 +5119,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_click_chooses_a_thinking_level() {
+    async fn click_chooses_thinking_level() {
         use yapi_types::message::ThinkingLevel;
         let (mut app, _events) = app();
         app.fullscreen = true;
@@ -5141,7 +5141,7 @@ mod tests {
     /// `tests/fixtures/pi/generator/selection.mjs`: the screen text after
     /// each click.
     #[tokio::test]
-    async fn clicks_expand_items_like_pi() {
+    async fn clicks_expand_items() {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../tests/fixtures/pi/selection/expand.json"
@@ -5195,7 +5195,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ctrl_o_and_hiding_thinking_drop_what_clicks_toggled() {
+    async fn ctrl_o_resets_toggles() {
         let (mut app, _events) = app();
         app.push(Item::BranchSummary("summary".into()));
         app.toggle(0, Toggle::Expanded);
@@ -5222,7 +5222,7 @@ mod tests {
     /// A session change asked for while the current session shuts down for
     /// another is refused, so the factories run once per replacement.
     #[tokio::test]
-    async fn a_session_change_waits_for_the_one_in_progress() {
+    async fn session_change_in_progress() {
         let (mut app, mut events) = app();
         app.new_session(None, None, None);
         let (reply, mut outcome) = tokio::sync::oneshot::channel();
@@ -5242,7 +5242,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_replacement_drops_the_reports_left_by_another() {
+    async fn replacement_drops_stale_reports() {
         let (mut app, mut events) = app();
         // A fork an extension asked for, whose `withSession` failed.
         app.once_bound(|app| app.set_editor_text("forked"));
@@ -5255,7 +5255,7 @@ mod tests {
     /// Extensions of a replaced session that start late neither report the
     /// replacement's changes nor send the text held for it.
     #[tokio::test]
-    async fn a_replaced_sessions_late_start_leaves_held_text_waiting() {
+    async fn late_start_holds_text() {
         let (mut app, mut events) = app();
         let stale = app.epoch;
         app.new_session(None, None, None);
@@ -5272,7 +5272,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_user_change_beside_an_extension_action_reports_itself() {
+    async fn user_change_beside_action() {
         let (mut app, mut events) = app();
         let (reply, mut outcome) = tokio::sync::oneshot::channel();
         let tree = SessionAction::Tree {
@@ -5296,7 +5296,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unfinished_message_leaves_later_items_in_place() {
+    async fn unfinished_message_keeps_order() {
         let (mut app, _events) = app();
         let streaming = app.push(Item::Status("streaming".into()));
         app.streaming = Some(streaming);
@@ -5418,7 +5418,7 @@ mod tests {
     /// first renderer in load order that draws them; a renderer that fails
     /// is reported once and passed over.
     #[tokio::test]
-    async fn code_renderers_draw_code_blocks_after_the_frame() {
+    async fn renders_code_after_frame() {
         let declines = CodeRenderer::new("declines", |_| Ok(None));
         let fails = CodeRenderer::new("fails", |_| Err("boom".into()));
         let draws = CodeRenderer::new("draws", |_| {
@@ -5470,7 +5470,7 @@ mod tests {
     /// shows the new ones plain until the renderer answers; nothing is
     /// asked for a block that did not change.
     #[tokio::test]
-    async fn a_growing_code_block_keeps_its_colors_until_answered() {
+    async fn growing_code_keeps_colors() {
         let renderer = CodeRenderer::new("upper", upper);
         let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
         app.push(Item::User("```rust\nfn a\n```".into()));
@@ -5532,7 +5532,7 @@ mod tests {
     /// Message text that grows keeps what the transformers made of it until
     /// they answer for the new text, and so does text that stops streaming.
     #[tokio::test]
-    async fn growing_text_keeps_its_transformed_markdown_until_answered() {
+    async fn growing_text_keeps_transform() {
         let (mut app, mut events) = app_drawn_by(vec![Arc::new(Upper)]);
         app.push(Item::User("hello".into()));
         assert!(trimmed_rows(&mut app).contains(&"hello".to_owned()));
@@ -5552,7 +5552,7 @@ mod tests {
     /// A theme change and a restarted extension runtime forget what the
     /// renderers drew, and the code is asked again.
     #[tokio::test]
-    async fn theme_changes_and_restarts_ask_the_code_renderers_again() {
+    async fn theme_change_rerenders_code() {
         let renderer = CodeRenderer::new("upper", upper);
         let (mut app, mut events) = app_drawn_by(vec![renderer.clone()]);
         app.push(Item::User("```rust\nfn a\n```".into()));
@@ -5591,7 +5591,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pasted_files_are_set_apart_as_in_pi() {
+    async fn pasted_files_set_apart() {
         let files = |paths: &[&str]| {
             clipboard::Paste::Files(paths.iter().map(|path| (*path).to_owned()).collect())
         };
@@ -5621,7 +5621,7 @@ mod tests {
     }
 
     #[test]
-    fn detects_image_terminals_as_pi_tui_and_herdr() {
+    fn detects_image_terminals() {
         use yapi_types::settings::{BoolOr, ImageProtocol};
         let detect = |setting: Option<BoolOr<ImageProtocol>>, vars: &[(&str, &str)]| {
             image_protocol(setting, |name| {
@@ -5666,7 +5666,7 @@ mod tests {
     }
 
     #[test]
-    fn detects_hyperlink_terminals_as_pi_tui() {
+    fn detects_hyperlink_terminals() {
         let known = |vars: &[(&str, &str)]| {
             known_hyperlinks(|name| {
                 let value = vars.iter().find(|(key, _)| *key == name);
@@ -5741,7 +5741,7 @@ mod tests {
     /// A runtime that restarted loses its components: the built-in editor
     /// takes the keys again, and other runtimes keep theirs.
     #[tokio::test]
-    async fn a_restarted_runtime_gives_up_its_components() {
+    async fn restart_drops_components() {
         use extension_ui::{CustomEditor, RemoteView, Request, WidgetView};
         use yapi_core::extensions::{Placement, RemoteComponent};
         let (mut app, _events) = app();
@@ -5810,7 +5810,7 @@ mod tests {
     /// drew is not drawn again, so a renderer that panics as it draws stops
     /// its runtime once.
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_restarted_runtime_draws_its_transcript_items_again() {
+    async fn restart_redraws_transcript() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../yapi-ext/tests/fixtures/crash-recovery.wasm");
         let source = yapi_types::rpc::SourceInfo {
@@ -5899,7 +5899,7 @@ mod tests {
     }
 
     #[test]
-    fn clicks_open_only_web_mail_and_file_links() {
+    fn link_click_targets() {
         for url in [
             "https://example.com/a",
             "HTTP://example.com",

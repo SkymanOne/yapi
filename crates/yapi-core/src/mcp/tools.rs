@@ -9,10 +9,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use aws_lc_rs::digest::{SHA256, digest};
 use base64::Engine as _;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
-use sha2::Digest as _;
 use tokio_util::sync::CancellationToken;
 use yapi_agent::{Tool, UpdateSink};
 use yapi_types::event::ToolResult;
@@ -50,8 +50,8 @@ pub fn tool_name(server: &str, tool: &str, is_taken: impl Fn(&str) -> bool) -> S
     if name.len() <= MAX_TOOL_NAME_LENGTH && !is_taken(&name) {
         return name;
     }
-    let digest = sha2::Sha256::digest(format!("{server}\0{tool}").as_bytes());
-    let hash = crate::time::hex(&digest[..4]);
+    let digest = digest(&SHA256, format!("{server}\0{tool}").as_bytes());
+    let hash = crate::time::hex(&digest.as_ref()[..4]);
     format!(
         "{}_{hash}",
         &name[..name.len().min(MAX_TOOL_NAME_LENGTH - hash.len() - 1)]

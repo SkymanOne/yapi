@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn scrolls_to_the_cursor() {
+    fn scrolls_to_cursor() {
         let kb = kb();
         let mut input = TextInput::new("> ");
         for c in "abcdefghijklmnop".chars() {

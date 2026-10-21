@@ -137,7 +137,7 @@ fn resolves_resources_as_pi() {
 /// pi's `readPiManifest` ignores a manifest list unless every entry is a
 /// string.
 #[test]
-fn ignores_manifest_lists_with_non_strings() {
+fn ignores_non_string_lists() {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("resolve-mixed-manifest");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("prompts")).unwrap();
@@ -174,7 +174,7 @@ fn write(root: &Path, files: &[(&str, &str)]) {
 }
 
 #[test]
-fn package_resources_follow_manifests_conventional_dirs_and_filters() {
+fn package_resource_discovery() {
     let tmp = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let root = tmp.join("package-manifest");
     write(

@@ -108,7 +108,7 @@ async fn conversation(faux: &Faux, dir: &Path, host: &Arc<ExtensionHost>) -> Age
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn compaction_takes_the_summary_an_extension_supplies() {
+async fn compaction_takes_extension_summary() {
     let dir = scratch("events-compact");
     let host = extensions(&dir, EXTENSION).await;
     let faux = Faux::new([Response::text("one"), Response::text("two")]);
@@ -137,7 +137,7 @@ async fn compaction_takes_the_summary_an_extension_supplies() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_extension_cancels_compaction() {
+async fn extension_cancels_compaction() {
     let dir = scratch("events-compact-cancel");
     let host = extensions(&dir, EXTENSION).await;
     let faux = Faux::new([Response::text("one"), Response::text("two")]);
@@ -160,7 +160,7 @@ async fn an_extension_cancels_compaction() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn tree_navigation_takes_an_extension_summary_or_stops() {
+async fn tree_summary_or_stop() {
     let dir = scratch("events-tree");
     let host = extensions(&dir, EXTENSION).await;
     let faux = Faux::new([Response::text("one"), Response::text("two")]);
@@ -229,7 +229,7 @@ export default function (pi: ExtensionAPI) {
 "#;
 
 #[tokio::test(flavor = "multi_thread")]
-async fn message_end_replacements_are_recorded_and_sent() {
+async fn message_end_replacements_recorded() {
     let dir = scratch("events-message-end");
     let host = extensions(&dir, REWRITE).await;
     let faux = Faux::new([Response::text("one"), Response::text("two")]);

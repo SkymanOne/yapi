@@ -209,7 +209,7 @@ fn editor(spec: &Value, rows: usize) -> Option<Editor> {
 }
 
 #[test]
-fn handles_the_mouse_like_pi() {
+fn handles_mouse() {
     let keybindings = Keybindings::new(Keys::default(), tui_definitions(), &UserBindings::new());
     let mut failures = Vec::new();
     for case in fixture("selection.json").as_array().unwrap() {
@@ -308,7 +308,7 @@ fn handles_the_mouse_like_pi() {
 }
 
 #[test]
-fn accelerates_the_wheel_like_pi() {
+fn accelerates_wheel() {
     let start = Instant::now();
     for case in fixture("wheel.json").as_array().unwrap() {
         let mut wheel = WheelScroll::default();

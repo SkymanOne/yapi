@@ -114,7 +114,7 @@ mod tests {
     use super::*;
 
     #[tokio::test(start_paused = true)]
-    async fn polls_until_complete_and_honors_slow_down() {
+    async fn honors_slow_down() {
         let cancel = CancellationToken::new();
         let mut calls = 0;
         let started = tokio::time::Instant::now();
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn times_out_with_pi_messages() {
+    async fn times_out() {
         let cancel = CancellationToken::new();
         let result: Result<(), _> =
             poll_device_code(Some(1.0), Some(3.0), false, &cancel, || async {

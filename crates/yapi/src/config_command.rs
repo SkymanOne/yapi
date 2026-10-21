@@ -232,7 +232,7 @@ mod tests {
     /// pi's two resolves: a package in the user's and the trusted project's
     /// settings is installed in both scopes.
     #[tokio::test(flavor = "multi_thread")]
-    async fn installs_the_users_packages_then_the_trusted_projects() {
+    async fn installs_user_then_projects() {
         let source = "npm:ext-pkg@^2";
         let (cwd, agent, [global, settings]) = settings("scopes", &[source], &[source]);
         let server = MockServer::local_with(|base| Cassette {
@@ -255,7 +255,7 @@ mod tests {
 
     /// As pi's resolve throws, the first failure ends the install.
     #[tokio::test(flavor = "multi_thread")]
-    async fn stops_at_the_first_failure() {
+    async fn stops_at_first_failure() {
         let (cwd, agent, [global, settings]) =
             settings("failure", &["npm:missing-pkg", "npm:ext-pkg"], &[]);
         let server = MockServer::local_with(|_| Cassette {

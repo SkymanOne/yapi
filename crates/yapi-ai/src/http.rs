@@ -532,7 +532,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn settings_proxy_fills_unset_variables() {
+    fn proxy_fills_unset_variables() {
         assert!(proxy_env().is_empty());
         set_settings_proxy(Some("  "));
         assert!(proxy_env().is_empty());
@@ -547,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_like_the_sdks() {
+    fn formats_like_sdks() {
         let anthropic =
             json!({"type":"error","error":{"type":"invalid_request_error","message":"bad"}});
         assert_eq!(
@@ -573,7 +573,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_errors_carry_the_body() {
+    fn provider_errors_carry_body() {
         let error = json!({"message": "Invalid model", "type": "invalid_request_error"});
         assert_eq!(
             provider_error_message("400 Invalid model", Some(400), Some(&error), None),

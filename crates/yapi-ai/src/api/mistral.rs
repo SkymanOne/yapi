@@ -339,7 +339,7 @@ fn boundary(buffer: &str) -> Option<(usize, usize)> {
     (0..bytes.len()).find_map(|index| {
         SEPARATORS
             .iter()
-            .find(|separator| buffer[index..].starts_with(*separator))
+            .find(|separator| bytes[index..].starts_with(separator.as_bytes()))
             .map(|separator| (index, separator.len()))
     })
 }
@@ -481,12 +481,10 @@ impl State {
             Value::Null => "{}".to_owned(),
             other => yapi_types::json::stringify(other),
         };
-        let partial = self.partial_args.entry(position).or_default();
-        partial.push_str(&delta);
-        let parsed = parse_streaming_json(partial);
-        if let Some(ContentBlock::ToolCall(block)) = self.output.content.get_mut(position) {
-            block.arguments = parsed;
-        }
+        self.partial_args
+            .entry(position)
+            .or_default()
+            .push_str(&delta);
         sender.delta(&mut self.output, position, &delta);
     }
 
@@ -570,16 +568,19 @@ impl State {
         }
     }
 
+    /// Parses the argument text each tool call streamed so far.
+    fn parse_arguments(&mut self) {
+        for (position, partial) in &self.partial_args {
+            if let Some(ContentBlock::ToolCall(block)) = self.output.content.get_mut(*position) {
+                block.arguments = parse_streaming_json(partial);
+            }
+        }
+    }
+
     fn finish(&mut self, sender: &EventSender) {
         self.finish_current(sender);
-        let positions: Vec<usize> = self.tools.values().copied().collect();
-        for position in positions {
-            let partial = self.partial_args.remove(&position).unwrap_or_default();
-            let arguments = parse_streaming_json(&partial);
-            if let Some(ContentBlock::ToolCall(block)) = self.output.content.get_mut(position) {
-                block.arguments = arguments;
-                sender.end(&self.output, position);
-            }
+        for position in self.tools.values() {
+            sender.end(&self.output, *position);
         }
     }
 }
@@ -746,6 +747,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
         }
     };
     cancel.cancel();
+    state.parse_arguments();
     let result = result.map(|()| state.finish(&sender)).and_then(|()| {
         check_complete(
             &state.output,
@@ -764,7 +766,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derives_tool_call_ids_like_pi() {
+    fn derives_tool_call_ids() {
         assert_eq!(derive_tool_call_id("abcDEF123", 0), "abcDEF123");
         let mut ids = IdNormalizer::default();
         let first = ids.normalize("call_1|fc_long_item");
@@ -774,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn splits_events_on_any_blank_line() {
+    fn splits_on_blank_lines() {
         let mut parser = EventParser::default();
         let events = parser
             .push("data: {\"choices\":[]}\r\n\r\ndata: {\"choices\":[1]}\n\ndata: [DONE]\n\n")
@@ -782,5 +784,17 @@ mod tests {
         assert_eq!(events.len(), 3);
         assert!(matches!(events[2], Parsed::Done));
         assert!(parser.push("data: {\"x\":1}\n\n").is_err());
+    }
+
+    #[test]
+    fn non_ascii_events() {
+        let mut parser = EventParser::default();
+        let events = parser
+            .push("data: {\"choices\":[{\"delta\":{\"content\":\"café\"}}]}\n\n")
+            .unwrap();
+        let [Parsed::Event(event)] = events.as_slice() else {
+            panic!("expected one event");
+        };
+        assert_eq!(event["choices"][0]["delta"]["content"], "café");
     }
 }

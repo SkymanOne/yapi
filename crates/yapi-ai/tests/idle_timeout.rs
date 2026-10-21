@@ -29,7 +29,7 @@ async fn silent_server(head: &'static str) -> String {
 }
 
 #[tokio::test]
-async fn idle_requests_fail_like_pi() {
+async fn idle_requests_fail() {
     http::set_idle_timeout_ms(200);
     let options = StreamOptions::default();
 

@@ -1,7 +1,7 @@
 //! Text replacement for `edit`: exact matching with a fuzzy fallback, and the diffs
 //! shown for an edit.
 
-use similar::{ChangeTag, TextDiff};
+use similar::{ChangeTag, DiffTag, TextDiff};
 use unicode_normalization::UnicodeNormalization;
 
 /// One requested replacement.
@@ -26,13 +26,39 @@ pub fn normalize_to_lf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Converts `\n` back to `ending`.
-pub fn restore_line_endings(text: &str, ending: &str) -> String {
-    if ending == "\r\n" {
-        text.replace('\n', "\r\n")
-    } else {
-        text.to_owned()
+/// `new`, an edit of `normalized`, written over `original`, the text
+/// [`normalize_to_lf`] turned into `normalized`: lines the edit left equal keep
+/// their original bytes and line ending, changed lines end with `ending`.
+pub fn restore_line_endings(original: &str, normalized: &str, new: &str, ending: &str) -> String {
+    // The line ends `normalize_to_lf` turns into `\n`.
+    let mut original_lines = Vec::new();
+    let mut rest = original;
+    while let Some(at) = rest.find(['\r', '\n']) {
+        let end = at + if rest[at..].starts_with("\r\n") { 2 } else { 1 };
+        let (line, tail) = rest.split_at(end);
+        original_lines.push(line);
+        rest = tail;
     }
+    if !rest.is_empty() {
+        original_lines.push(rest);
+    }
+    let diff = TextDiff::from_lines(normalized, new);
+    let mut output = String::with_capacity(new.len());
+    for op in diff.ops() {
+        let (tag, old_lines, new_lines) = op.as_tag_tuple();
+        if tag == DiffTag::Equal {
+            // `normalized` has one line for each line of `original`.
+            output.extend(original_lines[old_lines].iter().copied());
+            continue;
+        }
+        for line in &diff.new_slices()[new_lines] {
+            match line.strip_suffix('\n') {
+                Some(text) => output.extend([text, ending]),
+                None => output.push_str(line),
+            }
+        }
+    }
+    output
 }
 
 /// The form fuzzy matching compares: NFKC, no trailing spaces, ASCII quotes,
@@ -286,7 +312,8 @@ pub fn preview_edits(
     let absolute = super::path::resolve_to_cwd(path, cwd);
     let raw = std::fs::read(&absolute)
         .map_err(|err| format!("Could not edit file: {path}. {}.", super::error_code(&err)))?;
-    let raw = String::from_utf8_lossy(&raw);
+    let raw = String::from_utf8(raw)
+        .map_err(|_| format!("Could not edit file: {path}. File is not valid UTF-8."))?;
     let content = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
     let normalized = normalize_to_lf(content);
     let new_content = apply_edits(&normalized, edits, path)?;
@@ -403,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn replaces_exact_and_fuzzy_matches() {
+    fn exact_and_fuzzy_matches() {
         assert_eq!(
             apply_edits("a\nb\nc\n", &[edit("b", "B"), edit("c", "C")], "f").unwrap(),
             "a\nB\nC\n"
@@ -436,6 +463,19 @@ mod tests {
     }
 
     #[test]
+    fn unchanged_line_endings() {
+        let restore = |original: &str, new: &str, ending| {
+            restore_line_endings(original, &normalize_to_lf(original), new, ending)
+        };
+        assert_eq!(
+            restore("a\r\nb\r\nc", "a\nB\nB2\nc", "\r\n"),
+            "a\r\nB\r\nB2\r\nc"
+        );
+        assert_eq!(restore("x\r\r\ny\n", "x\n\nY\n", "\n"), "x\r\r\nY\n");
+        assert_eq!(restore("a\r\nb", "a\nb\nc", "\r\n"), "a\r\nb\r\nc");
+    }
+
+    #[test]
     fn diffs_with_line_numbers() {
         let (diff, first) = display_diff("a\nb\nc\n", "a\nB\nc\n");
         assert_eq!(diff, " 1 a\n-2 b\n+2 B\n 3 c");
@@ -443,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn patch_ranges_carry_counts_as_jsdiff() {
+    fn patch_range_counts() {
         assert_eq!(
             unified_patch("a.txt", "x\n", "y\n"),
             "--- a.txt\n+++ a.txt\n@@ -1,1 +1,1 @@\n-x\n+y\n"

@@ -551,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_model_catalog() {
+    fn reads_model_catalog() {
         let known = crate::catalog::builtin_models("github-copilot")[0]
             .id
             .clone();

@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 use yapi_types::model::{ClassifierModel, ImageModel, Model};
 
-use crate::auth::lock::FileLock;
+use crate::auth::lock::{FileLock, write_atomic};
 use crate::auth::now_ms;
 
 /// pi.dev, where pi publishes catalog updates between releases.
@@ -97,7 +97,7 @@ impl ModelsStore {
         };
         let text = yapi_types::json::to_string_pretty(&Value::Object(all), "  ")
             .map_err(|err| err.to_string())?;
-        std::fs::write(&self.path, text).map_err(|err| err.to_string())
+        write_atomic(&self.path, text.as_bytes(), 0o666).map_err(|err| err.to_string())
     }
 }
 
@@ -581,7 +581,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn store_writes_and_deletes_entries() {
+    async fn store_writes_and_deletes() {
         let dir = std::env::temp_dir().join(format!("yapi-models-store-{}", std::process::id()));
         let store = ModelsStore::new(dir.join("models-store.json"));
         let cancel = CancellationToken::new();
@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_catalog_shapes_and_dates() {
+    fn parses_shapes_and_dates() {
         let models = parse_catalog(
             "xai",
             json!({"models": [{"id": "a"}, {"id": "b", "type": "video"}, {"name": "no id"}]}),

@@ -251,7 +251,7 @@ fn text(event: &StreamEvent) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn streams_events_as_the_extension_emits_them() {
+async fn streams_extension_events() {
     let dir = scratch("provider-stream");
     let host = load(&dir).await;
     let (registry, apis) = registry_and_apis(&host, &dir);
@@ -300,7 +300,7 @@ async fn streams_events_as_the_extension_emits_them() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn aborts_and_failures_end_the_stream_with_an_error() {
+async fn aborts_failures_end_stream() {
     let dir = scratch("provider-abort");
     let host = load(&dir).await;
     let (registry, apis) = registry_and_apis(&host, &dir);
@@ -340,7 +340,7 @@ async fn aborts_and_failures_end_the_stream_with_an_error() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn registered_apis_stream_models_of_any_provider() {
+async fn registered_apis_any_provider() {
     let dir = scratch("provider-api");
     let host = load(&dir).await;
     let (registry, apis) = registry_and_apis(&host, &dir);
@@ -369,7 +369,7 @@ async fn registered_apis_stream_models_of_any_provider() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_session_runs_on_an_extension_provider() {
+async fn session_uses_extension_provider() {
     let dir = scratch("provider-session");
     let host = load(&dir).await;
     let config = session_config(&host, &dir);
@@ -402,7 +402,7 @@ async fn the_session_runs_on_an_extension_provider() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn oauth_providers_sign_in_store_and_refresh() {
+async fn oauth_login_store_refresh() {
     let dir = scratch("provider-oauth");
     let host = load(&dir).await;
     let (registry, _) = registry_and_apis(&host, &dir);
@@ -495,7 +495,7 @@ async fn oauth_providers_sign_in_store_and_refresh() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn refresh_models_replaces_and_persists_the_model_list() {
+async fn refresh_models_persists_list() {
     let dir = scratch("provider-refresh");
     let host = load(&dir).await;
     let ids = |session: &AgentSession| -> Vec<(String, String)> {
@@ -547,7 +547,7 @@ fn bool_question() -> ClassifierContext {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn image_and_classifier_models_run_in_the_extension() {
+async fn image_and_classifier_models() {
     let dir = scratch("provider-media");
     let host = load(&dir).await;
     let (registry, _) = registry_and_apis(&host, &dir);
@@ -592,7 +592,7 @@ async fn image_and_classifier_models_run_in_the_extension() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_pi_ai_provider_brings_its_auth_models_streams_and_classifier() {
+async fn pi_ai_provider_features() {
     let dir = scratch("provider-native");
     let host = load(&dir).await;
     let (registry, apis) = registry_and_apis(&host, &dir);
@@ -665,7 +665,7 @@ async fn a_pi_ai_provider_brings_its_auth_models_streams_and_classifier() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_pi_ai_provider_refreshes_its_own_models() {
+async fn pi_ai_provider_refreshes_models() {
     let dir = scratch("provider-native-refresh");
     let host = load(&dir).await;
     let session = AgentSession::new(session_config(&host, &dir));
@@ -695,7 +695,7 @@ async fn a_pi_ai_provider_refreshes_its_own_models() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn modify_models_projects_the_models_for_the_signed_in_account() {
+async fn modify_models_per_account() {
     let dir = scratch("provider-modify");
     let host = load(&dir).await;
     let session = AgentSession::new(session_config(&host, &dir));
@@ -772,7 +772,7 @@ export default function (pi: ExtensionAPI) {
 /// credentials. `getApiKeyAndHeaders` resolves what a request to a model
 /// sends. Both need the network grant.
 #[tokio::test(flavor = "multi_thread")]
-async fn provider_auth_needs_the_network_grant() {
+async fn provider_auth_needs_network() {
     let mut entries = Vec::new();
     for network in [true, false] {
         let dir = scratch(&format!("provider-auth-{network}"));

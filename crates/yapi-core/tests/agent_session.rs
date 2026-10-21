@@ -63,7 +63,7 @@ fn session_with(provider: Arc<dyn Provider>) -> AgentSession {
 
 /// The sign-in help names the docs the session was given, as its prompt does.
 #[tokio::test]
-async fn sign_in_help_names_the_sessions_docs() {
+async fn sign_in_help_docs() {
     let session = AgentSession::new(SessionConfig {
         cwd: Path::new("/work").to_path_buf(),
         agent_dir: Path::new("/agent").to_path_buf(),
@@ -110,7 +110,7 @@ fn entry_id(session: &AgentSession, text: &str) -> String {
 }
 
 #[tokio::test]
-async fn navigating_with_a_summary_records_the_abandoned_branch() {
+async fn summary_records_abandoned_branch() {
     let faux = Faux::new([
         Response::text("one"),
         Response::text("two"),
@@ -173,7 +173,7 @@ async fn navigating_with_a_summary_records_the_abandoned_branch() {
 }
 
 #[tokio::test]
-async fn navigating_to_a_user_message_returns_its_text() {
+async fn navigating_returns_message_text() {
     let faux = Faux::new([Response::text("one")]);
     let session = session(&faux);
     session.prompt("first", Vec::new()).await.unwrap();
@@ -222,7 +222,7 @@ impl Provider for Cancelling {
 }
 
 #[tokio::test]
-async fn a_manual_compaction_cancelled_mid_summary_records_nothing() {
+async fn cancelled_compaction_records_nothing() {
     let faux = Faux::new([
         Response::text("one"),
         Response::text("two"),
@@ -286,7 +286,7 @@ fn bmp(data: &str) -> ImageContent {
 }
 
 #[tokio::test]
-async fn prompt_and_tool_result_images_are_converted_as_pi() {
+async fn converts_prompt_tool_images() {
     use base64::Engine as _;
     let mut file = std::io::Cursor::new(Vec::new());
     image::DynamicImage::new_rgba8(2, 2)
@@ -340,5 +340,49 @@ async fn prompt_and_tool_result_images_are_converted_as_pi() {
     assert_eq!(
         result.content,
         [ContentBlock::Image(png.clone()), ContentBlock::text(note)]
+    );
+}
+
+/// The first failed session write reaches the user once, however many follow.
+#[tokio::test]
+async fn write_error_reported_once() {
+    struct Notes(std::sync::Mutex<Vec<String>>);
+    impl yapi_core::extensions::ExtensionUi for Notes {
+        fn has_ui(&self) -> bool {
+            true
+        }
+        fn notify(&self, message: &str, _kind: yapi_core::extensions::NotifyKind) {
+            self.0.lock().unwrap().push(message.to_owned());
+        }
+    }
+    let dir = std::env::temp_dir().join(format!("yapi-write-error-{}", std::process::id()));
+    let session = session(&Faux::default());
+    let notes = Arc::new(Notes(std::sync::Mutex::default()));
+    session
+        .bind_extensions(notes.clone(), yapi_core::extensions::Mode::Tui, None, None)
+        .await;
+    let user = || {
+        Message::User(yapi_types::message::UserMessage {
+            content: Content::Text("hi".into()),
+            timestamp: 0,
+        })
+    };
+    let file = session.with_session(|file| {
+        *file = SessionManager::create(Path::new("/work"), &dir, None).unwrap();
+        file.append_message(user()).unwrap();
+        file.file().unwrap().to_path_buf()
+    });
+    // A directory in the file's place fails every write.
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    for _ in 0..2 {
+        let _ = session.with_session(|file| file.append_message(user()));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let notes = notes.0.lock().unwrap();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].starts_with("Failed to save session: "),
+        "{notes:?}"
     );
 }

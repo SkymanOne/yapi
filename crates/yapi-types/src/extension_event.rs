@@ -245,7 +245,7 @@ mod tests {
     use crate::json;
 
     #[test]
-    fn optional_fields_are_left_out_in_pi_order() {
+    fn optional_fields_omitted() {
         let failed = |error_message| {
             json::stringify(
                 &ExtensionEvent::SessionCompactFailed {
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_preparation_sets_only_given_options() {
+    fn tree_preparation_given_options() {
         let tree = |custom_instructions, replace_instructions, label| {
             json::stringify(
                 &ExtensionEvent::SessionBeforeTree {
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn ui_prompt_follows_the_tag() {
+    fn ui_prompt_follows_tag() {
         let prompt = UiPrompt {
             reason: "ui_prompt",
             kind: "select",

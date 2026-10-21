@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn export_colors_derive_from_the_user_message_background() {
+    fn colors_follow_user_background() {
         assert_eq!(
             derive_export_colors("#343541"),
             ["rgb(36, 37, 46)", "rgb(44, 45, 55)", "rgb(72, 68, 65)"]

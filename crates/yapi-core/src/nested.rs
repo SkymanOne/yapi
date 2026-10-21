@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn numbers_calls_per_caller_and_records_them() {
+    fn numbers_calls_per_caller() {
         let nested = NestedCalls::default();
         let mut first = call("read", json!({"path": "a.txt"}));
         let started = nested.start("toolu_1", &mut first);

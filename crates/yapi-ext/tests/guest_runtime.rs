@@ -47,7 +47,7 @@ async fn probe(name: &str, main: &str) -> String {
 /// Every Node built-in imports by its bare name, as in Node, except the ones
 /// Node loads only with the `node:` prefix.
 #[tokio::test(flavor = "multi_thread")]
-async fn imports_node_builtins_by_bare_name() {
+async fn imports_bare_node_builtins() {
     let main = r#"
 import qs from "querystring";
 import { ReadableStream } from "stream/web";
@@ -105,7 +105,7 @@ export default async function (pi) {
 /// UTF-8 split across chunks decodes whole, inputs too large for a call's
 /// arguments convert, and base64 and lone surrogates follow Node.
 #[tokio::test(flavor = "multi_thread")]
-async fn decodes_streams_and_large_inputs_as_node_does() {
+async fn decodes_streams_large_inputs() {
     let main = r#"
 import { StringDecoder } from "node:string_decoder";
 export default function (pi) {
@@ -147,7 +147,7 @@ export default function (pi) {
 
 /// `process` is an EventEmitter: `once` listeners run once.
 #[tokio::test(flavor = "multi_thread")]
-async fn process_is_an_event_emitter() {
+async fn process_emits_events() {
     let main = r#"
 import EventEmitter from "node:events";
 export default function (pi) {
@@ -170,7 +170,7 @@ export default function (pi) {
 /// `removeListener` drops only the most recent registration of a listener,
 /// as Node does, and finds `once` listeners by the function they wrap.
 #[tokio::test(flavor = "multi_thread")]
-async fn removes_one_registration_per_call() {
+async fn remove_listener_drops_one() {
     let main = r#"
 import { EventEmitter } from "node:events";
 export default function (pi) {
@@ -209,7 +209,7 @@ async fn evaluates_no_source_text() {
 /// pi exports yapi does not provide link, can be extended, and throw when
 /// called or constructed.
 #[tokio::test(flavor = "multi_thread")]
-async fn stubs_throw_when_used() {
+async fn used_stubs_throw() {
     let main = r#"
 import { SessionManager, compact } from "@earendil-works/pi-coding-agent";
 import { Agent } from "@earendil-works/pi-agent-core";
@@ -248,7 +248,7 @@ export default function (pi) {
 
 /// The API of an extension that failed to load throws, as in pi.
 #[tokio::test(flavor = "multi_thread")]
-async fn api_of_a_failed_extension_throws() {
+async fn failed_extension_api_throws() {
     let dir = common::scratch("guest-failed");
     let broken = dir.join("broken.ts");
     std::fs::write(
@@ -309,7 +309,7 @@ export default function (pi) {
 /// Descriptor reads and writes reach their range of the file: chunked reads,
 /// writes inside and past the end, and truncation.
 #[tokio::test(flavor = "multi_thread")]
-async fn reads_and_writes_descriptor_ranges() {
+async fn descriptor_range_io() {
     let main = r#"
 import fs from "node:fs";
 import path from "node:path";
@@ -341,7 +341,7 @@ export default function (pi) {
 /// `createEventBus` runs handlers as pi's does: as soon as an event is
 /// emitted.
 #[tokio::test(flavor = "multi_thread")]
-async fn creates_event_buses_as_pi_does() {
+async fn creates_event_buses() {
     let main = r#"
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 export default function (pi) {

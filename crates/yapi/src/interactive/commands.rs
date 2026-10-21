@@ -678,12 +678,17 @@ impl super::App {
             "/trust" => {
                 let store = yapi_core::trust::TrustStore::new(&self.agent_dir);
                 let project = self.session.project_dir();
-                let selector = super::selectors::TrustSelector::new(
-                    &project,
-                    store.entry(&project),
-                    self.session.project_trusted(),
-                );
-                self.selector = Some(super::Selector::Trust(Box::new(selector)));
+                match store.entry(&project) {
+                    Ok(saved) => {
+                        let selector = super::selectors::TrustSelector::new(
+                            &project,
+                            saved,
+                            self.session.project_trusted(),
+                        );
+                        self.selector = Some(super::Selector::Trust(Box::new(selector)));
+                    }
+                    Err(error) => self.error(error.to_string()),
+                }
             }
             "/clone" => {
                 let leaf = self
@@ -1000,14 +1005,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn html_export_reads_colorfgbg_without_a_reported_background() {
+    async fn html_export_reads_colorfgbg() {
         // COLORFGBG comes from the environment, so a child process checks it.
         const CHILD: &str = "YAPI_TEST_HTML_THEME_CHILD";
         if std::env::var_os(CHILD).is_none() {
             let status = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
                     "--exact",
-                    "interactive::commands::tests::html_export_reads_colorfgbg_without_a_reported_background",
+                    "interactive::commands::tests::html_export_reads_colorfgbg",
                 ])
                 .env(CHILD, "1")
                 .env("COLORFGBG", "0;15")

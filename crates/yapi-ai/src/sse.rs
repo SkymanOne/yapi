@@ -131,13 +131,13 @@ mod tests {
     }
 
     #[test]
-    fn joins_data_lines_and_skips_comments() {
+    fn joins_data_skips_comments() {
         let events = decode(&[b": ping\ndata: one\ndata:two\nid: 3\n\n"]);
         assert_eq!(events, [event(None, "one\ntwo")]);
     }
 
     #[test]
-    fn keeps_split_utf8_and_flushes_at_end() {
+    fn split_utf8_and_flush() {
         let crab = "data: 🦀".as_bytes();
         let events = decode(&[&crab[..8], &crab[8..]]);
         assert_eq!(events, [event(None, "🦀")]);

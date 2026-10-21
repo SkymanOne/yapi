@@ -229,7 +229,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn subscriptions_are_oauth_sign_ins_of_subscription_providers() {
+    fn detects_subscriptions() {
         let dir = std::env::temp_dir().join(format!("yapi-footer-sub-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let oauth = r#"{"type": "oauth", "access": "a", "refresh": "r", "expires": 0}"#;

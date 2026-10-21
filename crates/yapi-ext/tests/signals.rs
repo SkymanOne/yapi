@@ -13,7 +13,7 @@ extern "C" fn ignore(_: libc::c_int) {}
 /// wasmtime's Mach exception thread aborted the process when a caught signal
 /// interrupted its wait (bytecodealliance/wasmtime#14393).
 #[test]
-fn a_caught_signal_on_any_thread_does_not_abort() {
+fn caught_signal_no_abort() {
     let _engine = yapi_ext::Engine::new(None).unwrap();
     let mut threads: libc::thread_act_array_t = std::ptr::null_mut();
     let mut count = 0;

@@ -289,7 +289,8 @@ impl Connection {
 
     /// The per-request timeout.
     pub fn timeout(&self) -> Duration {
-        Duration::from_secs_f64(self.entry.config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECONDS))
+        Duration::try_from_secs_f64(self.entry.config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECONDS))
+            .unwrap_or(Duration::MAX)
     }
 
     /// What it knows of its server.

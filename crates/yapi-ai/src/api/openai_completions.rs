@@ -1022,6 +1022,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
         Ok(()) => sender.send(StreamEvent::Done(state.output)),
         Err(message) => {
             state.apply_details();
+            state.parse_arguments();
             send_error(&sender, state.output, &options.cancel, message);
         }
     }
@@ -1214,24 +1215,31 @@ impl State {
         index
     }
 
+    /// Parses the argument text each function call streamed so far.
+    fn parse_arguments(&mut self) {
+        for call in self.calls.iter().filter(|call| call.custom.is_none()) {
+            if let Some(ContentBlock::ToolCall(block)) = self.output.content.get_mut(call.position)
+            {
+                block.arguments = parse_streaming_json(&call.partial_args);
+            }
+        }
+    }
+
     fn finish_blocks(&mut self, sender: &EventSender) {
         self.apply_details();
+        self.parse_arguments();
         for position in 0..self.output.content.len() {
             let mut delta = None;
             if let ContentBlock::ToolCall(call) = &mut self.output.content[position]
-                && let Some(state) = self
+                && let Some(custom) = self
                     .calls
                     .iter_mut()
                     .find(|state| state.position == position)
+                    .and_then(|state| state.custom.as_mut())
             {
-                match &mut state.custom {
-                    Some(custom) => {
-                        let input = custom.input(&call.arguments).to_owned();
-                        // Closing at the input streamed so far cannot fail.
-                        delta = custom.set(&mut call.arguments, input, true).ok().flatten();
-                    }
-                    None => call.arguments = parse_streaming_json(&state.partial_args),
-                }
+                let input = custom.input(&call.arguments).to_owned();
+                // Closing at the input streamed so far cannot fail.
+                delta = custom.set(&mut call.arguments, input, true).ok().flatten();
             }
             if let Some(delta) = delta {
                 sender.delta(&mut self.output, position, &delta);
@@ -1353,10 +1361,6 @@ impl State {
                     .filter(|a| !a.is_empty())
                 {
                     state.partial_args.push_str(arguments);
-                    let parsed = parse_streaming_json(&state.partial_args);
-                    if let ContentBlock::ToolCall(block) = &mut self.output.content[position] {
-                        block.arguments = parsed;
-                    }
                     streamed = arguments.to_owned();
                 } else if let Some(added) =
                     call["custom"]["input"].as_str().filter(|a| !a.is_empty())

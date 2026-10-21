@@ -890,7 +890,7 @@ mod tests {
     // Expected values are pi's `renderQuestion`, `labelProbabilities` and
     // `answerFromProbabilities` output for the same input.
     #[test]
-    fn renders_llama_questions_like_pi() {
+    fn renders_llama_questions() {
         let rendered = llama::render_question(&context(), "tone").unwrap();
         assert_eq!(rendered.labels, ["A", "B"]);
         assert_eq!(
@@ -926,7 +926,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_bool_questions_to_noul() {
+    fn maps_bool_questions() {
         let request = wire_request(&context());
         assert_eq!(request["questions"]["spam"]["type"], "noul");
         assert_eq!(request["questions"]["tone"]["type"], "choice");

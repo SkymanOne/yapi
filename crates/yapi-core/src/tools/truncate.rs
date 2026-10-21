@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn tail_keeps_the_end() {
+    fn tail_keeps_end() {
         let result = truncate_tail("1\n2\n3\n4", 2, 100);
         assert_eq!(result.content, "3\n4");
         let result = truncate_tail("short\nwayyyyyyyy too long", 10, 8);

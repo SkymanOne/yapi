@@ -100,7 +100,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Wasm host | `wasmtime` with the component model |
 | Guest JS engine | `rquickjs` (QuickJS-NG) |
 | TypeScript and resolution | `oxc_transformer`, `oxc_resolver` |
-| Logging, errors | `tracing`; `thiserror`, `anyhow` |
+| Logging, errors | `tracing`, which `--enable-logging` writes to a file through a subscriber in `crates/yapi`; `thiserror`, `anyhow` |
 | Tests | pi goldens, `yapi-mock` (on `hyper`), `portable-pty` and `vt100` for terminal scenarios |
 
 ## Extension system
@@ -211,7 +211,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `thiserror` in libraries; `anyhow` only in `yapi` and `xtask`.
   - No `unwrap` or `expect` outside tests unless the invariant is stated at the call site.
 - `#![forbid(unsafe_code)]` in every crate except `yapi-ext` and `guest/*`.
-- Log through `tracing`. Stdout belongs to print, JSON and RPC output.
+- Log through `tracing`. `--enable-logging` appends the events to `yapi.log` in the agent directory. Stdout belongs to print, JSON and RPC output.
 - Async on tokio:
   - no lock held across `.await`;
   - no blocking calls on async threads;
@@ -251,7 +251,7 @@ Module loading runs on the host, in `yapi-ext`:
 - Planned work is in [docs/roadmap.md](docs/roadmap.md).
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.
-- A meaningful feature or bug fix adds one line under `## [Unreleased]` in `CHANGELOG.md`, in the same pull request. The line starts with an action word such as Add, Fix, Change or Refactor, says what users notice and ends with links to its pull requests. A stack of pull requests gets one line. Internal, test-only and docs-only changes, and fixes to features not yet released, get none. A release turns the Unreleased lines into its own section.
+- A meaningful feature or bug fix adds one line under `## [Unreleased]` in `CHANGELOG.md`, in the same pull request: a feature under `### Additions`, a fix or security update under `### Fixes`. The line starts with an action word such as Add, Fix, Change or Refactor, says what users notice and ends with links to its pull requests. A stack of pull requests gets one line. Internal, test-only and docs-only changes, and fixes to features not yet released, get none. A release turns the Unreleased lines into its own section.
 - Commit messages use `type(scope): summary`. Type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`; scope is the crate name.
 - Branch names follow [Conventional Branch](https://conventional-branch.github.io/): `main`, or `<type>/<description>`. Type is one of `feature` (or `feat`), `bugfix` (or `fix`), `hotfix`, `release`, `chore`; the description is lowercase letters and digits, with single hyphens or dots between them, such as `release/v1.2.0`.
 - Pull request descriptions state the key changes, behavior changes and decisions. They do not paraphrase commits or report line counts.

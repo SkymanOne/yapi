@@ -61,7 +61,7 @@ async fn ask(registry: &ModelRegistry, provider: &str, model: &str) -> StopReaso
 }
 
 #[tokio::test]
-async fn cloudflare_workers_ai_fills_the_account_from_the_credential() {
+async fn workers_ai_account() {
     let server = mock(cassette(
         "/client/v4/accounts/acct-1/ai/v1/chat/completions",
         "openai-completions/text.json",
@@ -100,7 +100,7 @@ async fn cloudflare_workers_ai_fills_the_account_from_the_credential() {
 }
 
 #[tokio::test]
-async fn cloudflare_gateway_sends_its_key_in_the_gateway_header() {
+async fn cloudflare_gateway_header() {
     let server = mock(cassette(
         "/v1/acct-2/gw-2/compat/chat/completions",
         "openai-completions/text.json",
@@ -146,7 +146,7 @@ async fn cloudflare_gateway_sends_its_key_in_the_gateway_header() {
 }
 
 #[tokio::test]
-async fn anthropic_federation_exchanges_the_identity_token_and_retries_a_401() {
+async fn anthropic_federation_exchange() {
     let text = cassette("/v1/messages", "anthropic-messages/text.json");
     let token = |access: &str| {
         Interaction::json(
@@ -234,7 +234,7 @@ fn rsa_pem() -> String {
 }
 
 #[tokio::test]
-async fn vertex_signs_in_with_a_service_account() {
+async fn vertex_service_account() {
     let mut interactions = vec![Interaction::json(
         "POST",
         "/token",
@@ -306,7 +306,7 @@ async fn vertex_signs_in_with_a_service_account() {
 }
 
 #[tokio::test]
-async fn google_adc_refreshes_users_and_impersonates() {
+async fn google_adc_users_impersonation() {
     let server = mock(Cassette {
         interactions: vec![
             Interaction::json(
@@ -513,7 +513,7 @@ async fn bedrock(
 }
 
 #[tokio::test]
-async fn bedrock_sends_pi_request_bodies() {
+async fn bedrock_request_bodies() {
     // Bodies pi's Bedrock provider sent for the same transcript.
     let cases = [
         (
@@ -578,7 +578,7 @@ async fn bedrock_sends_pi_request_bodies() {
 }
 
 #[tokio::test]
-async fn bedrock_payload_hook_sees_and_sets_the_model_id() {
+async fn bedrock_payload_hook() {
     // pi's `onPayload` sees the command input, `modelId` first, and the
     // SDK sends the returned `modelId` in the URL path.
     let server = mock(Cassette {
@@ -625,7 +625,7 @@ async fn bedrock_payload_hook_sees_and_sets_the_model_id() {
 }
 
 #[tokio::test]
-async fn bedrock_streams_tools_reasoning_and_usage() {
+async fn bedrock_stream_events() {
     let stream = [
         event("messageStart", &json!({"role": "assistant"})),
         event("contentBlockDelta", &json!({"contentBlockIndex": 0, "delta": {"reasoningContent": {"text": "think"}}})),
@@ -709,7 +709,7 @@ async fn bedrock_streams_tools_reasoning_and_usage() {
 }
 
 #[tokio::test]
-async fn bedrock_reports_errors_like_pi() {
+async fn bedrock_reports_errors() {
     let path = "/model/us.anthropic.claude-sonnet-4-5-20250929-v1%3A0/converse-stream";
     let cases: Vec<(Interaction, &str, Value)> = vec![
         (
@@ -799,7 +799,7 @@ async fn bedrock_reports_errors_like_pi() {
 }
 
 #[tokio::test]
-async fn aws_chain_assumes_roles_and_reads_sso_and_container_credentials() {
+async fn aws_credential_chain() {
     use yapi_ai::aws::{AwsEnv, default_credentials};
     let sts_xml = "<AssumeRoleResponse><AssumeRoleResult><Credentials><AccessKeyId>ASIAROLE</AccessKeyId><SecretAccessKey>role-secret</SecretAccessKey><SessionToken>role-token</SessionToken><Expiration>2099-01-01T00:00:00Z</Expiration></Credentials></AssumeRoleResult></AssumeRoleResponse>";
     let mut sts = Interaction::json("POST", "/", 200, &Value::Null);

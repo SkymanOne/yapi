@@ -230,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn words_cache_misses_as_pi() {
+    fn words_cache_misses() {
         let miss = CacheMiss {
             missed_tokens: 21_100,
             missed_cost: 0.0633,
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn words_summary_costs_as_pi() {
+    fn words_summary_costs() {
         let mut usage: Usage = serde_json::from_value(serde_json::json!({
             "input": 25_000, "output": 800, "cacheRead": 0, "cacheWrite": 0,
             "cost": {"input": 0.075, "output": 0.012, "cacheRead": 0, "cacheWrite": 0, "total": 0.087},
@@ -287,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unparsable_warm_timestamp_is_no_idle_time() {
+    fn unparsable_warm_timestamp() {
         use serde_json::json;
         let registry = yapi_ai::registry::ModelRegistry::builtin();
         let message = |id: &str, timestamp: u64, write: u64| -> FileEntry {

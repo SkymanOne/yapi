@@ -352,7 +352,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_styles_links_and_the_cursor() {
+    fn parses_styles_links_cursor() {
         let (line, cursor) = parse_line(
             "a\x1b[1;38;2;1;2;3mb\x1b[0m\x1b[48;5;4mc\x1b[49m \x1b]8;;https://x\x07link\x1b]8;;\x07\x1b_pi:c\x07!",
         );
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn links_survive_resets_and_wrapping() {
+    fn links_survive_reset_wrap() {
         let (line, _) =
             parse_line("\x1b]8;;https://a\x1b\\\x1b[1mone\x1b[0m two\x1b]8;;\x1b\\ three");
         let lines = crate::lines::wrap(&line, 4);
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn links_with_control_characters_stay_unlinked() {
+    fn control_char_links_dropped() {
         // An OSC 8 URL ends only at BEL or ST, so it can carry other sequences.
         let (line, _) =
             parse_line("\x1b]8;;http://a\x1b[2J\x1b]52;c;aGk=\x1b\\click\x1b]8;;\x1b\\");
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn the_link_registry_stays_bounded() {
+    fn link_registry_bounded() {
         let mut links = Links::default();
         let drawn = links.id("https://drawn");
         let forgotten = links.id("https://forgotten");

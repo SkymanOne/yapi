@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn main_screen_rewrites_only_changes() {
+    fn main_rewrites_only_changes() {
         let mut screen = MainScreen::new();
         let first = screen.frame(&doc(&["a", "b", "c"]), None, 10, 5);
         assert!(first.contains("a\x1b[0m\r\nb\x1b[0m\r\nc\x1b[0m"));
@@ -1179,7 +1179,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_screen_scrolls_and_follows() {
+    fn alt_scrolls_and_follows() {
         let mut screen = AltScreen::new();
         let transcript = doc(&["1", "2", "3", "4", "5", "6"]);
         let dock = doc(&["editor"]);
@@ -1195,7 +1195,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_screen_parks_hidden_cursor_at_frame_cursor() {
+    fn alt_parks_hidden_cursor() {
         let mut screen = AltScreen::new();
         let transcript = doc(&["1"]);
         let dock = doc(&["> hi", "footer"]);
@@ -1215,7 +1215,7 @@ mod tests {
     }
 
     #[test]
-    fn shrinks_stacks_as_pi_tui() {
+    fn shrinks_stacks() {
         // Values computed by pi-tui's `allocateStackSizes`: every part above
         // its minimum gives at least a row per pass.
         assert_eq!(
@@ -1232,7 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn fit_stack_keeps_top_rows_or_the_cursor() {
+    fn fit_stack_clipping() {
         let parts = vec![(doc(&["a", "b", "c", "d"]), 0), (doc(&["f"]), 0)];
         let (rows, _, _) = fit_stack(parts.clone(), None, 3);
         let text: Vec<String> = rows.iter().map(|line| line.to_string()).collect();
@@ -1258,7 +1258,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_screen_draws_pi_scrollbars() {
+    fn alt_draws_scrollbars() {
         let transcript = doc(&["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
         let dock = doc(&["editor"]);
         // The text a frame writes to `row`, up to its next escape.
@@ -1324,7 +1324,7 @@ mod tests {
 
     // Ports of pi-tui's "TUI Kitty image cleanup" tests.
     #[test]
-    fn main_screen_clears_reserved_image_rows_before_placing_the_image() {
+    fn main_clears_image_rows() {
         let mut screen = MainScreen::new();
         screen.frame(&doc(&["before"]), None, 40, 10);
         let image = kitty_image((20, 20), 2, 9001);
@@ -1338,7 +1338,7 @@ mod tests {
     }
 
     #[test]
-    fn main_screen_redraws_when_clearing_image_rows_would_scroll() {
+    fn main_image_scroll_redraws() {
         let mut screen = MainScreen::new();
         screen.frame(&doc(&["before"]), None, 40, 2);
         let image = kitty_image((30, 30), 3, 9002);
@@ -1347,7 +1347,7 @@ mod tests {
     }
 
     #[test]
-    fn main_screen_reserves_image_rows_in_a_full_redraw() {
+    fn full_redraw_image_rows() {
         let mut screen = MainScreen::new();
         let text = ["l0", "l1", "l2", "l3", "l4"];
         screen.frame(&doc(&text), None, 40, 5);
@@ -1360,7 +1360,7 @@ mod tests {
     }
 
     #[test]
-    fn main_screen_places_an_image_taller_than_the_screen_from_its_first_row() {
+    fn main_places_tall_image() {
         let image = kitty_image((60, 60), 6, 9004);
         let sequence = line_to_ansi(&image[0]);
         let frame = MainScreen::new().frame(&with(&["before"], &image, &["after"]), None, 40, 5);
@@ -1369,7 +1369,7 @@ mod tests {
     }
 
     #[test]
-    fn main_screen_deletes_changed_images_before_drawing_them() {
+    fn main_deletes_changed_images() {
         let mut screen = MainScreen::new();
         let old = kitty("AAAA", 2, 42);
         screen.frame(&doc(&["top", &old]), None, 40, 10);
@@ -1397,7 +1397,7 @@ mod tests {
 
     // Ports of pi-tui's fullscreen Kitty tests.
     #[test]
-    fn alt_screen_crops_an_image_that_starts_above_the_viewport() {
+    fn alt_crops_image_top() {
         let image = kitty_image((100, 100), 3, 123);
         assert_eq!(image.len(), 3);
         let transcript = with(&["before"], &image, &["after", "end"]);
@@ -1409,7 +1409,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_screen_places_held_images_again_and_evicts_the_oldest() {
+    fn alt_held_images() {
         let mut screen = AltScreen::new();
         screen.kitty_images = true;
         let transcript = with(&[], &kitty_image((100, 50), 2, 321), &["after"]);
@@ -1446,7 +1446,7 @@ mod tests {
     }
 
     #[test]
-    fn frames_do_not_measure_image_rows() {
+    fn frames_skip_image_rows() {
         // Measuring a screenshot's escape text took a quarter second a frame
         // in a debug build, where skipping it takes a millisecond.
         let data = "A".repeat(1 << 20);
@@ -1477,7 +1477,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_screen_writes_nothing_for_an_unchanged_frame() {
+    fn alt_unchanged_frame_noop() {
         let mut screen = AltScreen::new();
         let transcript = doc(&["1"]);
         let dock = doc(&["> hi", "footer"]);

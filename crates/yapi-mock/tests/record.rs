@@ -38,7 +38,7 @@ fn provider_cassette() -> Cassette {
 }
 
 #[tokio::test]
-async fn records_what_the_upstream_sends() {
+async fn records_upstream() {
     let provider = MockServer::start(any_port(), provider_cassette())
         .await
         .unwrap();
@@ -100,7 +100,7 @@ async fn records_what_the_upstream_sends() {
 }
 
 #[tokio::test]
-async fn unreachable_upstream_is_a_problem() {
+async fn unreachable_upstream_fails() {
     // Port 9 (discard) is closed on loopback.
     let recorder = MockServer::record(any_port(), "http://127.0.0.1:9")
         .await

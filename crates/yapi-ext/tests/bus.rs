@@ -64,7 +64,7 @@ fn messages(entries: Vec<Value>) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pi_and_native_extensions_hear_each_other() {
+async fn cross_runtime_events() {
     let dir = scratch("bus");
     let engine = engine();
     let listener = js(&engine, &dir, "listener", LISTENER).await;
@@ -131,7 +131,7 @@ async fn pi_and_native_extensions_hear_each_other() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_busy_runtime_holds_a_bounded_queue_of_events() {
+async fn busy_runtime_queue_bounded() {
     const BUSY: &str = r#"
 export default function (pi) {
 	let ticks = 0;

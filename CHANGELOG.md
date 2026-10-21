@@ -4,12 +4,37 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Add `--enable-logging`, which appends a log of extension output, runtime restarts, crashes and library warnings to `~/.yapi/agent/yapi.log` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Add `/bug`, which saves a bug report as a zip file and can post it as a public issue on SkymanOne/yapi with the GitHub CLI ([#192](https://github.com/SkymanOne/yapi/pull/192)).
 - Add complete pi-ai `Provider` objects, image and classifier models with their implementations, and the legacy `oauth.modifyModels` to extensions' `registerProvider` ([#191](https://github.com/SkymanOne/yapi/pull/191)).
-- Fix `newSession`'s `setup` running after the new session started, with a session manager it could not write to. As in Pi, the entries it appends are in place for `session_start` and the first prompt ([#190](https://github.com/SkymanOne/yapi/pull/190)).
 - Add `ctx.modelRegistry.getProviderAuth` and `getApiKeyAndHeaders`, which give extensions a provider's or a model's API key and headers as in Pi. They need the network grant ([#189](https://github.com/SkymanOne/yapi/pull/189)).
-- Update rustls-webpki to 0.103.16 and webpki-root-certs to 1.0.10 for RUSTSEC-2026-0382 and RUSTSEC-2026-0383: TLS connections could trust certificates issued through distrusted emSign intermediates ([#193](https://github.com/SkymanOne/yapi/pull/193)).
 - Add inline images to tool results in Kitty, iTerm2 and Herdr terminals, with the "Show images" and "Image width" settings ([#187](https://github.com/SkymanOne/yapi/pull/187)).
+
+### Fixes
+
+- Fix Mistral responses that contain non-ASCII text ending with "Provider stream ended without a result" ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix high CPU use while a model streams large tool-call arguments ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix package installs writing outside `node_modules` when a dependency is named by a path or a git package links its `node_modules` elsewhere. Git sources whose host or ref starts with `-` are refused, as git would read them as options ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `yapi remove` deleting an npm package that another installed package still needs, a failed update or git install leaving a half-installed package, and `yapi install` of a new ref for an installed git package deleting its checkout ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `https://` and `ssh://` git sources ignoring a `#ref` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `auth.json`, `settings.json`, `trust.json`, `mcp.json`, `keybindings.json` and other config files being left empty, with every stored sign-in lost, when yapi is killed or the disk fills during a save ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix two running yapi instances undoing each other's `settings.json` changes, such as a package installed in one terminal disappearing after `/model` in another ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix a corrupt `trust.json` being read as empty, which trusted projects marked untrusted and erased the other trust decisions on the next save. yapi now stops with an error, as Pi does ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix session history being cut off on resume after a failed write, such as on a full disk. yapi reports the first failed write and saves the missed entries with the next one. Pi sessions holding text cut inside an emoji now load in full ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `yapi import pi` copying subscription and MCP sign-ins, which made yapi and Pi sign each other out. It now leaves them out, and you sign in again with `/login` or `/mcp login` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `edit` corrupting files that are not valid UTF-8, which it now refuses, and changing the line endings of untouched lines in files with mixed line endings ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `read` and `grep` ending the session on a huge offset, limit or context, and `bash` timeouts and aborts waiting while a command floods its output ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix MCP requests hanging when a server stops answering or reading, so the timeout and Esc apply again, memory growing without limit on an oversized stdio line, and a crash on a very large `timeout` in `mcp.json` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix JSON and RPC output mixing with `npmCommand` output and with the question whether to fork another project's session ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix yapi aborting with a stack overflow when an extension crashes the runtime again while it restarts ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix Esc not stopping a built-in tool that an extension registers again, such as bash in Pi's `built-in-tool-renderer.ts` example. Its output now streams as it runs ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix the interface freezing while a native extension compiles, and pi-ai requests that extensions started running on after the extension runtime restarts ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix Node error messages such as "EROFS: read-only file system" for read-only, non-empty folder and invalid argument errors ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix typing lag in long sessions in the regular TUI mode ([#195](https://github.com/SkymanOne/yapi/pull/195)).
+- Fix `newSession`'s `setup` running after the new session started, with a session manager it could not write to. As in Pi, the entries it appends are in place for `session_start` and the first prompt ([#190](https://github.com/SkymanOne/yapi/pull/190)).
+- Update rustls-webpki to 0.103.16 and webpki-root-certs to 1.0.10 for RUSTSEC-2026-0382 and RUSTSEC-2026-0383: TLS connections could trust certificates issued through distrusted emSign intermediates ([#193](https://github.com/SkymanOne/yapi/pull/193)).
 - Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
 
 ## [0.2.0] - 2026-10-14

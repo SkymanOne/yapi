@@ -260,31 +260,45 @@ impl Accumulator {
         let Some((path, _)) = &self.file else {
             return (String::from_utf8_lossy(&self.raw).into_owned(), false);
         };
-        let Ok(bytes) = std::fs::read(path) else {
-            return (String::new(), false);
-        };
-        if bytes.len() <= STRUCTURED_OUTPUT_MAX_BYTES {
-            return (String::from_utf8_lossy(&bytes).into_owned(), false);
+        Self::read_log(path).unwrap_or_default()
+    }
+
+    /// The log at `path`, or its first and last bytes when longer than
+    /// [`STRUCTURED_OUTPUT_MAX_BYTES`]; only those are read.
+    fn read_log(path: &Path) -> std::io::Result<(String, bool)> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = std::fs::File::open(path)?;
+        let len = usize::try_from(file.metadata()?.len()).unwrap_or(usize::MAX);
+        if len <= STRUCTURED_OUTPUT_MAX_BYTES {
+            let mut bytes = Vec::with_capacity(len);
+            file.read_to_end(&mut bytes)?;
+            return Ok((String::from_utf8_lossy(&bytes).into_owned(), false));
         }
         let head_len = STRUCTURED_OUTPUT_MAX_BYTES / 2;
         let tail_len = STRUCTURED_OUTPUT_MAX_BYTES - head_len;
+        // One byte past the head shows whether the head ends inside a character.
+        let mut head = vec![0; head_len + 1];
+        file.read_exact(&mut head)?;
+        let mut tail = vec![0; tail_len];
+        file.seek(SeekFrom::End(-(tail_len as i64)))?;
+        file.read_exact(&mut tail)?;
         let mut head_end = head_len;
-        while head_end > 0 && (bytes[head_end] & 0xc0) == 0x80 {
+        while head_end > 0 && (head[head_end] & 0xc0) == 0x80 {
             head_end -= 1;
         }
-        let mut tail_start = bytes.len() - tail_len;
-        while tail_start < bytes.len() && (bytes[tail_start] & 0xc0) == 0x80 {
+        let mut tail_start = 0;
+        while tail_start < tail.len() && (tail[tail_start] & 0xc0) == 0x80 {
             tail_start += 1;
         }
-        let omitted = bytes.len() - head_len - tail_len;
-        (
+        let omitted = len - head_len - tail_len;
+        Ok((
             format!(
                 "{}\n\n[... {omitted} bytes omitted ...]\n\n{}",
-                String::from_utf8_lossy(&bytes[..head_end]),
-                String::from_utf8_lossy(&bytes[tail_start..])
+                String::from_utf8_lossy(&head[..head_end]),
+                String::from_utf8_lossy(&tail[tail_start..])
             ),
             true,
-        )
+        ))
     }
 }
 
@@ -561,22 +575,10 @@ impl Tool for Bash {
                 }
                 let grace = exited_at.map(|at| at + EXIT_STDIO_GRACE);
                 let next_update = dirty.then(|| last_update + UPDATE_THROTTLE);
+                // Output that never pauses must not hold off the abort, the
+                // timeout or updates; output stays ahead of the exit so none is lost.
                 tokio::select! {
                     biased;
-                    bytes = pipes.read(), if pipes.is_open() => {
-                        if !bytes.is_empty() {
-                            output.append(bytes);
-                            dirty = true;
-                            if let Some(at) = &mut exited_at { *at = Instant::now(); }
-                        }
-                    }
-                    status = child.wait(), if exited_at.is_none() => {
-                        exit_code = status.ok().and_then(exit_code_of);
-                        exited_at = Some(Instant::now());
-                    }
-                    () = sleep_until_opt(grace) => {
-                        break;
-                    }
                     () = cancel.cancelled(), if ending.is_none() => {
                         ending = Some(Ending::Aborted);
                         kill_tree(pid);
@@ -590,6 +592,20 @@ impl Tool for Bash {
                         last_update = Instant::now();
                         let (truncation, path) = output.snapshot(true);
                         updates(progress(&truncation, path.as_deref()));
+                    }
+                    bytes = pipes.read(), if pipes.is_open() => {
+                        if !bytes.is_empty() {
+                            output.append(bytes);
+                            dirty = true;
+                            if let Some(at) = &mut exited_at { *at = Instant::now(); }
+                        }
+                    }
+                    status = child.wait(), if exited_at.is_none() => {
+                        exit_code = status.ok().and_then(exit_code_of);
+                        exited_at = Some(Instant::now());
+                    }
+                    () = sleep_until_opt(grace) => {
+                        break;
                     }
                 }
             }

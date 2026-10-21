@@ -336,10 +336,11 @@ pub(super) async fn run(request: Request, sender: EventSender) {
         oauth,
         input_transformations: Vec::new(),
     };
-    match state
+    let result = state
         .consume(SseReader::fetch(response), &model, &sender, &options)
-        .await
-    {
+        .await;
+    state.parse_open_calls();
+    match result {
         Ok(()) => {
             state.record_input_transformations();
             sender.send(StreamEvent::Done(state.output))
@@ -413,6 +414,20 @@ impl StreamState {
         self.indices
             .iter()
             .position(|candidate| *candidate == Some(index))
+    }
+
+    /// Parses the argument text streamed so far into each tool call that is
+    /// still open. A call without argument text keeps the input it started with.
+    fn parse_open_calls(&mut self) {
+        let blocks = self.output.content.iter_mut().zip(&self.indices);
+        for ((block, index), json) in blocks.zip(&self.partial_json) {
+            if let ContentBlock::ToolCall(call) = block
+                && index.is_some()
+                && !json.is_empty()
+            {
+                call.arguments = parse_streaming_json(json);
+            }
+        }
     }
 
     fn push_block(&mut self, block: ContentBlock, index: u64, sender: &EventSender) {
@@ -565,11 +580,10 @@ impl StreamState {
                 ) {
                     ("text_delta", ContentBlock::Text(_)) => field("text"),
                     ("thinking_delta", ContentBlock::Thinking(_)) => field("thinking"),
-                    ("input_json_delta", ContentBlock::ToolCall(call)) => {
-                        let json = &mut self.partial_json[position];
-                        json.push_str(delta["partial_json"].as_str().unwrap_or_default());
-                        call.arguments = parse_streaming_json(json);
-                        field("partial_json")
+                    ("input_json_delta", ContentBlock::ToolCall(_)) => {
+                        let piece = field("partial_json");
+                        self.partial_json[position].push_str(piece.unwrap_or_default());
+                        piece
                     }
                     ("signature_delta", ContentBlock::Thinking(thinking)) => {
                         thinking

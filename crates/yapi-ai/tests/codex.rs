@@ -107,7 +107,7 @@ fn body(request: &RecordedRequest) -> Value {
 }
 
 #[tokio::test]
-async fn sse_bodies_are_zstd_compressed() {
+async fn sse_bodies_zstd_compressed() {
     let server = MockServer::local(cassette("text.json")).await.unwrap();
     let options = StreamOptions {
         transport: Some(Transport::Sse),
@@ -122,7 +122,7 @@ async fn sse_bodies_are_zstd_compressed() {
 }
 
 #[tokio::test]
-async fn a_failed_websocket_sends_the_session_to_sse() {
+async fn failed_websocket_uses_sse() {
     let not_found = Interaction::json("GET", "/codex/responses", 404, &json!({}));
     let server = MockServer::local(Cassette {
         interactions: vec![not_found, sse(), sse()],
@@ -146,7 +146,7 @@ async fn a_failed_websocket_sends_the_session_to_sse() {
 }
 
 #[tokio::test]
-async fn a_full_connection_limit_retries_once() {
+async fn connection_limit_retries_once() {
     let limit = json!({"type": "error", "code": "websocket_connection_limit_reached", "message": "Too many connections"});
     let server = MockServer::local(Cassette {
         interactions: vec![exchange(vec![limit.to_string()]), text()],
@@ -162,7 +162,7 @@ async fn a_full_connection_limit_retries_once() {
 /// Empty messages are skipped and values other than objects passed over, as
 /// in pi; `null` fails as pi's read of its `type` does.
 #[tokio::test]
-async fn empty_and_non_object_messages_are_handled_as_pi_does() {
+async fn empty_non_object_messages() {
     let mut odd = text();
     odd.response
         .chunks
@@ -184,7 +184,7 @@ async fn empty_and_non_object_messages_are_handled_as_pi_does() {
 }
 
 #[tokio::test]
-async fn continuations_send_the_new_input_and_recover_a_lost_response() {
+async fn continuation_input_and_recovery() {
     let missing = json!({"type": "error", "status": 400, "error": {"code": "previous_response_not_found", "message": "Previous response not found."}});
     let server = MockServer::local(Cassette {
         interactions: vec![text(), exchange(vec![missing.to_string()]), text()],
@@ -216,7 +216,7 @@ async fn continuations_send_the_new_input_and_recover_a_lost_response() {
 }
 
 #[tokio::test]
-async fn continuations_need_an_explicit_transport() {
+async fn continuations_need_transport() {
     let server = MockServer::local(Cassette {
         interactions: vec![text(), text()],
     })
@@ -234,7 +234,7 @@ async fn continuations_need_an_explicit_transport() {
 }
 
 #[tokio::test]
-async fn a_failure_after_events_ends_the_request() {
+async fn failure_after_events() {
     let created = sse().response.chunks[0]
         .lines()
         .find_map(|line| line.strip_prefix("data: "))
@@ -261,7 +261,7 @@ async fn a_failure_after_events_ends_the_request() {
 }
 
 #[tokio::test]
-async fn closing_a_session_closes_its_socket() {
+async fn session_close_closes_socket() {
     let server = MockServer::local(Cassette {
         interactions: vec![text(), text()],
     })
@@ -282,7 +282,7 @@ async fn closing_a_session_closes_its_socket() {
 }
 
 #[tokio::test]
-async fn continuations_follow_a_grammar_tool_call() {
+async fn continuation_after_grammar_call() {
     let event = |value: Value| value.to_string();
     let call = json!({"id": "ctc_1", "type": "custom_tool_call", "call_id": "call_1", "name": "codemode", "input": "return 1;"});
     let server = MockServer::local(Cassette {
@@ -412,7 +412,7 @@ async fn upgrades_carry_pis_headers() {
 }
 
 #[tokio::test]
-async fn the_websocket_transport_sends_full_requests() {
+async fn websocket_sends_full_requests() {
     let server = MockServer::local(Cassette {
         interactions: vec![text(), text()],
     })
@@ -433,7 +433,7 @@ async fn the_websocket_transport_sends_full_requests() {
 }
 
 #[tokio::test]
-async fn a_second_connection_limit_falls_back() {
+async fn second_connection_limit_fallback() {
     let limit = json!({"type": "error", "code": "websocket_connection_limit_reached", "message": "Too many connections"});
     let server = MockServer::local(Cassette {
         interactions: vec![
@@ -456,7 +456,7 @@ async fn a_second_connection_limit_falls_back() {
 }
 
 #[tokio::test]
-async fn a_busy_socket_gets_a_one_off_connection() {
+async fn busy_socket_extra_connection() {
     let mut slow = text();
     slow.response.chunk_delay_ms = 20;
     let server = MockServer::local(Cassette {
@@ -512,7 +512,7 @@ async fn connecting_times_out_or_aborts() {
 }
 
 #[tokio::test]
-async fn streams_abort_close_and_idle_as_pi_does() {
+async fn stream_abort_close_idle() {
     let mut slow = exchange(vec![created(), created()]);
     slow.response.chunk_delay_ms = 200;
     let mut too_big = exchange(vec![created()]);
@@ -567,7 +567,7 @@ async fn streams_abort_close_and_idle_as_pi_does() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn sockets_close_when_idle_and_age_out() {
+async fn sockets_idle_and_age_out() {
     let server = MockServer::local(Cassette {
         interactions: (0..16).map(|_| text()).collect(),
     })
@@ -614,7 +614,7 @@ fn sse_retrying(max_retries: u32) -> StreamOptions {
 }
 
 #[tokio::test]
-async fn sse_requests_retry_as_pi_does() {
+async fn sse_requests_retry() {
     // pi retries any failure after one second, and a retryable status as the
     // server asks.
     let server = MockServer::local(Cassette {
@@ -632,7 +632,7 @@ async fn sse_requests_retry_as_pi_does() {
 }
 
 #[tokio::test]
-async fn sse_requests_do_not_retry_usage_limits_or_long_delays() {
+async fn sse_no_retry_on_limits() {
     let server = MockServer::local(Cassette {
         interactions: vec![
             status(400, &[], json!({"error": {"code": "usage_not_included"}})),
@@ -656,7 +656,7 @@ async fn sse_requests_do_not_retry_usage_limits_or_long_delays() {
 
 /// Dropping the request task mid-request must not strand the session's slot.
 #[test]
-fn a_dropped_request_frees_the_session_slot() {
+fn dropped_request_frees_slot() {
     let server_rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -691,7 +691,7 @@ fn a_dropped_request_frees_the_session_slot() {
 
 /// A misconfigured grammar tool and no key: pi reports the missing key first.
 #[tokio::test]
-async fn the_api_key_is_checked_before_grammar_tools() {
+async fn api_key_checked_first() {
     let system: Message = serde_json::from_value(json!({
         "role": "system", "content": "Use tools.", "timestamp": 0,
         "toolsAdded": [{

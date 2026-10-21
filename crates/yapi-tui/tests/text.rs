@@ -28,7 +28,7 @@ fn strings(value: &Value) -> Vec<String> {
 }
 
 #[test]
-fn wraps_and_truncates_like_pi() {
+fn wraps_and_truncates() {
     let fixture = fixture();
     let mut failures = Vec::new();
     for case in fixture["wrap"].as_array().unwrap() {

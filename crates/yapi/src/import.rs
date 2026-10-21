@@ -33,6 +33,17 @@ fn report(from: &Path, to: &Path, imported: &[Imported]) -> (usize, usize) {
             ));
         }
         out(&line);
+        if !entry.signed_out.is_empty() {
+            let login = match entry.entry.as_str() {
+                "mcp-auth.json" => "/mcp login",
+                _ => "/login",
+            };
+            out(&format!(
+                "  {}: sign-ins not copied for {}. Sign in again with {login}.",
+                entry.entry,
+                entry.signed_out.join(", ")
+            ));
+        }
     }
     imported.iter().fold((0, 0), |(copied, kept), entry| {
         (copied + entry.copied, kept + entry.kept)
@@ -41,8 +52,8 @@ fn report(from: &Path, to: &Path, imported: &[Imported]) -> (usize, usize) {
 
 /// Copy pi's settings, credentials, models, keybindings, MCP servers,
 /// sessions, prompts, skills, themes, extensions and packages into yapi.
-/// Files yapi already has are kept. The current project's .pi directory is
-/// copied into .yapi.
+/// Files yapi already has are kept. Subscription and MCP sign-ins are not
+/// copied. The current project's .pi directory is copied into .yapi.
 #[derive(clap::Parser)]
 struct ImportArgs {
     /// Where to import from.

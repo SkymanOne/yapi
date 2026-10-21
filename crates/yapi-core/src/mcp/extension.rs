@@ -1925,7 +1925,7 @@ mod tests {
     use crate::tools::registry::ToolRegistry;
 
     #[test]
-    fn scripts_need_the_servers_they_name_or_search() {
+    fn scripts_need_named_servers() {
         let code = "await tools.mcp__my_docs__search({q: 1})";
         assert!(script_needs_server(code, "my-docs"));
         assert!(!script_needs_server(code, "other"));
@@ -2032,7 +2032,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn calls_wait_for_the_servers_they_reach() {
+    async fn calls_wait_for_servers() {
         let (extension, ctx, senders) = connecting();
         let script = |code: &str| json!({"code": code});
         assert!(waits(&extension, &ctx, "codemode", script("tools.mcp__docs__a()")).await);
@@ -2057,7 +2057,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_abort_ends_the_wait() {
+    async fn abort_ends_wait() {
         let (extension, ctx, _senders) = connecting();
         let input = json!({"code": "ALL_TOOLS"});
         let call = extension.tool_call(&ctx, "codemode", &input);

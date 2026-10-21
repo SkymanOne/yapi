@@ -1294,7 +1294,7 @@ mod tests {
     /// An extension provider with a sign-in offers an API key only when it
     /// configures one, as pi composes its auth.
     #[test]
-    fn extension_sign_ins_without_keys_offer_no_key_login() {
+    fn keyless_extension_login() {
         let config = |key: Option<&str>| {
             serde_json::from_value(serde_json::json!({
                 "baseUrl": "http://127.0.0.1:9", "api": "corp-api", "apiKey": key,

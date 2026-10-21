@@ -8,11 +8,11 @@ use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 
+use aws_lc_rs::digest::{SHA1_FOR_LEGACY_USE_ONLY as SHA1, SHA512, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
-use sha2::Digest as _;
 
 /// Packages yapi provides to extensions itself; installing them is wasted work.
 const HOST_PACKAGES: [&str; 10] = [
@@ -45,6 +45,9 @@ pub enum NpmError {
     /// The tarball's digest differs from the registry's.
     #[error("Integrity check failed for {0}")]
     Integrity(String),
+    /// A package name or folder that would put files outside `node_modules`.
+    #[error("{0}")]
+    Refused(String),
     /// A file operation failed.
     #[error("{path}: {source}")]
     Io {
@@ -59,6 +62,25 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> NpmError + '_ {
     move |source| NpmError::Io {
         path: path.to_path_buf(),
         source,
+    }
+}
+
+/// Fails unless `name` has the shape of an npm package name, `name` or
+/// `@scope/name`, which keeps it inside the `node_modules` it is joined to.
+fn check_name(name: &str) -> Result<(), NpmError> {
+    let segment =
+        |part: &str| !matches!(part, "" | "." | "..") && !part.contains(['/', '\\', ':', '\0']);
+    let valid = match name
+        .strip_prefix('@')
+        .and_then(|scoped| scoped.split_once('/'))
+    {
+        Some((scope, name)) => segment(scope) && segment(name),
+        None => segment(name),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(NpmError::Refused(format!("Invalid package name: {name}")))
     }
 }
 
@@ -485,16 +507,16 @@ fn verify(bytes: &[u8], dist: &Value) -> bool {
     };
     let sha512 = hashes("sha512-");
     if !sha512.is_empty() {
-        return sha512.contains(&STANDARD.encode(sha2::Sha512::digest(bytes)).as_str());
+        return sha512.contains(&STANDARD.encode(digest(&SHA512, bytes)).as_str());
     }
-    let sha1 = sha1::Sha1::digest(bytes);
+    let sha1 = digest(&SHA1, bytes);
     let sha1_hashes = hashes("sha1-");
     if !sha1_hashes.is_empty() {
         return sha1_hashes.contains(&STANDARD.encode(sha1).as_str());
     }
     dist["shasum"]
         .as_str()
-        .is_some_and(|shasum| crate::time::hex(&sha1).eq_ignore_ascii_case(shasum))
+        .is_some_and(|shasum| crate::time::hex(sha1.as_ref()).eq_ignore_ascii_case(shasum))
 }
 
 /// Unpacks an npm tarball into `dir`, dropping each entry's first path
@@ -562,7 +584,8 @@ struct Installer<'a> {
 
 impl Installer<'_> {
     /// Unpacks `manifest`'s package into `dir`, replacing what is there, then
-    /// installs its dependencies.
+    /// installs its dependencies. When either fails, `dir` holds what it held
+    /// before.
     fn unpack_package<'b>(
         &'b mut self,
         dir: PathBuf,
@@ -570,12 +593,30 @@ impl Installer<'_> {
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
             let bytes = self.npm.tarball(&manifest).await?;
-            if dir.exists() {
-                std::fs::remove_dir_all(&dir).map_err(io(&dir))?;
+            // The old version waits beside `dir` while the new one installs in
+            // place, where its dependencies find it and cycles end.
+            let name = dir.file_name().unwrap_or_default().to_string_lossy();
+            let old = dir.with_file_name(format!(".{name}-old"));
+            let _ = std::fs::remove_dir_all(&old);
+            let replacing = dir.exists();
+            if replacing {
+                std::fs::rename(&dir, &old).map_err(io(&dir))?;
             }
-            std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-            unpack(&bytes, &dir)?;
-            self.dependencies(&dir, &manifest).await
+            let installed = async {
+                std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+                unpack(&bytes, &dir)?;
+                self.dependencies(&dir, &manifest).await
+            }
+            .await;
+            if installed.is_ok() {
+                let _ = std::fs::remove_dir_all(&old);
+            } else {
+                let _ = std::fs::remove_dir_all(&dir);
+                if replacing {
+                    let _ = std::fs::rename(&old, &dir);
+                }
+            }
+            installed
         })
     }
 
@@ -608,6 +649,7 @@ impl Installer<'_> {
         range: &'b str,
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
+            check_name(name)?;
             if HOST_PACKAGES.contains(&name)
                 || range.starts_with("file:")
                 || range.starts_with("workspace:")
@@ -665,7 +707,8 @@ fn write_manifest(root: &Path, manifest: Map<String, Value>) -> Result<(), NpmEr
     let path = root.join("package.json");
     let text =
         yapi_types::json::to_string_pretty(&Value::Object(manifest), "  ").unwrap_or_default();
-    std::fs::write(&path, format!("{text}\n")).map_err(io(&path))
+    yapi_ai::auth::lock::write_atomic(&path, format!("{text}\n").as_bytes(), 0o666)
+        .map_err(io(&path))
 }
 
 /// Installs `name` (at `range`, else the latest version) into the npm root
@@ -676,6 +719,7 @@ pub async fn install(
     name: &str,
     range: Option<&str>,
 ) -> Result<String, NpmError> {
+    check_name(name)?;
     let mut manifest_file = root_manifest(root)?;
     let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
     let version = text(&manifest["version"]);
@@ -699,20 +743,38 @@ pub async fn install(
 }
 
 /// Installs the dependencies of the package in `dir` (a git checkout) into
-/// its own `node_modules`.
+/// its own `node_modules`. Fails when the checkout links `node_modules` or a
+/// scope folder in it elsewhere.
 pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmError> {
     let Some(manifest) = read_manifest(dir) else {
         return Ok(());
     };
+    let modules = dir.join("node_modules");
+    let scopes = std::fs::read_dir(&modules)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with('@'))
+        .map(|entry| entry.path());
+    let is_link = |path: &PathBuf| {
+        path.symlink_metadata()
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    };
+    if let Some(link) = std::iter::once(modules.clone()).chain(scopes).find(is_link) {
+        return Err(NpmError::Refused(format!(
+            "Refusing to install dependencies through the link {}",
+            link.display()
+        )));
+    }
     let mut installer = Installer {
         npm,
-        root_modules: dir.join("node_modules"),
+        root_modules: modules,
     };
     installer.dependencies(dir, &manifest).await
 }
 
 /// Removes `name` from the npm root `root`, then the packages nothing
-/// depends on any more.
+/// depends on any more, `name` included unless another package needs it.
 pub fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
     if !root.exists() {
         return Ok(());
@@ -723,10 +785,6 @@ pub fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
         .and_then(Value::as_object_mut)
     {
         dependencies.shift_remove(name);
-    }
-    let dir = root.join("node_modules").join(name);
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(io(&dir))?;
     }
     let roots: Vec<String> = manifest
         .get("dependencies")
@@ -793,7 +851,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compares_versions_as_node_semver_gt() {
+    fn compares_versions_like_semver() {
         assert_eq!(newer("1.2.0", "1.0.0"), Some(true));
         assert_eq!(newer(" 1.0.0\n", "1.0.0"), Some(false));
         assert_eq!(newer("1.0.0-rc.1", "1.0.0"), Some(false));
@@ -802,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_npm_view_output_as_pi() {
+    fn reads_npm_view_output() {
         assert_eq!(
             viewed_version("\"2.0.0\"\n", Some("^1")).as_deref(),
             Some("2.0.0")
@@ -843,7 +901,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_npmrc_settings_with_environment_references() {
+    fn npmrc_environment_references() {
         let env = |name: &str| (name == "TOKEN").then(|| "secret".to_owned());
         let config = parse_config(
             "; comment\n\
@@ -880,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn sends_credentials_only_where_their_key_covers_the_url() {
+    fn credentials_scoped_to_url() {
         let npm = Npm::new(HashMap::from(
             [
                 ("@acme:registry", "https://npm.acme.test"),
@@ -941,7 +999,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_manifests_with_a_byte_order_mark() {
+    fn reads_manifests_with_bom() {
         let dir = std::env::temp_dir().join(format!("yapi-npm-bom-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("package.json"), "\u{feff}{\"version\": \"1.2.3\"}").unwrap();
@@ -949,8 +1007,55 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// Entries that climb out of the package, absolute paths and links stay
+    /// out of the folder, and nothing lands beside it.
     #[test]
-    fn ranges_may_prefix_versions_with_v() {
+    fn unpack_stays_inside() {
+        use tar::EntryType;
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut add = |name: &str, kind: EntryType, link: &str, data: &[u8]| {
+            // Raw names: `set_path` refuses `..`.
+            let mut header = tar::Header::new_gnu();
+            let raw = header.as_old_mut();
+            raw.name[..name.len()].copy_from_slice(name.as_bytes());
+            raw.linkname[..link.len()].copy_from_slice(link.as_bytes());
+            header.set_entry_type(kind);
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append(&header, data).unwrap();
+        };
+        add("package/index.js", EntryType::Regular, "", b"ok");
+        add("package/../evil", EntryType::Regular, "", b"evil");
+        add("/abs/evil", EntryType::Regular, "", b"abs");
+        add("package/link", EntryType::Symlink, "/etc", b"");
+        add("package/hard", EntryType::Link, "package/index.js", b"");
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut gz, &builder.into_inner().unwrap()).unwrap();
+        let bytes = gz.finish().unwrap();
+
+        let parent = std::env::temp_dir().join(format!("yapi-npm-unpack-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let dir = parent.join("package");
+        std::fs::create_dir_all(&dir).unwrap();
+        unpack(&bytes, &dir).unwrap();
+        let names = |dir: &Path| {
+            let mut names: Vec<String> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(&parent), ["package"]);
+        // An absolute path loses its root with the first component.
+        assert_eq!(names(&dir), ["abs", "index.js"]);
+        assert_eq!(std::fs::read(dir.join("index.js")).unwrap(), b"ok");
+        std::fs::remove_dir_all(&parent).unwrap();
+    }
+
+    #[test]
+    fn ranges_allow_v_prefix() {
         assert!(satisfies("1.2.3", "v1.2.3"));
         assert!(!satisfies("1.2.4", "v1.2.3"));
         assert!(satisfies("1.4.0", "^v1.2.3"));
@@ -962,12 +1067,12 @@ mod tests {
     }
 
     #[test]
-    fn verifies_the_strongest_known_integrity_then_shasum() {
+    fn verifies_strongest_integrity() {
         let bytes = b"tarball";
-        let sha512 = format!("sha512-{}", STANDARD.encode(sha2::Sha512::digest(bytes)));
-        let sha1 = format!("sha1-{}", STANDARD.encode(sha1::Sha1::digest(bytes)));
-        let shasum = crate::time::hex(&sha1::Sha1::digest(bytes));
-        let wrong512 = format!("sha512-{}", STANDARD.encode(sha2::Sha512::digest(b"other")));
+        let sha512 = format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes)));
+        let sha1 = format!("sha1-{}", STANDARD.encode(digest(&SHA1, bytes)));
+        let shasum = crate::time::hex(digest(&SHA1, bytes).as_ref());
+        let wrong512 = format!("sha512-{}", STANDARD.encode(digest(&SHA512, b"other")));
         let check = |dist: Value| verify(bytes, &dist);
         assert!(check(json!({"integrity": sha512})));
         assert!(check(json!({"integrity": sha1})));

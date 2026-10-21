@@ -1130,7 +1130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roots_have_a_fixed_length() {
+    fn roots_fixed_length() {
         for name in ["a", "tui-trust-command-save", &"x".repeat(80)] {
             let root = scratch_dir(name);
             assert_eq!(
@@ -1143,7 +1143,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_package_links_have_a_fixed_length() {
+    fn package_links_fixed_length() {
         let root = scratch_dir("pi-package-link");
         let cli = root.join("deep/checkout/pi-coding-agent/dist/bundle/cli.js");
         std::fs::create_dir_all(cli.parent().unwrap()).unwrap();
@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rpc_steps_wait_for_requests() {
+    async fn rpc_steps_await_requests() {
         let server = MockServer::local(Cassette::default()).await.unwrap();
         let url = format!("{}/v1/messages", server.url());
         let delay = std::time::Duration::from_millis(200);

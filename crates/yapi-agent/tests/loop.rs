@@ -100,7 +100,7 @@ fn event_types(events: &[AgentEvent]) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn runs_tools_and_declares_them() {
+async fn runs_and_declares_tools() {
     let faux = Faux::new([
         Response::tool_call("call_1", "echo", json!({"text": "hi"})),
         Response::text("done"),
@@ -169,7 +169,7 @@ async fn runs_tools_and_declares_them() {
 }
 
 #[tokio::test]
-async fn reports_unknown_tools_and_bad_arguments() {
+async fn reports_bad_tool_calls() {
     let faux = Faux::new([
         Response {
             content: vec![

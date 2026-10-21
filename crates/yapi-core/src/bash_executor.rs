@@ -254,7 +254,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn drops_an_incomplete_character_at_the_end() {
+    async fn drops_trailing_partial_char() {
         let dir = std::env::temp_dir();
         let mut seen = String::new();
         // The first two bytes of "€".

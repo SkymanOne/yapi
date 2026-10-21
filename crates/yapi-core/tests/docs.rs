@@ -9,10 +9,10 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use aws_lc_rs::digest::{SHA256, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
-use sha2::Digest as _;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -76,7 +76,8 @@ async fn release(archive: &[u8], sums: &str) -> MockServer {
 }
 
 fn sums(archive: &[u8]) -> String {
-    let hex: String = sha2::Sha256::digest(archive)
+    let hex: String = digest(&SHA256, archive)
+        .as_ref()
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
@@ -93,7 +94,7 @@ fn entries(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_then_keeps_this_versions_docs() {
+async fn installs_then_keeps_docs() {
     let agent = scratch("install");
     let bytes = archive(VERSION);
     let server = release(&bytes, &sums(&bytes)).await;
@@ -131,7 +132,7 @@ async fn replaces_another_versions_docs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn keeps_the_old_docs_when_the_archive_fails_its_checksum() {
+async fn bad_checksum_keeps_docs() {
     let agent = scratch("refuse");
     std::fs::create_dir_all(agent.join("docs")).unwrap();
     std::fs::write(agent.join("docs/.version"), "0.0.1\n").unwrap();

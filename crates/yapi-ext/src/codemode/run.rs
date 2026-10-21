@@ -1001,7 +1001,7 @@ mod tests {
     /// A script that gives up while the engine loads, as one with a short
     /// timeout does, leaves the load running for the next script.
     #[tokio::test(flavor = "multi_thread")]
-    async fn engine_load_outlives_a_script_that_gives_up() {
+    async fn engine_load_outlives_script() {
         let runner = Runner::new(None, None);
         assert!(
             tokio::time::timeout(Duration::from_millis(1), runner.engine())
@@ -1078,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn store_writes_become_entry_data() {
+    fn store_writes_entry_data() {
         assert_eq!(
             store_entry("[[\"k\",\"{\\\"n\\\":1}\"],[\"gone\"]]"),
             Some(json!({"set": {"k": {"n": 1}}, "delete": ["gone"]}))

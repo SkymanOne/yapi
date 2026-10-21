@@ -6,13 +6,13 @@
 
 use std::path::Path;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use yapi_ai::api::builtin;
 use yapi_ai::catalog::builtin_models;
 use yapi_ai::stream::{Request, StreamEvent, StreamOptions};
 use yapi_mock::{Cassette, Interaction, MockServer};
 use yapi_types::event::AssistantMessageEvent;
-use yapi_types::message::{Content, Message, StopReason, ThinkingLevel, UserMessage};
+use yapi_types::message::{Content, ContentBlock, Message, StopReason, ThinkingLevel, UserMessage};
 use yapi_types::model::Model;
 
 fn cassette(name: &str) -> Cassette {
@@ -119,7 +119,7 @@ async fn streams_text() {
 }
 
 #[tokio::test]
-async fn reports_http_errors_like_the_sdk() {
+async fn reports_http_errors() {
     let body = r#"{"type":"error","error":{"type":"invalid_request_error","message":"bad model"}}"#;
     let interactions = vec![Interaction::json(
         "POST",
@@ -142,8 +142,42 @@ async fn reports_http_errors_like_the_sdk() {
     assert_eq!(request["thinking"], serde_json::json!({"type": "disabled"}));
 }
 
+/// A stream that fails during a tool call keeps the arguments streamed so far.
 #[tokio::test]
-async fn missing_key_fails_before_sending() {
+async fn partial_arguments_on_error() {
+    let events = [
+        json!({"type": "message_start", "message": {"id": "msg_1", "model": "claude-sonnet-4-5", "usage": {"input_tokens": 1, "output_tokens": 1}}}),
+        json!({"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"path\": \"a."}}),
+        json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}),
+    ];
+    let chunks: Vec<String> = events
+        .iter()
+        .map(|event| {
+            format!(
+                "event: {}\ndata: {event}\n\n",
+                event["type"].as_str().unwrap()
+            )
+        })
+        .collect();
+    let cassette = serde_json::from_value(json!({"interactions": [{
+        "request": {"method": "POST", "path": "/v1/messages"},
+        "response": {"status": 200, "headers": {"content-type": "text/event-stream"}, "chunks": chunks},
+    }]}))
+    .unwrap();
+    let server = MockServer::local(cassette).await.unwrap();
+    let events = run(&server, None).await;
+    let Some(StreamEvent::Error(error)) = events.last() else {
+        panic!("expected an error, got {:?}", events.last())
+    };
+    let Some(ContentBlock::ToolCall(call)) = error.content.first() else {
+        panic!("expected a tool call, got {:?}", error.content)
+    };
+    assert_eq!(Value::Object(call.arguments.clone()), json!({"path": "a."}));
+}
+
+#[tokio::test]
+async fn missing_key_fails_early() {
     let server = MockServer::local(Cassette::default()).await.unwrap();
     let request = Request {
         model: model(&server.url()),

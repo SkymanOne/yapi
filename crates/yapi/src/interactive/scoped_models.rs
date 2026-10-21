@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn edits_the_enabled_list_as_pi() {
+    fn edits_enabled_list() {
         let all = ids(&["a/1", "a/2", "b/1"]);
         let one_off = toggle(&None, &all, "a/2");
         assert_eq!(one_off, Some(ids(&["a/1", "b/1"])));

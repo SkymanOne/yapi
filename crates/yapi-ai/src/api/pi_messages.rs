@@ -126,6 +126,11 @@ impl Converter {
     }
 
     fn finish(&mut self, event: &Value) {
+        for (index, json) in &self.tool_json {
+            if let Some(ContentBlock::ToolCall(call)) = self.partial.content.get_mut(*index) {
+                call.arguments = parse_streaming_json(json);
+            }
+        }
         if let Ok(usage) = serde_json::from_value::<Usage>(event["usage"].clone()) {
             self.partial.usage = usage;
         }
@@ -238,18 +243,9 @@ impl Converter {
             }
             "toolcall_delta" => {
                 let delta = text("delta");
-                let json = match self.tool_json.iter_mut().find(|(at, _)| *at == index) {
-                    Some((_, json)) => {
-                        json.push_str(&delta);
-                        json.clone()
-                    }
-                    None => {
-                        self.tool_json.push((index, delta.clone()));
-                        delta.clone()
-                    }
-                };
-                if let Some(ContentBlock::ToolCall(call)) = self.partial.content.get_mut(index) {
-                    call.arguments = parse_streaming_json(&json);
+                match self.tool_json.iter_mut().find(|(at, _)| *at == index) {
+                    Some((_, json)) => json.push_str(&delta),
+                    None => self.tool_json.push((index, delta.clone())),
                 }
                 AssistantMessageEvent::ToolcallDelta {
                     content_index: index,
@@ -257,10 +253,14 @@ impl Converter {
                 }
             }
             "toolcall_end" => {
-                self.tool_json.retain(|(at, _)| *at != index);
+                let json = self.tool_json.iter().position(|(at, _)| *at == index);
+                let json = json.map(|at| self.tool_json.remove(at).1);
                 let Some(ContentBlock::ToolCall(call)) = self.partial.content.get_mut(index) else {
                     return None;
                 };
+                if let Some(json) = json {
+                    call.arguments = parse_streaming_json(&json);
+                }
                 let finished = &event["toolCall"];
                 if let Some(id) = finished["id"].as_str() {
                     call.id = id.to_owned();

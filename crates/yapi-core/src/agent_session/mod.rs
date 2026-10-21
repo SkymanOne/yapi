@@ -36,8 +36,8 @@ use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::compaction::{BranchSummary, CompactionSettings};
 use crate::extensions::{
-    BashOperations, Extension, ExtensionUi, Loadout, LoadoutChanges, Mode, NoUi, SessionActions,
-    Tools,
+    BashOperations, Extension, ExtensionUi, Loadout, LoadoutChanges, Mode, NoUi, NotifyKind,
+    SessionActions, Tools,
 };
 use crate::resources::{ContextFile, PromptTemplate, Skill, expand_prompt_template};
 use crate::session::SessionManager;
@@ -586,9 +586,24 @@ impl AgentSession {
         }
     }
 
-    /// Runs `f` with the session file.
+    /// Runs `f` with the session file. The session's first failed write is
+    /// reported to the user, after `f`, by whichever call finds it.
     pub fn with_session<T>(&self, f: impl FnOnce(&mut SessionManager) -> T) -> T {
-        f(&mut lock(&self.inner.state).session)
+        let (value, error) = {
+            let session = &mut lock(&self.inner.state).session;
+            (f(session), session.take_write_error())
+        };
+        if let Some(error) = error {
+            let message = format!("Failed to save session: {error}");
+            let (ui, _) = self.extension_binding();
+            if ui.has_ui() {
+                ui.notify(&message, NotifyKind::Error);
+            } else {
+                use std::io::Write as _;
+                let _ = writeln!(std::io::stderr(), "{message}");
+            }
+        }
+        value
     }
 
     /// Moves the session file out, leaving an empty in-memory one, so a new
@@ -2292,7 +2307,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_skill_blocks_as_pi() {
+    fn parses_skill_blocks() {
         let block = parse_skill_block(
             "<skill name=\"demo\" location=\"/s/SKILL.md\">\nbody\n</skill>\n\n  go now ",
         )
@@ -2313,7 +2328,7 @@ mod tests {
     }
 
     #[test]
-    fn a_poisoned_registry_keeps_its_credentials() {
+    fn poisoned_registry_keeps_credentials() {
         let model: Model = serde_json::from_value(serde_json::json!({
             "id": "m", "name": "M", "api": "faux", "provider": "p", "baseUrl": "",
             "reasoning": false, "input": ["text"],

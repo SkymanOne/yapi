@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use sha2::Digest as _;
+use aws_lc_rs::digest::{SHA256, digest};
 
 /// Where yapi's releases are published.
 const RELEASES_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/releases");
@@ -81,7 +81,7 @@ pub async fn download(releases: &str, agent_dir: &Path) -> Result<(), String> {
         .next()
         .unwrap_or_default()
         .to_lowercase();
-    if crate::time::hex(&sha2::Sha256::digest(&archive)) != expected {
+    if crate::time::hex(digest(&SHA256, &archive).as_ref()) != expected {
         return Err(format!("{url} does not match its SHA-256 checksum"));
     }
     tokio::task::spawn_blocking(move || replace(&archive, &dir))
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finds_this_versions_local_docs_else_the_published_ones() {
+    fn local_else_published_docs() {
         let agent = std::env::temp_dir().join(format!("yapi-docs-find-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&agent);
         let published = Locations::find(&agent);

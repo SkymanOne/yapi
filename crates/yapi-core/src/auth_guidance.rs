@@ -50,7 +50,7 @@ mod tests {
 
     /// The help names pi's providers and models pages where `docs` are.
     #[test]
-    fn help_names_pi_providers_and_models_pages() {
+    fn help_names_doc_pages() {
         let docs = Locations {
             pi_docs: "/agent/docs/pi/docs".into(),
             ..Locations::default()

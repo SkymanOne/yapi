@@ -68,7 +68,7 @@ fn contexts_match_pi() {
 }
 
 #[test]
-fn migrates_v1_files_like_pi() {
+fn migrates_v1_files() {
     let scratch = Scratch::new("migrate");
     let copy = scratch.0.join("old.jsonl");
     std::fs::copy(fixtures().join("legacy/large-session.v1.jsonl"), &copy).unwrap();
@@ -103,7 +103,7 @@ fn user(text: &str) -> Message {
 }
 
 #[test]
-fn creates_files_lazily_and_branches() {
+fn lazy_file_and_branch() {
     let scratch = Scratch::new("lazy");
     let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
     session.append_model_change("anthropic", "m").unwrap();
@@ -137,4 +137,63 @@ fn creates_files_lazily_and_branches() {
     let branched = session.create_branched_session(&first).unwrap().unwrap();
     let lines = std::fs::read_to_string(&branched).unwrap().lines().count();
     assert_eq!(lines, 3, "header, model change, first message");
+}
+
+fn user_texts(session: &SessionManager) -> Vec<String> {
+    session
+        .build_context()
+        .messages
+        .iter()
+        .map(|message| match message {
+            Message::User(user) => user.content.text(""),
+            _ => String::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn failed_writes_keep_chain() {
+    let scratch = Scratch::new("failed-write");
+    let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
+    session.append_message(user("one")).unwrap();
+    let file = session.file().unwrap().to_path_buf();
+    let saved = std::fs::read(&file).unwrap();
+
+    // A directory in the file's place fails every write.
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    assert!(session.append_message(user("two")).is_err());
+    assert!(session.append_message(user("three")).is_err());
+    assert!(session.take_write_error().is_some());
+    assert_eq!(session.take_write_error(), None, "reported once");
+    assert_eq!(user_texts(&session), ["one", "two", "three"]);
+
+    // The next write that succeeds appends the entries the failed ones left out.
+    std::fs::remove_dir(&file).unwrap();
+    std::fs::write(&file, saved).unwrap();
+    session.append_message(user("four")).unwrap();
+    let reopened = SessionManager::open(&file, None, None).unwrap();
+    assert_eq!(user_texts(&reopened), ["one", "two", "three", "four"]);
+    assert_eq!(reopened.build_context(), session.build_context());
+}
+
+/// pi writes a lone surrogate escape for text cut inside a surrogate pair.
+#[test]
+fn lone_surrogates_load() {
+    let scratch = Scratch::new("surrogates");
+    let mut session = SessionManager::create(Path::new("/work"), &scratch.0, None).unwrap();
+    session.append_message(user("one")).unwrap();
+    session.append_message(user("cut MARK")).unwrap();
+    session.append_message(user("three")).unwrap();
+    let file = session.file().unwrap().to_path_buf();
+    let text = std::fs::read_to_string(&file).unwrap();
+    // A lone high and a lone low surrogate, a pair, and an escaped backslash.
+    let cut = r"cut \ud83d \ude00 😀 \\ud83d";
+    std::fs::write(&file, text.replace("cut MARK", cut)).unwrap();
+
+    let reopened = SessionManager::open(&file, None, None).unwrap();
+    assert_eq!(
+        user_texts(&reopened),
+        ["one", "cut \u{fffd} \u{fffd} \u{1f600} \\ud83d", "three"]
+    );
 }

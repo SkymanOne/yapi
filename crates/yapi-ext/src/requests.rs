@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use aws_lc_rs::digest;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use futures_util::FutureExt as _;
 use futures_util::future::BoxFuture;
+use md5::Digest as _;
 use serde_json::{Map, Value, json};
-use sha2::Digest as _;
 
 use tokio_util::sync::CancellationToken;
 use yapi_ai::api::Apis;
@@ -37,9 +38,11 @@ pub(crate) struct Host {
 }
 
 impl Drop for Host {
-    /// Processes and responses end with the instance that started them.
+    /// Processes, responses and wire API streams end with the instance
+    /// that started them.
     fn drop(&mut self) {
         self.streams.clear();
+        self.ai_streams.clear();
     }
 }
 
@@ -132,6 +135,13 @@ impl AiStreams {
             cancel.cancel();
         }
     }
+
+    /// Cancels every stream and forgets them.
+    pub(crate) fn clear(&self) {
+        for (_, (_, cancel)) in lock(&self.running).drain() {
+            cancel.cancel();
+        }
+    }
 }
 
 fn denied(what: &str) -> String {
@@ -173,6 +183,12 @@ impl Host {
     /// Answers request `kind` at once.
     pub(crate) fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {
         match kind {
+            // Modules are files, so the loader reads them only with the grant.
+            "module.resolve" | "module.load" | "module.source"
+                if !self.options.grants.filesystem =>
+            {
+                Err(denied("Loading modules"))
+            }
             "module.resolve" => self
                 .loader
                 .resolve(
@@ -394,10 +410,13 @@ impl Host {
                 };
                 let call_id = text(&payload, "toolCallId").to_owned();
                 let params = payload["params"].clone();
+                // The extension tool that runs it lends its cancellation and updates.
+                let (updates, cancel) = self
+                    .bridge
+                    .caller(&call_id)
+                    .unwrap_or_else(|| (Arc::new(|_| {}), CancellationToken::new()));
                 Box::pin(async move {
-                    let result = tool
-                        .execute(call_id, params, CancellationToken::new(), Arc::new(|_| {}))
-                        .await?;
+                    let result = tool.execute(call_id, params, cancel, updates).await?;
                     serde_json::to_value(result).map_err(|err| err.to_string())
                 })
             }
@@ -466,12 +485,13 @@ fn platform() -> &'static str {
 
 fn hash(algorithm: &str, data: &str) -> Result<Value, String> {
     let data = STANDARD.decode(data).map_err(|err| err.to_string())?;
+    let sha = |algorithm| digest::digest(algorithm, &data).as_ref().to_vec();
     let digest = match algorithm.to_ascii_lowercase().as_str() {
-        "sha256" => sha2::Sha256::digest(&data).to_vec(),
-        "sha512" => sha2::Sha512::digest(&data).to_vec(),
-        "sha384" => sha2::Sha384::digest(&data).to_vec(),
-        "sha224" => sha2::Sha224::digest(&data).to_vec(),
-        "sha1" => sha1::Sha1::digest(&data).to_vec(),
+        "sha256" => sha(&digest::SHA256),
+        "sha512" => sha(&digest::SHA512),
+        "sha384" => sha(&digest::SHA384),
+        "sha224" => sha(&digest::SHA224),
+        "sha1" => sha(&digest::SHA1_FOR_LEGACY_USE_ONLY),
         "md5" => md5::Md5::digest(&data).to_vec(),
         other => return Err(format!("Digest method not supported: {other}")),
     };
@@ -483,7 +503,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zone_offsets_take_a_name_and_reject_unknown_ones() {
+    fn clear_cancels_streams() {
+        let streams = AiStreams::default();
+        let cancel = CancellationToken::new();
+        lock(&streams.running).insert(1, (None, cancel.clone()));
+        streams.clear();
+        assert!(cancel.is_cancelled());
+        assert!(lock(&streams.running).is_empty());
+    }
+
+    #[test]
+    fn zone_offsets_by_name() {
         let summer = 1_784_116_800;
         let tokyo = json!({ "zone": "asia/tokyo", "time": summer });
         assert_eq!(zone_offset("timezone.offset", &tokyo), json!(9 * 3600));

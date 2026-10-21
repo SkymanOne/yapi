@@ -6,7 +6,6 @@
 //! their bytes.
 
 use std::future::Future;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
@@ -17,7 +16,7 @@ use yapi_types::auth::Credential;
 use yapi_types::config::ConfigFile;
 
 use super::AuthError;
-use super::lock::FileLock;
+use super::lock::{FileLock, write_atomic};
 
 type Document = Map<String, Value>;
 type Revision = (Option<SystemTime>, u64);
@@ -304,12 +303,7 @@ fn write(path: &Path, document: &Document) -> Result<(), AuthError> {
 
 /// Writes with mode 0600 when creating; an existing file keeps its mode.
 fn write_text(path: &Path, text: &str) -> Result<(), AuthError> {
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(path).map_err(failed)?;
-    file.write_all(text.as_bytes()).map_err(failed)
+    write_atomic(path, text.as_bytes(), 0o600).map_err(failed)
 }
 
 #[cfg(test)]
@@ -332,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_a_file_that_does_not_parse() {
+    fn reports_unparsable_file() {
         let path = temp("corrupt");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "{bad").unwrap();
@@ -352,7 +346,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_other_entries_byte_identical() {
+    async fn other_entries_byte_identical() {
         let path = temp("bytes");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let original = "{\n  \"zeta\": {\n    \"type\": \"oauth\",\n    \"refresh\": \"r\",\n    \"access\": \"a\",\n    \"expires\": 1700000000000,\n    \"accountId\": \"x\"\n  },\n  \"alpha\": {\n    \"type\": \"api_key\",\n    \"key\": \"$KEY\"\n  }\n}";
@@ -382,7 +376,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sees_external_changes_and_creates_files() {
+    async fn external_edits_and_creation() {
         let path = temp("reload");
         let store = CredentialStore::open(&path);
         assert!(store.get("openai").is_none());

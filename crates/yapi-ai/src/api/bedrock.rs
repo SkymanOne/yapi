@@ -958,10 +958,14 @@ impl State {
     }
 
     /// Strips streaming scratch state from every block, as pi does when a
-    /// stream settles.
+    /// stream settles, parsing the argument text of tool calls still open.
     fn finalize(&mut self) {
         for position in 0..self.open.len() {
-            self.open[position].index = None;
+            if self.open[position].index.take().is_some()
+                && let ContentBlock::ToolCall(call) = &mut self.output.content[position]
+            {
+                call.arguments = parse_streaming_json(&self.open[position].partial_json);
+            }
             if !self.open[position].redacted.is_empty() {
                 self.flush_redacted(position);
             }
@@ -1078,9 +1082,7 @@ impl State {
             };
             let piece = delta["toolUse"]["input"].as_str().unwrap_or_default();
             self.open[position].partial_json.push_str(piece);
-            let arguments = parse_streaming_json(&self.open[position].partial_json);
-            if let ContentBlock::ToolCall(call) = &mut self.output.content[position] {
-                call.arguments = arguments;
+            if let ContentBlock::ToolCall(_) = self.output.content[position] {
                 sender.delta(&mut self.output, position, piece);
             }
         } else if delta["reasoningContent"].is_object() {
@@ -1277,7 +1279,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_regions_from_endpoints_and_arns() {
+    fn resolves_regions() {
         assert_eq!(
             endpoint_region("https://bedrock-runtime.eu-central-1.amazonaws.com").as_deref(),
             Some("eu-central-1")
@@ -1299,7 +1301,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_errors_like_the_sdk() {
+    fn formats_errors_like_sdk() {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "x-amzn-errortype",

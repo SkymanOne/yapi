@@ -38,7 +38,7 @@ fn relative_links(text: &str) -> Vec<String> {
 }
 
 #[test]
-fn skills_load_cleanly_and_their_links_resolve() {
+fn skills_load_links_resolve() {
     let source = SourceInfo {
         path: common::repo().join("skills").display().to_string(),
         source: "local".into(),
@@ -75,7 +75,7 @@ fn skills_load_cleanly_and_their_links_resolve() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pi_extension_template_registers_what_the_skill_describes() {
+async fn pi_template_matches_skill() {
     let dir = scratch("template");
     let engine = Engine::new(Some(&dir.join("wasm-cache"))).unwrap();
     let instance = Instance::start(&engine, Options::new(dir.clone()), Arc::new(NoBridge))
@@ -135,7 +135,7 @@ fn yapi() -> &'static Path {
 }
 
 #[test]
-fn check_extension_reports_commands_and_load_errors() {
+fn check_extension_reports() {
     let dir = scratch("check");
     let template = skill("yapi-extension/templates/pi-extension.ts");
     let output = python(
@@ -191,7 +191,7 @@ fn check_extension_reports_commands_and_load_errors() {
 /// yapi's stderr fills a pipe after 64 KB, so the scripts must not leave it
 /// unread while they wait for yapi's output.
 #[test]
-fn check_extension_survives_a_flood_of_logs() {
+fn check_extension_log_flood() {
     let dir = scratch("check-logs");
     let noisy = dir.join("noisy.ts");
     std::fs::write(
@@ -215,7 +215,7 @@ fn check_extension_survives_a_flood_of_logs() {
 /// answering `get_last_assistant_text`.
 #[cfg(unix)]
 #[test]
-fn ask_fails_when_yapi_stops_before_the_answer() {
+fn ask_fails_early_exit() {
     use std::os::unix::fs::PermissionsExt as _;
 
     let dir = scratch("ask-stops");
@@ -238,7 +238,7 @@ fn ask_fails_when_yapi_stops_before_the_answer() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn ask_prints_the_answer() {
+async fn ask_prints_answer() {
     let cassette = Cassette::load(
         &common::repo().join("tests/fixtures/cassettes/anthropic-messages/text.json"),
     )

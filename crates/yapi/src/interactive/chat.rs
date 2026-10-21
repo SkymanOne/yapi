@@ -600,7 +600,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn draws_mermaid_as_the_setting_says() {
+    fn mermaid_follows_setting() {
         let theme = Theme::builtin("dark", yapi_tui::color::ColorMode::TrueColor).unwrap();
         let markdown = yapi_tui::markdown::MarkdownTheme::default();
         let mut ctx = RenderContext {

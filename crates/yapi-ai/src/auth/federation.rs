@@ -270,7 +270,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_the_settings_and_guards_the_endpoint() {
+    fn reads_settings_guards_endpoint() {
         let mut env = ProviderEnv::new();
         env.insert("ANTHROPIC_FEDERATION_RULE_ID".into(), "rule".into());
         env.insert("ANTHROPIC_ORGANIZATION_ID".into(), "org".into());

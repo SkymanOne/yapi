@@ -105,6 +105,18 @@ fn clean_path(path: &str) -> Option<String> {
     valid.then(|| path.to_owned())
 }
 
+/// Whether `host` is safe as a folder name under `git/`, as pi's
+/// `hasUnsafeGitInstallPart` judges it, and cannot pass for a git option.
+fn safe_host(host: &str) -> bool {
+    !host.contains(['/', '\\', '\0']) && host != ".." && !host.starts_with('-')
+}
+
+/// Whether `reference` cannot pass for an option of `git checkout` or `git
+/// fetch`, such as `--upload-pack=<command>`.
+fn safe_reference(reference: Option<&str>) -> bool {
+    !reference.is_some_and(|reference| reference.starts_with('-'))
+}
+
 fn git(source: &str) -> Option<Source> {
     let (explicit, rest) = match source.strip_prefix("git:") {
         Some(rest) => (true, rest.trim()),
@@ -118,8 +130,13 @@ fn git(source: &str) -> Option<Source> {
     }
     if has_scheme {
         let parsed = url::Url::parse(rest).ok()?;
-        let host = parsed.host_str()?.to_owned();
+        let host = parsed.host_str().filter(|host| safe_host(host))?.to_owned();
         let (path, reference) = split_reference(parsed.path());
+        let fragment = parsed.fragment().filter(|fragment| !fragment.is_empty());
+        let reference = reference.or_else(|| fragment.map(str::to_owned));
+        if !safe_reference(reference.as_deref()) {
+            return None;
+        }
         let path = clean_path(path)?;
         let mut repo = parsed.clone();
         repo.set_path(&format!("/{path}"));
@@ -140,10 +157,13 @@ fn git(source: &str) -> Option<Source> {
         let (host, path) = rest.split_once('/')?;
         (None, host.to_owned(), path)
     };
-    if !(host.contains('.') || host == "localhost") {
+    if !(host.contains('.') || host == "localhost") || !safe_host(&host) {
         return None;
     }
     let (path, reference) = split_reference(path);
+    if !safe_reference(reference.as_deref()) {
+        return None;
+    }
     let path = clean_path(path)?;
     let repo = match repo_prefix {
         Some(user_host) => format!("{user_host}:{path}"),
@@ -240,6 +260,31 @@ mod tests {
             parse("ssh://git@github.com/user/repo@main"),
             expected("ssh://git@github.com/user/repo", Some("main"))
         );
+        assert_eq!(
+            parse("https://github.com/user/repo#v1"),
+            expected("https://github.com/user/repo", Some("v1"))
+        );
+        assert_eq!(
+            parse("ssh://git@github.com/user/repo.git#main"),
+            expected("ssh://git@github.com/user/repo", Some("main"))
+        );
+        assert_eq!(
+            parse("https://github.com/user/repo#"),
+            expected("https://github.com/user/repo", None)
+        );
+        // Hosts that would leave `git/`, and hosts or refs that would pass
+        // for a git option.
+        for source in [
+            "git:../../..:Projects/app",
+            "git:..:user/repo",
+            "git:a\\b.com:user/repo",
+            "git:-ucmd.com/user/repo",
+            "git:-ucmd.com:user/repo",
+            "git:github.com/user/repo@--upload-pack=touch x",
+            "https://github.com/user/repo#--upload-pack=touch x",
+        ] {
+            assert!(matches!(parse(source), Source::Local { .. }), "{source}");
+        }
         // Without `git:`, only URLs are git sources.
         assert!(matches!(
             parse("github.com/user/repo"),

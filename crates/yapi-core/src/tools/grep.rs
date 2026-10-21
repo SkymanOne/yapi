@@ -236,7 +236,7 @@ impl Grep {
                     let (start, end) = if context > 0 {
                         (
                             found.line.saturating_sub(context).max(1),
-                            (found.line + context).min(lines.len() as u64),
+                            found.line.saturating_add(context).min(lines.len() as u64),
                         )
                     } else {
                         (found.line, found.line)

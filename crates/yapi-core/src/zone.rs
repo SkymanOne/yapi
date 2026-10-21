@@ -159,7 +159,7 @@ mod tests {
     const SUMMER: i64 = 1_784_116_800;
 
     #[test]
-    fn named_zones_match_without_case_and_reject_unknown_names() {
+    fn named_zone_lookup() {
         let tokyo = named("asia/TOKYO").expect("Asia/Tokyo is in zoneinfo");
         assert_eq!(tokyo.name(), Some("Asia/Tokyo"));
         assert_eq!(tokyo.offset(WINTER), 9 * 3600);
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_or_empty_tz_means_utc() {
+    fn invalid_tz_means_utc() {
         for tz in ["Invalid/Zone", "", ":", "Asia/Tokyo ", "/no/such/file"] {
             let zone = Zone::from_tz(Some(tz));
             assert_eq!((zone.offset(WINTER), zone.offset(SUMMER)), (0, 0), "{tz:?}");
@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn posix_rules_apply_per_instant_without_a_name() {
+    fn unnamed_posix_rules() {
         let zone = Zone::from_tz(Some("CET-1CEST,M3.5.0,M10.5.0/3"));
         assert_eq!((zone.offset(WINTER), zone.offset(SUMMER)), (3600, 7200));
         assert_eq!(zone.name(), None);
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn wall_clock_times_resolve_as_in_node() {
+    fn wall_clock_like_node() {
         const HOUR: i32 = 3600;
         let new_york = Zone::from_tz(Some("EST5EDT,M3.2.0,M11.1.0"));
         // 2026-03-08 02:30 is skipped, 03:30 follows the change, 2026-11-01
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn zone_files_keep_their_name() {
+    fn zone_files_keep_name() {
         // Skipped on systems without a time zone database.
         if !Path::new("/usr/share/zoneinfo/America/New_York").is_file() {
             return;

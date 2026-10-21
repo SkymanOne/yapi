@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn coerces_and_drops_strict_nulls() {
+    fn coerces_drops_strict_nulls() {
         let args = validate_tool_arguments(
             &tool(read_schema()),
             &call(json!({"path": "a.txt", "offset": "5", "limit": null})),
@@ -444,7 +444,7 @@ mod tests {
         );
     }
     #[test]
-    fn coerces_tuple_and_list_items() {
+    fn coerces_tuple_list_items() {
         let schema = json!({"type":"object","properties":{
             "pair":{"type":"array","items":[{"type":"number"},{"type":"string"}]},
             "list":{"type":"array","items":{"type":"number"}}}});

@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn streams_grammar_input_as_json() {
+    fn grammar_input_as_json() {
         let mut input = GrammarInput::new("code".into());
         assert_eq!(input.append("", false).unwrap(), None);
         assert_eq!(

@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn drops_raw_echo_of_kitty_key() {
+    fn drops_kitty_raw_echo() {
         let mut buffer = InputBuffer::new();
         assert_eq!(buffer.push(b"\x1b[97ua"), keys(&["\x1b[97u"]));
         assert_eq!(

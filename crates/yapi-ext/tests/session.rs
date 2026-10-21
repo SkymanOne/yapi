@@ -10,7 +10,9 @@ mod common;
 use std::path::Path;
 use std::sync::Arc;
 
-use common::{cli_source, custom_entries, engine, options, scratch, session, text_of};
+use common::{
+    cli_source, custom_entries, engine, options, scratch, session, session_with_tools, text_of,
+};
 use serde_json::{Value, json};
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::{AgentSession, Replacement};
@@ -75,7 +77,7 @@ async fn extensions(dir: &Path) -> Arc<ExtensionHost> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn extension_tools_and_handlers_run_in_the_session() {
+async fn session_runs_extension_tools() {
     let dir = scratch("tools");
     let js = extensions(&dir).await;
     let mut values = serde_json::Map::new();
@@ -294,7 +296,7 @@ async fn session_manager_reads_children() {
 /// Aborting the session aborts a running extension tool's `signal`, as Esc
 /// does in Pi, so a tool that waits for it ends instead of blocking the run.
 #[tokio::test(flavor = "multi_thread")]
-async fn aborting_the_session_aborts_extension_tools() {
+async fn session_abort_reaches_tools() {
     let dir = scratch("abort-tool");
     let path = dir.join("wait.ts");
     std::fs::write(
@@ -348,7 +350,7 @@ async fn aborting_the_session_aborts_extension_tools() {
 /// guidelines, sections and selected tools shape the run's prompt and its
 /// active tools.
 #[tokio::test(flavor = "multi_thread")]
-async fn before_agent_start_handlers_edit_the_prompt_options() {
+async fn before_agent_start_options() {
     let dir = scratch("prompt-options");
     let path = dir.join("options.ts");
     std::fs::write(
@@ -399,7 +401,7 @@ async fn before_agent_start_handlers_edit_the_prompt_options() {
 /// Registered MCP servers list in registration order, as in pi, even when
 /// extensions in different runtimes register them.
 #[tokio::test(flavor = "multi_thread")]
-async fn registered_mcp_servers_list_in_registration_order_across_runtimes() {
+async fn mcp_registration_order() {
     let dir = scratch("mcp-order");
     let mut extensions = Vec::new();
     for (file, source) in [
@@ -443,7 +445,7 @@ async fn registered_mcp_servers_list_in_registration_order_across_runtimes() {
 /// skips its own checks: a server needs the grant of its transport, and a
 /// name another runtime registered stays that runtime's.
 #[tokio::test(flavor = "multi_thread")]
-async fn reported_mcp_servers_need_grants_and_their_own_names() {
+async fn reported_mcp_servers_checked() {
     let dir = scratch("mcp-grants");
     let report = r#"(name, config) => {
 	try {
@@ -503,7 +505,7 @@ async fn reported_mcp_servers_need_grants_and_their_own_names() {
 /// refused server stays out of the runtime's list. Its later registrations
 /// still reach the session.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_clashing_mcp_server_name_is_refused_in_the_registering_call() {
+async fn mcp_clash_refused() {
     let dir = scratch("mcp-clash");
     let owner = r#"export default function (pi) {
 	pi.registerMcpServer("shared", { command: "python3", enabled: false });
@@ -571,7 +573,7 @@ async fn a_clashing_mcp_server_name_is_refused_in_the_registering_call() {
 /// earlier registered fails the extension's load with pi's error, and the
 /// earlier registration keeps the name.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_clashing_mcp_server_name_fails_the_load_of_the_later_extension() {
+async fn mcp_clash_fails_load() {
     let dir = scratch("mcp-load-clash");
     let register = |names: &[&str]| {
         let calls: String = names
@@ -647,7 +649,7 @@ async fn a_clashing_mcp_server_name_fails_the_load_of_the_later_extension() {
 /// server name that a later extension registered in the previous session
 /// does not keep an earlier extension from registering it.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
+async fn new_session_rechecks_mcp() {
     let dir = scratch("mcp-moved");
     let register = |when: &str| {
         format!(
@@ -694,7 +696,7 @@ async fn a_new_session_checks_mcp_servers_against_its_own_registrations() {
 /// previous session goes to the earlier one, and a later runtime cannot take
 /// a name the earlier one registered again.
 #[tokio::test(flavor = "multi_thread")]
-async fn runtimes_check_mcp_servers_against_this_run_for_a_new_session() {
+async fn mcp_checked_per_run() {
     let dir = scratch("mcp-runs");
     let source = |calls: &str| {
         format!(
@@ -796,7 +798,7 @@ fn mcp_server_names(session: &AgentSession) -> Vec<String> {
 /// while extensions load do: at startup, in a new session and after
 /// `/reload`.
 #[tokio::test(flavor = "multi_thread")]
-async fn mcp_servers_a_native_extension_reports_as_it_loads_reach_its_session() {
+async fn native_mcp_at_load() {
     let dir = scratch("native-mcp-at-load");
     let host = ExtensionHost::load_native(&engine(), options(&dir), &cli_source(&mcp_at_load()))
         .await
@@ -827,7 +829,7 @@ async fn mcp_servers_a_native_extension_reports_as_it_loads_reach_its_session() 
 /// session started is announced, as pi announces registrations made after
 /// its extensions bound, even when it is the native extension's first.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_native_extension_reports_mcp_servers_as_pi_registers_them() {
+async fn native_mcp_registration() {
     let dir = scratch("native-mcp-clash");
     let owner = dir.join("owner.ts");
     std::fs::write(
@@ -874,7 +876,7 @@ async fn a_native_extension_reports_mcp_servers_as_pi_registers_them() {
 /// fails to load with pi's message and gives the session nothing, and it
 /// runs again for the session after, even as its runtime's only extension.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_factory_that_fails_in_a_later_session_fails_that_load() {
+async fn factory_fails_later_load() {
     let dir = scratch("reload-error");
     let path = dir.join("flaky.ts");
     std::fs::write(
@@ -910,12 +912,70 @@ async fn a_factory_that_fails_in_a_later_session_fails_that_load() {
     }
 }
 
+/// A built-in tool that an extension registers again, as pi's
+/// `built-in-tool-renderer.ts` does with bash, stops when its call is
+/// aborted and reports its output as it runs.
+#[tokio::test(flavor = "multi_thread")]
+async fn wrapped_builtin_aborts() {
+    let dir = scratch("wrapped-bash");
+    let path = dir.join("bash.ts");
+    std::fs::write(
+        &path,
+        r#"import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+export default function (pi) {
+	pi.registerTool({ ...createBashToolDefinition(process.cwd()) });
+}
+"#,
+    )
+    .unwrap();
+    let host = ExtensionHost::load(&engine(), options(&dir), &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    let session = session_with_tools(&Faux::new([]), &dir, host.for_session(), &["bash"]);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    let tool = session
+        .callable_tools()
+        .into_iter()
+        .find(|tool| tool.name() == "bash")
+        .unwrap();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (output, mut updates) = tokio::sync::mpsc::unbounded_channel();
+    let run = tool.tool.execute(
+        "call-1".into(),
+        json!({"command": "echo started; sleep 20"}),
+        cancel.clone(),
+        Arc::new(move |partial| {
+            let _ = output.send(partial);
+        }),
+    );
+    let started = std::time::Instant::now();
+    let abort = async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        cancel.cancel();
+    };
+    let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        tokio::join!(run, abort)
+    })
+    .await
+    .expect("the aborted tool ends");
+    assert!(result.unwrap_err().contains("Command aborted"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    let mut output = String::new();
+    while let Ok(partial) = updates.try_recv() {
+        output += &yapi_types::message::blocks_text(&partial.content, "|");
+    }
+    assert!(output.contains("started"), "{output}");
+}
+
 /// A tool's updates and the calls it makes through `ctx.executeTool()` report
 /// in pi's order, from the task that runs the tool: an update goes out after
 /// the start of a call the tool begins in the same step, and before its end
 /// (#59).
 #[tokio::test(flavor = "multi_thread")]
-async fn tool_updates_and_nested_calls_report_in_pi_order() {
+async fn tool_updates_pi_order() {
     let dir = scratch("tool-order");
     std::fs::write(dir.join("hello.txt"), "hi\n").unwrap();
     let path = dir.join("relay.ts");
@@ -1044,7 +1104,7 @@ impl ExtensionUi for Screen {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pastes_go_in_at_the_cursor_of_an_extension_editor() {
+async fn editor_paste_at_cursor() {
     let dir = scratch("editor-paste");
     let path = dir.join("editor.ts");
     std::fs::write(
@@ -1094,7 +1154,7 @@ export default function (pi: ExtensionAPI) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn extensions_see_the_terminal_size_as_it_changes() {
+async fn extensions_see_resize() {
     let dir = scratch("terminal-size");
     let path = dir.join("size.ts");
     std::fs::write(
@@ -1151,7 +1211,7 @@ export default function (pi: ExtensionAPI) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn extensions_see_whether_the_prompt_editor_has_the_keyboard() {
+async fn extensions_see_editor_focus() {
     let dir = scratch("editor-focus");
     let path = dir.join("focus.ts");
     std::fs::write(
@@ -1256,7 +1316,7 @@ impl ExtensionUi for Restarts {
 /// redrawing the transcript after the restart cannot stop it over and over.
 /// The restarted runtime draws everything else.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_drawing_that_stops_the_runtime_is_not_asked_again() {
+async fn crashing_draw_not_retried() {
     let dir = scratch("drawing-crash");
     let path = dir.join("draw.ts");
     std::fs::write(

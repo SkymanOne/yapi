@@ -145,12 +145,15 @@ impl StdioTransport {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
-        drop(self.stdin.lock().await.take());
         let Some(mut exited) = lock(&self.exited).clone() else {
+            drop(self.stdin.lock().await.take());
             return;
         };
         let pid = *lock(&self.pid);
+        // Closing stdin waits for a write in progress, which a server that
+        // stopped reading lets finish only once the signals below stop it.
         let wait = async {
+            drop(self.stdin.lock().await.take());
             let _ = exited.wait_for(|done| *done).await;
         };
         tokio::pin!(wait);
@@ -186,6 +189,8 @@ async fn read_messages(
     let mut reader = tokio::io::BufReader::new(stdout);
     let mut line = Vec::new();
     let mut incomplete = false;
+    // Within an oversized line, whose rest is read in bounded pieces and dropped.
+    let mut skipping = false;
     loop {
         line.clear();
         let read = (&mut reader)
@@ -196,14 +201,16 @@ async fn read_messages(
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
+        if skipping {
+            skipping = !line.ends_with(b"\n");
+            continue;
+        }
         if !line.ends_with(b"\n") {
             if line.len() > MAX_MESSAGE_BYTES {
                 let _ = events.send(Event::Error(format!(
                     "MCP stdio message exceeds {MAX_MESSAGE_BYTES} bytes"
                 )));
-                // Skip the rest of the oversized line.
-                let mut rest = Vec::new();
-                let _ = reader.read_until(b'\n', &mut rest).await;
+                skipping = true;
                 continue;
             }
             incomplete = !String::from_utf8_lossy(&line).trim().is_empty();

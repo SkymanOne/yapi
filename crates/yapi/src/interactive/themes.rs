@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn first_declaration_wins_and_problems_are_reported() {
+    fn first_wins_reports_problems() {
         let root = std::env::temp_dir().join(format!("yapi-themes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let first = root.join("a");

@@ -40,6 +40,7 @@ yapi --mode rpc --no-session
 | `--no-tools` | Disable all tools |
 | `-ne` | Start without extensions, including the built-in MCP and llama.cpp extensions |
 | `--offline` | Skip startup network work |
+| `--enable-logging` | Append a log to `~/.yapi/agent/yapi.log`. See [Logs](troubleshooting.md#logs). |
 | `--project-dir <dir>` | Take the project from another folder. See [Project trust](security.md#project-trust). |
 
 `yapi --help` lists every flag.

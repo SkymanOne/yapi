@@ -33,7 +33,7 @@ fn example() -> std::path::PathBuf {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn native_extensions_register_and_run() {
+async fn native_register_and_run() {
     let dir = scratch("native");
     let host = ExtensionHost::load_native(&engine(), options(&dir), &cli_source(&example()))
         .await
@@ -139,7 +139,7 @@ async fn code_renderers_color_code() {
 /// The `entry-renderer` example stores a status card with a command and
 /// draws it in a box.
 #[tokio::test(flavor = "multi_thread")]
-async fn entry_renderer_draws_status_cards() {
+async fn entry_renderer_status_cards() {
     let dir = scratch("entry-renderer");
     let host = load(&dir, "entry-renderer").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -218,7 +218,7 @@ impl ExtensionUi for Person {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn permission_gate_asks_before_dangerous_commands() {
+async fn permission_gate_asks_first() {
     // The commands stay harmless if the gate lets them through.
     let dir = scratch("permission-gate");
     let host = load(&dir, "permission-gate").await;
@@ -288,7 +288,7 @@ async fn protected_paths_block_writes() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn todo_keeps_a_list_per_branch() {
+async fn todo_list_per_branch() {
     let dir = scratch("todo");
     let host = load(&dir, "todo").await;
     let todo = |id: &str, params: serde_json::Value| Response::tool_call(id, "todo", params);
@@ -465,7 +465,7 @@ impl ExtensionUi for Terminal {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn todo_shows_the_list_in_a_component_until_escape() {
+async fn todo_component_until_escape() {
     let dir = scratch("todo-component");
     let host = load(&dir, "todo").await;
     let faux = Faux::new([
@@ -511,7 +511,7 @@ async fn todo_shows_the_list_in_a_component_until_escape() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn repo_status_reports_uncommitted_files() {
+async fn repo_status_uncommitted_files() {
     let dir = scratch("repo-status");
     let git = |args: &[&str]| {
         let status = std::process::Command::new("git")
@@ -540,7 +540,7 @@ async fn repo_status_reports_uncommitted_files() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn package_scripts_get_a_variable_on_the_inherited_environment() {
+async fn package_scripts_extend_env() {
     let dir = scratch("package-scripts");
     let package = dir.join("package");
     let wasm = package.join("extensions/package-scripts.wasm");
@@ -578,7 +578,7 @@ async fn package_scripts_get_a_variable_on_the_inherited_environment() {
 /// A tool call whose run is aborted before it reaches the extension is
 /// aborted as soon as it starts, instead of running to the end.
 #[tokio::test(flavor = "multi_thread")]
-async fn native_tools_aborted_before_they_start_stop() {
+async fn abort_before_start_stops() {
     let dir = scratch("subagent-aborted");
     let host = load(&dir, "subagent").await;
     let faux = Faux::new([]);
@@ -657,7 +657,7 @@ async fn abort_countdown(
 /// abort, and its own result, which names its call's id, becomes the tool
 /// result, as a Pi tool's does.
 #[tokio::test(flavor = "multi_thread")]
-async fn native_tools_that_wait_for_aborts_return_their_own_result() {
+async fn waiting_tool_keeps_result() {
     let (result, text, _) =
         abort_countdown("countdown-stops", "countdown", json!({"seconds": 30})).await;
     assert_eq!(text, "Stopped with 30 seconds left");
@@ -667,7 +667,7 @@ async fn native_tools_that_wait_for_aborts_return_their_own_result() {
 
 /// A native tool that never asks for the abort stops at once.
 #[tokio::test(flavor = "multi_thread")]
-async fn native_tools_that_ignore_aborts_stop_at_once() {
+async fn ignoring_tool_stops_immediately() {
     let (result, text, elapsed) =
         abort_countdown("countdown-ignores", "wait", json!({"seconds": 30})).await;
     assert_eq!(text, "This operation was aborted");
@@ -678,7 +678,7 @@ async fn native_tools_that_ignore_aborts_stop_at_once() {
 /// A native tool that waits for the abort but has not returned 10 seconds
 /// later is dropped, so it cannot hold the run forever.
 #[tokio::test(flavor = "multi_thread")]
-async fn native_tools_that_outlast_the_abort_deadline_are_dropped() {
+async fn abort_deadline_drops_tool() {
     let (result, text, elapsed) = abort_countdown(
         "countdown-deadline",
         "countdown",
@@ -716,7 +716,7 @@ async fn plain(component: &RemoteComponent, width: u16) -> Vec<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn modal_editor_replaces_the_editor() {
+async fn modal_editor_replaces_editor() {
     let dir = scratch("modal-editor");
     let host = load(&dir, "modal-editor").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -753,7 +753,7 @@ async fn modal_editor_replaces_the_editor() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn question_draws_its_call_and_result() {
+async fn question_draws_call_result() {
     let dir = scratch("question-renderers");
     let host = load(&dir, "question").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -793,7 +793,7 @@ async fn question_draws_its_call_and_result() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn message_renderer_draws_status_messages() {
+async fn message_renderer_draws_status() {
     let dir = scratch("message-renderer");
     let host = load(&dir, "message-renderer").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -817,7 +817,7 @@ async fn message_renderer_draws_status_messages() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn select_menu_picks_from_a_select_list() {
+async fn select_menu_picks() {
     let dir = scratch("select-menu");
     let host = load(&dir, "select-menu").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -849,7 +849,7 @@ async fn select_menu_picks_from_a_select_list() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn overlay_test_takes_its_width_and_typing() {
+async fn overlay_test_width_typing() {
     let dir = scratch("overlay-test");
     let host = load(&dir, "overlay-test").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -875,7 +875,7 @@ async fn overlay_test_takes_its_width_and_typing() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn custom_footer_toggles_a_footer_component() {
+async fn custom_footer_toggles() {
     let dir = scratch("custom-footer");
     let host = load(&dir, "custom-footer").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -900,7 +900,7 @@ async fn custom_footer_toggles_a_footer_component() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn input_hooks_listen_complete_and_take_a_shortcut() {
+async fn input_hooks_and_shortcut() {
     let dir = scratch("input-hooks");
     let host = load(&dir, "input-hooks").await;
     let session = session(&Faux::new([]), &dir, host.for_session());
@@ -958,7 +958,7 @@ async fn input_hooks_listen_complete_and_take_a_shortcut() {
 /// components: the dialog closes and ends its blocking prompt, the editor
 /// gives way to the built-in one, and the person sees why.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_runtime_that_panics_restarts_without_its_components() {
+async fn panicked_runtime_drops_components() {
     let dir = scratch("crash-recovery");
     let host = load(&dir, "crash-recovery").await;
     let watch = dir.join("watch.ts");

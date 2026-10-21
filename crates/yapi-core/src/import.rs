@@ -1,6 +1,6 @@
 //! `yapi import pi`: copies pi's state into yapi's directories. yapi reads pi's
 //! formats unchanged, so files are copied as they are, except pi's
-//! `lastChangelogVersion`; files yapi already has are kept.
+//! `lastChangelogVersion` and sign-ins; files yapi already has are kept.
 
 use std::path::{Path, PathBuf};
 
@@ -59,6 +59,10 @@ pub struct Imported {
     pub copied: usize,
     /// Files yapi already had, left as they are.
     pub kept: usize,
+    /// Sign-ins left out of a copied `auth.json` (providers) or
+    /// `mcp-auth.json` (MCP servers). Servers may rotate refresh tokens, so
+    /// copies in pi and yapi would sign each other out.
+    pub signed_out: Vec<String>,
 }
 
 /// pi's agent directory: `PI_CODING_AGENT_DIR`, or `~/.pi/agent`.
@@ -123,15 +127,51 @@ fn copy_tree(
     Ok(())
 }
 
-/// The settings document at `path`, if it is a JSON object.
+/// The settings or credentials document at `path`, if it is a JSON object.
 fn settings(path: &Path) -> Option<Map<String, Value>> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+/// Removes the sign-ins from the copied credentials `file` at `path`: OAuth
+/// credentials of `auth.json`, servers holding tokens in `mcp-auth.json`.
+/// Returns their providers or server names; a file without any is untouched.
+fn drop_sign_ins(path: &Path, file: ConfigFile) -> std::io::Result<Vec<String>> {
+    let Some(mut document) = settings(path) else {
+        return Ok(Vec::new());
+    };
+    let signed_in = |state: &Value| match file {
+        ConfigFile::Auth => state["type"] == "oauth",
+        _ => state.get("tokens").is_some(),
+    };
+    let names: Vec<String> = document
+        .iter()
+        .filter(|(_, state)| signed_in(state))
+        // MCP keys are `mcp__<server>|<url>`, or the URL alone in older files.
+        .map(|(key, _)| {
+            match key
+                .strip_prefix("mcp__")
+                .and_then(|rest| rest.split_once('|'))
+            {
+                Some((server, _)) => server.to_owned(),
+                None => key.clone(),
+            }
+        })
+        .collect();
+    if !names.is_empty() {
+        document.retain(|_, state| !signed_in(state));
+        let text = file.render(&document).map_err(std::io::Error::other)?;
+        yapi_ai::auth::lock::write_atomic(path, text.as_bytes(), 0o600)
+            .map_err(|error| at(path, error))?;
+    }
+    Ok(names)
 }
 
 /// Copies `entries` of directory `from` into `to`, keeping files `to`
 /// already has. Entries `from` lacks are skipped. A `settings.json` that
 /// holds only the version yapi recorded on its first start is replaced, and
-/// pi's `lastChangelogVersion`, a pi version, is not copied.
+/// pi's `lastChangelogVersion`, a pi version, is not copied. Nor are the
+/// sign-ins of a copied `auth.json` or `mcp-auth.json`; see
+/// [`Imported::signed_out`].
 pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<Imported>> {
     let mut out = Vec::new();
     for entry in entries {
@@ -161,7 +201,16 @@ pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<I
             let text = ConfigFile::Settings
                 .render(&document)
                 .map_err(std::io::Error::other)?;
-            std::fs::write(&target, text).map_err(|error| at(&target, error))?;
+            yapi_ai::auth::lock::write_atomic(&target, text.as_bytes(), 0o666)
+                .map_err(|error| at(&target, error))?;
+        }
+        let credentials = [ConfigFile::Auth, ConfigFile::McpAuth]
+            .into_iter()
+            .find(|file| *entry == file.file_name());
+        if let Some(file) = credentials
+            && imported.copied == 1
+        {
+            imported.signed_out = drop_sign_ins(&target, file)?;
         }
         out.push(imported);
     }
@@ -179,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_what_ri_reads_and_keeps_existing_files() {
+    fn copies_state_keeps_existing() {
         let dir = std::env::temp_dir().join(format!("yapi-import-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (pi, yapi) = (dir.join("pi"), dir.join("yapi"));
@@ -217,7 +266,56 @@ mod tests {
     }
 
     #[test]
-    fn pi_settings_replace_yapi_first_start_record_without_pi_version() {
+    fn skips_sign_ins() {
+        let dir = std::env::temp_dir().join(format!("yapi-import-auth-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (pi, yapi) = (dir.join("pi"), dir.join("yapi"));
+        let oauth =
+            r#""anthropic": {"type": "oauth", "refresh": "r", "access": "a", "expires": 1}"#;
+        let api_key = "\"openai\": {\n    \"type\": \"api_key\",\n    \"key\": \"sk-1\"\n  }";
+        write(
+            &pi,
+            "auth.json",
+            &format!("{{\n  {oauth},\n  {api_key}\n}}"),
+        );
+        let url = "https://mcp.example.com/mcp";
+        let states = serde_json::json!({
+            format!("mcp__work|{url}"): {"serverUrl": url, "tokens": {"access_token": "t"}},
+            url: {"tokens": {}},
+            format!("mcp__new|{url}"): {"codeVerifier": "v"},
+        });
+        write(&pi, "mcp-auth.json", &states.to_string());
+
+        let imported = import(&pi, &yapi, AGENT_ENTRIES).unwrap();
+
+        let signed_out: Vec<(&str, Vec<&str>)> = imported
+            .iter()
+            .map(|entry| {
+                let names = entry.signed_out.iter().map(String::as_str).collect();
+                (entry.entry.as_str(), names)
+            })
+            .collect();
+        assert_eq!(
+            signed_out,
+            [
+                ("auth.json", vec!["anthropic"]),
+                ("mcp-auth.json", vec!["work", url])
+            ]
+        );
+        assert_eq!(
+            std::fs::read_to_string(yapi.join("auth.json")).unwrap(),
+            format!("{{\n  {api_key}\n}}")
+        );
+        let states = std::fs::read_to_string(yapi.join("mcp-auth.json")).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&states).unwrap(),
+            serde_json::json!({format!("mcp__new|{url}"): {"codeVerifier": "v"}})
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn settings_replace_first_start() {
         let dir = std::env::temp_dir().join(format!("yapi-import-settings-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (pi, yapi) = (dir.join("pi"), dir.join("yapi"));
@@ -255,7 +353,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn copies_context_files_and_survives_bad_links() {
+    fn context_files_and_symlinks() {
         use std::os::unix::fs::symlink;
         let dir = std::env::temp_dir().join(format!("yapi-import-links-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

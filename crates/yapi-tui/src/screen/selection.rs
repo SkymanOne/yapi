@@ -857,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn a_press_taken_late_selects_nothing() {
+    fn late_press_selects_nothing() {
         let mut screen = AltScreen::new();
         screen.copy_on_select = true;
         screen.frame(&[], &[StyledLine::from("pick me")], None, 20, 5);
@@ -876,7 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn the_wheel_over_an_overlay_goes_to_it() {
+    fn wheel_goes_to_overlay() {
         let mut screen = AltScreen::new();
         screen.frame(&[], &[], None, 20, 5);
         screen.overlays = vec![crate::screen::Overlay {

@@ -654,11 +654,7 @@ pub fn reset_signal_dispositions() {
 }
 
 fn spawn_error(command: &str, err: &std::io::Error) -> String {
-    let code = match err.kind() {
-        std::io::ErrorKind::NotFound => "ENOENT",
-        std::io::ErrorKind::PermissionDenied => "EACCES",
-        _ => "EIO",
-    };
+    let code = yapi_types::js::errno(err.kind()).map_or("EIO", |(code, _)| code);
     format!("spawn {command} {code}")
 }
 
@@ -733,7 +729,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_signals_as_node_does() {
+    fn node_signal_names() {
         for name in ["SEGV", "USR1", "TERM"] {
             let script = format!("kill -s {name} $$");
             let result = exec_sync(&json!({"command": "/bin/sh", "args": ["-c", script]})).unwrap();
@@ -745,7 +741,7 @@ mod tests {
     /// Output beyond a pipe's buffer must not stall a process until its
     /// timeout kills it; a timeout stops it with SIGTERM, as in Node.
     #[test]
-    fn exec_sync_reads_output_while_it_waits() {
+    fn exec_sync_reads_output() {
         let run = |script: &str, timeout: u64| {
             exec_sync(&json!({"command": "/bin/sh", "args": ["-c", script], "timeout": timeout}))
                 .unwrap()
@@ -790,7 +786,7 @@ mod tests {
 
     /// Input reaches a running process and its output streams back.
     #[tokio::test(flavor = "multi_thread")]
-    async fn processes_take_input_and_stream_output() {
+    async fn process_input_and_output() {
         let processes = Streams::new(tokio::runtime::Handle::current());
         let write = |id: u64, data: &[u8]| {
             processes.write(&json!({"id": id, "data": STANDARD.encode(data)}))
@@ -848,7 +844,7 @@ mod tests {
 
     /// Clearing the set kills its processes.
     #[tokio::test(flavor = "multi_thread")]
-    async fn cleared_processes_are_killed() {
+    async fn cleared_processes_killed() {
         let processes = Streams::new(tokio::runtime::Handle::current());
         let reply = processes
             .spawn(&json!({"command": "/bin/sleep", "args": ["10"]}))
@@ -867,7 +863,7 @@ mod tests {
     /// A response whose headers arrive after the set was cleared, as when
     /// its instance restarted, is closed unread.
     #[tokio::test(flavor = "multi_thread")]
-    async fn cleared_responses_are_closed() {
+    async fn cleared_responses_closed() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
         let streams = Streams::new(tokio::runtime::Handle::current());

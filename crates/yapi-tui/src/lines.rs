@@ -510,7 +510,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn composite_drops_a_wide_character_cut_by_the_right_edge() {
+    fn composite_cut_wide_char() {
         let base = Line::from("ab日本cd");
         let top = Line::from("XY");
         assert_eq!(plain(&composite(&base, &top, 2, 3, 8)), "abXY cd ");
@@ -524,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn wraps_words_and_keeps_styles() {
+    fn wrap_keeps_styles() {
         let line = Line::from(vec![
             Span::raw("hello "),
             Span::styled("bold world", Style::new().add_modifier(Modifier::BOLD)),

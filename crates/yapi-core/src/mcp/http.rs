@@ -137,7 +137,6 @@ struct Cursor {
 struct SseParser {
     buffer: Vec<u8>,
     event: Option<String>,
-    id: Option<String>,
     data: Vec<String>,
     data_bytes: usize,
 }
@@ -174,7 +173,6 @@ impl SseParser {
 
     fn dispatch(&mut self) -> Option<SseEvent> {
         let event = self.event.take();
-        self.id = None;
         if self.data.is_empty() {
             return None;
         }
@@ -212,10 +210,7 @@ impl SseParser {
                 self.data.push(value.to_owned());
             }
             "event" => self.event = Some(value.to_owned()),
-            "id" if !value.contains('\0') => {
-                self.id = Some(value.to_owned());
-                cursor.last_event_id = Some(value.to_owned());
-            }
+            "id" if !value.contains('\0') => cursor.last_event_id = Some(value.to_owned()),
             "retry" if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) => {
                 cursor.retry_ms = value.parse().ok();
             }
@@ -709,4 +704,51 @@ fn reconnect_delay(attempt: u32, server_ms: Option<u64>) -> Duration {
             .min(RECONNECT_MAX_DELAY_MS)
     });
     Duration::from_millis(ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The events of `chunks` as `(event, data)`, and where the stream ended.
+    fn parse(chunks: &[&str]) -> (Vec<(Option<String>, String)>, Cursor) {
+        let mut parser = SseParser::default();
+        let mut cursor = Cursor::default();
+        let mut events = Vec::new();
+        for chunk in chunks {
+            events.extend(parser.push(chunk.as_bytes(), &mut cursor).unwrap());
+        }
+        events.extend(parser.finish(&mut cursor).unwrap());
+        let events = events
+            .into_iter()
+            .map(|event| (event.event, event.data))
+            .collect();
+        (events, cursor)
+    }
+
+    #[test]
+    fn sse_line_endings() {
+        let (events, cursor) = parse(&[
+            "event: message\r\ndata: {\"a\":\r",
+            "\ndata: 1}\r\nid: 7\r\n\r\n",
+            ": comment\n\ndata:tail",
+        ]);
+        assert_eq!(
+            events,
+            [
+                (Some("message".into()), "{\"a\":\n1}".into()),
+                (None, "tail".into()),
+            ]
+        );
+        assert_eq!(cursor.last_event_id.as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn sse_retry_and_ids() {
+        let (events, cursor) =
+            parse(&["retry: 2500\nid: 1\n\nretry: soon\nid: a\0b\nevent: ping\n\n"]);
+        assert!(events.is_empty());
+        assert_eq!(cursor.retry_ms, Some(2500));
+        assert_eq!(cursor.last_event_id.as_deref(), Some("1"));
+    }
 }

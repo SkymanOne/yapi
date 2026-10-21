@@ -46,7 +46,7 @@ fn config_kind(path: &Path) -> ConfigFile {
 
 /// Session lines: each JSONL line parsed and written back must equal the original.
 #[test]
-fn sessions_round_trip_byte_identical() {
+fn sessions_byte_identical() {
     for path in fixtures("sessions").into_iter().chain(fixtures("legacy")) {
         let text = fs::read_to_string(&path).unwrap();
         assert!(
@@ -67,7 +67,7 @@ fn sessions_round_trip_byte_identical() {
 
 /// Config files: parsed and rendered with pi's layout must equal the original.
 #[test]
-fn configs_round_trip_byte_identical() {
+fn configs_byte_identical() {
     for path in fixtures("agent").into_iter().chain(fixtures("project")) {
         let text = fs::read_to_string(&path).unwrap();
         let document: Value = serde_json::from_str(&text).unwrap();
@@ -95,7 +95,7 @@ fn session_views_cover_fixtures() {
 /// assistant-message fields and compaction checkpoints by code path, so those are
 /// exempt; see the session-format research in the crate docs.
 #[test]
-fn typed_views_use_pi_key_order() {
+fn typed_views_key_order() {
     let text = fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/pi/sessions/main.jsonl"),
     )

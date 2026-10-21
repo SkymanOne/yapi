@@ -479,7 +479,7 @@ mod tests {
 
     /// pi's `AuthPrompt` and `AuthEvent` JSON, as extension sign-ins send it.
     #[test]
-    fn reads_pi_prompts_and_events() {
+    fn reads_prompts_and_events() {
         let prompt = |value| serde_json::from_value::<AuthPrompt>(value).unwrap();
         assert_eq!(
             prompt(
@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_pasted_input_like_pi() {
+    fn parses_pasted_input() {
         let parse = |input| parse_authorization_input(input);
         assert_eq!(
             parse("http://localhost:1455/auth/callback?code=c1&state=s1"),

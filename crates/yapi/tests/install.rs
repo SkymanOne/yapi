@@ -132,7 +132,7 @@ fn installed_version(binary: &Path) -> String {
 }
 
 #[test]
-fn installs_the_latest_release_into_local_bin() {
+fn installs_latest_release() {
     let dir = scratch("latest");
     let site = dir.join("site");
     release(&site, "9.9.8");
@@ -155,7 +155,7 @@ fn installs_the_latest_release_into_local_bin() {
 }
 
 #[test]
-fn replaces_the_docs_unless_asked_not_to() {
+fn replaces_docs_unless_skipped() {
     let dir = scratch("docs");
     let site = dir.join("site");
     release(&site, "9.9.9");
@@ -202,7 +202,7 @@ fn replaces_the_docs_unless_asked_not_to() {
 }
 
 #[test]
-fn installs_yapi_without_docs_that_fail_their_checksum() {
+fn skips_docs_failing_checksum() {
     let dir = scratch("docs-checksum");
     let site = dir.join("site");
     release(&site, "9.9.9");
@@ -221,7 +221,7 @@ fn installs_yapi_without_docs_that_fail_their_checksum() {
 }
 
 #[test]
-fn installs_a_chosen_version_where_asked() {
+fn installs_chosen_version() {
     let dir = scratch("pinned");
     let site = dir.join("site");
     release(&site, "9.9.8");
@@ -252,7 +252,7 @@ fn installs_a_chosen_version_where_asked() {
 }
 
 #[test]
-fn refuses_a_download_that_fails_its_checksum() {
+fn refuses_bad_checksum() {
     let dir = scratch("checksum");
     let site = dir.join("site");
     release(&site, "9.9.9");
@@ -278,7 +278,7 @@ fn refuses_a_download_that_fails_its_checksum() {
 }
 
 #[test]
-fn points_to_a_source_build_without_a_release() {
+fn suggests_source_build() {
     let dir = scratch("none");
     let output = install(&serve(dir.join("site"), None), &dir, &[]);
     assert_eq!(output.status.code(), Some(1));
@@ -294,7 +294,7 @@ fn points_to_a_source_build_without_a_release() {
 /// `yapi` from it into a directory on PATH installs only the binary, as the
 /// install guide shows.
 #[test]
-fn archives_hold_the_binary_and_its_licenses() {
+fn archives_hold_binary_licenses() {
     let dir = scratch("archive");
     let site = dir.join("site");
     release(&site, "9.9.9");
