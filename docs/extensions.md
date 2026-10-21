@@ -127,7 +127,7 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 
 ## Providers from extensions
 
-`pi.registerProvider()` adds a provider and its models. They appear in `/model` and work with `--model` and RPC's `set_model`.
+`pi.registerProvider()` adds a provider and its models. They appear in `/model` and work with `--model` and RPC's `set_model`. An extension can register a provider at any time, such as from a command or an event handler, and the change applies at once. `pi.unregisterProvider()` removes a provider whichever extension registered it, and restores the built-in or `models.json` provider it replaced.
 
 - A provider configured like a `models.json` entry streams through yapi's implementation of its `api`.
 - A provider with its own `streamSimple` can implement an API yapi does not have, or hand requests to pi-ai's built-in APIs, such as `anthropicMessagesApi()`. A stream registered with pi-ai's `registerApiProvider` serves every model of its API, including ones from `models.json`. Provider hooks such as `before_provider_request` run either way.
@@ -135,6 +135,7 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 - A provider with `refreshModels` updates its model list whenever yapi refreshes model catalogs.
 - A provider with the legacy `oauth.modifyModels` adjusts its models for the signed-in account whenever yapi refreshes model catalogs.
 - Image and classifier models run through the provider's `images` and `classifiers` implementations for their `api`. Codemode scripts and extensions use them with `generateImages` and `classify`.
-- A complete pi-ai `Provider`, such as one `createProvider` builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh.
+- A complete pi-ai `Provider`, such as one `createProvider` builds, brings its own models, API key and OAuth sign-in, streams, image and classifier implementations and model refresh. `/login` asks for its API key with the provider's own `login`, or says the key is set up outside yapi when it has none.
+- A pi-ai `Provider`'s API key `check`, `filterModels` and `filterAllModels` decide which of its models are available for the stored credential, or for the key `--api-key` gives. They run as the extension loads, whenever yapi refreshes model catalogs, after you sign in or out, and after an extension registers or unregisters a provider. See [Differences from Pi](compat.md#extensions).
 
 Pi's [custom provider documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md) describes the configuration.

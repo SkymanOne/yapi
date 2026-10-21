@@ -165,6 +165,59 @@ fn help_despite_extension_errors() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("--mood"));
 }
 
+/// As pi's `setRuntimeApiKey`, `--api-key` is the credential a pi-ai
+/// provider's `filterModels` gets, so print mode lists the models the key
+/// unlocks.
+#[test]
+fn runtime_key_filters() {
+    let home = common::scratch("runtime-key-filters");
+    std::fs::write(
+        home.join("ext.ts"),
+        r#"import { createProvider } from "@earendil-works/pi-ai";
+
+export default function (pi) {
+	const model = (id) => ({ id, name: id, api: "tiered-api", provider: "tiered", baseUrl: "http://127.0.0.1:9", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 });
+	const unused = () => {
+		throw new Error("unused");
+	};
+	pi.registerProvider(
+		createProvider({
+			id: "tiered",
+			auth: { apiKey: { name: "Tiered key", resolve: async ({ credential }) => (credential?.key ? { auth: { apiKey: credential.key } } : undefined) } },
+			models: [model("basic"), model("pro")],
+			api: { stream: unused, streamSimple: unused },
+			filterModels: (models, credential) => (credential?.key === "pro" ? models : models.filter((entry) => entry.id === "basic")),
+		}),
+	);
+	pi.registerCommand("available", {
+		description: "Lists the available tiered models",
+		handler: async (_args, ctx) => {
+			const ids = ctx.modelRegistry.getAvailable().filter((entry) => entry.provider === "tiered").map((entry) => entry.id);
+			console.error(`available: ${ids.join(",")}`);
+		},
+	});
+}
+"#,
+    )
+    .unwrap();
+    let output = common::yapi(&home)
+        .env("PI_OFFLINE", "1")
+        .args([
+            "-e",
+            "ext.ts",
+            "--model",
+            "tiered/basic",
+            "--api-key",
+            "pro",
+        ])
+        .args(["--no-session", "-p", "/available"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("available: basic,pro\n"), "{stderr}");
+}
+
 /// `--enable-logging` appends extension messages to `yapi.log` in the agent
 /// directory; without it, yapi writes no log.
 #[test]

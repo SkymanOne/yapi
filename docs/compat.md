@@ -25,6 +25,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Console output | stdout and stderr | stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and `/debug` writes its last 200 lines. |
 | Project trust | Extensions loaded before trust can answer `project_trust` | No extension loads before you trust the project. |
 | Codemode scripts | May compute without limit | Stop after 60 seconds of computing without awaiting a call. |
+| Model availability of extension providers | `getAvailableOfType` runs a pi-ai `Provider`'s API key `check`, `filterModels` and `filterAllModels` on each call | `getAvailableOfType` returns what they kept at the last refresh. They run in the extension's runtime instance as extensions load, on `/login`, `/logout` and `--api-key`, when the model selector opens, on `/reload`, on `ctx.modelRegistry.refresh` and after an extension registers or unregisters a provider. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them. |
 | Native extensions | None | WebAssembly components written in Rust. See [Native extensions](native-extensions.md). Unstable until 1.0. |
 
 ## Packages and installation
@@ -66,11 +67,3 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Line endings after `edit` | The whole file takes the line ending of its first line break | Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break. |
 | Session lines with an unpaired surrogate | Text cut inside an emoji is written as an unpaired UTF-16 escape, such as `\ud83d` | The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one. |
 | Failed session writes | Later entries can point to an entry that is missing from the file | yapi reports the first failed write and saves the missed entries with the next write, so the history stays whole. |
-
-## Open gaps
-
-Pi features yapi does not have yet, or has only in part. Each row links its issue.
-
-| Area | Pi | yapi today | Issue |
-|---|---|---|---|
-| Complete pi-ai providers | A `Provider` passed to `registerProvider` can limit its models per account with `filterModels`, and checks for an API key on every availability refresh. `/login` asks for its key with its own prompt. | `filterModels` and `filterAllModels` are ignored. The API key check runs once as the extension loads, and `/login` asks for the key with yapi's prompt. | [#54](https://github.com/SkymanOne/yapi/issues/54) |

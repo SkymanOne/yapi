@@ -29,4 +29,4 @@ yapi reads files, edits them and runs commands with the user's permissions, and 
 
 ## Project status
 
-[Differences from Pi](compat.md) lists every known difference, including Pi features not yet ported. The [Roadmap](roadmap.md) lists planned work, and [Performance](performance.md) compares startup time, memory and install size with Pi. Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues).
+[Differences from Pi](compat.md) lists every known difference. The [Roadmap](roadmap.md) lists planned work, and [Performance](performance.md) compares startup time, memory and install size with Pi. Report problems in the [issue tracker](https://github.com/SkymanOne/yapi/issues).

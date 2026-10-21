@@ -140,7 +140,11 @@ pub(crate) fn models_of_type(
     available: bool,
 ) -> Vec<Value> {
     let models: Vec<Value> = match (kind, available) {
-        ("chat", true) => registry.available().into_iter().map(to_value).collect(),
+        ("chat", true) => registry
+            .available_of_all_types()
+            .into_iter()
+            .map(to_value)
+            .collect(),
         ("chat", false) => registry.models().iter().map(to_value).collect(),
         ("classifier", true) => registry
             .available_classifiers()
