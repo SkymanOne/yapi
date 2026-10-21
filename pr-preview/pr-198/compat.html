@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a5e64e72.js";
+            window.path_to_searchindex_js = "searchindex-4392f2af.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -205,7 +205,7 @@
 <tr><td>Console output</td><td>stdout and stderr</td><td>stderr only in print, JSON and RPC modes, because stdout carries their output. Interactive mode keeps it off the screen, and <code>/debug</code> writes its last 200 lines.</td></tr>
 <tr><td>Project trust</td><td>Extensions loaded before trust can answer <code>project_trust</code></td><td>No extension loads before you trust the project.</td></tr>
 <tr><td>Codemode scripts</td><td>May compute without limit</td><td>Stop after 60 seconds of computing without awaiting a call.</td></tr>
-<tr><td>Model availability of extension providers</td><td><code>getAvailableOfType</code> runs a pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> on each call</td><td><code>getAvailableOfType</code> returns what they kept at the last refresh. They run in the extension’s runtime instance as extensions load, on <code>/login</code>, <code>/logout</code> and <code>--api-key</code>, when the model selector opens, on <code>/reload</code> and on <code>ctx.modelRegistry.refresh</code>. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them.</td></tr>
+<tr><td>Model availability of extension providers</td><td><code>getAvailableOfType</code> runs a pi-ai <code>Provider</code>’s API key <code>check</code>, <code>filterModels</code> and <code>filterAllModels</code> on each call</td><td><code>getAvailableOfType</code> returns what they kept at the last refresh. They run in the extension’s runtime instance as extensions load, on <code>/login</code>, <code>/logout</code> and <code>--api-key</code>, when the model selector opens, on <code>/reload</code>, on <code>ctx.modelRegistry.refresh</code> and after an extension registers or unregisters a provider. The host answers model queries from codemode and extensions without calling into a runtime instance, so a busy instance never blocks them.</td></tr>
 <tr><td>Native extensions</td><td>None</td><td>WebAssembly components written in Rust. See <a href="native-extensions.html">Native extensions</a>. Unstable until 1.0.</td></tr>
 </tbody>
 </table>
