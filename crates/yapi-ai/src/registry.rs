@@ -1081,6 +1081,11 @@ impl ModelRegistry {
         self.rebuild();
     }
 
+    /// Whether an extension registered `provider` and has not unregistered it.
+    pub fn is_extension_provider(&self, provider: &str) -> bool {
+        self.extension_providers.contains(provider)
+    }
+
     /// Removes the provider an extension registered as `provider`, with its
     /// sign-ins, availability and implementations, and restores the
     /// built-in or `models.json` provider it replaced; pi's

@@ -214,6 +214,30 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.registerCommand("rebase", { handler: async () => pi.registerProvider("late", { baseUrl: "http://127.0.0.1:8", apiKey: undefined }) });
 	pi.registerCommand("proxy", { handler: async () => pi.registerProvider("anthropic", { baseUrl: "http://proxy.example" }) });
+	// A pi-ai provider in a built-in's place, whose slow key check keeps none of its models.
+	pi.registerCommand("shadow", {
+		handler: async () =>
+			pi.registerProvider(
+				createProvider({
+					id: "anthropic",
+					name: "Shadow",
+					auth: {
+						apiKey: {
+							name: "Shadow key",
+							async check() {
+								pi.appendEntry("checking", {});
+								await new Promise((resolve) => setTimeout(resolve, 300));
+								return { type: "api_key", source: "shadow" };
+							},
+							resolve: async () => ({ auth: { apiKey: "k" } }),
+						},
+					},
+					models: [{ ...model("shadow-1", "Shadow"), api: "shadow-api", provider: "anthropic", baseUrl: "http://127.0.0.1:9" }],
+					api: { stream: streamSimple, streamSimple },
+					filterModels: () => [],
+				}),
+			),
+	});
 	pi.registerCommand("drop", { handler: async (name) => pi.unregisterProvider(name) });
 }
 "#;
@@ -992,7 +1016,8 @@ async fn registers_before_bind() {
 async fn unregister_restores_builtin() {
     let dir = scratch("provider-restore");
     let host = load(&dir).await;
-    let config = session_config(&host, &dir);
+    let mut config = session_config(&host, &dir);
+    config.registry.set_runtime_key("anthropic", "key".into());
     let builtin = config
         .registry
         .models()
@@ -1020,6 +1045,23 @@ async fn unregister_restores_builtin() {
         session.registry().find("anthropic", &builtin.id),
         Some(&builtin)
     );
+
+    // What a refresh found for a provider unregistered meanwhile is dropped,
+    // so the built-in keeps none of its filters.
+    session.prompt("/shadow", Vec::new()).await.unwrap();
+    eventually("the check", || {
+        !custom_entries(&session, "checking").is_empty()
+    })
+    .await;
+    session.prompt("/drop anthropic", Vec::new()).await.unwrap();
+    // Queued behind the refreshes that registering and unregistering started.
+    session
+        .refresh_model_catalogs(RefreshOptions {
+            allow_network: false,
+            ..RefreshOptions::default()
+        })
+        .await;
+    assert!(available(&session, "anthropic").contains(&builtin.id));
 }
 
 const AUTH_EXTENSION: &str = r#"

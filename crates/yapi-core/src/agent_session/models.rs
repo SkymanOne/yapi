@@ -307,6 +307,11 @@ impl AgentSession {
         let mut next = (**slot).clone();
         next.apply_catalogs(refreshed.models);
         for (provider, list) in lists {
+            // A provider unregistered during the refresh keeps none of it,
+            // nor does the provider it had replaced.
+            if !next.is_extension_provider(&provider) {
+                continue;
+            }
             let applied = list.and_then(|update| match update {
                 ModelUpdate::Definitions(models) => next.replace_models(&provider, models),
                 ModelUpdate::Modified(models) => {
