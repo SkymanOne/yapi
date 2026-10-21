@@ -4,6 +4,8 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Additions
 
 - Add `--enable-logging`, which appends a log of extension output, runtime restarts, crashes and library warnings to `~/.yapi/agent/yapi.log` ([#195](https://github.com/SkymanOne/yapi/pull/195)).
@@ -14,7 +16,8 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
-- Various bug fixes ([#198](https://github.com/SkymanOne/yapi/pull/198)).
+- Various bug fixes ([#198](https://github.com/SkymanOne/yapi/pull/198), [#251](https://github.com/SkymanOne/yapi/pull/251), [#252](https://github.com/SkymanOne/yapi/pull/252), [#253](https://github.com/SkymanOne/yapi/pull/253), [#254](https://github.com/SkymanOne/yapi/pull/254), [#255](https://github.com/SkymanOne/yapi/pull/255)).
+- Change `yapi-types`' `OAuthCredential.expires` to `f64`, so expiry times with a fraction read as in Pi. Code that builds a credential passes a float ([#252](https://github.com/SkymanOne/yapi/pull/252)).
 - Fix Mistral responses that contain non-ASCII text ending with "Provider stream ended without a result" ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix high CPU use while a model streams large tool-call arguments ([#195](https://github.com/SkymanOne/yapi/pull/195)).
 - Fix package installs writing outside `node_modules` when a dependency is named by a path or a git package links its `node_modules` elsewhere. Git sources whose host or ref starts with `-` are refused, as git would read them as options ([#195](https://github.com/SkymanOne/yapi/pull/195)).
@@ -37,6 +40,18 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 - Fix `newSession`'s `setup` running after the new session started, with a session manager it could not write to. As in Pi, the entries it appends are in place for `session_start` and the first prompt ([#190](https://github.com/SkymanOne/yapi/pull/190)).
 - Update rustls-webpki to 0.103.16 and webpki-root-certs to 1.0.10 for RUSTSEC-2026-0382 and RUSTSEC-2026-0383: TLS connections could trust certificates issued through distrusted emSign intermediates ([#193](https://github.com/SkymanOne/yapi/pull/193)).
 - Update wasmtime to 49.0.4 for RUSTSEC-2026-0378 and RUSTSEC-2026-0379: a host panic on mismatched component streams, and wrong jumps in aarch64 code for large `br_table` instructions ([#186](https://github.com/SkymanOne/yapi/pull/186)).
+
+### Known issues
+
+- Sign in with ChatGPT can fail with `invalid_grant` after the browser step, as it does in Pi ([#181](https://github.com/SkymanOne/yapi/issues/181)). The OpenAI Codex login works.
+
+### Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+```
+
+[Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
 
 ## [0.2.0] - 2026-10-14
 
@@ -105,6 +120,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 
 [Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
 
-[Unreleased]: https://github.com/SkymanOne/yapi/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SkymanOne/yapi/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.1.0

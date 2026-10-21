@@ -64,7 +64,7 @@ Pi extensions in TypeScript or JavaScript run unchanged in a bundled QuickJS-NG 
 
 yapi's built-in tools run with the permissions of the user who starts it, and yapi does not ask before each tool call. For untrusted repositories or unattended work, run yapi in a container or virtual machine.
 
-Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network and environment access against grants. In v0.1 every package receives Pi's default grants, so an extension can do what it could do in Pi. Codemode scripts run with no file, process or network access. [Security model and sandboxing](https://skymanone.github.io/yapi/security.html) has the details.
+Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network and environment access against grants. For now, every package receives Pi's default grants, so an extension can do what it could do in Pi. Codemode scripts run with no file, process or network access. [Security model and sandboxing](https://skymanone.github.io/yapi/security.html) has the details.
 
 ## Roadmap
 
@@ -80,7 +80,7 @@ The [Roadmap](https://skymanone.github.io/yapi/roadmap.html) has the details.
 The repository ships two [Agent Skills](https://agentskills.io): `yapi`, for running and scripting yapi, and `yapi-extension`, for writing extensions. Install them with:
 
 ```sh
-yapi install git:github.com/SkymanOne/yapi@v0.2.0
+yapi install git:github.com/SkymanOne/yapi@v0.3.0
 ```
 
 ## Contributing

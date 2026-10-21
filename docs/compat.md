@@ -51,6 +51,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Area | Pi | yapi |
 |---|---|---|
 | `/share` | Shares a session through Pi's services | Not available. |
+| Name given to other programs | Requests carry `User-Agent: pi (<platform> <release>; <arch>)`, and commands run with `AI_AGENT=pi` | Requests carry `User-Agent: yapi/<version> (<os>; <arch>)`, and commands run with `AI_AGENT=yapi`, so servers and tools can tell yapi from Pi. |
 | `/bug` | Uploads a private report to Pi's service at radius.pi.dev, or exports it as a zip file | Always writes the zip file to the working folder, then offers to post a public issue on [SkymanOne/yapi](https://github.com/SkymanOne/yapi/issues) with the GitHub CLI. The report has no crash log. Its diagnostics come from the current branch, and its `session.jsonl` holds the branch without Pi's system prompt and tool list. The session records the report as a `yapi.bug-report` entry. |
 | Clipboard paste | Copied files, images and text on every platform | Nothing on Windows, and images copied in Windows do not reach WSL. |
 | Word motions in Chinese, Japanese and Thai | By dictionary word | By character, to keep ICU's dictionaries out of the binary. |
@@ -66,6 +67,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 
 | Area | Pi | yapi |
 |---|---|---|
+| Sorting names | ICU's `localeCompare` sorts every script | Latin letters, accents and marks sort as ICU's root collation does. Letters of other scripts sort by code point, to keep ICU's data out of the binary. |
 | `edit` on a file that is not UTF-8 | Reads it as UTF-8 and writes every invalid byte back as U+FFFD | Refuses the edit with "File is not valid UTF-8.", so bytes outside the edit never change. |
 | Line endings after `edit` | The whole file takes the line ending of its first line break | Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break. |
 | Session lines with an unpaired surrogate | Text cut inside an emoji is written as an unpaired UTF-16 escape, such as `\ud83d` | The line loads with U+FFFD in place of the unpaired half, as Rust strings cannot hold one. |

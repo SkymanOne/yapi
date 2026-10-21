@@ -4,7 +4,7 @@ yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned
 
 ## Capability-based sandboxing
 
-In v0.1, every package receives Pi's default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:
+For now, every package receives Pi's default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:
 
 - A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
 - File grants can be limited to paths and to read-only access, and network grants to hosts.
