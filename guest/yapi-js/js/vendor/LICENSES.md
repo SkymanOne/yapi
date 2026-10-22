@@ -6,10 +6,12 @@ each package is included once.
 
 | Package | Version | License | Copyright |
 |---|---|---|---|
+| `@earendil-works/pi-ai` (the parts `xtask/vendor-pi/pi-ai/entry.mjs` names, with yapi's replacements for the modules that call provider SDKs) | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 | `@earendil-works/pi-tui` | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 | `typebox` | 1.3.27 | MIT | Copyright (c) 2017-2026 Haydn Paterson |
 | `marked` (bundled by pi-tui) | 18.0.11 | MIT | Copyright (c) 2018+, MarkedJS; Copyright (c) 2011-2018, Christopher Jeffrey |
 | `get-east-asian-width` (bundled by pi-tui) | 1.6.0 | MIT | Copyright (c) Sindre Sorhus |
+| `partial-json` (bundled by pi-ai) | 0.1.7 | MIT | Copyright (c) 2023 Promplate Dev Team |
 | `@earendil-works/pi-codemode` (`codemode-prelude.js`, the sandbox prelude, unchanged) | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 
 The facades in `../pi` port small parts of pi-ai and pi-coding-agent 1.0.0

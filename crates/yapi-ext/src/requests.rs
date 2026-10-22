@@ -50,11 +50,13 @@ impl Drop for Host {
 /// events are out of the map while an `ai.next` call reads them.
 type AiStream = (Option<EventStream>, CancellationToken);
 
-/// Streams of yapi's wire APIs that extensions read through pi-ai, by id.
+/// Streams of yapi's wire APIs that extensions read through pi-ai, by id,
+/// and the cancellations of image requests, by the guest's id.
 #[derive(Clone, Default)]
 pub(crate) struct AiStreams {
     running: Arc<Mutex<HashMap<u64, AiStream>>>,
     next_id: Arc<AtomicU64>,
+    images: Arc<Mutex<HashMap<u64, CancellationToken>>>,
 }
 
 impl AiStreams {
@@ -141,9 +143,45 @@ impl AiStreams {
         }
     }
 
-    /// Cancels every stream and forgets them.
+    /// Generates images for `{ id, model, context, options }` as pi-ai's
+    /// `generateImages` of `api/openrouter-images` does; `id` cancels it.
+    async fn generate_images(self, payload: Value) -> Result<Value, String> {
+        let model = serde_json::from_value(payload["model"].clone())
+            .map_err(|err| format!("Invalid model: {err}"))?;
+        let context = serde_json::from_value(payload["context"].clone())
+            .map_err(|err| format!("Invalid context: {err}"))?;
+        let id = payload["id"].as_u64().unwrap_or_default();
+        let cancel = CancellationToken::new();
+        lock(&self.images).insert(id, cancel.clone());
+        fn parse<T: serde::de::DeserializeOwned>(payload: &Value, key: &str) -> Option<T> {
+            serde_json::from_value(payload["options"][key].clone()).ok()
+        }
+        let options = yapi_ai::api::images::ImagesOptions {
+            api_key: parse(&payload, "apiKey"),
+            headers: parse(&payload, "headers").unwrap_or_default(),
+            max_retries: parse(&payload, "maxRetries"),
+            max_retry_delay_ms: parse(&payload, "maxRetryDelayMs"),
+            timeout_ms: parse(&payload, "timeoutMs"),
+            cancel,
+        };
+        let result = yapi_ai::api::images::generate_images(&model, &context, &options).await;
+        lock(&self.images).remove(&id);
+        serde_json::to_value(result).map_err(|err| err.to_string())
+    }
+
+    /// Cancels the image request the guest numbered `id`.
+    fn abort_images(&self, id: u64) {
+        if let Some(cancel) = lock(&self.images).get(&id) {
+            cancel.cancel();
+        }
+    }
+
+    /// Cancels every stream and image request and forgets them.
     pub(crate) fn clear(&self) {
         for (_, (_, cancel)) in lock(&self.running).drain() {
+            cancel.cancel();
+        }
+        for (_, cancel) in lock(&self.images).drain() {
             cancel.cancel();
         }
     }
@@ -221,19 +259,20 @@ impl Host {
             "tmpdir" => Ok(Value::String(
                 self.options.temp_dir.to_string_lossy().into_owned(),
             )),
-            // pi-ai's built-in catalog, which needs no session.
-            "models.providers" => Ok(json!(
-                yapi_ai::catalog::builtin_providers().collect::<Vec<_>>()
-            )),
-            "models.list" => Ok(serde_json::to_value(yapi_ai::catalog::builtin_models(text(
-                payload, "provider",
-            )))
-            .unwrap_or_default()),
-            "models.builtin" => Ok(yapi_ai::catalog::builtin_models(text(payload, "provider"))
-                .into_iter()
-                .find(|model| model.id == text(payload, "id"))
-                .and_then(|model| serde_json::to_value(model).ok())
-                .unwrap_or_default()),
+            // pi-ai's built-in catalog of `{ provider, type }`, which needs no session.
+            "models.list" => {
+                let provider = text(payload, "provider");
+                match text(payload, "type") {
+                    "image" => {
+                        serde_json::to_value(yapi_ai::catalog::builtin_image_models(provider))
+                    }
+                    "classifier" => {
+                        serde_json::to_value(yapi_ai::catalog::builtin_classifiers(provider))
+                    }
+                    _ => serde_json::to_value(yapi_ai::catalog::builtin_models(provider)),
+                }
+                .map_err(|err| err.to_string())
+            }
             "models.envApiKey" if self.reads_process_env() => Ok(
                 yapi_ai::credentials::env_api_key(text(payload, "provider"), None)
                     .map_or(Value::Null, |(_, key)| Value::String(key)),
@@ -357,6 +396,11 @@ impl Host {
                     .abort(payload["id"].as_u64().unwrap_or_default());
                 Ok(Value::Null)
             }
+            "ai.imagesAbort" => {
+                self.ai_streams
+                    .abort_images(payload["id"].as_u64().unwrap_or_default());
+                Ok(Value::Null)
+            }
             "language.fromPath" => Ok(json!(yapi_core::language::from_path(text(payload, "path")))),
             "frontmatter.parse" => {
                 let (frontmatter, body) =
@@ -399,6 +443,10 @@ impl Host {
                 Box::pin(async move { streams.start(&payload, env_keys, hooks) })
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
+            "ai.images" if self.options.grants.network => {
+                Box::pin(self.ai_streams.clone().generate_images(payload))
+            }
+            "ai.images" => Box::pin(async { Err(denied("Network access")) }),
             // The session's requests, which `ai.next` reads as it reads `ai.stream`'s.
             "models.stream" if self.options.grants.network => {
                 let streams = self.ai_streams.clone();

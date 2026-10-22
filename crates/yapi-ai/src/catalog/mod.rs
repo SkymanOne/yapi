@@ -15,8 +15,21 @@ pub fn builtin_providers() -> impl Iterator<Item = &'static str> {
 /// The built-in chat models of a provider, in catalog order; empty for an unknown
 /// provider. Each call parses that provider's data.
 pub fn builtin_models(provider: &str) -> Vec<Model> {
-    data::PROVIDERS
-        .iter()
+    of_provider(data::PROVIDERS, provider)
+}
+
+/// The built-in image-generation models of a provider, as [`builtin_models`].
+pub fn builtin_image_models(provider: &str) -> Vec<ImageModel> {
+    of_provider(data::IMAGES, provider)
+}
+
+/// The built-in classifier models of a provider, as [`builtin_models`].
+pub fn builtin_classifiers(provider: &str) -> Vec<ClassifierModel> {
+    of_provider(data::CLASSIFIERS, provider)
+}
+
+fn of_provider<T: DeserializeOwned>(data: &[(&str, &str)], provider: &str) -> Vec<T> {
+    data.iter()
         .find(|(id, _)| *id == provider)
         .map(|(_, json)| parse(json))
         .unwrap_or_default()

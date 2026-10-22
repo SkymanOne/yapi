@@ -1,4 +1,4 @@
-import "./chunk-7P6ASYW6.mjs";
+import "./chunk-XGB3TDIC.mjs";
 
 // tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/marked/lib/marked.esm.js
 function A() {

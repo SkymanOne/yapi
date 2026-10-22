@@ -244,12 +244,7 @@ import { DEFAULT_THINKING_BUDGETS } from "@earendil-works/pi-ai/api/simple-optio
 import { anthropicProvider } from "@mariozechner/pi-ai/providers/anthropic";
 export default function (pi) {
 	const ids = getBuiltinModels("anthropic").map((model) => model.id);
-	let stub;
-	try {
-		anthropicProvider();
-	} catch (error) {
-		stub = error.message;
-	}
+	const provider = anthropicProvider();
 	pi.registerCommand("probe", {
 		description: [
 			getBuiltinProviders().includes("anthropic"),
@@ -258,7 +253,7 @@ export default function (pi) {
 			Object.keys(ANTHROPIC_IMAGE_MODELS).length,
 			getProviderEnvValue("YAPI_TEST_VALUE", { YAPI_TEST_VALUE: "set" }),
 			DEFAULT_THINKING_BUDGETS.high,
-			stub,
+			provider.getModels().length === ids.length,
 		].join(","),
 		handler: async () => {},
 	});
@@ -268,8 +263,30 @@ export default function (pi) {
     assert_eq!(extension.get("error"), None, "{extension}");
     assert_eq!(
         extension["commands"][0]["description"],
-        "true,true,true,0,set,16384,anthropicProvider from @earendil-works/pi-ai is not available in yapi extensions"
+        "true,true,true,0,set,16384,true"
     );
+}
+
+/// pi-ai's exports, from each group of its modules, give what they give in
+/// pi: `tests/fixtures/pi/pi-ai/exports.json`, recorded from pi.
+#[tokio::test(flavor = "multi_thread")]
+async fn pi_ai_matches_pi() {
+    let dir = scratch("ai-exports");
+    let probe = include_str!("../../../tests/fixtures/pi/pi-ai/probe.js");
+    let (_instance, extension) = load(&dir, &[("main.ts", probe)]).await;
+    assert_eq!(extension.get("error"), None, "{extension}");
+    let description = extension["commands"][0]["description"].as_str().unwrap();
+    let actual: serde_json::Map<String, Value> = serde_json::from_str(description).unwrap();
+    let expected: serde_json::Map<String, Value> = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/pi/pi-ai/exports.json"
+    ))
+    .unwrap();
+    let differ: Vec<String> = expected
+        .iter()
+        .filter(|(group, want)| actual.get(*group) != Some(want))
+        .map(|(group, want)| format!("{group}:\n  pi:   {want}\n  yapi: {}", actual[group]))
+        .collect();
+    assert!(differ.is_empty(), "{}", differ.join("\n"));
 }
 
 /// File descriptors, file streams and `fs.promises.open`, which loggers use.

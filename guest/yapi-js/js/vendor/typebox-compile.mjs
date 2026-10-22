@@ -10,12 +10,12 @@ import {
   HasCodec,
   ParseError,
   Parser
-} from "./chunk-EZWZPNHA.mjs";
+} from "./chunk-M3ON6SZR.mjs";
 import {
   arguments_exports,
   settings_exports
-} from "./chunk-36PQP7AB.mjs";
-import "./chunk-7P6ASYW6.mjs";
+} from "./chunk-HSYWYWI2.mjs";
+import "./chunk-XGB3TDIC.mjs";
 
 // tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/code.mjs
 function TsIgnore() {
