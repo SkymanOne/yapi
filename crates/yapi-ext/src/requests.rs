@@ -363,6 +363,31 @@ impl Host {
                     yapi_core::resources::parse_frontmatter(text(payload, "content"))?;
                 Ok(json!({ "frontmatter": frontmatter, "body": body }))
             }
+            // pi's image processing, on base64 data, for its modules in the guest.
+            "image.resize" => {
+                let bytes = STANDARD.decode(text(payload, "data")).unwrap_or_default();
+                let limits = serde_json::from_value(payload["options"].clone()).ok();
+                Ok(yapi_core::images::resize_image(
+                    &bytes,
+                    text(payload, "mimeType"),
+                    limits.as_ref(),
+                )
+                .and_then(|resized| serde_json::to_value(resized).ok())
+                .unwrap_or_default())
+            }
+            "image.png" => Ok(STANDARD
+                .decode(text(payload, "data"))
+                .ok()
+                .and_then(|bytes| yapi_core::images::convert_to_png(&bytes))
+                .map_or(Value::Null, |png| Value::String(STANDARD.encode(png)))),
+            "context.files" if !self.options.grants.filesystem => {
+                Err(denied("Reading context files"))
+            }
+            "context.files" => Ok(serde_json::to_value(yapi_core::resources::context_files(
+                std::path::Path::new(text(payload, "cwd")),
+                std::path::Path::new(text(payload, "agentDir")),
+            ))
+            .unwrap_or_default()),
             _ => self.bridge.request(kind, payload),
         }
     }

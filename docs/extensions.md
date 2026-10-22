@@ -114,6 +114,7 @@ pi.yapi?.registerCodeRenderer((code, lang, { width }, theme) => {
 Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.
 
 - `@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui` and `typebox` resolve to copies bundled with yapi.
+- `pi-agent-core`, `pi-tui` and the parts of `pi-coding-agent` that run inside an extension, such as `SessionManager`, `SettingsManager`, compaction, skills and the interface components, are Pi's own code, loaded the first time an extension uses them. They read and write yapi's directories. Built-in tool factories return yapi's tools, which yapi runs, or Pi's own over custom `operations`, as Pi's `ssh` example uses them.
 - yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.
 - Shims provide Node's `fs`, `path`, `os`, `child_process`, `events`, `stream`, `util`, `crypto` hashes, `buffer`, timers, `fetch`, `dns.lookup` and `Intl`. Native addons, `net` and `tls` servers and `worker_threads` fail when used, and the rest of the extension keeps working.
 - Dates use the local time zone, from `TZ` or the system, as in Node.

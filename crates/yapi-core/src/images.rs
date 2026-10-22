@@ -133,26 +133,79 @@ pub fn normalize_tool_result(
     changed.then_some(normalized)
 }
 
-/// pi's `resizeImage` with its `formatDimensionNote`: the image unchanged
-/// when it is within `limits`; otherwise scaled to fit, as the first of PNG
-/// and JPEG at falling qualities that fits the byte limit, shrinking by a
-/// quarter until one does.
+/// pi's `resizeImage` with its `formatDimensionNote`.
 fn resize(
     bytes: &[u8],
     mime_type: &str,
     limits: Option<&ImageResize>,
 ) -> Option<(ImageContent, Option<String>)> {
+    let resized = resize_image(bytes, mime_type, limits)?;
+    let note = resized.was_resized.then(|| {
+        format!(
+            "[Image: original {}x{}, displayed at {}x{}. Multiply coordinates by {} to map to original image.]",
+            resized.original_width,
+            resized.original_height,
+            resized.width,
+            resized.height,
+            yapi_types::js::to_fixed(
+                f64::from(resized.original_width) / f64::from(resized.width),
+                2
+            )
+        )
+    });
+    Some((resized.image, note))
+}
+
+/// pi's `ResizedImage`: an image fitted to the limits, with its dimensions
+/// before and after.
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Resized {
+    /// The image to send.
+    #[serde(flatten)]
+    pub image: ImageContent,
+    /// Width as decoded, turned upright.
+    pub original_width: u32,
+    /// Height as decoded, turned upright.
+    pub original_height: u32,
+    /// Width as sent.
+    pub width: u32,
+    /// Height as sent.
+    pub height: u32,
+    /// Whether the image was scaled and encoded again.
+    pub was_resized: bool,
+}
+
+/// pi's `resizeImage`: the image unchanged when it is within `limits`, pi's
+/// defaults where unset (2000×2000 and 4.5 MB of base64); otherwise scaled
+/// to fit, as the first of PNG and JPEG at falling qualities that fits the
+/// byte limit, shrinking by a quarter until one does. `None` when the image
+/// does not decode or no encoding fits.
+pub fn resize_image(
+    bytes: &[u8],
+    mime_type: &str,
+    limits: Option<&ImageResize>,
+) -> Option<Resized> {
     let limits = limits.cloned().unwrap_or_default();
     let max_width = limits.max_width.unwrap_or(2000);
     let max_height = limits.max_height.unwrap_or(2000);
     let max_bytes = limits.max_bytes.unwrap_or(DEFAULT_MAX_BYTES);
     let image = decode(bytes)?;
     let (original_width, original_height) = (image.width(), image.height());
+    let result = |image, width, height, was_resized| Resized {
+        image,
+        original_width,
+        original_height,
+        width,
+        height,
+        was_resized,
+    };
     if original_width <= max_width
         && original_height <= max_height
         && base64_len(bytes.len()) < max_bytes
     {
-        return Some((inline(bytes, mime_type), None));
+        let image = inline(bytes, mime_type);
+        return Some(result(image, original_width, original_height, false));
     }
     let scale = |value: u32, max: u32, other: u32| {
         yapi_types::js::round(f64::from(value) * f64::from(max) / f64::from(other)) as u32
@@ -192,11 +245,7 @@ fn resize(
                     ImageOutputFormat::Png => "image/png",
                     _ => "image/jpeg",
                 };
-                let note = format!(
-                    "[Image: original {original_width}x{original_height}, displayed at {width}x{height}. Multiply coordinates by {} to map to original image.]",
-                    yapi_types::js::to_fixed(f64::from(original_width) / f64::from(width), 2)
-                );
-                return Some((inline(&encoded, mime_type), Some(note)));
+                return Some(result(inline(&encoded, mime_type), width, height, true));
             }
         }
         let shrink = |value: u32| ((f64::from(value) * 0.75).floor() as u32).max(1);
@@ -235,6 +284,12 @@ fn decode(bytes: &[u8]) -> Option<DynamicImage> {
         8 => imageops::rotate270(&image),
         _ => image,
     }))
+}
+
+/// pi's `convertImageBytesToPng`: `bytes` decoded, turned upright by
+/// their EXIF orientation and encoded as PNG. `None` when they do not decode.
+pub fn convert_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    encode(&decode(bytes)?, ImageOutputFormat::Png)
 }
 
 /// The clipboard's `convertToPng`: `bytes` decoded to RGBA and encoded as

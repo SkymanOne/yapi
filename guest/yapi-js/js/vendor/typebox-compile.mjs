@@ -1,3 +1,4 @@
+const require = globalThis.__yapi_require_for('yapi:vendor');
 import {
   Build,
   Clean,
@@ -10,14 +11,14 @@ import {
   HasCodec,
   ParseError,
   Parser
-} from "./chunk-EZWZPNHA.mjs";
+} from "./chunk-2CX53BWJ.mjs";
 import {
   arguments_exports,
   settings_exports
-} from "./chunk-36PQP7AB.mjs";
-import "./chunk-7P6ASYW6.mjs";
+} from "./chunk-A5T7ZXDE.mjs";
+import "./chunk-G7YUWZG4.mjs";
 
-// tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/code.mjs
+// ../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/code.mjs
 function TsIgnore() {
   return `// @ts-ignore`;
 }
@@ -63,7 +64,7 @@ function Code(...args) {
   return { External: build.External(), Code: code };
 }
 
-// tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/validator.mjs
+// ../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/validator.mjs
 var Validator = class {
   /** Constructs a Validator. */
   constructor(context, type) {
@@ -149,7 +150,7 @@ var Validator = class {
   }
 };
 
-// tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/compile.mjs
+// ../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/compile/compile.mjs
 function Compile(...args) {
   const [context, type] = arguments_exports.Match(args, {
     2: (context2, type2) => [context2, type2],
