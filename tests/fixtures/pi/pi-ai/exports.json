@@ -1,0 +1,591 @@
+{
+	"sessionResources": [
+		"s1"
+	],
+	"faux": [
+		[
+			{
+				"type": "thinking",
+				"thinking": "hmm"
+			},
+			{
+				"type": "text",
+				"text": "hello there"
+			},
+			{
+				"type": "toolCall",
+				"id": "t1",
+				"name": "read",
+				"arguments": {
+					"path": "a"
+				}
+			}
+		],
+		"pending",
+		"start thinking_start thinking_end text_start text_end toolcall_start toolcall_checkpoint toolcall_end",
+		[
+			{
+				"type": "text",
+				"text": "from models"
+			}
+		]
+	],
+	"stores": [
+		{
+			"type": "api_key",
+			"key": "k"
+		},
+		{
+			"models": [],
+			"checkedAt": 3
+		}
+	],
+	"overflow": [
+		true,
+		true,
+		true,
+		25
+	],
+	"retry": [
+		true,
+		false,
+		8000,
+		5000,
+		[
+			{
+				"type": "text",
+				"text": "again"
+			}
+		]
+	],
+	"diagnostics": [
+		{
+			"type": "d",
+			"error": {
+				"name": "ThrownValue",
+				"message": "bad"
+			},
+			"details": {
+				"at": 1
+			}
+		},
+		[
+			{
+				"type": "e",
+				"error": {
+					"name": "ThrownValue",
+					"message": "plain"
+				}
+			}
+		],
+		{
+			"name": "ThrownValue",
+			"message": "42"
+		}
+	],
+	"transcript": [
+		{
+			"name": "read",
+			"description": "Reads a file",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"path": {
+						"type": "string",
+						"format": "uri"
+					}
+				},
+				"required": [
+					"path"
+				]
+			}
+		},
+		true,
+		{
+			"toolsAdded": [
+				{
+					"name": "read",
+					"description": "Reads",
+					"parameters": {
+						"type": "object",
+						"properties": {
+							"path": {
+								"type": "string",
+								"format": "uri"
+							}
+						},
+						"required": [
+							"path"
+						]
+					}
+				}
+			],
+			"toolsRemoved": [
+				{
+					"name": "read"
+				}
+			]
+		},
+		1,
+		true,
+		true,
+		null,
+		"Be brief\n\nUpdated system prompt section \"a\":\n\nOne"
+	],
+	"models": [
+		true,
+		1790881031882,
+		"faux",
+		[
+			"faux-1"
+		]
+	],
+	"catalog": [
+		57,
+		[
+			"openrouter"
+		],
+		"Black Forest Labs: FLUX.2 Flex",
+		57,
+		57,
+		[
+			"jev-latest"
+		],
+		"function",
+		{
+			"type": "image",
+			"id": "black-forest-labs/flux.2-flex",
+			"name": "Black Forest Labs: FLUX.2 Flex",
+			"api": "openrouter-images",
+			"provider": "openrouter",
+			"baseUrl": "https://openrouter.ai/api/v1",
+			"input": [
+				"text",
+				"image"
+			],
+			"output": [
+				"image"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"inputLimits": {
+				"images": {
+					"resize": {
+						"maxWidth": 2000,
+						"maxHeight": 2000,
+						"maxBytes": 4718592,
+						"jpegQuality": 80
+					}
+				}
+			}
+		},
+		{
+			"id": "claude-sonnet-4-5",
+			"name": "Claude Sonnet 4.5 (latest)",
+			"api": "anthropic-messages",
+			"provider": "anthropic",
+			"baseUrl": "https://api.anthropic.com",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 3,
+				"output": 15,
+				"cacheRead": 0.3,
+				"cacheWrite": 3.75
+			},
+			"contextWindow": 1000000,
+			"maxTokens": 64000,
+			"compat": {
+				"supportsStrictTools": true
+			},
+			"promptCache": {
+				"short": 300,
+				"long": 3600
+			},
+			"inputLimits": {
+				"maxRequestBytes": 33554432,
+				"images": {
+					"maxPerRequest": 600,
+					"resize": {
+						"maxWidth": 2000,
+						"maxHeight": 2000,
+						"maxBytes": 4718592,
+						"jpegQuality": 80
+					}
+				}
+			},
+			"type": "chat"
+		}
+	],
+	"images": [
+		{
+			"api": "openrouter-images",
+			"provider": "openrouter",
+			"model": "black-forest-labs/flux.2-flex",
+			"output": [],
+			"stopReason": "error",
+			"errorMessage": "No API key for provider: openrouter"
+		},
+		{
+			"api": "openrouter-images",
+			"provider": "openrouter",
+			"model": "black-forest-labs/flux.2-flex",
+			"output": [],
+			"stopReason": "error",
+			"errorMessage": "No API key for provider: openrouter"
+		}
+	],
+	"cloudflare": [
+		"https://x/acc/{CLOUDFLARE_GATEWAY_ID}"
+	],
+	"radius": [
+		"https://radius.pi.dev",
+		[
+			[
+				"a",
+				"radius"
+			]
+		]
+	],
+	"constrained": [
+		{
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string",
+					"format": "uri"
+				}
+			},
+			"required": [
+				"path"
+			],
+			"additionalProperties": false
+		},
+		{
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string",
+					"format": "uri"
+				}
+			},
+			"required": [
+				"path"
+			],
+			"additionalProperties": false
+		},
+		null,
+		null,
+		"x",
+		"{\"input\":\"ab\"}",
+		{}
+	],
+	"copilot": [
+		"user",
+		true,
+		{
+			"X-Initiator": "user",
+			"Openai-Intent": "conversation-edits",
+			"Copilot-Vision-Request": "true"
+		}
+	],
+	"google": [
+		[
+			{
+				"functionDeclarations": [
+					{
+						"name": "read",
+						"description": "Reads a file",
+						"parametersJsonSchema": {
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string",
+									"format": "uri"
+								}
+							},
+							"required": [
+								"path"
+							]
+						}
+					}
+				]
+			}
+		],
+		"length",
+		"error",
+		"AUTO",
+		true,
+		true,
+		"MINIMAL",
+		[
+			{
+				"role": "user",
+				"parts": [
+					{
+						"text": "Describe this picture"
+					},
+					{
+						"inlineData": {
+							"mimeType": "image/png",
+							"data": "aGk="
+						}
+					}
+				]
+			}
+		]
+	],
+	"completions": [
+		{
+			"role": "user",
+			"content": [
+				{
+					"type": "text",
+					"text": "Describe this picture"
+				},
+				{
+					"type": "image_url",
+					"image_url": {
+						"url": "data:image/png;base64,aGk="
+					}
+				}
+			]
+		}
+	],
+	"responses": [
+		[
+			{
+				"role": "user",
+				"content": [
+					{
+						"type": "input_text",
+						"text": "Describe this picture"
+					},
+					{
+						"type": "input_image",
+						"detail": "auto",
+						"image_url": "data:image/png;base64,aGk="
+					}
+				]
+			}
+		],
+		[
+			{
+				"type": "function",
+				"name": "read",
+				"description": "Reads a file",
+				"parameters": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"format": "uri"
+						}
+					},
+					"required": [
+						"path"
+					]
+				},
+				"strict": false
+			}
+		],
+		"processed"
+	],
+	"llama": [
+		"http://localhost:8080",
+		[
+			0.9002495108803148,
+			0.09975048911968518
+		],
+		0.8,
+		{
+			"content": "State:\n{\n \"sky\": \"grey\"\n}\n\nTask: answer the following question about the state.\n\nQuestion: Weather?\n\nOptions:\n- sun: clear\n- rain\n\nState:\n{\n \"sky\": \"grey\"\n}\n\nQuestion: Weather?\n\nOptions:\nA. sun: clear\nB. rain\n\nAnswer with one letter.",
+			"labels": [
+				"A",
+				"B"
+			],
+			"keys": [
+				"sun",
+				"rain"
+			]
+		},
+		{
+			"type": "choice",
+			"choice": "rain",
+			"probabilities": {
+				"sun": 0.3,
+				"rain": 0.7
+			},
+			"confidence": 0.3999999999999999
+		},
+		"function"
+	],
+	"options": [
+		8192,
+		"high",
+		2976,
+		{
+			"maxTokens": 17384,
+			"thinkingBudget": 16384
+		},
+		1,
+		{
+			"maxTokens": 1,
+			"apiKey": "key"
+		}
+	],
+	"transform": [
+		"user",
+		"assistant",
+		"toolResult"
+	],
+	"errors": [
+		"abc... [truncated 3 chars]",
+		"[object Object]",
+		"Prefix (500): boom",
+		"ModelsError: Model openai/m is not an image model",
+		{
+			"api": "openai-completions",
+			"provider": "openai",
+			"model": "m",
+			"output": [],
+			"stopReason": "aborted",
+			"errorMessage": "x"
+		},
+		{
+			"api": "openai-completions",
+			"provider": "openai",
+			"model": "m",
+			"answers": {},
+			"stopReason": "error",
+			"errorMessage": "y"
+		}
+	],
+	"small": [
+		"y0biex7f9bbh",
+		"ab",
+		64,
+		{
+			"x-a": "1"
+		},
+		{
+			"b": "2"
+		},
+		true,
+		"nope",
+		true,
+		"http://proxy:8080/"
+	],
+	"pages": [
+		2149,
+		true
+	],
+	"signals": [
+		true,
+		false,
+		5
+	],
+	"callbacks": [
+		[
+			[
+				"payload",
+				{
+					"model": "claude-sonnet-4-5",
+					"messages": [
+						{
+							"role": "user",
+							"content": [
+								{
+									"type": "text",
+									"text": "Describe this picture"
+								},
+								{
+									"type": "image",
+									"source": {
+										"type": "base64",
+										"media_type": "image/png",
+										"data": "aGk="
+									},
+									"cache_control": {
+										"type": "ephemeral"
+									}
+								}
+							]
+						}
+					],
+					"max_tokens": 50,
+					"stream": true,
+					"thinking": {
+						"type": "disabled"
+					}
+				},
+				"claude-sonnet-4-5"
+			]
+		],
+		[
+			"error",
+			"Connection error."
+		],
+		[
+			[
+				"error",
+				"error",
+				"no payload",
+				[]
+			]
+		],
+		[
+			[
+				"payload",
+				{
+					"model": "black-forest-labs/flux.2-flex",
+					"messages": [
+						{
+							"role": "user",
+							"content": [
+								{
+									"type": "text",
+									"text": "a cat"
+								}
+							]
+						}
+					],
+					"stream": false,
+					"modalities": [
+						"image"
+					]
+				},
+				"black-forest-labs/flux.2-flex"
+			]
+		],
+		[
+			"error",
+			"Connection error."
+		],
+		{
+			"api": "openrouter-images",
+			"provider": "openrouter",
+			"model": "black-forest-labs/flux.2-flex",
+			"output": [],
+			"stopReason": "error",
+			"errorMessage": "no images"
+		}
+	],
+	"subpaths": [
+		"function",
+		false,
+		"function",
+		"function",
+		[
+			"ok",
+			2
+		]
+	]
+}

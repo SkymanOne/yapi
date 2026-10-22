@@ -60,11 +60,51 @@ pub fn resolve(ctx: &Ctx<'_>, base: &str, name: &str) -> rquickjs::Result<Option
     if let Some(builtin) = builtin {
         return Ok(Some(format!("node:{builtin}")));
     }
-    // Every pi-ai entry point maps to the facade, a superset of the root.
+    // Every pi-ai entry point maps to the facade, a superset of the root,
+    // or to the facade with the entry point's own exports of shared names.
     Ok(["@earendil-works/pi-ai/", "@mariozechner/pi-ai/"]
         .iter()
-        .any(|prefix| name.starts_with(prefix))
-        .then(|| "yapi:pi/ai".to_owned()))
+        .find_map(|prefix| name.strip_prefix(prefix))
+        .map(|subpath| match ai_subpath(subpath) {
+            Some(_) => format!("yapi:pi/ai/{subpath}"),
+            None => "yapi:pi/ai".to_owned(),
+        }))
+}
+
+/// pi-ai's wire API entry points, whose `stream` and `streamSimple` are the
+/// API's own.
+const AI_APIS: [&str; 10] = [
+    "anthropic-messages",
+    "azure-openai-responses",
+    "bedrock-converse-stream",
+    "google-generative-ai",
+    "google-vertex",
+    "mistral-conversations",
+    "openai-codex-responses",
+    "openai-completions",
+    "openai-responses",
+    "pi-messages",
+];
+
+/// The exports of pi-ai entry point `subpath` that differ from the facade's
+/// exports of the same names, as module source to add to the facade's.
+fn ai_subpath(subpath: &str) -> Option<String> {
+    let shared =
+        |names: &str| format!("export {{ {names} }} from \"yapi:vendor/pi-ai-subpaths\";\n");
+    let api = subpath.strip_prefix("api/")?;
+    let mut source = match api {
+        "openai-completions" => shared("convertOpenAICompletionsMessages as convertMessages"),
+        "cloudflare-workers-ai-system-one" => shared("classifyCloudflareSystemOne as classify"),
+        "typesafe-system-one" => shared("classifyTypesafeSystemOne as classify"),
+        "openrouter-images" => shared("generateOpenRouterImages as generateImages"),
+        _ => String::new(),
+    };
+    if AI_APIS.contains(&api) {
+        source.push_str(&format!(
+            "export const {{ stream, streamSimple }} = globalThis.__yapi.hostApi(\"{api}\");\n"
+        ));
+    }
+    (!source.is_empty()).then_some(source)
 }
 
 /// The source of embedded module `name`. A Node module is an ES module view
@@ -72,6 +112,9 @@ pub fn resolve(ctx: &Ctx<'_>, base: &str, name: &str) -> rquickjs::Result<Option
 pub fn source(ctx: &Ctx<'_>, name: &str) -> Option<rquickjs::Result<String>> {
     if let Some(builtin) = name.strip_prefix("node:") {
         return Some(node_module(ctx, builtin));
+    }
+    if let Some(subpath) = name.strip_prefix("yapi:pi/ai/") {
+        return ai_subpath(subpath).map(|own| Ok(format!("export * from \"yapi:pi/ai\";\n{own}")));
     }
     MODULES
         .iter()

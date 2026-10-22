@@ -272,6 +272,28 @@ export default function (pi) {
     );
 }
 
+/// pi-ai's exports, from each group of its modules, give what they give in
+/// pi: `tests/fixtures/pi/pi-ai/exports.json`, recorded from pi.
+#[tokio::test(flavor = "multi_thread")]
+async fn pi_ai_matches_pi() {
+    let dir = scratch("ai-exports");
+    let probe = include_str!("../../../tests/fixtures/pi/pi-ai/probe.js");
+    let (_instance, extension) = load(&dir, &[("main.ts", probe)]).await;
+    assert_eq!(extension.get("error"), None, "{extension}");
+    let description = extension["commands"][0]["description"].as_str().unwrap();
+    let actual: serde_json::Map<String, Value> = serde_json::from_str(description).unwrap();
+    let expected: serde_json::Map<String, Value> = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/pi/pi-ai/exports.json"
+    ))
+    .unwrap();
+    let differ: Vec<String> = expected
+        .iter()
+        .filter(|(group, want)| actual.get(*group) != Some(want))
+        .map(|(group, want)| format!("{group}:\n  pi:   {want}\n  yapi: {}", actual[group]))
+        .collect();
+    assert!(differ.is_empty(), "{}", differ.join("\n"));
+}
+
 /// File descriptors, file streams and `fs.promises.open`, which loggers use.
 #[tokio::test(flavor = "multi_thread")]
 async fn file_descriptor_io() {

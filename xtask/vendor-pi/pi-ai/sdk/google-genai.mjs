@@ -1,0 +1,36 @@
+// yapi: the enums of `@google/genai` 2.21.0 that pi-ai's Google helpers read.
+// Requests run on the host, so the bundle needs no Google client.
+export const FinishReason = {
+    FINISH_REASON_UNSPECIFIED: "FINISH_REASON_UNSPECIFIED",
+    STOP: "STOP",
+    MAX_TOKENS: "MAX_TOKENS",
+    SAFETY: "SAFETY",
+    RECITATION: "RECITATION",
+    LANGUAGE: "LANGUAGE",
+    OTHER: "OTHER",
+    BLOCKLIST: "BLOCKLIST",
+    PROHIBITED_CONTENT: "PROHIBITED_CONTENT",
+    SPII: "SPII",
+    MALFORMED_FUNCTION_CALL: "MALFORMED_FUNCTION_CALL",
+    IMAGE_SAFETY: "IMAGE_SAFETY",
+    UNEXPECTED_TOOL_CALL: "UNEXPECTED_TOOL_CALL",
+    TOO_MANY_TOOL_CALLS: "TOO_MANY_TOOL_CALLS",
+    IMAGE_PROHIBITED_CONTENT: "IMAGE_PROHIBITED_CONTENT",
+    NO_IMAGE: "NO_IMAGE",
+    IMAGE_RECITATION: "IMAGE_RECITATION",
+    IMAGE_OTHER: "IMAGE_OTHER",
+};
+export const FunctionCallingConfigMode = {
+    MODE_UNSPECIFIED: "MODE_UNSPECIFIED",
+    AUTO: "AUTO",
+    ANY: "ANY",
+    NONE: "NONE",
+    VALIDATED: "VALIDATED",
+};
+export const ThinkingLevel = {
+    THINKING_LEVEL_UNSPECIFIED: "THINKING_LEVEL_UNSPECIFIED",
+    MINIMAL: "MINIMAL",
+    LOW: "LOW",
+    MEDIUM: "MEDIUM",
+    HIGH: "HIGH",
+};

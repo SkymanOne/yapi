@@ -394,6 +394,13 @@ pub trait Extension: Send + Sync {
         Box::pin(async {})
     }
 
+    /// Session `session_id` ended or another replaced it, after its
+    /// `session_shutdown`; not on reload. pi disposes the session's
+    /// resources then, with pi-ai's `cleanupSessionResources`.
+    fn end_session<'a>(&'a self, _session_id: &'a str) -> BoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
     /// A prompt is about to run; `sections` are extra system prompt sections
     /// by tag name, which the extension may change.
     fn before_agent_start<'a>(
