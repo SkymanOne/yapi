@@ -4,6 +4,24 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-22
+
+### Fixes
+
+- Various bug fixes ([#258](https://github.com/SkymanOne/yapi/pull/258), [#259](https://github.com/SkymanOne/yapi/pull/259), [#260](https://github.com/SkymanOne/yapi/pull/260)).
+
+### Known issues
+
+- Sign in with ChatGPT can fail with `invalid_grant` after the browser step, as it does in Pi ([#181](https://github.com/SkymanOne/yapi/issues/181)). The OpenAI Codex login works.
+
+### Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+```
+
+[Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
+
 ## [0.3.0] - 2026-10-21
 
 ### Additions
@@ -120,7 +138,8 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 
 [Install](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, direct downloads and building from source.
 
-[Unreleased]: https://github.com/SkymanOne/yapi/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SkymanOne/yapi/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/SkymanOne/yapi/releases/tag/v0.3.1
 [0.3.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SkymanOne/yapi/releases/tag/v0.1.0

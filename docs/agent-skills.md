@@ -12,7 +12,7 @@ The repository ships two [Agent Skills](https://agentskills.io/specification) th
 In yapi or Pi, install the repository at a release tag as a package:
 
 ```sh
-yapi install git:github.com/SkymanOne/yapi@v0.3.0
+yapi install git:github.com/SkymanOne/yapi@v0.3.1
 ```
 
 yapi clones the repository but loads only its `skills` folder. A package installed at a tag stays at that tag through `yapi update --extensions`, so install a newer tag to update the skills. Installed without a tag, the package follows the `main` branch.

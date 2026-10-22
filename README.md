@@ -80,7 +80,7 @@ The [Roadmap](https://skymanone.github.io/yapi/roadmap.html) has the details.
 The repository ships two [Agent Skills](https://agentskills.io): `yapi`, for running and scripting yapi, and `yapi-extension`, for writing extensions. Install them with:
 
 ```sh
-yapi install git:github.com/SkymanOne/yapi@v0.3.0
+yapi install git:github.com/SkymanOne/yapi@v0.3.1
 ```
 
 ## Contributing

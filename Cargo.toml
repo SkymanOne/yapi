@@ -3,7 +3,7 @@ members = ["crates/*", "xtask"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT OR Apache-2.0"
@@ -16,8 +16,8 @@ yapi-ai = { path = "crates/yapi-ai" }
 yapi-core = { path = "crates/yapi-core" }
 yapi-ext = { path = "crates/yapi-ext" }
 yapi-mock = { path = "crates/yapi-mock" }
-yapi-tui = { path = "crates/yapi-tui", version = "0.3.0" }
-yapi-types = { path = "crates/yapi-types", version = "0.3.0" }
+yapi-tui = { path = "crates/yapi-tui", version = "0.3.1" }
+yapi-types = { path = "crates/yapi-types", version = "0.3.1" }
 
 anyhow = "1"
 aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys", "prebuilt-nasm"] }
