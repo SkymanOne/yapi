@@ -592,7 +592,11 @@ fn split_terminal_input() {
     );
     pty.write("\x1b[?62;").unwrap();
     // Longer than the input buffer's 50 ms, shorter than the reply's 150 ms.
-    std::thread::sleep(Duration::from_millis(100));
+    // Spun, not slept: GitHub's macOS runners wake this sleep up to 150 ms late.
+    let until = std::time::Instant::now() + Duration::from_millis(100);
+    while std::time::Instant::now() < until {
+        std::thread::yield_now();
+    }
     pty.write("22ctyped").unwrap();
     let typed = pty.wait_for(Duration::from_secs(5), shown("typed"));
     assert!(typed.is_some(), "{:#?}", pty.rows());
