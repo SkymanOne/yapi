@@ -1,3 +1,4 @@
+const require = globalThis.__yapi_require_for('yapi:vendor');
 import {
   Assert,
   AssertError,
@@ -34,9 +35,9 @@ import {
   Update,
   pointer_exports,
   value_exports
-} from "./chunk-M3ON6SZR.mjs";
-import "./chunk-HSYWYWI2.mjs";
-import "./chunk-XGB3TDIC.mjs";
+} from "./chunk-2CX53BWJ.mjs";
+import "./chunk-A5T7ZXDE.mjs";
+import "./chunk-G7YUWZG4.mjs";
 export {
   Assert,
   AssertError,

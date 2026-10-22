@@ -1,6 +1,7 @@
+const require = globalThis.__yapi_require_for('yapi:vendor');
 import {
   typebox_exports
-} from "./chunk-XSZB7GXF.mjs";
+} from "./chunk-OX5HQF2L.mjs";
 import {
   AddImmutable,
   AddImmutableDeferred,
@@ -284,8 +285,8 @@ import {
   _Function_,
   _Object_,
   result_exports
-} from "./chunk-HSYWYWI2.mjs";
-import "./chunk-XGB3TDIC.mjs";
+} from "./chunk-A5T7ZXDE.mjs";
+import "./chunk-G7YUWZG4.mjs";
 export {
   AddImmutable,
   AddImmutableDeferred,

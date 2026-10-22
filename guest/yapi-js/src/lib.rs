@@ -205,6 +205,7 @@ fn install_natives(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
         Function::new(ctx.clone(), encoding::base64_decode)?,
     )?;
     native.set("compile", Function::new(ctx.clone(), compile)?)?;
+    native.set("importSync", Function::new(ctx.clone(), import_sync)?)?;
     native.set(
         "wallClock",
         Function::new(ctx.clone(), localtime::set_wall_clock)?,
@@ -217,6 +218,23 @@ fn install_natives(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
 /// file.
 fn compile<'js>(ctx: Ctx<'js>, source: String, filename: String) -> rquickjs::Result<Value<'js>> {
     eval(&ctx, &source, &filename)
+}
+
+/// Evaluates embedded module `name` now and returns its namespace, for modules
+/// a facade loads on first use. Its own imports load as any module's do. An
+/// error the module throws while it evaluates is thrown here.
+fn import_sync<'js>(ctx: Ctx<'js>, name: String) -> rquickjs::Result<Object<'js>> {
+    let Some(source) = builtins::source(&ctx, &name) else {
+        return Err(rquickjs::Exception::throw_message(
+            &ctx,
+            &format!("Cannot find module '{name}'"),
+        ));
+    };
+    let (module, evaluated) = Module::declare(ctx.clone(), name, source?)?.eval()?;
+    if let Some(Err(error)) = evaluated.result::<Value<'js>>() {
+        return Err(error);
+    }
+    module.namespace()
 }
 
 /// Evaluates `source` as a global, sloppy script named `filename`.

@@ -1,40 +1,79 @@
-// `@earendil-works/pi-coding-agent` for extensions in yapi: the API helpers
-// extensions use, built-in tools backed by yapi's own, and stubs for the rest of
-// pi's exports so every import links. A stub throws when called.
-import { Container, Editor, Text, backgroundAnsi, foregroundAnsi, getKeybindings, parseColor } from "@earendil-works/pi-tui";
+// `@earendil-works/pi-coding-agent` for extensions in yapi: pi's own modules
+// for what runs inside the extension, built-in tools backed by yapi's own, and
+// stubs, so every import links, for the exports that would run a second agent
+// or reach credentials, trust, settings or session files without the host.
+// A stub throws when called.
+import { Container, Editor, Text, getKeybindings } from "@earendil-works/pi-tui";
+import { theme } from "yapi:pi/host";
 
 const yapi = globalThis.__yapi;
 
 const unavailable = (name) => yapi.unsupported(`${name} from @earendil-works/pi-coding-agent is not available in yapi extensions`);
 
-// ----- configuration ------------------------------------------------------
-/** yapi keeps project files in `.yapi/` and global ones in `~/.yapi/agent`. */
-export const CONFIG_DIR_NAME = ".yapi";
-/** The pi extension API version yapi implements. */
-export const VERSION = "1.0.0";
+/** pi's bundled modules, evaluated on first use: parsing them would cost every extension load. */
+const vendored = () => yapi.importSync("yapi:vendor/pi-coding-agent");
+/**
+ * pi's exports from the bundled modules, each a function or class that loads
+ * them when it is first called, constructed or read (statics, prototype).
+ */
+const lazy = new Proxy(
+	{},
+	{
+		get: (_exports, name) =>
+			new Proxy(function () {}, {
+				apply: (_target, self, args) => Reflect.apply(vendored()[name], self, args),
+				construct: (_target, args, newTarget) => Reflect.construct(vendored()[name], args, newTarget),
+				get: (_target, key) => vendored()[name][key],
+			}),
+	},
+);
+
+export { CONFIG_DIR_NAME, VERSION, convertToPng, formatDimensionNote, getAgentDir, getDocsPath, getEditorTheme, getExamplesPath,
+	getLanguageFromPath, getMarkdownTheme, getPackageDir, getReadmePath, getSelectListTheme, getSettingsListTheme, highlightCode, initTheme,
+	parseFrontmatter, resizeImage, stripFrontmatter, Theme } from "yapi:pi/host";
+export const { ArminComponent, AssistantMessageComponent, BashExecutionComponent, BranchSummaryMessageComponent, buildContextEntries,
+	buildSessionContext, buildSessionProjection, calculateContextTokens, collectEntriesForBranchSummary, compact,
+	CompactionSummaryMessageComponent, createLocalPowerShellOperations, createPowerShellTool, createPowerShellToolDefinition,
+	createToolSearchExtension, CustomMessageComponent, detectSupportedImageMimeTypeFromFile, estimateTokens, ExtensionEditorComponent,
+	ExtensionInputComponent, ExtensionSelectorComponent, findCutPoint, findTurnStartIndex, FooterComponent, formatSize, formatSkillsForPrompt,
+	generateBranchSummary, generateDiffString, generateSummary, generateSummaryWithUsage, generateUnifiedPatch, getLastAssistantUsage,
+	getPowerShellConfig, hasTrustRequiringProjectResources, loadSkills, loadSkillsFromDir, LoginDialogComponent, migrateSessionEntries,
+	ModelSelectorComponent, OAuthSelectorComponent, parseArgs, parseSessionEntries, prepareBranchEntries, renderDiff, resolveCliModel,
+	resolveModelScopeWithDiagnostics, sessionEntryToContextMessages, SettingsSelectorComponent, shouldCompact, ShowImagesSelectorComponent,
+	SkillInvocationMessageComponent, ThemeSelectorComponent, ThinkingSelectorComponent, ToolExecutionComponent, TreeSelectorComponent,
+	truncateHead, truncateLine, truncateTail, UserMessageComponent, UserMessageSelectorComponent, wrapRegisteredTool, wrapRegisteredTools } = lazy;
+
 export const CURRENT_SESSION_VERSION = 3;
 export const DEFAULT_MAX_BYTES = 50 * 1024;
 export const DEFAULT_MAX_LINES = 2000;
 export const DEFAULT_COMPACTION_SETTINGS = { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 };
 export const VIRTUAL_MODEL_STATE_ENTRY = "pi.virtual-model-state";
 
-export function getAgentDir() {
-	return yapi.request("agentDir");
-}
-export function getPackageDir() {
-	return getAgentDir();
-}
-export function getDocsPath() {
-	return `${getAgentDir()}/docs`;
-}
-export function getExamplesPath() {
-	return `${getAgentDir()}/examples`;
-}
-export function getReadmePath() {
-	return `${getAgentDir()}/README.md`;
-}
 export function getShellConfig() {
 	return { shell: process.env.SHELL || "/bin/sh", args: ["-c"] };
+}
+
+/** pi's `loadProjectContextFiles`, as yapi's system prompt loads them. */
+export function loadProjectContextFiles(options) {
+	const { path } = globalThis.__yapi_builtins;
+	return yapi.request("context.files", { cwd: path.resolve(options.cwd), agentDir: path.resolve(options.agentDir) });
+}
+
+/** pi's `parseSkillBlock`: the skill block that `text` is, else `null`. */
+export function parseSkillBlock(text) {
+	const match = text.match(/^<skill name="([^"]+)" location="([^"]+)">\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]+))?$/);
+	if (!match) return null;
+	return { name: match[1], location: match[2], content: match[3], userMessage: match[4]?.trim() || undefined };
+}
+
+export class CredentialSynchronizationError extends Error {
+	constructor(providerId, operation, credential, options) {
+		super(`Credential ${operation} committed for ${providerId}, but local synchronization failed`, options);
+		this.name = "CredentialSynchronizationError";
+		this.providerId = providerId;
+		this.operation = operation;
+		this.credential = credential;
+	}
 }
 
 // ----- tool definitions and events -------------------------------------------
@@ -56,8 +95,20 @@ export const isLsToolResult = resultOf("ls");
 
 export const createEventBus = yapi.createEventBus;
 
-// ----- built-in tools, run by yapi ----------------------------------------------------
-function builtinTool(name, cwd, options) {
+// ----- built-in tools ----------------------------------------------------------------
+/**
+ * pi's factory for built-in tool `name`: yapi's tool, which the host runs, or
+ * pi's own tool from its factory `piFactory` when the options change how it
+ * runs, as custom `operations` (a remote filesystem, say) or bash's spawn
+ * hook and command prefix do. pi's grep and find run ripgrep and fd locally
+ * whatever the operations, and download them into the agent directory's
+ * `bin`, which yapi puts on every command's `PATH`, so they refuse options.
+ */
+function builtinTool(name, cwd, options, piFactory) {
+	if (options?.operations || options?.spawnHook || options?.commandPrefix) {
+		if (name === "grep" || name === "find") unavailable(`${name} tool operations`);
+		return vendored()[piFactory](cwd ?? process.cwd(), options);
+	}
 	const info = yapi.request("builtin.tool", { name, cwd: cwd ?? process.cwd() });
 	return {
 		name: info.name,
@@ -68,28 +119,35 @@ function builtinTool(name, cwd, options) {
 		parameters: info.parameters,
 		// pi's edit tool draws its own shell; yapi draws the built-in renderers.
 		...(name === "edit" ? { renderShell: "self" } : {}),
-		async execute(toolCallId, params, _signal, onUpdate) {
-			if (options?.operations) unavailable(`${name} tool operations`);
+		async execute(toolCallId, params) {
 			return yapi.op("builtin.execute", { name, cwd: cwd ?? process.cwd(), toolCallId, params });
 		},
 	};
 }
-export const createBashTool = (cwd, options) => builtinTool("bash", cwd, options);
-export const createBashToolDefinition = createBashTool;
-export const createReadTool = (cwd, options) => builtinTool("read", cwd, options);
-export const createReadToolDefinition = createReadTool;
-export const createEditTool = (cwd, options) => builtinTool("edit", cwd, options);
-export const createEditToolDefinition = createEditTool;
-export const createWriteTool = (cwd, options) => builtinTool("write", cwd, options);
-export const createWriteToolDefinition = createWriteTool;
-export const createGrepTool = (cwd, options) => builtinTool("grep", cwd, options);
-export const createGrepToolDefinition = createGrepTool;
-export const createFindTool = (cwd, options) => builtinTool("find", cwd, options);
-export const createFindToolDefinition = createFindTool;
-export const createLsTool = (cwd, options) => builtinTool("ls", cwd, options);
-export const createLsToolDefinition = createLsTool;
-export const createCodingTools = (cwd) => ["read", "bash", "edit", "write"].map((name) => builtinTool(name, cwd));
-export const createReadOnlyTools = (cwd) => ["read", "grep", "find", "ls"].map((name) => builtinTool(name, cwd));
+/** pi's `create<Name>Tool` and `create<Name>ToolDefinition` for built-in tool `name`. */
+function factories(name) {
+	const factory = `create${name[0].toUpperCase()}${name.slice(1)}Tool`;
+	return [factory, `${factory}Definition`].map((piFactory) => (cwd, options) => builtinTool(name, cwd, options, piFactory));
+}
+export const [createBashTool, createBashToolDefinition] = factories("bash");
+export const [createReadTool, createReadToolDefinition] = factories("read");
+export const [createEditTool, createEditToolDefinition] = factories("edit");
+export const [createWriteTool, createWriteToolDefinition] = factories("write");
+export const [createGrepTool, createGrepToolDefinition] = factories("grep");
+export const [createFindTool, createFindToolDefinition] = factories("find");
+export const [createLsTool, createLsToolDefinition] = factories("ls");
+export const createCodingTools = (cwd, options) => [
+	createReadTool(cwd, options?.read),
+	createBashTool(cwd, options?.bash),
+	createEditTool(cwd, options?.edit),
+	createWriteTool(cwd, options?.write),
+];
+export const createReadOnlyTools = (cwd, options) => [
+	createReadTool(cwd, options?.read),
+	createGrepTool(cwd, options?.grep),
+	createFindTool(cwd, options?.find),
+	createLsTool(cwd, options?.ls),
+];
 /** pi's local shell: runs `command` with bash, streaming its output to `onData`. */
 export function createLocalBashOperations() {
 	const { child_process, fs, os } = globalThis.__yapi_builtins;
@@ -119,62 +177,8 @@ export function createLocalBashOperations() {
 	};
 }
 
-// ----- text helpers ----------------------------------------------------------------------
-export function formatSize(bytes) {
-	if (bytes < 1024) return `${bytes}B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-const byteLength = (text) => yapi.utf8Encode(text).length;
-function truncate(content, options, fromEnd) {
-	const maxLines = options?.maxLines ?? DEFAULT_MAX_LINES;
-	const maxBytes = options?.maxBytes ?? DEFAULT_MAX_BYTES;
-	const lines = content.split("\n");
-	const totalLines = lines.length;
-	const totalBytes = byteLength(content);
-	if (totalLines <= maxLines && totalBytes <= maxBytes) {
-		return { content, truncated: false, truncatedBy: null, totalLines, totalBytes, outputLines: totalLines, outputBytes: totalBytes, lastLinePartial: false, firstLineExceedsLimit: false, maxLines, maxBytes };
-	}
-	const kept = [];
-	let bytes = 0;
-	let truncatedBy = "lines";
-	const ordered = fromEnd ? [...lines].reverse() : lines;
-	for (const line of ordered) {
-		if (kept.length >= maxLines) break;
-		const size = byteLength(line) + (kept.length > 0 ? 1 : 0);
-		if (bytes + size > maxBytes) {
-			truncatedBy = "bytes";
-			break;
-		}
-		kept.push(line);
-		bytes += size;
-	}
-	const output = (fromEnd ? kept.reverse() : kept).join("\n");
-	return { content: output, truncated: true, truncatedBy, totalLines, totalBytes, outputLines: kept.length, outputBytes: byteLength(output), lastLinePartial: false, firstLineExceedsLimit: kept.length === 0 && totalLines > 0, maxLines, maxBytes };
-}
-export const truncateHead = (content, options) => truncate(content, options, false);
-export const truncateTail = (content, options) => truncate(content, options, true);
-export function truncateLine(line, maxChars = 500) {
-	return line.length <= maxChars ? { text: line, wasTruncated: false } : { text: `${line.slice(0, maxChars)}... [truncated]`, wasTruncated: true };
-}
-export function truncateToVisualLines(text, maxLines) {
-	const lines = String(text).split("\n");
-	return lines.length <= maxLines ? { visualLines: lines, skippedCount: 0 } : { visualLines: lines.slice(-maxLines), skippedCount: lines.length - maxLines };
-}
-export function estimateTokens(message) {
-	const text = typeof message === "string" ? message : JSON.stringify(message?.content ?? message ?? "");
-	return Math.ceil(text.length / 4);
-}
-export function calculateContextTokens(usage) {
-	return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-}
-export function getLastAssistantUsage(entries) {
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const message = entries[i]?.message ?? entries[i];
-		if (message?.role === "assistant" && message.usage && message.stopReason !== "aborted" && message.stopReason !== "error") return message.usage;
-	}
-	return undefined;
-}
+
+// ----- text and session helpers -------------------------------------------------------------
 export function getLatestCompactionEntry(entries) {
 	for (let i = entries.length - 1; i >= 0; i--) if (entries[i]?.type === "compaction") return entries[i];
 	return undefined;
@@ -182,11 +186,6 @@ export function getLatestCompactionEntry(entries) {
 export function createSyntheticSourceInfo(path, options = {}) {
 	return { path, source: options.source ?? "local", scope: "temporary", origin: "top-level", baseDir: options.baseDir };
 }
-
-export function parseFrontmatter(content) {
-	return yapi.request("frontmatter.parse", { content: String(content) });
-}
-export const stripFrontmatter = (content) => parseFrontmatter(content).body;
 
 /** pi's `withFileMutationQueue`, in the host's queue, which yapi's edit and write tools share. */
 export async function withFileMutationQueue(path, fn) {
@@ -196,28 +195,6 @@ export async function withFileMutationQueue(path, fn) {
 	} finally {
 		yapi.request("file.unlock", { id });
 	}
-}
-
-export function getLanguageFromPath(path) {
-	return yapi.request("language.fromPath", { path: String(path) }) ?? undefined;
-}
-/**
- * The lines the first code renderer in this runtime draws for `code`, as yapi's
- * transcript asks them; `undefined` without one. A renderer that throws is passed over.
- */
-function renderCode(code, lang) {
-	for (const extension of yapi.extensions.values()) {
-		if (typeof extension.codeRenderer !== "function") continue;
-		try {
-			const lines = extension.codeRenderer(code, lang, { width: process.stdout.columns || 80 }, theme);
-			if (Array.isArray(lines)) return lines.map(String);
-		} catch {}
-	}
-	return undefined;
-}
-/** pi's `highlightCode`: the code renderers' lines, else the code in the code block color. */
-export function highlightCode(code, lang) {
-	return renderCode(String(code), lang) ?? String(code).split("\n").map((line) => theme.fg("mdCodeBlock", line));
 }
 
 // ----- conversation helpers, run by yapi ------------------------------------------------------
@@ -231,55 +208,7 @@ export function copyToClipboard(text) {
 	return yapi.op("clipboard.copy", { text });
 }
 
-// ----- theme and key hints --------------------------------------------------------------------
-const identity = (text) => text;
-export const Theme = yapi.Theme;
-// pi's `Theme` constructor turns colors into escape sequences as pi-tui does.
-yapi.colorAnsi = (value, mode, background) => (background ? backgroundAnsi : foregroundAnsi)(parseColor(value), mode);
-const theme = globalThis.__yapi_theme;
-export function initTheme() {}
-export function getMarkdownTheme() {
-	return {
-		heading: (text) => theme.fg("mdHeading", text),
-		link: (text) => theme.fg("mdLink", text),
-		linkUrl: (text) => theme.fg("mdLinkUrl", text),
-		code: (text) => theme.fg("mdCode", text),
-		codeBlock: (text) => theme.fg("mdCodeBlock", text),
-		codeBlockBorder: (text) => theme.fg("mdCodeBlockBorder", text),
-		quote: (text) => theme.fg("mdQuote", text),
-		quoteBorder: (text) => theme.fg("mdQuoteBorder", text),
-		hr: (text) => theme.fg("mdHr", text),
-		listBullet: (text) => theme.fg("mdListBullet", text),
-		bold: (text) => theme.bold(text),
-		italic: (text) => theme.italic(text),
-		underline: (text) => theme.underline(text),
-		strikethrough: (text) => theme.strikethrough(text),
-		highlightCode,
-	};
-}
-export function getSelectListTheme() {
-	return {
-		selectedPrefix: (text) => theme.fg("accent", text),
-		selectedText: (text) => theme.fg("accent", text),
-		description: (text) => theme.fg("muted", text),
-		scrollInfo: (text) => theme.fg("muted", text),
-		noMatch: (text) => theme.fg("muted", text),
-	};
-}
-export function getEditorTheme() {
-	return { borderColor: (text) => theme.fg("borderMuted", text), selectList: getSelectListTheme() };
-}
-export function getSettingsListTheme() {
-	return {
-		label: (text, selected) => (selected ? theme.fg("accent", text) : text),
-		value: (text, selected) => (selected ? theme.fg("accent", text) : theme.fg("muted", text)),
-		description: (text) => theme.fg("dim", text),
-		get cursor() {
-			return theme.fg("accent", "→ ");
-		},
-		hint: (text) => theme.fg("dim", text),
-	};
-}
+// ----- key hints -----------------------------------------------------------------------------------
 /** pi's `formatKeyText`: keys as hints show them, with macOS's name for alt. */
 function formatKeyText(key) {
 	const part = (name) => (process.platform === "darwin" && name.toLowerCase() === "alt" ? "option" : name);
@@ -569,20 +498,22 @@ for (const [method, type, keys, returns] of RPC_COMMANDS) {
 }
 
 // ----- not available in yapi --------------------------------------------------------------------------
-export const { AgentSession, AgentSessionRuntime, ArminComponent, AssistantMessageComponent, BashExecutionComponent, BranchSummaryMessageComponent,
-	CompactionSummaryMessageComponent, CredentialSynchronizationError, CustomMessageComponent, DefaultPackageManager, DefaultResourceLoader,
-	ExtensionEditorComponent, ExtensionInputComponent, ExtensionRunner, ExtensionSelectorComponent, FooterComponent, InteractiveMode,
-	LoginDialogComponent, ModelRegistry, ModelRuntime, ModelSelectorComponent, OAuthSelectorComponent, ProjectTrustStore, SessionManager,
-	SessionSelectorComponent, SettingsManager, SettingsSelectorComponent, ShowImagesSelectorComponent, SkillInvocationMessageComponent,
-	ThemeSelectorComponent, ThinkingSelectorComponent, ToolExecutionComponent, TreeSelectorComponent, UserMessageComponent,
-	UserMessageSelectorComponent, buildContextEntries, buildSessionContext, buildSessionProjection, collectEntriesForBranchSummary, compact,
-	convertToPng, createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, createExtensionRuntime,
-	createLocalPowerShellOperations, createMcpExtension, createPowerShellTool, createPowerShellToolDefinition, createToolSearchExtension,
-	detectSupportedImageMimeTypeFromFile, discoverAndLoadExtensions, findCutPoint, findTurnStartIndex, formatDimensionNote, formatSkillsForPrompt,
-	generateBranchSummary, generateDiffString, generateSummary, generateSummaryWithUsage, generateUnifiedPatch, getPowerShellConfig,
-	hasTrustRequiringProjectResources, loadProjectContextFiles, loadSkills, loadSkillsFromDir, main, migrateSessionEntries, parseArgs,
-	parseSessionEntries, parseSkillBlock, prepareBranchEntries, readStoredCredential, renderDiff, resizeImage, resolveCliModel,
-	resolveModelScopeWithDiagnostics, runPrintMode, runRpcMode, sessionEntryToContextMessages, shouldCompact, wrapRegisteredTool, wrapRegisteredTools } = yapi.stubs("@earendil-works/pi-coding-agent");
+// These run a second pi agent inside the extension: a session with its own
+// model runtime and credentials, extensions loaded with jiti (which needs
+// Node), pi's package manager (which needs npm) and pi's modes (which take over
+// the terminal and output yapi owns). They would bring pi's whole coding agent
+// into the runtime. pi's MCP extension stays out too, as yapi's MCP client is
+// native.
+export const { AgentSession, AgentSessionRuntime, DefaultPackageManager, DefaultResourceLoader, ExtensionRunner, InteractiveMode, ModelRegistry,
+	ModelRuntime, createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, createExtensionRuntime,
+	createMcpExtension, discoverAndLoadExtensions, main, runPrintMode, runRpcMode } = yapi.stubs("@earendil-works/pi-coding-agent");
+// These reach what only the host may touch, through files the file grant
+// alone would guard: stored credentials (`readStoredCredential`), project
+// trust (`ProjectTrustStore`), settings that run or load code
+// (`SettingsManager`), and session files (`SessionManager`, and
+// `SessionSelectorComponent`, which deletes them).
+export const { ProjectTrustStore, SessionManager, SessionSelectorComponent, SettingsManager, readStoredCredential } =
+	yapi.stubs("@earendil-works/pi-coding-agent");
 /**
  * pi's codemode extension, for packages that decorate the tool before
  * registering it. yapi runs the scripts; `mode`, `inlineBudget` and `models`

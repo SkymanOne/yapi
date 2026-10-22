@@ -207,15 +207,16 @@ async fn evaluates_no_source_text() {
 }
 
 /// pi exports yapi does not provide link, can be extended, and throw when
-/// called or constructed.
+/// called or constructed: those that would run a second agent, reach
+/// credentials, trust, settings or session files without the host, replace
+/// code that receives credentials, or let grep and find fetch programs.
 #[tokio::test(flavor = "multi_thread")]
 async fn used_stubs_throw() {
     let main = r#"
-import { SessionManager, compact } from "@earendil-works/pi-coding-agent";
-import { Agent } from "@earendil-works/pi-agent-core";
+import { AgentSession, createAgentSession, createGrepTool, ProjectTrustStore, readStoredCredential, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createModels } from "@earendil-works/pi-ai";
 import { setBedrockProviderModule } from "@earendil-works/pi-ai/api/bedrock-converse-stream.lazy";
-class Manager extends SessionManager {}
+class Session extends AgentSession {}
 const failure = (run) => {
 	try {
 		run();
@@ -227,12 +228,16 @@ const failure = (run) => {
 export default function (pi) {
 	pi.registerCommand("probe", {
 		description: [
-			failure(() => new Manager()),
-			failure(() => compact()),
-			failure(() => new Agent()),
+			failure(() => new Session()),
+			failure(() => createAgentSession()),
+			failure(() => readStoredCredential("anthropic")),
+			failure(() => new ProjectTrustStore()),
+			failure(() => new SettingsManager()),
+			failure(() => new SessionManager()),
+			failure(() => createGrepTool("/", { operations: {} })),
 			failure(() => createModels()),
 			failure(() => setBedrockProviderModule({})),
-			SessionManager.name,
+			AgentSession.name,
 		].join("|"),
 		handler: async () => {},
 	});
@@ -240,13 +245,148 @@ export default function (pi) {
 "#;
     assert_eq!(
         probe("stubs", main).await,
-        "ERR_NOT_SUPPORTED: SessionManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
-         ERR_NOT_SUPPORTED: compact from @earendil-works/pi-coding-agent is not available in yapi extensions|\
-         ERR_NOT_SUPPORTED: Agent from @earendil-works/pi-agent-core is not available in yapi extensions|\
+        "ERR_NOT_SUPPORTED: AgentSession from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: createAgentSession from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: readStoredCredential from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: ProjectTrustStore from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: SettingsManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: SessionManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: grep tool operations from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: createModels from @earendil-works/pi-ai is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: setBedrockProviderModule from @earendil-works/pi-ai is not available in yapi extensions|\
-         SessionManager"
+         AgentSession"
     );
+}
+
+/// pi's exports that run inside the extension behave as in pi: session
+/// entries, compaction, skills, diffs, arguments, model scopes, images, components, pi-agent-core's agent loop
+/// over the extension's own stream and tools, and built-in tools over custom
+/// operations. The expected results were recorded from pi's installed
+/// packages with Node.
+#[tokio::test(flavor = "multi_thread")]
+async fn exports_match_pi() {
+    let main = r#"
+import { Agent } from "@earendil-works/pi-agent-core";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
+import { BranchSummaryMessageComponent, createBashTool, createEditTool, createReadTool, buildSessionContext, convertToPng, CredentialSynchronizationError, estimateTokens, findCutPoint, formatDimensionNote, formatSkillsForPrompt, generateDiffString, generateUnifiedPatch, initTheme, parseArgs, parseSessionEntries, parseSkillBlock, renderDiff, resizeImage, resolveCliModel, resolveModelScopeWithDiagnostics, shouldCompact, truncateHead } from "@earendil-works/pi-coding-agent";
+
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGP4z8DwHxkzkC4AADxAH+HggXe0AAAAAElFTkSuQmCC";
+const plain = (lines) => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
+const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+/** An agent whose stream calls `echo` once, then answers with the tool's output. */
+async function runAgent() {
+	const model = { id: "faux", name: "Faux", api: "faux", provider: "faux", baseUrl: "", reasoning: false, input: ["text"], cost: usage.cost, contextWindow: 1000, maxTokens: 100 };
+	const echo = {
+		name: "echo", label: "Echo", description: "Echoes", parameters: Type.Object({ text: Type.String() }),
+		execute: async (_id, params) => ({ content: [{ type: "text", text: params.text.toUpperCase() }], details: {} }),
+	};
+	const streamFn = (model, context) => {
+		const stream = createAssistantMessageEventStream();
+		const last = context.messages.at(-1);
+		const content = last.role === "toolResult" ? [{ type: "text", text: `echo said ${last.content[0].text}` }] : [{ type: "toolCall", id: "t1", name: "echo", arguments: { text: "hi" } }];
+		const message = { role: "assistant", content, api: model.api, provider: model.provider, model: model.id, usage, stopReason: last.role === "toolResult" ? "stop" : "toolUse", timestamp: 1 };
+		setTimeout(() => {
+			stream.push({ type: "start", partial: message });
+			stream.push({ type: "done", reason: message.stopReason, message });
+		});
+		return stream;
+	};
+	const agent = new Agent({ initialState: { model, systemPrompt: "Be brief", tools: [echo] }, streamFn });
+	const events = [];
+	agent.subscribe((event) => events.push(event.type));
+	await agent.prompt("go");
+	return { events, messages: agent.state.messages.map(({ role, content, toolName, isError }) => ({ role, content, toolName, isError })) };
+}
+/** pi's read, edit and bash tools over operations on an in-memory "remote" filesystem. */
+async function runOperations() {
+	const files = new Map([["/remote/a.txt", "one\ntwo\nthree\n"]]);
+	const fileOps = {
+		readFile: async (path) => Buffer.from(files.get(path)),
+		writeFile: async (path, content) => void files.set(path, content),
+		access: async (path) => {
+			if (!files.has(path)) throw new Error(`ENOENT: ${path}`);
+		},
+		detectImageMimeType: async () => null,
+	};
+	const bashOps = {
+		exec: async (command, cwd, { onData }) => {
+			onData(Buffer.from(`ran ${command} in ${cwd}\n`));
+			return { exitCode: 2 };
+		},
+	};
+	const text = (result) => result.content.map((block) => block.text).join("");
+	const read = await createReadTool("/remote", { operations: fileOps }).execute("r", { path: "a.txt", offset: 2 });
+	const edit = await createEditTool("/remote", { operations: fileOps }).execute("e", { path: "a.txt", edits: [{ oldText: "two", newText: "TWO" }] });
+	const bash = await createBashTool("/remote", { operations: bashOps }).execute("b", { command: "make" }).then(text, (error) => `error: ${error.message}`);
+	return { read: text(read), edit: [text(edit), edit.details?.diff], file: files.get("/remote/a.txt"), bash };
+}
+export async function probe() {
+	// pi renders only after `initTheme`; yapi draws with the session's theme.
+	initTheme("dark");
+	const at = "2026-01-01T00:00:00.000Z";
+	const message = (id, parentId, body) => JSON.stringify({ type: "message", id, parentId, timestamp: at, message: { timestamp: 1, ...body } });
+	const entries = parseSessionEntries([
+		JSON.stringify({ type: "session", version: 3, id: "s", timestamp: at, cwd: "/w" }),
+		message("a", null, { role: "user", content: "hello there" }),
+		message("b", "a", { role: "assistant", content: [{ type: "text", text: "hi" }], api: "x", provider: "p", model: "m", usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop" }),
+		JSON.stringify({ type: "thinking_level_change", id: "c", parentId: "b", timestamp: at, thinkingLevel: "high" }),
+	].join("\n"));
+	const models = [
+		{ id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "anthropic", reasoning: true },
+		{ id: "gpt-5", name: "GPT-5", provider: "openai", reasoning: true },
+	];
+	const runtime = { getModels: () => models, getAvailable: async () => models };
+	const resized = await resizeImage(Buffer.from(PNG, "base64"), "image/png", { maxWidth: 2, maxHeight: 2 });
+	return {
+		context: buildSessionContext(entries.slice(1)),
+		tokens: estimateTokens(entries[2].message),
+		shouldCompact: [shouldCompact(90, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 }), shouldCompact(50, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 })],
+		cutPoint: findCutPoint(entries.slice(1), 0, 3, 1),
+		skills: formatSkillsForPrompt([{ name: "pdf", description: "Read <PDF> files", filePath: "/s/pdf/SKILL.md", baseDir: "/s/pdf", disableModelInvocation: false }]),
+		diff: generateDiffString("a\nb\nc\nd\n", "a\nB\nc\nd\ne\n"),
+		patch: generateUnifiedPatch("f.txt", "one\ntwo\n", "one\n2\n"),
+		args: parseArgs(["--model", "anthropic/claude-opus-4-5:high", "-p", "--no-tools", "hello", "@file.md"]),
+		skillBlock: parseSkillBlock('<skill name="pdf" location="/s/pdf/SKILL.md">\nBody\n</skill>\n\n  Do it  '),
+		truncated: truncateHead("one\ntwo\nthree\n", { maxLines: 2 }),
+		scope: await resolveModelScopeWithDiagnostics(["anthropic/*:low", "nope"], runtime),
+		cli: [resolveCliModel({ cliModel: "opus", modelRuntime: runtime }), resolveCliModel({ cliProvider: "x", cliModel: "y", modelRuntime: runtime })],
+		image: resized && { mimeType: resized.mimeType, width: resized.width, height: resized.height, wasResized: resized.wasResized, note: formatDimensionNote(resized) },
+		png: (await convertToPng(PNG, "image/png")).mimeType,
+		error: new CredentialSynchronizationError("anthropic", "refresh", { type: "oauth" }).message,
+		summary: plain(new BranchSummaryMessageComponent({ role: "branchSummary", summary: "Did **work**", fromId: "x", timestamp: 1 }).render(30)),
+		agent: await runAgent(),
+		operations: await runOperations(),
+		renderDiff: plain(renderDiff("-1 old\n+1 new\n 2 same").split("\n")),
+	};
+}
+export default async function (pi) {
+	pi.registerCommand("probe", { description: JSON.stringify(await probe()), handler: async () => {} });
+}
+"#;
+    let result: Value = serde_json::from_str(&probe("exports", main).await).unwrap();
+    let expected = json!({
+        "context": {"messages": [{"timestamp": 1, "role": "user", "content": "hello there"}, {"timestamp": 1, "role": "assistant", "content": [{"type": "text", "text": "hi"}], "api": "x", "provider": "p", "model": "m", "usage": {"input": 1, "output": 2, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 3, "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}, "stopReason": "stop"}], "thinkingLevel": "high", "model": {"provider": "p", "modelId": "m"}},
+        "tokens": 1,
+        "shouldCompact": [true, false],
+        "cutPoint": {"firstKeptEntryIndex": 1, "turnStartIndex": 0, "isSplitTurn": true},
+        "skills": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>pdf</name>\n    <description>Read &lt;PDF&gt; files</description>\n    <location>/s/pdf/SKILL.md</location>\n  </skill>\n</available_skills>",
+        "diff": {"diff": " 1 a\n-2 b\n+2 B\n 3 c\n 4 d\n+5 e", "firstChangedLine": 2},
+        "patch": "--- f.txt\n+++ f.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+2\n",
+        "args": {"messages": ["hello"], "fileArgs": ["file.md"], "unknownFlags": {}, "diagnostics": [], "model": "anthropic/claude-opus-4-5:high", "print": true, "noTools": true},
+        "skillBlock": {"name": "pdf", "location": "/s/pdf/SKILL.md", "content": "Body", "userMessage": "Do it"},
+        "truncated": {"content": "one\ntwo", "truncated": true, "truncatedBy": "lines", "totalLines": 3, "totalBytes": 14, "outputLines": 2, "outputBytes": 7, "lastLinePartial": false, "firstLineExceedsLimit": false, "maxLines": 2, "maxBytes": 51200},
+        "scope": {"scopedModels": [{"model": {"id": "claude-opus-4-5", "name": "Claude Opus 4.5", "provider": "anthropic", "reasoning": true}, "thinkingLevel": "low"}], "diagnostics": [{"type": "warning", "code": "no-match", "message": "No models match pattern \"nope\"", "pattern": "nope"}]},
+        "cli": [{"model": {"id": "claude-opus-4-5", "name": "Claude Opus 4.5", "provider": "anthropic", "reasoning": true}}, {"error": "Unknown provider \"x\". Use --list-models to see available providers/models."}],
+        "image": {"mimeType": "image/png", "width": 2, "height": 2, "wasResized": true, "note": "[Image: original 4x4, displayed at 2x2. Multiply coordinates by 2.00 to map to original image.]"},
+        "png": "image/png",
+        "error": "Credential refresh committed for anthropic, but local synchronization failed",
+        "summary": ["", " [branch]", "", " Branch summary ( to expand)", ""],
+        "agent": {"events": ["agent_start", "turn_start", "message_start", "message_end", "message_start", "message_end", "tool_execution_start", "tool_execution_end", "message_start", "message_end", "turn_end", "turn_start", "message_start", "message_end", "turn_end", "agent_end"], "messages": [{"role": "system", "content": "Be brief"}, {"role": "user", "content": [{"type": "text", "text": "go"}]}, {"role": "assistant", "content": [{"type": "toolCall", "id": "t1", "name": "echo", "arguments": {"text": "hi"}}]}, {"role": "toolResult", "content": [{"type": "text", "text": "HI"}], "toolName": "echo", "isError": false}, {"role": "assistant", "content": [{"type": "text", "text": "echo said HI"}]}]},
+        "operations": {"read": "two\nthree\n", "edit": ["Successfully replaced 1 block(s) in a.txt.", " 1 one\n-2 two\n+2 TWO\n 3 three"], "file": "one\nTWO\nthree\n", "bash": "ran make in /remote\n\n\nCommand exited with code 2"},
+        "renderDiff": ["-1 old", "+1 new", " 2 same"]
+    });
+    assert_eq!(result, expected);
 }
 
 /// The API of an extension that failed to load throws, as in pi.

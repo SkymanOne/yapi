@@ -16,6 +16,15 @@
 		error.code = "ERR_NOT_SUPPORTED";
 		throw error;
 	};
+	const imported = new Map();
+	/**
+	 * The namespace of embedded module `name`, evaluated on the first call:
+	 * for modules too large to parse on every extension load.
+	 */
+	yapi.importSync = (name) => {
+		if (!imported.has(name)) imported.set(name, native.importSync(name));
+		return imported.get(name);
+	};
 	/**
 	 * Stand-ins for the exports of package `pkg` that yapi does not provide:
 	 * each name gives a function of that name that throws when called or

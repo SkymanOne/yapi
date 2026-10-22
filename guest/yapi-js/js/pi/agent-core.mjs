@@ -1,4 +1,10 @@
-// `@earendil-works/pi-agent-core` for extensions in yapi. yapi runs the agent loop
-// natively, so these exports exist only so imports link; each throws when used.
-export const { Agent, agentLoop, agentLoopContinue, runAgentLoop, runAgentLoopContinue, runToolCall, setDefaultStreamFn, streamProxy } =
-	globalThis.__yapi.stubs("@earendil-works/pi-agent-core");
+// `@earendil-works/pi-agent-core` for extensions in yapi: pi's own agent and
+// agent loop, which run inside the extension over the stream function and
+// tools it passes. As in pi, where the coding agent installs pi-ai's
+// `streamSimple` as the default, a loop without one streams through the facade.
+import { streamSimple } from "@earendil-works/pi-ai";
+import { setDefaultStreamFn } from "yapi:vendor/pi-agent-core";
+
+export * from "yapi:vendor/pi-agent-core";
+
+setDefaultStreamFn(streamSimple);

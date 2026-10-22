@@ -1,3 +1,4 @@
+const require = globalThis.__yapi_require_for('yapi:vendor');
 import {
   answerFromProbabilities,
   classify,
@@ -5,16 +6,20 @@ import {
   llamaServerRoot,
   peakConfidence,
   renderQuestion
-} from "./chunk-JCNKJFKF.mjs";
+} from "./chunk-MRJWPNYQ.mjs";
 import {
   PiMessagesResponseError,
   stream,
   streamSimple
-} from "./chunk-PTYLW4C7.mjs";
+} from "./chunk-KGXL2YSV.mjs";
 import {
   typebox_exports
-} from "./chunk-XSZB7GXF.mjs";
-import "./chunk-HSYWYWI2.mjs";
+} from "./chunk-OX5HQF2L.mjs";
+import "./chunk-A5T7ZXDE.mjs";
+import {
+  classifySystemOne,
+  isRecord
+} from "./chunk-VUSE5LAN.mjs";
 import {
   DEFAULT_THINKING_BUDGETS,
   MIN_ANSWER_TOKENS,
@@ -45,15 +50,11 @@ import {
   shortHash,
   thinkingBudgetForLevel,
   transformMessages
-} from "./chunk-U7SJVDIT.mjs";
+} from "./chunk-2JHMI24M.mjs";
 import {
   getProviderEnvValue,
   parseStreamingJson
-} from "./chunk-ZBM2T4CW.mjs";
-import {
-  classifySystemOne,
-  isRecord
-} from "./chunk-ZUFRIJAQ.mjs";
+} from "./chunk-RS2NFU7Q.mjs";
 import {
   InMemoryCredentialStore,
   InMemoryModelsStore,
@@ -94,7 +95,7 @@ import {
   resolveTranscriptTools,
   toToolDeclaration,
   withoutInitialSystemMessage
-} from "./chunk-MPUG5NMZ.mjs";
+} from "./chunk-RUY54AZX.mjs";
 import {
   MAX_PROVIDER_ERROR_BODY_CHARS,
   formatProviderError,
@@ -102,7 +103,7 @@ import {
   retryProviderRequest,
   safeJsonStringify,
   truncateErrorText
-} from "./chunk-TRGJFRGE.mjs";
+} from "./chunk-AH6DSDOL.mjs";
 import {
   AssistantMessageEventStream,
   EventStream,
@@ -111,14 +112,14 @@ import {
   createAssistantMessageEventStream,
   extractDiagnosticError,
   formatThrownValue
-} from "./chunk-VLRLU4IK.mjs";
+} from "./chunk-467FOKRO.mjs";
 import {
   headersToRecord,
   providerHeadersToRecord
-} from "./chunk-6WY5DPXF.mjs";
+} from "./chunk-C75GWM3A.mjs";
 import {
   __export
-} from "./chunk-XGB3TDIC.mjs";
+} from "./chunk-G7YUWZG4.mjs";
 
 // target/vendor-pi/pi-ai/dist/api/bedrock-converse-stream.lazy.js
 var __rewriteRelativeImportExtension = function(path, preserveJsx) {
@@ -227,28 +228,28 @@ var ANTHROPIC_IDENTITY_TOKEN_FILE_ENV = "ANTHROPIC_IDENTITY_TOKEN_FILE";
 var ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
 
 // target/vendor-pi/pi-ai/dist/api/anthropic-messages.lazy.js
-var anthropicMessagesApi = () => lazyApi(() => import("./chunk-PIESELT4.mjs"));
+var anthropicMessagesApi = () => lazyApi(() => import("./chunk-TIY4NDY4.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/azure-openai-responses.lazy.js
-var azureOpenAIResponsesApi = () => lazyApi(() => import("./chunk-DMTT4USJ.mjs"));
+var azureOpenAIResponsesApi = () => lazyApi(() => import("./chunk-VQ3QQHGH.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/google-generative-ai.lazy.js
-var googleGenerativeAIApi = () => lazyApi(() => import("./chunk-OYT6PZUY.mjs"));
+var googleGenerativeAIApi = () => lazyApi(() => import("./chunk-UIIT2ZU3.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/google-vertex.lazy.js
-var googleVertexApi = () => lazyApi(() => import("./chunk-HF7FT455.mjs"));
+var googleVertexApi = () => lazyApi(() => import("./chunk-EPUFPJHX.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/mistral-conversations.lazy.js
-var mistralConversationsApi = () => lazyApi(() => import("./chunk-MFDKPXJE.mjs"));
+var mistralConversationsApi = () => lazyApi(() => import("./chunk-WWX47HPW.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/openai-codex-responses.lazy.js
-var openAICodexResponsesApi = () => lazyApi(() => import("./chunk-WKK7AB6I.mjs"));
+var openAICodexResponsesApi = () => lazyApi(() => import("./chunk-56S6HWUR.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/openai-completions.lazy.js
-var openAICompletionsApi = () => lazyApi(() => import("./chunk-UJRFQSAL.mjs"));
+var openAICompletionsApi = () => lazyApi(() => import("./chunk-LCHWD3IW.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/openai-responses.lazy.js
-var openAIResponsesApi = () => lazyApi(() => import("./chunk-XYV5UC7B.mjs"));
+var openAIResponsesApi = () => lazyApi(() => import("./chunk-FBGCLYZS.mjs"));
 
 // target/vendor-pi/pi-ai/dist/legacy-api-aliases.js
 var anthropicMessagesStreams = anthropicMessagesApi();
@@ -830,7 +831,7 @@ function createLazyLoadErrorImages(model, error) {
   };
 }
 function loadOpenRouterImagesProviderModule() {
-  openRouterImagesProviderModulePromise ||= import("./chunk-JZ4LANIM.mjs").then((module) => module);
+  openRouterImagesProviderModulePromise ||= import("./chunk-B4FLDKBA.mjs").then((module) => module);
   return openRouterImagesProviderModulePromise;
 }
 var generateImagesOpenRouter = async (model, context, options) => {
@@ -1885,7 +1886,7 @@ function createAiBindingFetch(binding) {
 
 // target/vendor-pi/pi-ai/dist/api/cloudflare-workers-ai-system-one.lazy.js
 var cloudflareWorkersAISystemOneApi = () => ({
-  classify: async (model, context, options) => (await import("./chunk-3NIY2PDU.mjs")).classify(model, context, options)
+  classify: async (model, context, options) => (await import("./chunk-ZPBDFMBX.mjs")).classify(model, context, options)
 });
 
 // xtask/vendor-pi/pi-ai/sdk/google-genai.mjs
@@ -2265,7 +2266,7 @@ function retryGoogleRequest(request, options) {
 
 // target/vendor-pi/pi-ai/dist/api/llama-cpp-classify.lazy.js
 var llamaCppClassifyApi = () => ({
-  classify: async (model, context, options) => (await import("./chunk-5ZVF3775.mjs")).classify(model, context, options)
+  classify: async (model, context, options) => (await import("./chunk-FZPXCMR5.mjs")).classify(model, context, options)
 });
 
 // target/vendor-pi/pi-ai/dist/api/openai-responses-shared.js
@@ -2898,15 +2899,15 @@ function mapStopReason2(status, incompleteReason) {
 
 // target/vendor-pi/pi-ai/dist/api/openrouter-images.lazy.js
 var openrouterImagesApi = () => ({
-  generateImages: async (model, context, options) => (await import("./chunk-JZ4LANIM.mjs")).generateImages(model, context, options)
+  generateImages: async (model, context, options) => (await import("./chunk-B4FLDKBA.mjs")).generateImages(model, context, options)
 });
 
 // target/vendor-pi/pi-ai/dist/api/pi-messages.lazy.js
-var piMessagesApi = () => lazyApi(() => import("./chunk-TIK5JYDN.mjs"));
+var piMessagesApi = () => lazyApi(() => import("./chunk-L4H5UMNR.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/typesafe-system-one.lazy.js
 var typesafeSystemOneApi = () => ({
-  classify: async (model, context, options) => (await import("./chunk-OJAIUSX2.mjs")).classify(model, context, options)
+  classify: async (model, context, options) => (await import("./chunk-JCBQ72GB.mjs")).classify(model, context, options)
 });
 
 // target/vendor-pi/pi-ai/dist/providers/cloudflare-stream.js

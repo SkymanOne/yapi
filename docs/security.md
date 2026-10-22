@@ -46,6 +46,8 @@ An extension can register a stdio MCP server only with the process grant, and an
 
 yapi never runs an agent session inside an extension's instance, because that session would run tools and use credentials outside the extension's grants. Subagents run as separate yapi processes instead.
 
+Pi's exports that read `auth.json`, write `trust.json` or `settings.json`, or write session files directly throw in extensions, so extensions reach credentials, project trust, settings and sessions through the host. Until file grants can be limited to paths, an extension with the file grant can still open these files itself, as in Pi.
+
 Extensions share Pi's `pi.events` bus, so every extension receives the events of every other extension.
 
 ## Project trust
