@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ba872369.js";
+            window.path_to_searchindex_js = "searchindex-1b0bf3ba.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -193,7 +193,8 @@
 <tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See <a href="security.html#sandboxing">Sandboxing</a>.</td></tr>
 <tr><td>Node APIs</td><td>All of Node</td><td><a href="extensions.html#how-pi-extensions-run">Shims</a>. Sockets, servers, <code>http</code> requests, <code>worker_threads</code>, <code>node:sqlite</code>, <code>zlib</code>, <code>vm</code> and <code>child_process.fork</code> throw when used. <code>require()</code> of an ES module fails.</td></tr>
 <tr><td>Native addons</td><td>Loaded</td><td>Installed, never built. Loading one fails.</td></tr>
-<tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. Other exports throw when called, and built-in tool factories reject custom <code>operations</code>.</td></tr>
+<tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. Other exports of <code>pi-coding-agent</code> and <code>pi-agent-core</code> throw when called, and built-in tool factories reject custom <code>operations</code>.</td></tr>
+<tr><td><code>pi-ai</code> exports</td><td>Pi’s <code>pi-ai</code></td><td>Pi’s own <code>pi-ai</code> code, with yapi’s providers behind its wire APIs and its OpenRouter image generation. These make their requests in yapi, so they do not use a <code>fetch</code> option. Some exports throw when called, by design. <code>createModels</code>, <code>builtinModels</code>, <code>builtinProviders</code>, the built-in provider factories such as <code>anthropicProvider</code>, <code>cloudflareAIGatewayAuth</code>, <code>cloudflareWorkersAIAuth</code>, <code>defaultProviderAuthContext</code> and <code>findEnvKeys</code> would resolve provider credentials inside the runtime that every JavaScript extension shares, outside the host’s checked credential requests. <code>setBedrockProviderModule</code> and <code>registerImagesApiProvider</code> would let one extension replace code that receives other extensions’ credentials.</td></tr>
 <tr><td>Agent sessions in an extension</td><td><code>createAgentSession</code> and Pi’s SDK</td><td>Not supported, by design: such a session would run tools and use credentials outside the extension’s grants. Run a subagent as another yapi, with Pi’s <code>RpcClient</code> or as Pi’s <code>subagent</code> example does.</td></tr>
 <tr><td>Extension UI</td><td>Components detect links, images and theme changes</td><td>Links and images fall back to text. Theme changes reach extensions at their next session.</td></tr>
 <tr><td><code>pi.events</code></td><td>Every listener runs during <code>emit</code>, in the order of subscription</td><td>Listeners in the emitter’s runtime instance run during <code>emit</code>. Native extensions and other instances get the event after <code>emit</code> returns, as a JSON copy, and data JSON cannot carry stays in the emitter’s instance. An instance that is busy holds at most 64 events from others and drops later ones until it catches up.</td></tr>
