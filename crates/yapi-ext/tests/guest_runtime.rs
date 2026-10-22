@@ -244,15 +244,19 @@ export default function (pi) {
 }
 
 /// pi's exports that run inside the extension behave as in pi: session
-/// entries, compaction, skills, diffs, arguments, model scopes, images,
-/// components, pi-agent-core's agent loop over the extension's own stream
-/// and tools, and built-in tools over custom operations. The expected
-/// results were recorded from pi's installed packages with Node.
+/// entries, compaction, settings saved to their file, skills, diffs,
+/// arguments, model scopes, images, components, pi-agent-core's agent loop
+/// over the extension's own stream and tools, and built-in tools over custom
+/// operations. The expected results were recorded from pi's installed
+/// packages with Node.
 #[tokio::test(flavor = "multi_thread")]
 async fn exports_match_pi() {
     let main = r#"
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Type } from "typebox";
 import { BranchSummaryMessageComponent, createBashTool, createEditTool, createReadTool, buildSessionContext, convertToPng, CredentialSynchronizationError, estimateTokens, findCutPoint, formatDimensionNote, formatSkillsForPrompt, generateDiffString, generateUnifiedPatch, initTheme, parseArgs, parseSessionEntries, parseSkillBlock, renderDiff, resizeImage, resolveCliModel, resolveModelScopeWithDiagnostics, SessionManager, SettingsManager, shouldCompact, truncateHead } from "@earendil-works/pi-coding-agent";
 
@@ -306,6 +310,15 @@ async function runOperations() {
 	const bash = await createBashTool("/remote", { operations: bashOps }).execute("b", { command: "make" }).then(text, (error) => `error: ${error.message}`);
 	return { read: text(read), edit: [text(edit), edit.details?.diff], file: files.get("/remote/a.txt"), bash };
 }
+/** pi's settings file after a setting changes: its keys keep their order and the user's own stay. */
+async function saveSettings() {
+	const dir = mkdtempSync(join(tmpdir(), "settings-"));
+	writeFileSync(join(dir, "settings.json"), '{\n  "theme": "dark",\n  "httpIdleTimeoutMs": 1000,\n  "custom": [1, 2]\n}\n');
+	const settings = SettingsManager.create(dir, dir);
+	settings.setHttpIdleTimeoutMs(60_000);
+	await settings.flush();
+	return [settings.getHttpIdleTimeoutMs(), readFileSync(join(dir, "settings.json"), "utf8")];
+}
 export async function probe() {
 	// pi renders only after `initTheme`; yapi draws with the session's theme.
 	initTheme("dark");
@@ -330,7 +343,7 @@ export async function probe() {
 	return {
 		context: buildSessionContext(entries.slice(1)),
 		sessionManager: [sessions.getEntries().map((entry) => entry.type), sessions.buildSessionContext()],
-		settingsManager: [settings.getDefaultThinkingLevel(), settings.getCompactionSettings()],
+		settingsManager: [settings.getDefaultThinkingLevel(), settings.getCompactionSettings(), await saveSettings()],
 		tokens: estimateTokens(entries[2].message),
 		shouldCompact: [shouldCompact(90, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 }), shouldCompact(50, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 })],
 		cutPoint: findCutPoint(entries.slice(1), 0, 3, 1),
@@ -359,7 +372,7 @@ export default async function (pi) {
     let expected = json!({
         "context": {"messages": [{"timestamp": 1, "role": "user", "content": "hello there"}, {"timestamp": 1, "role": "assistant", "content": [{"type": "text", "text": "hi"}], "api": "x", "provider": "p", "model": "m", "usage": {"input": 1, "output": 2, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 3, "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}, "stopReason": "stop"}], "thinkingLevel": "high", "model": {"provider": "p", "modelId": "m"}},
         "sessionManager": [["message", "thinking_level_change"], {"messages": [{"role": "user", "content": "hi", "timestamp": 1}], "thinkingLevel": "low", "model": null}],
-        "settingsManager": ["high", {"enabled": true, "reserveTokens": 1, "keepRecentTokens": 20000}],
+        "settingsManager": ["high", {"enabled": true, "reserveTokens": 1, "keepRecentTokens": 20000}, [60000, "{\n  \"theme\": \"dark\",\n  \"httpIdleTimeoutMs\": 60000,\n  \"custom\": [\n    1,\n    2\n  ]\n}"]],
         "tokens": 1,
         "shouldCompact": [true, false],
         "cutPoint": {"firstKeptEntryIndex": 1, "turnStartIndex": 0, "isSplitTurn": true},

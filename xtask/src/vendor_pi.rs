@@ -61,8 +61,20 @@ const OVERRIDES: [&str; 5] = [
     "utils/image-convert.js",
     "utils/image-resize.js",
 ];
-/// Packages the copy imports only for code yapi replaces, bundled empty.
-const EMPTY_PACKAGES: [&str; 1] = ["undici"];
+/// `undici`, which pi's HTTP dispatcher setup reads and the bundle leaves
+/// out: pi reaches that code only from its own modes, and yapi's host makes
+/// the HTTP requests. Each export throws, so a pi release that reached it
+/// would fail visibly.
+const UNDICI: &str = "\
+const unavailable = (name) => function () {
+\tthrow new Error(`undici.${name} is not available in yapi extensions; yapi's host makes HTTP requests`);
+};
+export const Client = /* @__PURE__ */ unavailable('Client');
+export const EnvHttpProxyAgent = /* @__PURE__ */ unavailable('EnvHttpProxyAgent');
+export const install = /* @__PURE__ */ unavailable('install');
+export const Pool = /* @__PURE__ */ unavailable('Pool');
+export const setGlobalDispatcher = /* @__PURE__ */ unavailable('setGlobalDispatcher');
+";
 /// pi's HTML export template in the installed package, and where yapi keeps it.
 const EXPORT_TEMPLATE: &str = "tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/dist/core/export-html";
 const EXPORT_ASSETS: &str = "crates/yapi/assets/export-html";
@@ -131,8 +143,8 @@ pub fn run(_args: Args) -> anyhow::Result<()> {
             "export * from 'yapi:pi/host';\n",
         )?;
     }
-    let empty = scratch.join("empty.mjs");
-    fs::write(&empty, "export {};\n")?;
+    let undici = scratch.join("undici.mjs");
+    fs::write(&undici, UNDICI)?;
     let entries_dir = scratch.join("entries");
     fs::create_dir_all(&entries_dir)?;
     let mut entry_paths: Vec<PathBuf> = Vec::new();
@@ -164,17 +176,13 @@ pub fn run(_args: Args) -> anyhow::Result<()> {
             "--out-extension:.js=.mjs",
             "--chunk-names=chunk-[hash]",
             "--log-level=warning",
-            // `undici` is empty; the dispatcher code that reads it never runs.
-            "--log-override:import-is-undefined=silent",
         ])
         .arg(format!("--outdir={}", out.display()))
         .env("NODE_PATH", &modules);
     for builtin in BARE_BUILTINS {
         command.arg(format!("--external:{builtin}"));
     }
-    for package in EMPTY_PACKAGES {
-        command.arg(format!("--alias:{package}=./{}", empty.display()));
-    }
+    command.arg(format!("--alias:undici=./{}", undici.display()));
     let status = command.status().context("running esbuild through npx")?;
     if !status.success() {
         bail!("esbuild failed");
