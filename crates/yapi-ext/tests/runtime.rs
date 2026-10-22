@@ -244,7 +244,12 @@ import { DEFAULT_THINKING_BUDGETS } from "@earendil-works/pi-ai/api/simple-optio
 import { anthropicProvider } from "@mariozechner/pi-ai/providers/anthropic";
 export default function (pi) {
 	const ids = getBuiltinModels("anthropic").map((model) => model.id);
-	const provider = anthropicProvider();
+	let stub;
+	try {
+		anthropicProvider();
+	} catch (error) {
+		stub = error.message;
+	}
 	pi.registerCommand("probe", {
 		description: [
 			getBuiltinProviders().includes("anthropic"),
@@ -253,7 +258,7 @@ export default function (pi) {
 			Object.keys(ANTHROPIC_IMAGE_MODELS).length,
 			getProviderEnvValue("YAPI_TEST_VALUE", { YAPI_TEST_VALUE: "set" }),
 			DEFAULT_THINKING_BUDGETS.high,
-			provider.getModels().length === ids.length,
+			stub,
 		].join(","),
 		handler: async () => {},
 	});
@@ -263,7 +268,7 @@ export default function (pi) {
     assert_eq!(extension.get("error"), None, "{extension}");
     assert_eq!(
         extension["commands"][0]["description"],
-        "true,true,true,0,set,16384,true"
+        "true,true,true,0,set,16384,anthropicProvider from @earendil-works/pi-ai is not available in yapi extensions"
     );
 }
 

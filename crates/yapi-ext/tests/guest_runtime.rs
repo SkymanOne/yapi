@@ -213,6 +213,8 @@ async fn used_stubs_throw() {
     let main = r#"
 import { SessionManager, compact } from "@earendil-works/pi-coding-agent";
 import { Agent } from "@earendil-works/pi-agent-core";
+import { createModels } from "@earendil-works/pi-ai";
+import { setBedrockProviderModule } from "@earendil-works/pi-ai/api/bedrock-converse-stream.lazy";
 class Manager extends SessionManager {}
 const failure = (run) => {
 	try {
@@ -228,6 +230,8 @@ export default function (pi) {
 			failure(() => new Manager()),
 			failure(() => compact()),
 			failure(() => new Agent()),
+			failure(() => createModels()),
+			failure(() => setBedrockProviderModule({})),
 			SessionManager.name,
 		].join("|"),
 		handler: async () => {},
@@ -239,6 +243,8 @@ export default function (pi) {
         "ERR_NOT_SUPPORTED: SessionManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: compact from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: Agent from @earendil-works/pi-agent-core is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: createModels from @earendil-works/pi-ai is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: setBedrockProviderModule from @earendil-works/pi-ai is not available in yapi extensions|\
          SessionManager"
     );
 }

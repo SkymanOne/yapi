@@ -150,7 +150,8 @@ pub fn run(_args: Args) -> anyhow::Result<()> {
 /// yapi's replacements, next to the entries in `PI_AI_SOURCES`: the files
 /// under `PI_AI_SOURCES/dist` replace pi's, which stay beside them as
 /// `*.pi.js`; the wire API modules stream through the host; the catalog data
-/// is empty, as the generated catalogs read the host's.
+/// is empty, as the generated catalogs read the host's, which
+/// `providers.mjs` re-exports.
 fn prepare_pi_ai(package: &Path, copy: &Path) -> anyhow::Result<()> {
     copy_dir(&package.join("dist"), &copy.join("dist"))?;
     fs::copy(package.join("package.json"), copy.join("package.json"))?;
@@ -189,10 +190,7 @@ fn prepare_pi_ai(package: &Path, copy: &Path) -> anyhow::Result<()> {
             .strip_prefix(copy)?
             .to_string_lossy()
             .replace('\\', "/");
-        if relative.ends_with(".js")
-            && !relative.contains("/data/")
-            && !relative.contains("/images/")
-        {
+        if relative.ends_with(".models.js") {
             providers.push_str(&format!("export * from \"./{relative}\";\n"));
         }
     }

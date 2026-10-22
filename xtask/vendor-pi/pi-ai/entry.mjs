@@ -1,21 +1,40 @@
 // The parts of pi-ai that yapi's facade, `guest/yapi-js/js/pi/ai.mjs`,
 // re-exports, bundled from a copy of pi-ai's `dist` in which the wire API
 // modules stream through yapi's host and the generated catalogs read yapi's
-// (see `xtask/src/vendor_pi.rs`).
+// (see `xtask/src/vendor_pi.rs`). Exports that resolve credentials in the
+// runtime, or replace an implementation that other extensions' credentials
+// reach, are left out; the facade stubs them.
 import { setBedrockProviderModule } from "./dist/api/bedrock-converse-stream.lazy.js";
 import * as bedrock from "./dist/api/bedrock-converse-stream.js";
-import { registerBundledOAuthFlowLoaders } from "./dist/auth/oauth/load.js";
 
 export * from "./dist/api/lazy.js";
-export * from "./dist/auth/context.js";
 export * from "./dist/auth/credential-store.js";
 export * from "./dist/auth/helpers.js";
-export * from "./dist/env-api-keys.js";
+export {
+	ANTHROPIC_API_KEY_ENV,
+	ANTHROPIC_AUTH_TOKEN_ENV,
+	ANTHROPIC_FEDERATION_RULE_ID_ENV,
+	ANTHROPIC_IDENTITY_TOKEN_FILE_ENV,
+	ANTHROPIC_OAUTH_TOKEN_ENV,
+	ANTHROPIC_ORGANIZATION_ID_ENV,
+	ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
+	ANTHROPIC_WORKSPACE_ID_ENV,
+} from "./dist/env-api-keys.js";
 export * from "./dist/legacy-api-aliases.js";
 export * from "./dist/image-models.js";
 export * from "./dist/images.js";
-export * from "./dist/images-api-registry.js";
-export * from "./dist/models.js";
+export { getImagesApiProvider } from "./dist/images-api-registry.js";
+export {
+	ModelsError,
+	calculateCost,
+	clampThinkingLevel,
+	createProvider,
+	getModelType,
+	getSupportedThinkingLevels,
+	hasApi,
+	isModelType,
+	modelsAreEqual,
+} from "./dist/models.js";
 export * from "./dist/models-store.js";
 export * from "./dist/providers/images/register-builtins.js";
 export * from "./dist/session-resources.js";
@@ -45,7 +64,7 @@ export * from "./dist/utils/uuid.js";
 
 export * from "./dist/api/anthropic-messages.lazy.js";
 export * from "./dist/api/azure-openai-responses.lazy.js";
-export * from "./dist/api/bedrock-converse-stream.lazy.js";
+export { bedrockConverseStreamApi } from "./dist/api/bedrock-converse-stream.lazy.js";
 export * from "./dist/api/cloudflare.js";
 export * from "./dist/api/cloudflare-ai-binding.js";
 export * from "./dist/api/cloudflare-workers-ai-system-one.lazy.js";
@@ -70,20 +89,25 @@ export * from "./dist/api/system-one-shared.js";
 export * from "./dist/api/transform-messages.js";
 export * from "./dist/api/typesafe-system-one.lazy.js";
 
-// Every module of `dist/providers`, listed by `cargo xtask vendor-pi`.
+export * from "./dist/providers/cloudflare-stream.js";
+export * from "./dist/providers/faux.js";
+export * from "./dist/providers/opencode-headers.js";
+export * from "./dist/providers/radius-config.js";
+export {
+	getAllBuiltinModels,
+	getBuiltinClassifierModel,
+	getBuiltinClassifierModels,
+	getBuiltinImageModel,
+	getBuiltinImageModels,
+	getBuiltinModel,
+	getBuiltinModelDataGeneratedAt,
+	getBuiltinModels,
+	getBuiltinProviders,
+} from "./dist/providers/all.js";
+// The generated catalogs, every `dist/providers/*.models.js`, listed by
+// `cargo xtask vendor-pi`.
 export * from "./providers.mjs";
 
-// pi's Bun build registers its Node-only modules the same way, as bundlers
-// cannot follow pi-ai's variable import specifiers. Flows load on first use.
+// pi's Bun build registers its Node-only module the same way, as bundlers
+// cannot follow pi-ai's variable import specifiers.
 setBedrockProviderModule(bedrock);
-registerBundledOAuthFlowLoaders({
-	anthropic: async () => (await import("./dist/auth/oauth/anthropic.js")).anthropicOAuth,
-	openaiCodex: async () => (await import("./dist/auth/oauth/openai-codex.js")).openaiCodexOAuth,
-	openaiChatGPT: async () => (await import("./dist/auth/oauth/openai-chatgpt.js")).openaiChatGPTOAuth,
-	githubCopilot: async () => (await import("./dist/auth/oauth/github-copilot.js")).githubCopilotOAuth,
-	openrouter: async () => (await import("./dist/auth/oauth/openrouter.js")).openRouterOAuth,
-	kimiCoding: async () => (await import("./dist/auth/oauth/kimi-coding.js")).kimiCodingOAuth,
-	meta: async () => (await import("./dist/auth/oauth/meta.js")).metaOAuth,
-	xai: async () => (await import("./dist/auth/oauth/xai.js")).xaiOAuth,
-	radius: async (options) => (await import("./dist/auth/oauth/radius.js")).createRadiusOAuth(options),
-});

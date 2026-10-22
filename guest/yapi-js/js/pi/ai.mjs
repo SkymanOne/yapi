@@ -3,8 +3,9 @@
 // `yapi:vendor/pi-ai`, in which wire APIs, image generation and the generated
 // catalogs run on yapi's providers through the host. This module adds what
 // yapi provides in pi's place: completions on yapi's providers, the API
-// provider registry they consult, and JSON parsing and tool validation from
-// the host.
+// provider registry they consult, JSON parsing and tool validation from the
+// host, and stubs for the exports that would handle credentials in the
+// runtime.
 import { Value } from "typebox/value";
 import {
 	AssistantMessageEventStream,
@@ -21,6 +22,19 @@ export * from "yapi:vendor/pi-ai";
 export { Type } from "typebox";
 
 const yapi = globalThis.__yapi;
+
+// Not available, by design: these resolve provider credentials in the
+// runtime, which every JavaScript extension shares, rather than through the
+// host's checked requests, or replace an implementation that other
+// extensions' credentials reach. They throw when called.
+export const { amazonBedrockProvider, antLingProvider, anthropicProvider, azureOpenAIResponsesProvider, basetenProvider, builtinModels,
+	builtinProviders, cerebrasProvider, cloudflareAIGatewayAuth, cloudflareAIGatewayProvider, cloudflareWorkersAIAuth, cloudflareWorkersAIProvider,
+	createModels, deepseekProvider, defaultProviderAuthContext, findEnvKeys, fireworksProvider, githubCopilotProvider, googleProvider,
+	googleVertexProvider, groqProvider, huggingfaceProvider, kimiCodingProvider, metaProvider, minimaxCnProvider, minimaxProvider, mistralProvider,
+	moonshotaiCnProvider, moonshotaiProvider, nvidiaProvider, openaiCodexProvider, openaiProvider, opencodeGoProvider, opencodeProvider,
+	openrouterProvider, qwenTokenPlanCnProvider, qwenTokenPlanIndividualProvider, qwenTokenPlanProvider, radiusProvider, registerImagesApiProvider,
+	setBedrockProviderModule, togetherProvider, typesafeProvider, vercelAIGatewayProvider, xaiProvider, xiaomiProvider, xiaomiTokenPlanAmsProvider,
+	xiaomiTokenPlanCnProvider, xiaomiTokenPlanSgpProvider, zaiCodingCnProvider, zaiProvider } = yapi.stubs("@earendil-works/pi-ai");
 
 // The host ends a disposed session's resources, as pi's `AgentSession.dispose` does.
 yapi.cleanupSessionResources = cleanupSessionResources;

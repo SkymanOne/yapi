@@ -133,19 +133,12 @@
 		"Be brief\n\nUpdated system prompt section \"a\":\n\nOne"
 	],
 	"models": [
-		42,
 		true,
-		[
-			"anthropic",
-			"Anthropic",
-			"https://api.anthropic.com",
-			"Anthropic (Claude Pro/Max)"
-		],
 		1790881031882,
 		"faux",
-		{
-			"type": "api_key"
-		}
+		[
+			"faux-1"
+		]
 	],
 	"catalog": [
 		57,
@@ -249,17 +242,7 @@
 			"errorMessage": "No API key for provider: openrouter"
 		}
 	],
-	"envKeys": [
-		[
-			"ANTHROPIC_OAUTH_TOKEN",
-			"ANTHROPIC_API_KEY"
-		],
-		null
-	],
-	"auth": [
-		"Cloudflare API key",
-		"Cloudflare API key",
-		"function",
+	"cloudflare": [
 		"https://x/acc/{CLOUDFLARE_GATEWAY_ID}"
 	],
 	"radius": [

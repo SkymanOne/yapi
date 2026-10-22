@@ -1,16 +1,14 @@
 import {
 	AssistantMessageFrameEncoder, InMemoryCredentialStore, InMemoryModelsStore, appendAssistantMessageDiagnostic, cleanupSessionResources,
-	createAssistantMessageDiagnostic, createModels, declarationsEqual, defaultProviderAuthContext, extractDiagnosticError, fauxAssistantMessage,
+	createAssistantMessageDiagnostic, declarationsEqual, extractDiagnosticError, fauxAssistantMessage,
 	fauxProvider, fauxText, fauxThinking, fauxToolCall, getDeclaredTools, getOverflowPatterns, getToolStateChanges, hasNonAdditiveToolChanges,
 	hasToolRedefinitions, isContextOverflow, isRecoverableLength, isRetryableAssistantError, reduceAssistantMessageFrames,
 	registerSessionResourceCleanup, renderSystemMessageUpdate, resolveTranscriptTools, retryAssistantCall, retryDelayMs, toToolDeclaration,
 } from "@earendil-works/pi-ai";
-import { findEnvKeys, generateImages, getImageModel, getImageModels, getImageProviders, getImagesApiProvider, registerFauxProvider, completeSimple } from "@earendil-works/pi-ai/compat";
-import { builtinProviders, builtinModels, getBuiltinImageModels, getBuiltinClassifierModels, getBuiltinModelDataGeneratedAt } from "@earendil-works/pi-ai/providers/all";
+import { generateImages, getImageModel, getImageModels, getImageProviders, getImagesApiProvider, registerFauxProvider, completeSimple } from "@earendil-works/pi-ai/compat";
+import { getBuiltinImageModels, getBuiltinModel, getBuiltinModels, getBuiltinClassifierModels, getBuiltinModelDataGeneratedAt } from "@earendil-works/pi-ai/providers/all";
 import { OPENROUTER_IMAGE_MODELS } from "@earendil-works/pi-ai/providers/openrouter.models";
-import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
-import { cloudflareAIGatewayAuth, cloudflareWorkersAIAuth } from "@earendil-works/pi-ai/providers/cloudflare-auth";
 import { resolveCloudflareModel } from "@earendil-works/pi-ai/providers/cloudflare-stream";
 import { getRadiusModelsFromConfig, normalizeRadiusGatewayUrl } from "@earendil-works/pi-ai/providers/radius-config";
 import { withOpenCodeSessionHeader } from "@earendil-works/pi-ai/providers/opencode-headers";
@@ -76,17 +74,13 @@ async function probe() {
 	const reduced = reduceAssistantMessageFrames(frames);
 	faux.unregister();
 	const own = fauxProvider();
-	const models = createModels();
-	models.setProvider(own.provider);
 	own.setResponses([fauxAssistantMessage("from models", { timestamp: 2 })]);
-	const viaModels = await models.completeSimple(own.getModel(), { messages: [user] });
+	const viaProvider = await own.provider.streamSimple(own.getModel(), { messages: [user] }).result();
 
 	const credentials = new InMemoryCredentialStore();
 	await credentials.modify("p", async () => ({ type: "api_key", key: "k" }));
 	const modelsStore = new InMemoryModelsStore();
 	await modelsStore.write("p", { models: [], checkedAt: 3 });
-	const builtins = builtinModels();
-	const anthropic = anthropicProvider();
 
 	const responses = processResponsesStream(
 		(async function* () {
@@ -116,7 +110,7 @@ async function probe() {
 	const llama = llamaCppClassifyApi();
 
 	// Callbacks of requests that reach no server: what they get, and a throw.
-	const refused = { ...builtins.getModel("anthropic", "claude-sonnet-4-5"), baseUrl: "http://127.0.0.1:9" };
+	const refused = { ...getBuiltinModel("anthropic", "claude-sonnet-4-5"), baseUrl: "http://127.0.0.1:9" };
 	const calls = [];
 	const record = (name) => async (value, callbackModel) => void calls.push([name, value, callbackModel.id]);
 	const streamed = await anthropicMessagesApi()
@@ -136,17 +130,16 @@ async function probe() {
 
 	return {
 		sessionResources: cleaned,
-		faux: [reduced.content, reduced.stopReason, frames.map((frame) => frame.type).join(" "), withoutTime(viaModels).content],
+		faux: [reduced.content, reduced.stopReason, frames.map((frame) => frame.type).join(" "), withoutTime(viaProvider).content],
 		stores: [await credentials.read("p"), await modelsStore.read("p")],
 		overflow: [isContextOverflow(failed("prompt is too long: 213462 tokens > 200000 maximum")), isContextOverflow({ ...failed(""), stopReason: "stop" }, 12), isRecoverableLength({ stopReason: "length", usage }, 10), getOverflowPatterns().length],
 		retry: [isRetryableAssistantError(failed("529 overloaded")), isRetryableAssistantError(failed("insufficient_quota")), retryDelayMs({ baseDelayMs: 1000 }, 4), retryDelayMs({ baseDelayMs: 1000, maxAgentDelayMs: 5000 }, 10), withoutTime(retriedCall).content],
 		diagnostics: [withoutTime(createAssistantMessageDiagnostic("d", "bad", { at: 1 })), (() => { const message = failed("x"); appendAssistantMessageDiagnostic(message, createAssistantMessageDiagnostic("e", "plain")); return message.diagnostics.map(withoutTime); })(), extractDiagnosticError(42)],
 		transcript: [toToolDeclaration(tool), declarationsEqual(tool, { ...tool }), getToolStateChanges([tool], [{ ...tool, description: "Reads" }]), getDeclaredTools([{ role: "system", content: "", toolsAdded: [tool], timestamp: 0 }]).length, hasToolRedefinitions([{ role: "system", content: "", toolsAdded: [tool], timestamp: 0 }, { role: "system", content: "", toolsAdded: [{ ...tool, description: "x" }], timestamp: 1 }]), hasNonAdditiveToolChanges([{ role: "system", content: "", toolsRemoved: [tool], timestamp: 0 }]), resolveTranscriptTools([{ role: "system", content: "", toolsAdded: [tool], timestamp: 0 }], false).length, renderSystemMessageUpdate({ role: "system", content: "Be brief", sections: { a: "One" }, timestamp: 0 })],
-		models: [builtinProviders().length, builtins.getModels("anthropic").length > 0, [anthropic.id, anthropic.name, anthropic.baseUrl, anthropic.auth.oauth.name], getBuiltinModelDataGeneratedAt(), models.getProvider("faux")?.name, await models.checkAuth("faux")],
-		catalog: [getImageModels("openrouter").length, getImageProviders(), imageModel.name, getBuiltinImageModels("openrouter").length, Object.keys(OPENROUTER_IMAGE_MODELS).length, getBuiltinClassifierModels("typesafe").map((entry) => entry.id), typeof getImagesApiProvider("openrouter-images")?.generateImages, imageModel, builtins.getModel("anthropic", "claude-sonnet-4-5")],
+		models: [getBuiltinModels("anthropic").length > 0, getBuiltinModelDataGeneratedAt(), own.provider.name, own.provider.getModels().map((entry) => entry.id)],
+		catalog: [getImageModels("openrouter").length, getImageProviders(), imageModel.name, getBuiltinImageModels("openrouter").length, Object.keys(OPENROUTER_IMAGE_MODELS).length, getBuiltinClassifierModels("typesafe").map((entry) => entry.id), typeof getImagesApiProvider("openrouter-images")?.generateImages, imageModel, getBuiltinModel("anthropic", "claude-sonnet-4-5")],
 		images: [withoutTime(images), withoutTime(openRouter)],
-		envKeys: [findEnvKeys("anthropic", { ANTHROPIC_OAUTH_TOKEN: "t", ANTHROPIC_API_KEY: "k" }), findEnvKeys("nope", {})],
-		auth: [cloudflareWorkersAIAuth().name, cloudflareAIGatewayAuth().name, typeof defaultProviderAuthContext().env, resolveCloudflareModel({ baseUrl: "https://x/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}" }, { CLOUDFLARE_ACCOUNT_ID: "acc" }).baseUrl],
+		cloudflare: [resolveCloudflareModel({ baseUrl: "https://x/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}" }, { CLOUDFLARE_ACCOUNT_ID: "acc" }).baseUrl],
 		radius: [normalizeRadiusGatewayUrl("radius.pi.dev/"), getRadiusModelsFromConfig("radius", { models: [{ id: "a", name: "A", api: "pi-messages", baseUrl: "https://r", input: ["text"], contextWindow: 10, maxTokens: 5, reasoning: false, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] }).map((entry) => [entry.id, entry.provider])],
 		constrained: [makeStrictJsonSchema(tool.parameters), getJsonSchemaToolParameters(tool, true), resolveJsonSchemaStrictSampling(tool, true), resolveGrammarConstrainedSampling(tool, true), getGrammarToolInput("t", { input: "x" }, "input"), appendGrammarToolInputJsonDelta({ input: "", closed: false }, "input", "ab", true), createGrammarToolInputProperties([tool], true)],
 		copilot: [inferCopilotInitiator([user]), hasCopilotVisionInput([user]), buildCopilotDynamicHeaders({ messages: [user], hasImages: true })],

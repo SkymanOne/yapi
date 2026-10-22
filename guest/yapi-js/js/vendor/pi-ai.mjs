@@ -1,12 +1,4 @@
 import {
-  DEFAULT_RADIUS_GATEWAY,
-  getRadiusCredentialConfig,
-  getRadiusModels,
-  getRadiusModelsFromConfig,
-  loadRadiusGatewayConfig,
-  normalizeRadiusGatewayUrl
-} from "./chunk-ZVMXFEG4.mjs";
-import {
   answerFromProbabilities,
   classify,
   labelProbabilities,
@@ -19,21 +11,6 @@ import {
   stream,
   streamSimple
 } from "./chunk-PTYLW4C7.mjs";
-import {
-  GITHUB_COPILOT_CLASSIFIER_MODELS,
-  GITHUB_COPILOT_IMAGE_MODELS,
-  GITHUB_COPILOT_MODELS,
-  flattenChatModelCatalog,
-  flattenClassifierModelCatalog,
-  flattenImageModelCatalog
-} from "./chunk-YARZUAXD.mjs";
-import {
-  sleep
-} from "./chunk-K7XUP4LN.mjs";
-import {
-  oauthErrorHtml,
-  oauthSuccessHtml
-} from "./chunk-WPQGAY53.mjs";
 import {
   typebox_exports
 } from "./chunk-XSZB7GXF.mjs";
@@ -68,17 +45,15 @@ import {
   shortHash,
   thinkingBudgetForLevel,
   transformMessages
-} from "./chunk-6PTCZY6C.mjs";
+} from "./chunk-U7SJVDIT.mjs";
 import {
+  getProviderEnvValue,
   parseStreamingJson
-} from "./chunk-SOWCS55L.mjs";
-import {
-  getProviderEnvValue
-} from "./chunk-EVPRFFV6.mjs";
+} from "./chunk-ZBM2T4CW.mjs";
 import {
   classifySystemOne,
   isRecord
-} from "./chunk-6BSHW5CE.mjs";
+} from "./chunk-ZUFRIJAQ.mjs";
 import {
   InMemoryCredentialStore,
   InMemoryModelsStore,
@@ -92,10 +67,8 @@ import {
   collapseSystemMessages,
   contentText,
   createInitialSystemMessage,
-  createModels,
   createProvider,
   declarationsEqual,
-  defaultProviderAuthContext,
   getCurrentSystemMessage,
   getCurrentSystemPrompt,
   getCurrentTools,
@@ -121,7 +94,7 @@ import {
   resolveTranscriptTools,
   toToolDeclaration,
   withoutInitialSystemMessage
-} from "./chunk-ICPUEOJC.mjs";
+} from "./chunk-MPUG5NMZ.mjs";
 import {
   MAX_PROVIDER_ERROR_BODY_CHARS,
   formatProviderError,
@@ -176,69 +149,6 @@ var host = () => globalThis.__yapi.hostApi("bedrock-converse-stream");
 var stream2 = (model, context, options) => host().stream(model, context, options);
 var streamSimple2 = (model, context, options) => host().streamSimple(model, context, options);
 
-// target/vendor-pi/pi-ai/dist/auth/oauth/load.js
-var __rewriteRelativeImportExtension2 = function(path, preserveJsx) {
-  if (typeof path === "string" && /^\.\.?\//.test(path)) {
-    return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
-      return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
-    });
-  }
-  return path;
-};
-var importOAuthModule = (specifier) => {
-  const runtimeSpecifier = import.meta.url.endsWith(".js") ? specifier.replace(/\.ts$/, ".js") : specifier;
-  return import(__rewriteRelativeImportExtension2(runtimeSpecifier));
-};
-var bundledLoaders;
-function registerBundledOAuthFlowLoaders(loaders) {
-  bundledLoaders = loaders;
-}
-var loadAnthropicOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.anthropic();
-  return (await importOAuthModule("./anthropic.ts")).anthropicOAuth;
-};
-var loadOpenAICodexOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.openaiCodex();
-  return (await importOAuthModule("./openai-codex.ts")).openaiCodexOAuth;
-};
-var loadOpenAIChatGPTOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.openaiChatGPT();
-  return (await importOAuthModule("./openai-chatgpt.ts")).openaiChatGPTOAuth;
-};
-var loadGitHubCopilotOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.githubCopilot();
-  return (await importOAuthModule("./github-copilot.ts")).githubCopilotOAuth;
-};
-var loadOpenRouterOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.openrouter();
-  return (await importOAuthModule("./openrouter.ts")).openRouterOAuth;
-};
-var loadKimiCodingOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.kimiCoding();
-  return (await importOAuthModule("./kimi-coding.ts")).kimiCodingOAuth;
-};
-var loadMetaOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.meta();
-  return (await importOAuthModule("./meta.ts")).metaOAuth;
-};
-var loadXaiOAuth = async () => {
-  if (bundledLoaders)
-    return bundledLoaders.xai();
-  return (await importOAuthModule("./xai.ts")).xaiOAuth;
-};
-var loadRadiusOAuth = async (options) => {
-  if (bundledLoaders)
-    return bundledLoaders.radius(options);
-  return (await importOAuthModule("./radius.ts")).createRadiusOAuth(options);
-};
-
 // target/vendor-pi/pi-ai/dist/auth/helpers.js
 function envApiKeyAuth(name, envVars) {
   return {
@@ -281,7 +191,7 @@ function lazyOAuth(input) {
 }
 
 // target/vendor-pi/pi-ai/dist/env-api-keys.js
-var __rewriteRelativeImportExtension3 = function(path, preserveJsx) {
+var __rewriteRelativeImportExtension2 = function(path, preserveJsx) {
   if (typeof path === "string" && /^\.\.?\//.test(path)) {
     return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
       return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
@@ -292,7 +202,7 @@ var __rewriteRelativeImportExtension3 = function(path, preserveJsx) {
 var _existsSync = null;
 var _homedir = null;
 var _join = null;
-var dynamicImport = (specifier) => import(__rewriteRelativeImportExtension3(specifier));
+var dynamicImport = (specifier) => import(__rewriteRelativeImportExtension2(specifier));
 var NODE_FS_SPECIFIER = "node:fs";
 var NODE_OS_SPECIFIER = "node:os";
 var NODE_PATH_SPECIFIER = "node:path";
@@ -315,108 +225,6 @@ var ANTHROPIC_ORGANIZATION_ID_ENV = "ANTHROPIC_ORGANIZATION_ID";
 var ANTHROPIC_SERVICE_ACCOUNT_ID_ENV = "ANTHROPIC_SERVICE_ACCOUNT_ID";
 var ANTHROPIC_IDENTITY_TOKEN_FILE_ENV = "ANTHROPIC_IDENTITY_TOKEN_FILE";
 var ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
-var cachedVertexAdcCredentialsExists = null;
-function hasVertexAdcCredentials(env) {
-  const explicitCredentialsPath = env?.GOOGLE_APPLICATION_CREDENTIALS;
-  if (explicitCredentialsPath) {
-    return _existsSync ? _existsSync(explicitCredentialsPath) : false;
-  }
-  if (cachedVertexAdcCredentialsExists === null) {
-    if (!_existsSync || !_homedir || !_join) {
-      const isNode = typeof process !== "undefined" && (process.versions?.node || process.versions?.bun);
-      if (!isNode) {
-        cachedVertexAdcCredentialsExists = false;
-      }
-      return false;
-    }
-    const gacPath = getProviderEnvValue("GOOGLE_APPLICATION_CREDENTIALS", env);
-    if (gacPath) {
-      cachedVertexAdcCredentialsExists = _existsSync(gacPath);
-    } else {
-      cachedVertexAdcCredentialsExists = _existsSync(_join(_homedir(), ".config", "gcloud", "application_default_credentials.json"));
-    }
-  }
-  return cachedVertexAdcCredentialsExists;
-}
-function getApiKeyEnvVars(provider) {
-  if (provider === "github-copilot") {
-    return ["COPILOT_GITHUB_TOKEN"];
-  }
-  if (provider === "anthropic") {
-    return [ANTHROPIC_AUTH_TOKEN_ENV, ANTHROPIC_OAUTH_TOKEN_ENV, ANTHROPIC_API_KEY_ENV];
-  }
-  const envMap = {
-    "ant-ling": "ANT_LING_API_KEY",
-    "qwen-token-plan": "QWEN_TOKEN_PLAN_API_KEY",
-    "qwen-token-plan-cn": "QWEN_TOKEN_PLAN_CN_API_KEY",
-    "qwen-token-plan-individual": "QWEN_TOKEN_PLAN_API_KEY",
-    openai: "OPENAI_API_KEY",
-    "azure-openai-responses": "AZURE_OPENAI_API_KEY",
-    nvidia: "NVIDIA_API_KEY",
-    deepseek: "DEEPSEEK_API_KEY",
-    google: "GEMINI_API_KEY",
-    "google-vertex": "GOOGLE_CLOUD_API_KEY",
-    groq: "GROQ_API_KEY",
-    cerebras: "CEREBRAS_API_KEY",
-    xai: "XAI_API_KEY",
-    typesafe: "TYPESAFE_API_KEY",
-    radius: "RADIUS_API_KEY",
-    openrouter: "OPENROUTER_API_KEY",
-    "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
-    zai: "ZAI_API_KEY",
-    "zai-coding-cn": "ZAI_CODING_CN_API_KEY",
-    mistral: "MISTRAL_API_KEY",
-    minimax: "MINIMAX_API_KEY",
-    "minimax-cn": "MINIMAX_CN_API_KEY",
-    moonshotai: "MOONSHOT_API_KEY",
-    "moonshotai-cn": "MOONSHOT_API_KEY",
-    huggingface: "HF_TOKEN",
-    fireworks: "FIREWORKS_API_KEY",
-    together: "TOGETHER_API_KEY",
-    baseten: "BASETEN_API_KEY",
-    opencode: "OPENCODE_API_KEY",
-    "opencode-go": "OPENCODE_API_KEY",
-    "kimi-coding": "KIMI_API_KEY",
-    meta: "META_API_KEY",
-    "cloudflare-workers-ai": "CLOUDFLARE_API_KEY",
-    "cloudflare-ai-gateway": "CLOUDFLARE_API_KEY",
-    xiaomi: "XIAOMI_API_KEY",
-    "xiaomi-token-plan-cn": "XIAOMI_TOKEN_PLAN_CN_API_KEY",
-    "xiaomi-token-plan-ams": "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
-    "xiaomi-token-plan-sgp": "XIAOMI_TOKEN_PLAN_SGP_API_KEY"
-  };
-  const envVar = envMap[provider];
-  return envVar ? [envVar] : void 0;
-}
-function findEnvKeys(provider, env) {
-  const envVars = getApiKeyEnvVars(provider);
-  if (!envVars)
-    return void 0;
-  const found = envVars.filter((envVar) => !!getProviderEnvValue(envVar, env));
-  return found.length > 0 ? found : void 0;
-}
-function getEnvApiKey(provider, env) {
-  const envKeys = findEnvKeys(provider, env);
-  if (envKeys?.[0]) {
-    const apiKeyEnv = provider === "anthropic" ? envKeys.find((key) => key !== ANTHROPIC_AUTH_TOKEN_ENV) : envKeys[0];
-    if (apiKeyEnv)
-      return getProviderEnvValue(apiKeyEnv, env);
-  }
-  if (provider === "google-vertex") {
-    const hasCredentials = hasVertexAdcCredentials(env);
-    const hasProject = !!(getProviderEnvValue("GOOGLE_CLOUD_PROJECT", env) || getProviderEnvValue("GCLOUD_PROJECT", env));
-    const hasLocation = !!getProviderEnvValue("GOOGLE_CLOUD_LOCATION", env);
-    if (hasCredentials && hasProject && hasLocation) {
-      return "<authenticated>";
-    }
-  }
-  if (provider === "amazon-bedrock") {
-    if (getProviderEnvValue("AWS_PROFILE", env) || getProviderEnvValue("AWS_ACCESS_KEY_ID", env) && getProviderEnvValue("AWS_SECRET_ACCESS_KEY", env) || getProviderEnvValue("AWS_BEARER_TOKEN_BEDROCK", env) || getProviderEnvValue("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", env) || getProviderEnvValue("AWS_CONTAINER_CREDENTIALS_FULL_URI", env) || getProviderEnvValue("AWS_WEB_IDENTITY_TOKEN_FILE", env)) {
-      return "<authenticated>";
-    }
-  }
-  return void 0;
-}
 
 // target/vendor-pi/pi-ai/dist/api/anthropic-messages.lazy.js
 var anthropicMessagesApi = () => lazyApi(() => import("./chunk-PIESELT4.mjs"));
@@ -437,7 +245,7 @@ var mistralConversationsApi = () => lazyApi(() => import("./chunk-MFDKPXJE.mjs")
 var openAICodexResponsesApi = () => lazyApi(() => import("./chunk-WKK7AB6I.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/openai-completions.lazy.js
-var openAICompletionsApi = () => lazyApi(() => import("./chunk-EA2IXWKG.mjs"));
+var openAICompletionsApi = () => lazyApi(() => import("./chunk-UJRFQSAL.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/openai-responses.lazy.js
 var openAIResponsesApi = () => lazyApi(() => import("./chunk-XYV5UC7B.mjs"));
@@ -470,6 +278,32 @@ var streamSimpleOpenAIResponses = openAIResponsesStreams.streamSimple;
 
 // target/vendor-pi/pi-ai/dist/providers/data/amazon-bedrock.json
 var amazon_bedrock_default = {};
+
+// target/vendor-pi/pi-ai/dist/model-catalog.js
+function catalog(type, provider) {
+  let models;
+  const load = () => models ??= Object.fromEntries(globalThis.__yapi.request("models.list", { provider, type }).map((model) => [model.id, model]));
+  return new Proxy({}, {
+    get: (_target, key) => load()[key],
+    has: (_target, key) => key in load(),
+    ownKeys: () => Reflect.ownKeys(load()),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(load(), key);
+      if (descriptor)
+        descriptor.configurable = true;
+      return descriptor;
+    }
+  });
+}
+function flattenChatModelCatalog(provider) {
+  return catalog("chat", provider);
+}
+function flattenImageModelCatalog(provider) {
+  return catalog("image", provider);
+}
+function flattenClassifierModelCatalog(provider) {
+  return catalog("classifier", provider);
+}
 
 // target/vendor-pi/pi-ai/dist/providers/amazon-bedrock.models.js
 var AMAZON_BEDROCK_MODELS = flattenChatModelCatalog("amazon-bedrock", amazon_bedrock_default);
@@ -547,6 +381,14 @@ var fireworks_default = {};
 var FIREWORKS_MODELS = flattenChatModelCatalog("fireworks", fireworks_default);
 var FIREWORKS_IMAGE_MODELS = flattenImageModelCatalog("fireworks", fireworks_default);
 var FIREWORKS_CLASSIFIER_MODELS = flattenClassifierModelCatalog("fireworks", fireworks_default);
+
+// target/vendor-pi/pi-ai/dist/providers/data/github-copilot.json
+var github_copilot_default = {};
+
+// target/vendor-pi/pi-ai/dist/providers/github-copilot.models.js
+var GITHUB_COPILOT_MODELS = flattenChatModelCatalog("github-copilot", github_copilot_default);
+var GITHUB_COPILOT_IMAGE_MODELS = flattenImageModelCatalog("github-copilot", github_copilot_default);
+var GITHUB_COPILOT_CLASSIFIER_MODELS = flattenClassifierModelCatalog("github-copilot", github_copilot_default);
 
 // target/vendor-pi/pi-ai/dist/providers/data/google.json
 var google_default = {};
@@ -1608,6 +1450,107 @@ function resolveHttpProxyUrlForTarget(targetUrl, env) {
   return proxyUrl;
 }
 
+// target/vendor-pi/pi-ai/dist/utils/oauth-page.js
+var LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" aria-hidden="true"><path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z"/><path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z"/><path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/></svg>`;
+function escapeHtml(value) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+function renderPage(options) {
+  const title = escapeHtml(options.title);
+  const heading = escapeHtml(options.heading);
+  const message = escapeHtml(options.message);
+  const details = options.details ? escapeHtml(options.details) : void 0;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title}</title>
+  <style>
+    :root {
+      --text: #fafafa;
+      --text-dim: #a1a1aa;
+      --page-bg: #09090b;
+      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      text-align: center;
+    }
+    main {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo {
+      width: 72px;
+      height: 72px;
+      display: block;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 28px;
+      line-height: 1.15;
+      font-weight: 650;
+      color: var(--text);
+    }
+    p {
+      margin: 0;
+      line-height: 1.7;
+      color: var(--text-dim);
+      font-size: 15px;
+    }
+    .details {
+      margin-top: 16px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="logo">${LOGO_SVG}</div>
+    <h1>${heading}</h1>
+    <p>${message}</p>
+    ${details ? `<div class="details">${details}</div>` : ""}
+  </main>
+</body>
+</html>`;
+}
+function oauthSuccessHtml(message) {
+  return renderPage({
+    title: "Authentication successful",
+    heading: "Authentication successful",
+    message
+  });
+}
+function oauthErrorHtml(message, details) {
+  return renderPage({
+    title: "Authentication failed",
+    heading: "Authentication failed",
+    message,
+    details
+  });
+}
+
 // target/vendor-pi/pi-ai/dist/utils/overflow.js
 var OVERFLOW_PATTERNS = [
   /prompt (?:is )?too long/i,
@@ -1801,7 +1744,7 @@ var RetrySleepAbortError = class extends Error {
     super("Aborted");
   }
 };
-function sleep2(ms, signal) {
+function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new RetrySleepAbortError());
@@ -1840,7 +1783,7 @@ async function retryAssistantCall(produce, policy, signal, callbacks) {
     const delayMs = retryDelayMs(policy, attempt);
     await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
     try {
-      await sleep2(delayMs, signal);
+      await sleep(delayMs, signal);
     } catch (error) {
       await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
       if (error instanceof RetrySleepAbortError) {
@@ -1859,6 +1802,22 @@ function isRetryableAssistantError(message) {
   if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage))
     return false;
   return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
+}
+
+// target/vendor-pi/pi-ai/dist/utils/sleep.js
+function sleep2(ms, signal) {
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 // target/vendor-pi/pi-ai/dist/utils/typebox-helpers.js
@@ -1926,7 +1885,7 @@ function createAiBindingFetch(binding) {
 
 // target/vendor-pi/pi-ai/dist/api/cloudflare-workers-ai-system-one.lazy.js
 var cloudflareWorkersAISystemOneApi = () => ({
-  classify: async (model, context, options) => (await import("./chunk-3ACNL4L5.mjs")).classify(model, context, options)
+  classify: async (model, context, options) => (await import("./chunk-3NIY2PDU.mjs")).classify(model, context, options)
 });
 
 // xtask/vendor-pi/pi-ai/sdk/google-genai.mjs
@@ -2943,302 +2902,20 @@ var openrouterImagesApi = () => ({
 });
 
 // target/vendor-pi/pi-ai/dist/api/pi-messages.lazy.js
-var piMessagesApi = () => lazyApi(() => import("./chunk-BAZ4HGG2.mjs"));
+var piMessagesApi = () => lazyApi(() => import("./chunk-TIK5JYDN.mjs"));
 
 // target/vendor-pi/pi-ai/dist/api/typesafe-system-one.lazy.js
 var typesafeSystemOneApi = () => ({
-  classify: async (model, context, options) => (await import("./chunk-VJEXLSBC.mjs")).classify(model, context, options)
+  classify: async (model, context, options) => (await import("./chunk-OJAIUSX2.mjs")).classify(model, context, options)
 });
 
-// target/vendor-pi/pi-ai/dist/providers/amazon-bedrock.js
-var bedrockAuth = {
-  name: "AWS credentials or bearer token",
-  login: async (interaction) => {
-    interaction.signal.throwIfAborted();
-    const method = await interaction.prompt({
-      type: "select",
-      message: "Select Amazon Bedrock authentication method:",
-      options: [
-        { id: "bearer-token", label: "Bearer token" },
-        { id: "aws-profile", label: "AWS profile" },
-        { id: "credential-chain", label: "Existing AWS credential chain" }
-      ]
-    });
-    interaction.signal.throwIfAborted();
-    if (method === "bearer-token") {
-      return {
-        type: "api_key",
-        key: await interaction.prompt({ type: "secret", message: "Enter Amazon Bedrock bearer token" })
-      };
-    }
-    interaction.notify({
-      type: "info",
-      message: "Amazon Bedrock supports AWS profiles, IAM credentials, and role-based credentials.",
-      links: [
-        {
-          label: "AWS credential provider chain",
-          url: "https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html"
-        }
-      ]
-    });
-    if (method === "aws-profile") {
-      return {
-        type: "api_key",
-        env: { AWS_PROFILE: await interaction.prompt({ type: "text", message: "Enter AWS profile name" }) }
-      };
-    }
-    if (method !== "credential-chain")
-      throw new Error(`Unknown Amazon Bedrock auth method: ${method}`);
-    await interaction.prompt({
-      type: "text",
-      message: "Configure AWS credentials, then press Enter to continue"
-    });
-    return { type: "api_key" };
-  },
-  resolve: async ({ ctx, credential, signal }) => {
-    const env = async (name) => {
-      signal.throwIfAborted();
-      const value = await ctx.env(name);
-      signal.throwIfAborted();
-      return value;
-    };
-    if (credential?.key) {
-      return { auth: { apiKey: credential.key }, env: credential.env, source: "stored credential" };
-    }
-    if (await env("AWS_BEARER_TOKEN_BEDROCK"))
-      return { auth: {}, source: "AWS_BEARER_TOKEN_BEDROCK" };
-    if (credential?.env?.AWS_PROFILE ?? await env("AWS_PROFILE")) {
-      return {
-        auth: {},
-        env: credential?.env,
-        source: credential?.env?.AWS_PROFILE ? "stored credential" : "AWS_PROFILE"
-      };
-    }
-    if (await env("AWS_ACCESS_KEY_ID") && await env("AWS_SECRET_ACCESS_KEY")) {
-      return { auth: {}, source: "AWS access keys" };
-    }
-    if (await env("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))
-      return { auth: {}, source: "ECS task role" };
-    if (await env("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
-      return { auth: {}, source: "ECS task role" };
-    if (await env("AWS_WEB_IDENTITY_TOKEN_FILE"))
-      return { auth: {}, source: "web identity token" };
-    return void 0;
-  }
-};
-function amazonBedrockProvider() {
-  return createProvider({
-    id: "amazon-bedrock",
-    name: "Amazon Bedrock",
-    auth: { apiKey: bedrockAuth },
-    models: Object.values(AMAZON_BEDROCK_MODELS),
-    api: bedrockConverseStreamApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/ant-ling.js
-function antLingProvider() {
-  return createProvider({
-    id: "ant-ling",
-    name: "Ant Ling",
-    baseUrl: "https://api.ant-ling.com/v1",
-    auth: { apiKey: envApiKeyAuth("Ant Ling API key", ["ANT_LING_API_KEY"]) },
-    models: Object.values(ANT_LING_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/anthropic.js
-function anthropicApiKeyAuth() {
-  return {
-    name: "Anthropic API key",
-    login: async (interaction) => {
-      interaction.signal.throwIfAborted();
-      const key = await interaction.prompt({ type: "secret", message: "Enter Anthropic API key" });
-      interaction.signal.throwIfAborted();
-      return { type: "api_key", key };
-    },
-    resolve: async ({ ctx, credential, signal }) => {
-      signal.throwIfAborted();
-      if (credential?.key) {
-        return { auth: { apiKey: credential.key }, env: credential.env, source: "stored credential" };
-      }
-      const authToken = await ctx.env(ANTHROPIC_AUTH_TOKEN_ENV);
-      signal.throwIfAborted();
-      if (authToken) {
-        return {
-          auth: { headers: { Authorization: `Bearer ${authToken}` } },
-          source: ANTHROPIC_AUTH_TOKEN_ENV
-        };
-      }
-      for (const envVar of [ANTHROPIC_OAUTH_TOKEN_ENV, ANTHROPIC_API_KEY_ENV]) {
-        const apiKey = await ctx.env(envVar);
-        signal.throwIfAborted();
-        if (apiKey)
-          return { auth: { apiKey }, source: envVar };
-      }
-      const federation = {};
-      for (const envVar of [
-        ANTHROPIC_FEDERATION_RULE_ID_ENV,
-        ANTHROPIC_ORGANIZATION_ID_ENV,
-        ANTHROPIC_IDENTITY_TOKEN_FILE_ENV
-      ]) {
-        const value = await ctx.env(envVar);
-        signal.throwIfAborted();
-        if (!value)
-          return void 0;
-        federation[envVar] = value;
-      }
-      for (const envVar of [ANTHROPIC_SERVICE_ACCOUNT_ID_ENV, ANTHROPIC_WORKSPACE_ID_ENV]) {
-        const value = await ctx.env(envVar);
-        signal.throwIfAborted();
-        if (value)
-          federation[envVar] = value;
-      }
-      return { auth: {}, env: federation, source: "workload identity federation" };
-    }
-  };
-}
-function anthropicProvider() {
-  return createProvider({
-    id: "anthropic",
-    name: "Anthropic",
-    baseUrl: "https://api.anthropic.com",
-    auth: {
-      apiKey: anthropicApiKeyAuth(),
-      oauth: lazyOAuth({
-        name: "Anthropic (Claude Pro/Max)",
-        isSubscription: true,
-        load: loadAnthropicOAuth
-      })
-    },
-    models: Object.values(ANTHROPIC_MODELS),
-    api: anthropicMessagesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/azure-openai-responses.js
-function azureOpenAIResponsesProvider() {
-  return createProvider({
-    id: "azure-openai-responses",
-    name: "Azure OpenAI",
-    auth: { apiKey: envApiKeyAuth("Azure OpenAI API key", ["AZURE_OPENAI_API_KEY"]) },
-    models: Object.values(AZURE_OPENAI_RESPONSES_MODELS),
-    api: azureOpenAIResponsesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/baseten.js
-function basetenProvider() {
-  return createProvider({
-    id: "baseten",
-    name: "Baseten",
-    baseUrl: "https://inference.baseten.co/v1",
-    auth: { apiKey: envApiKeyAuth("Baseten API key", ["BASETEN_API_KEY"]) },
-    models: Object.values(BASETEN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/cerebras.js
-function cerebrasProvider() {
-  return createProvider({
-    id: "cerebras",
-    name: "Cerebras",
-    baseUrl: "https://api.cerebras.ai/v1",
-    auth: { apiKey: envApiKeyAuth("Cerebras API key", ["CEREBRAS_API_KEY"]) },
-    models: Object.values(CEREBRAS_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/cloudflare-auth.js
-var CLOUDFLARE_API_KEY = "CLOUDFLARE_API_KEY";
+// target/vendor-pi/pi-ai/dist/providers/cloudflare-stream.js
 var CLOUDFLARE_ACCOUNT_ID = "CLOUDFLARE_ACCOUNT_ID";
 var CLOUDFLARE_GATEWAY_ID = "CLOUDFLARE_GATEWAY_ID";
-async function resolveValue(name, ctx, credential, signal) {
-  const fromCredential = credential ? name === CLOUDFLARE_API_KEY ? credential.key : credential.env?.[name] : void 0;
-  if (fromCredential !== void 0)
-    return fromCredential;
-  signal.throwIfAborted();
-  const value = await ctx.env(name);
-  signal.throwIfAborted();
-  return value;
-}
-async function resolveCloudflareEnv(kind, ctx, credential, signal) {
-  const apiKey = await resolveValue(CLOUDFLARE_API_KEY, ctx, credential, signal);
-  const accountId = await resolveValue(CLOUDFLARE_ACCOUNT_ID, ctx, credential, signal);
-  const gatewayId = kind === "ai-gateway" ? await resolveValue(CLOUDFLARE_GATEWAY_ID, ctx, credential, signal) : void 0;
-  if (!apiKey || !accountId || kind === "ai-gateway" && !gatewayId)
-    return void 0;
-  return {
-    apiKey,
-    env: {
-      CLOUDFLARE_ACCOUNT_ID: accountId,
-      ...gatewayId ? { CLOUDFLARE_GATEWAY_ID: gatewayId } : {}
-    },
-    source: credential ? "stored credential" : CLOUDFLARE_API_KEY
-  };
-}
-function cloudflareWorkersAIAuth() {
-  return {
-    name: "Cloudflare API key",
-    login: async (interaction) => {
-      const key = await interaction.prompt({ type: "secret", message: "Enter Cloudflare API key" });
-      const accountId = await interaction.prompt({ type: "text", message: "Enter Cloudflare account ID" });
-      return { type: "api_key", key, env: { CLOUDFLARE_ACCOUNT_ID: accountId } };
-    },
-    resolve: async ({ ctx, credential, signal }) => {
-      const resolved = await resolveCloudflareEnv("workers-ai", ctx, credential, signal);
-      if (!resolved)
-        return void 0;
-      return {
-        auth: { apiKey: resolved.apiKey },
-        env: resolved.env,
-        source: resolved.source
-      };
-    }
-  };
-}
-function cloudflareAIGatewayAuth() {
-  return {
-    name: "Cloudflare API key",
-    login: async (interaction) => {
-      const key = await interaction.prompt({ type: "secret", message: "Enter Cloudflare API key" });
-      const accountId = await interaction.prompt({ type: "text", message: "Enter Cloudflare account ID" });
-      const gatewayId = await interaction.prompt({ type: "text", message: "Enter Cloudflare AI Gateway ID" });
-      return {
-        type: "api_key",
-        key,
-        env: { CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_GATEWAY_ID: gatewayId }
-      };
-    },
-    resolve: async ({ ctx, credential, signal }) => {
-      const resolved = await resolveCloudflareEnv("ai-gateway", ctx, credential, signal);
-      if (!resolved)
-        return void 0;
-      return {
-        auth: {
-          headers: {
-            "cf-aig-authorization": `Bearer ${resolved.apiKey}`,
-            Authorization: null,
-            "x-api-key": null
-          }
-        },
-        env: resolved.env,
-        source: resolved.source
-      };
-    }
-  };
-}
-
-// target/vendor-pi/pi-ai/dist/providers/cloudflare-stream.js
-var CLOUDFLARE_ACCOUNT_ID2 = "CLOUDFLARE_ACCOUNT_ID";
-var CLOUDFLARE_GATEWAY_ID2 = "CLOUDFLARE_GATEWAY_ID";
 function resolveCloudflareModel(model, env) {
   if (!env)
     return model;
-  const baseUrl = model.baseUrl.replaceAll(`{${CLOUDFLARE_ACCOUNT_ID2}}`, env[CLOUDFLARE_ACCOUNT_ID2] ?? `{${CLOUDFLARE_ACCOUNT_ID2}}`).replaceAll(`{${CLOUDFLARE_GATEWAY_ID2}}`, env[CLOUDFLARE_GATEWAY_ID2] ?? `{${CLOUDFLARE_GATEWAY_ID2}}`);
+  const baseUrl = model.baseUrl.replaceAll(`{${CLOUDFLARE_ACCOUNT_ID}}`, env[CLOUDFLARE_ACCOUNT_ID] ?? `{${CLOUDFLARE_ACCOUNT_ID}}`).replaceAll(`{${CLOUDFLARE_GATEWAY_ID}}`, env[CLOUDFLARE_GATEWAY_ID] ?? `{${CLOUDFLARE_GATEWAY_ID}}`);
   return baseUrl === model.baseUrl ? model : { ...model, baseUrl };
 }
 function cloudflareStreams(streams) {
@@ -3251,775 +2928,6 @@ function cloudflareClassifier(classifier) {
   return {
     classify: (model, context, options) => classifier.classify(resolveCloudflareModel(model, options?.env), context, options)
   };
-}
-
-// target/vendor-pi/pi-ai/dist/providers/cloudflare-ai-gateway.js
-function cloudflareAIGatewayProvider() {
-  return createProvider({
-    id: "cloudflare-ai-gateway",
-    name: "Cloudflare AI Gateway",
-    auth: { apiKey: cloudflareAIGatewayAuth() },
-    models: Object.values(CLOUDFLARE_AI_GATEWAY_MODELS),
-    api: {
-      "anthropic-messages": cloudflareStreams(anthropicMessagesApi()),
-      "openai-completions": cloudflareStreams(openAICompletionsApi()),
-      "openai-responses": cloudflareStreams(openAIResponsesApi())
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/cloudflare-workers-ai.js
-function cloudflareWorkersAIProvider() {
-  return createProvider({
-    id: "cloudflare-workers-ai",
-    name: "Cloudflare Workers AI",
-    auth: { apiKey: cloudflareWorkersAIAuth() },
-    models: [
-      ...Object.values(CLOUDFLARE_WORKERS_AI_MODELS),
-      ...Object.values(CLOUDFLARE_WORKERS_AI_CLASSIFIER_MODELS)
-    ],
-    api: cloudflareStreams(openAICompletionsApi()),
-    classifiers: {
-      "cloudflare-workers-ai-system-one": cloudflareClassifier(cloudflareWorkersAISystemOneApi())
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/data/.manifest.json
-var manifest_default = { schemaVersion: 6, generatedAt: "2026-10-01T18:57:11.882Z", structureHash: "235f2f320916ab6b0d7193e0bf66ec7983e9bc05abeddd7264923fb1e7eaf76e", files: { "amazon-bedrock.json": "b962444f8daad1e3022d3e4bd59af8e8802d6012615397015c825996219e4af5", "ant-ling.json": "628feab3ef6c7d80ce96f75999804e1d9f05fec3851e5302e30fff3b69db90f6", "anthropic.json": "3ff00b68990382e42626ebd1b65dcc28ae3cad9e6faa8920331ba92f067f1b3a", "azure-openai-responses.json": "adeb2cf9d944d84f81b0d633c2e4e6bfa548a806c431902bd037c5f36500be21", "baseten.json": "b04d1423d6958bec857ffccc36726f091ec1a8f3a09cf0836b64cc94b0ee697d", "cerebras.json": "3eccb58c5de3d0dc7ba49dc6e477ba29f00cb3150ce0a35cc90d59e6b5ab368e", "cloudflare-ai-gateway.json": "52decade622d1d25f1af90385b1aec7331dad00d56e010a5e4d15118efae67ce", "cloudflare-workers-ai.json": "b9f76cc83756a05920a8a7046c515919a1de918331b860a211f309bb716c4bb0", "deepseek.json": "10a296fb3e898f7715c80890c8af0af4f5fd58f22dbcd6612fdc5d762157ccdc", "fireworks.json": "d6144ba451bd7a0617669527bec1898f97a633f7d7ea5035d8e03234550340c0", "github-copilot.json": "573f05c2dfc0c8158e252dd286d6b174cd323f965284d7ae157439d8e3dea92c", "google-vertex.json": "40090c680538bc867f2624d986a449f361be4dfa6ba96d7a27402050f036e009", "google.json": "c0f5a633e5e5a5044432db3e537f4bc674d4de18df09325c6349547fcc13cabe", "groq.json": "910952ad9dad07856983459d63fce0148dba1203edd7b10d801a77c5824f3405", "huggingface.json": "1b8604bd31a5e05fe43a40ec1ec6dfc1a51a28b0b020151ef057fab43f57c923", "kimi-coding.json": "582250b920454d98940da3e7e99d30b807edbea28f2eb8ac15f658d2ef41e8fc", "meta.json": "0c7e9a370a7005c5a89dc94f0f93bc67b8935c3f802de324f11af6ff56fff429", "minimax-cn.json": "f962c20ee6a6a342820f778e9dc363a18a524bf11998f6e2c57f2989915d62e5", "minimax.json": "17a432f80d0ea6dd26eade80a4314250d3a855678601728a5f70dd8fa0d21dd2", "mistral.json": "10f33bff9adf1248f7e6848e5890c265399f1f94e5b42cfdc28c109d547af98d", "moonshotai-cn.json": "79c9585dc84ee525ebaebbc78b3c55f3d369ec884d4f943488f1e0b14e3587f5", "moonshotai.json": "1da2c4e34f22aef17a07c974d85bdee8e1b68b6dc712e3769c935b3f1e7dadca", "nvidia.json": "3b4e7b799bf3eaacd1af0491eef77fe33147ea7f72a3a9fa54d77af0e7eacf4c", "openai-codex.json": "3cc35a7e122e5c77ee8ec30a9a3bd8bd59629997e85ba2cb3f9e0ed62e9a09c0", "openai.json": "87faafcdd168c9b6fdaef521137834a207437daf0d71641fd0a2f3dddf4d1ecb", "opencode-go.json": "d05b3eb87b81c6e5a94801484e668e660fe60c68f06a972b716d581c3bbd7c25", "opencode.json": "1c504731d37468cc992a88b231cde29d46f0273e2710d8af227247c58afaa1b7", "openrouter.json": "767e2ea83edbbdfcc9e9d66a2d4e9eae9b14589fb97e137daebef7958b1b0283", "qwen-token-plan-cn.json": "2469a4091c474ec3db0a49a9962d8d2726c074ad9065b96bc4e0c87861c4c6c5", "qwen-token-plan-individual.json": "0fb7cf64faf39d1a3b0a884210a86c87084b805eda15644f5f39293287b959dd", "qwen-token-plan.json": "eff10620cb577142de4ec02698d5961a71fda2fe4f6ae7ea9432bad9d6844176", "radius.json": "c8e24a65119360946749c6d5e45782d84ab2794df661b369bb27c2bff3b72e67", "together.json": "94ec3839972061405885d64f5fdbde48eb1f29a159be5e607e9770befd54e28e", "typesafe.json": "a4429a2f696d5cc5273969af61a7310bda07d6bdcd27bf9ac9c76c534cc43716", "vercel-ai-gateway.json": "b3574cebd04f1db537c2d06517caf3e184360f181b9cbc5ce1c287886dbfce77", "xai.json": "879c49b78b663a52a220ac4ee013e726b10c4f50aaa03bc58ee53a4b54c76928", "xiaomi-token-plan-ams.json": "ca65178f4525d9705bc8d085ed136cecbe149c4080e857ea6a64ae643d2ac00a", "xiaomi-token-plan-cn.json": "b065326926681c2262084e59c1c19ebdaf146c07107b5242c76b456becf74db0", "xiaomi-token-plan-sgp.json": "92c3d6d707f81fd9cd2b6d1fb57dc431d90ba51e10fe49d97bc8806035c23492", "xiaomi.json": "b81d01a374f7b558728c78d81f4168efa9c8996e6e2b5618409a8094b083c759", "zai-coding-cn.json": "ee5ee705fb6e413a6088db5e3616c27fce802a8ece6c355f1db35490d787f610", "zai.json": "58e6642fdfb736f0b9a4a277c760c536a3cea66a030abbfb2615f7b2851d5c6f" } };
-
-// target/vendor-pi/pi-ai/dist/providers/deepseek.js
-function deepseekProvider() {
-  return createProvider({
-    id: "deepseek",
-    name: "DeepSeek",
-    baseUrl: "https://api.deepseek.com",
-    auth: { apiKey: envApiKeyAuth("DeepSeek API key", ["DEEPSEEK_API_KEY"]) },
-    models: Object.values(DEEPSEEK_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/fireworks.js
-function fireworksProvider() {
-  return createProvider({
-    id: "fireworks",
-    name: "Fireworks",
-    baseUrl: "https://api.fireworks.ai/inference",
-    auth: { apiKey: envApiKeyAuth("Fireworks API key", ["FIREWORKS_API_KEY"]) },
-    models: Object.values(FIREWORKS_MODELS),
-    api: {
-      "anthropic-messages": anthropicMessagesApi(),
-      "openai-completions": openAICompletionsApi()
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/github-copilot.js
-function githubCopilotProvider() {
-  return createProvider({
-    id: "github-copilot",
-    name: "GitHub Copilot",
-    baseUrl: "https://api.individual.githubcopilot.com",
-    auth: {
-      apiKey: envApiKeyAuth("GitHub Copilot token", ["COPILOT_GITHUB_TOKEN"]),
-      oauth: lazyOAuth({ name: "GitHub Copilot", isSubscription: true, load: loadGitHubCopilotOAuth })
-    },
-    models: Object.values(GITHUB_COPILOT_MODELS),
-    filterModels: (models, credential) => {
-      if (credential?.type !== "oauth")
-        return models;
-      const availableModelIds = credential.availableModelIds;
-      if (!Array.isArray(availableModelIds) || !availableModelIds.every((id) => typeof id === "string")) {
-        return models;
-      }
-      const available = new Set(availableModelIds);
-      return models.filter((model) => available.has(model.id));
-    },
-    api: {
-      "anthropic-messages": anthropicMessagesApi(),
-      "openai-completions": openAICompletionsApi(),
-      "openai-responses": openAIResponsesApi()
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/google.js
-function googleProvider() {
-  return createProvider({
-    id: "google",
-    name: "Google",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    auth: { apiKey: envApiKeyAuth("Gemini API key", ["GEMINI_API_KEY"]) },
-    models: Object.values(GOOGLE_MODELS),
-    api: googleGenerativeAIApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/google-vertex.js
-var VERTEX_ADC_PATH = "~/.config/gcloud/application_default_credentials.json";
-var vertexAuth = {
-  name: "Google Cloud credentials",
-  login: async (interaction) => {
-    interaction.signal.throwIfAborted();
-    const method = await interaction.prompt({
-      type: "select",
-      message: "Select Google Vertex AI authentication method:",
-      options: [
-        { id: "api-key", label: "Google Cloud API key" },
-        { id: "adc", label: "Application Default Credentials" },
-        { id: "service-account", label: "Service account credentials file" }
-      ]
-    });
-    interaction.signal.throwIfAborted();
-    if (method === "api-key") {
-      return {
-        type: "api_key",
-        key: await interaction.prompt({ type: "secret", message: "Enter Google Cloud API key" })
-      };
-    }
-    if (method !== "adc" && method !== "service-account") {
-      throw new Error(`Unknown Google Vertex AI auth method: ${method}`);
-    }
-    interaction.notify({
-      type: "info",
-      message: method === "adc" ? "Run `gcloud auth application-default login`, then provide the project and location." : "Provide a service account credentials file, project, and location.",
-      links: [
-        {
-          label: "Application Default Credentials",
-          url: "https://cloud.google.com/docs/authentication/provide-credentials-adc"
-        }
-      ]
-    });
-    const project = await interaction.prompt({ type: "text", message: "Enter Google Cloud project ID" });
-    const location = await interaction.prompt({ type: "text", message: "Enter Google Cloud location" });
-    const credentialsPath = method === "service-account" ? await interaction.prompt({ type: "text", message: "Enter service account credentials file path" }) : void 0;
-    return {
-      type: "api_key",
-      env: {
-        GOOGLE_CLOUD_PROJECT: project,
-        GOOGLE_CLOUD_LOCATION: location,
-        ...credentialsPath ? { GOOGLE_APPLICATION_CREDENTIALS: credentialsPath } : {}
-      }
-    };
-  },
-  resolve: async ({ ctx, credential, signal }) => {
-    const env = async (name) => {
-      signal.throwIfAborted();
-      const value = await ctx.env(name);
-      signal.throwIfAborted();
-      return value;
-    };
-    const key = credential?.key ?? await env("GOOGLE_CLOUD_API_KEY");
-    if (key)
-      return { auth: { apiKey: key }, source: credential?.key ? "stored credential" : "GOOGLE_CLOUD_API_KEY" };
-    const adcPath = credential?.env?.GOOGLE_APPLICATION_CREDENTIALS ?? await env("GOOGLE_APPLICATION_CREDENTIALS");
-    signal.throwIfAborted();
-    const hasCredentials = await ctx.fileExists(adcPath ?? VERTEX_ADC_PATH);
-    signal.throwIfAborted();
-    const project = credential?.env?.GOOGLE_CLOUD_PROJECT ?? await env("GOOGLE_CLOUD_PROJECT") ?? await env("GCLOUD_PROJECT");
-    const location = credential?.env?.GOOGLE_CLOUD_LOCATION ?? await env("GOOGLE_CLOUD_LOCATION");
-    if (hasCredentials && project && location) {
-      return {
-        auth: {},
-        env: credential?.env,
-        source: credential ? "stored credential" : "gcloud application default credentials"
-      };
-    }
-    return void 0;
-  }
-};
-function googleVertexProvider() {
-  return createProvider({
-    id: "google-vertex",
-    name: "Google Vertex AI",
-    auth: { apiKey: vertexAuth },
-    models: Object.values(GOOGLE_VERTEX_MODELS),
-    api: googleVertexApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/groq.js
-function groqProvider() {
-  return createProvider({
-    id: "groq",
-    name: "Groq",
-    baseUrl: "https://api.groq.com/openai/v1",
-    auth: { apiKey: envApiKeyAuth("Groq API key", ["GROQ_API_KEY"]) },
-    models: Object.values(GROQ_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/huggingface.js
-function huggingfaceProvider() {
-  return createProvider({
-    id: "huggingface",
-    name: "Hugging Face",
-    baseUrl: "https://router.huggingface.co/v1",
-    auth: { apiKey: envApiKeyAuth("Hugging Face token", ["HF_TOKEN"]) },
-    models: Object.values(HUGGINGFACE_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/kimi-coding.js
-function kimiCodingProvider() {
-  return createProvider({
-    id: "kimi-coding",
-    name: "Kimi For Coding",
-    baseUrl: "https://api.kimi.com/coding",
-    auth: {
-      apiKey: envApiKeyAuth("Kimi API key", ["KIMI_API_KEY"]),
-      oauth: lazyOAuth({
-        name: "Kimi Code (subscription)",
-        isSubscription: true,
-        loginLabel: "Sign in with Kimi Code",
-        load: loadKimiCodingOAuth
-      })
-    },
-    models: Object.values(KIMI_CODING_MODELS),
-    api: anthropicMessagesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/meta.js
-function metaProvider() {
-  return createProvider({
-    id: "meta",
-    name: "Meta",
-    baseUrl: "https://api.meta.ai/v1",
-    auth: {
-      apiKey: envApiKeyAuth("Meta Model API key", ["META_API_KEY"]),
-      oauth: lazyOAuth({
-        name: "Meta (Muse subscription)",
-        isSubscription: true,
-        loginLabel: "Sign in with Meta",
-        load: loadMetaOAuth
-      })
-    },
-    models: Object.values(META_MODELS),
-    api: openAIResponsesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/minimax.js
-function minimaxProvider() {
-  return createProvider({
-    id: "minimax",
-    name: "MiniMax",
-    baseUrl: "https://api.minimax.io/anthropic",
-    auth: { apiKey: envApiKeyAuth("MiniMax API key", ["MINIMAX_API_KEY"]) },
-    models: Object.values(MINIMAX_MODELS),
-    api: anthropicMessagesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/minimax-cn.js
-function minimaxCnProvider() {
-  return createProvider({
-    id: "minimax-cn",
-    name: "MiniMax CN",
-    baseUrl: "https://api.minimaxi.com/anthropic",
-    auth: { apiKey: envApiKeyAuth("MiniMax CN API key", ["MINIMAX_CN_API_KEY"]) },
-    models: Object.values(MINIMAX_CN_MODELS),
-    api: anthropicMessagesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/mistral.js
-function mistralProvider() {
-  return createProvider({
-    id: "mistral",
-    name: "Mistral",
-    baseUrl: "https://api.mistral.ai",
-    auth: { apiKey: envApiKeyAuth("Mistral API key", ["MISTRAL_API_KEY"]) },
-    models: Object.values(MISTRAL_MODELS),
-    api: mistralConversationsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/moonshotai.js
-function moonshotaiProvider() {
-  return createProvider({
-    id: "moonshotai",
-    name: "Moonshot AI",
-    baseUrl: "https://api.moonshot.ai/v1",
-    auth: { apiKey: envApiKeyAuth("Moonshot AI API key", ["MOONSHOT_API_KEY"]) },
-    models: Object.values(MOONSHOTAI_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/moonshotai-cn.js
-function moonshotaiCnProvider() {
-  return createProvider({
-    id: "moonshotai-cn",
-    name: "Moonshot AI CN",
-    baseUrl: "https://api.moonshot.cn/v1",
-    auth: { apiKey: envApiKeyAuth("Moonshot AI API key", ["MOONSHOT_API_KEY"]) },
-    models: Object.values(MOONSHOTAI_CN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/nvidia.js
-function nvidiaProvider() {
-  return createProvider({
-    id: "nvidia",
-    name: "NVIDIA",
-    baseUrl: "https://integrate.api.nvidia.com/v1",
-    auth: { apiKey: envApiKeyAuth("NVIDIA API key", ["NVIDIA_API_KEY"]) },
-    models: Object.values(NVIDIA_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/openai.js
-function openaiProvider() {
-  return createProvider({
-    id: "openai",
-    name: "OpenAI",
-    baseUrl: "https://api.openai.com/v1",
-    auth: {
-      apiKey: envApiKeyAuth("OpenAI API key", ["OPENAI_API_KEY"]),
-      oauth: lazyOAuth({
-        name: "OpenAI (ChatGPT subscription)",
-        isSubscription: true,
-        loginLabel: "Sign in with ChatGPT",
-        load: loadOpenAIChatGPTOAuth
-      })
-    },
-    models: Object.values(OPENAI_MODELS),
-    api: openAIResponsesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/openai-codex.js
-function openaiCodexProvider() {
-  return createProvider({
-    id: "openai-codex",
-    name: "OpenAI Codex (legacy)",
-    baseUrl: "https://chatgpt.com/backend-api",
-    auth: {
-      oauth: lazyOAuth({
-        name: "OpenAI (ChatGPT Plus/Pro)",
-        isSubscription: true,
-        load: loadOpenAICodexOAuth
-      })
-    },
-    models: Object.values(OPENAI_CODEX_MODELS),
-    api: openAICodexResponsesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/opencode-headers.js
-var OPENCODE_SESSION_HEADER = "x-opencode-session";
-function hasHeader(headers, name) {
-  const expected = name.toLowerCase();
-  return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);
-}
-function withSessionHeader(options) {
-  if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))
-    return options;
-  return {
-    ...options,
-    headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId }
-  };
-}
-function withOpenCodeSessionHeader(streams) {
-  return {
-    ...streams,
-    stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),
-    streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options))
-  };
-}
-
-// target/vendor-pi/pi-ai/dist/providers/opencode.js
-function opencodeProvider() {
-  return createProvider({
-    id: "opencode",
-    name: "OpenCode Zen",
-    auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
-    models: [...Object.values(OPENCODE_MODELS), ...Object.values(OPENCODE_CLASSIFIER_MODELS)],
-    api: {
-      "anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),
-      "google-generative-ai": withOpenCodeSessionHeader(googleGenerativeAIApi()),
-      "openai-completions": withOpenCodeSessionHeader(openAICompletionsApi()),
-      "openai-responses": withOpenCodeSessionHeader(openAIResponsesApi())
-    },
-    // OpenCode Zen serves TypeSafe's System One protocol at /zen/v1/systemone.
-    classifiers: { "typesafe-system-one": typesafeSystemOneApi() }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/opencode-go.js
-function opencodeGoProvider() {
-  return createProvider({
-    id: "opencode-go",
-    name: "OpenCode Go",
-    auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
-    models: Object.values(OPENCODE_GO_MODELS),
-    api: {
-      "anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),
-      "openai-completions": withOpenCodeSessionHeader(openAICompletionsApi()),
-      "openai-responses": withOpenCodeSessionHeader(openAIResponsesApi())
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/openrouter.js
-function openrouterProvider() {
-  return createProvider({
-    id: "openrouter",
-    name: "OpenRouter",
-    baseUrl: "https://openrouter.ai/api/v1",
-    auth: {
-      apiKey: envApiKeyAuth("OpenRouter API key", ["OPENROUTER_API_KEY"]),
-      oauth: lazyOAuth({
-        name: "OpenRouter OAuth",
-        loginLabel: "Sign in with OpenRouter",
-        load: loadOpenRouterOAuth
-      })
-    },
-    models: [
-      ...Object.values(OPENROUTER_MODELS),
-      ...Object.values(OPENROUTER_IMAGE_MODELS),
-      ...Object.values(OPENROUTER_CLASSIFIER_MODELS)
-    ],
-    api: {
-      "anthropic-messages": anthropicMessagesApi(),
-      "openai-completions": openAICompletionsApi()
-    },
-    images: { "openrouter-images": openrouterImagesApi() },
-    // OpenRouter serves TypeSafe's System One protocol at /api/v1/systemone.
-    classifiers: { "typesafe-system-one": typesafeSystemOneApi() }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/qwen-token-plan.js
-function qwenTokenPlanProvider() {
-  return createProvider({
-    id: "qwen-token-plan",
-    name: "Qwen Token Plan",
-    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
-    auth: { apiKey: envApiKeyAuth("Qwen Token Plan API key", ["QWEN_TOKEN_PLAN_API_KEY"]) },
-    models: Object.values(QWEN_TOKEN_PLAN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/qwen-token-plan-cn.js
-function qwenTokenPlanCnProvider() {
-  return createProvider({
-    id: "qwen-token-plan-cn",
-    name: "Qwen Token Plan CN",
-    baseUrl: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-    auth: { apiKey: envApiKeyAuth("Qwen Token Plan CN API key", ["QWEN_TOKEN_PLAN_CN_API_KEY"]) },
-    models: Object.values(QWEN_TOKEN_PLAN_CN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/qwen-token-plan-individual.js
-function qwenTokenPlanIndividualProvider() {
-  return createProvider({
-    id: "qwen-token-plan-individual",
-    name: "Qwen Token Plan Individual",
-    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
-    auth: { apiKey: envApiKeyAuth("Qwen Token Plan Individual API key", ["QWEN_TOKEN_PLAN_API_KEY"]) },
-    models: Object.values(QWEN_TOKEN_PLAN_INDIVIDUAL_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/radius.js
-function radiusProvider(options = {}) {
-  const id = options.id ?? "radius";
-  const name = options.name ?? "Radius";
-  const gateway = normalizeRadiusGatewayUrl(options.gateway ?? DEFAULT_RADIUS_GATEWAY);
-  const baselineModels = gateway === normalizeRadiusGatewayUrl(DEFAULT_RADIUS_GATEWAY) ? Object.values(RADIUS_MODELS).map((model) => ({ ...model, provider: id })) : [];
-  let dynamicModels = getRadiusModels(id, void 0);
-  const streams = piMessagesApi();
-  return {
-    id,
-    name,
-    auth: {
-      apiKey: envApiKeyAuth("Radius API key", ["RADIUS_API_KEY"]),
-      oauth: lazyOAuth({ name, load: () => loadRadiusOAuth({ name, gateway }) })
-    },
-    getModels: () => {
-      const merged = [...baselineModels];
-      for (const model of dynamicModels) {
-        const index = merged.findIndex((entry) => entry.id === model.id);
-        if (index >= 0)
-          merged[index] = model;
-        else
-          merged.push(model);
-      }
-      return merged;
-    },
-    refreshModels: async (context) => {
-      const stored = context.stored;
-      if (stored) {
-        const restored = stored.models.filter((model) => model.provider === id);
-        if (!await context.publish({
-          update: () => {
-            dynamicModels = restored;
-          }
-        })) {
-          return;
-        }
-      }
-      if (!stored && context.credential?.type === "oauth") {
-        const legacy = getRadiusModels(id, context.credential);
-        if (legacy.length > 0) {
-          if (!await context.publish({
-            persist: { models: legacy, checkedAt: Date.now() },
-            update: () => {
-              dynamicModels = legacy;
-            }
-          })) {
-            return;
-          }
-        }
-      }
-      if (!context.allowNetwork || context.signal.aborted)
-        return;
-      const apiKey = context.credential?.type === "oauth" ? context.credential.access : context.credential?.key;
-      const config = await loadRadiusGatewayConfig(gateway, apiKey, context.signal);
-      if (context.signal.aborted)
-        return;
-      const refreshed = getRadiusModelsFromConfig(id, config);
-      await context.publish({
-        persist: { models: refreshed, checkedAt: Date.now() },
-        update: () => {
-          dynamicModels = refreshed;
-        }
-      });
-    },
-    stream: (model, context, streamOptions) => streams.stream(model, context, streamOptions),
-    streamSimple: (model, context, streamOptions) => streams.streamSimple(model, context, streamOptions)
-  };
-}
-
-// target/vendor-pi/pi-ai/dist/providers/together.js
-function togetherProvider() {
-  return createProvider({
-    id: "together",
-    name: "Together",
-    baseUrl: "https://api.together.ai/v1",
-    auth: { apiKey: envApiKeyAuth("Together API key", ["TOGETHER_API_KEY"]) },
-    models: Object.values(TOGETHER_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/typesafe.js
-function typesafeProvider() {
-  return createProvider({
-    id: "typesafe",
-    name: "TypeSafe",
-    auth: {
-      apiKey: envApiKeyAuth("TypeSafe API key", ["TYPESAFE_API_KEY"])
-    },
-    models: Object.values(TYPESAFE_CLASSIFIER_MODELS),
-    classifiers: {
-      "typesafe-system-one": typesafeSystemOneApi()
-    }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/vercel-ai-gateway.js
-function vercelAIGatewayProvider() {
-  return createProvider({
-    id: "vercel-ai-gateway",
-    name: "Vercel AI Gateway",
-    baseUrl: "https://ai-gateway.vercel.sh",
-    auth: { apiKey: envApiKeyAuth("Vercel AI Gateway API key", ["AI_GATEWAY_API_KEY"]) },
-    models: [...Object.values(VERCEL_AI_GATEWAY_MODELS), ...Object.values(VERCEL_AI_GATEWAY_CLASSIFIER_MODELS)],
-    api: anthropicMessagesApi(),
-    // AI Gateway serves TypeSafe's System One protocol at /typesafe/v1/systemone.
-    classifiers: { "typesafe-system-one": typesafeSystemOneApi() }
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/xai.js
-function xaiProvider() {
-  return createProvider({
-    id: "xai",
-    name: "xAI",
-    baseUrl: "https://api.x.ai/v1",
-    auth: {
-      apiKey: envApiKeyAuth("xAI API key", ["XAI_API_KEY"]),
-      oauth: lazyOAuth({
-        name: "xAI (Grok/X subscription)",
-        isSubscription: true,
-        loginLabel: "Sign in with SuperGrok or X Premium",
-        load: loadXaiOAuth
-      })
-    },
-    models: Object.values(XAI_MODELS),
-    api: openAIResponsesApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/xiaomi.js
-function xiaomiProvider() {
-  return createProvider({
-    id: "xiaomi",
-    name: "Xiaomi",
-    baseUrl: "https://api.xiaomimimo.com/v1",
-    auth: { apiKey: envApiKeyAuth("Xiaomi API key", ["XIAOMI_API_KEY"]) },
-    models: Object.values(XIAOMI_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/xiaomi-token-plan-ams.js
-function xiaomiTokenPlanAmsProvider() {
-  return createProvider({
-    id: "xiaomi-token-plan-ams",
-    name: "Xiaomi Token Plan AMS",
-    baseUrl: "https://token-plan-ams.xiaomimimo.com/v1",
-    auth: { apiKey: envApiKeyAuth("Xiaomi Token Plan AMS API key", ["XIAOMI_TOKEN_PLAN_AMS_API_KEY"]) },
-    models: Object.values(XIAOMI_TOKEN_PLAN_AMS_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/xiaomi-token-plan-cn.js
-function xiaomiTokenPlanCnProvider() {
-  return createProvider({
-    id: "xiaomi-token-plan-cn",
-    name: "Xiaomi Token Plan CN",
-    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
-    auth: { apiKey: envApiKeyAuth("Xiaomi Token Plan CN API key", ["XIAOMI_TOKEN_PLAN_CN_API_KEY"]) },
-    models: Object.values(XIAOMI_TOKEN_PLAN_CN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/xiaomi-token-plan-sgp.js
-function xiaomiTokenPlanSgpProvider() {
-  return createProvider({
-    id: "xiaomi-token-plan-sgp",
-    name: "Xiaomi Token Plan SGP",
-    baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
-    auth: { apiKey: envApiKeyAuth("Xiaomi Token Plan SGP API key", ["XIAOMI_TOKEN_PLAN_SGP_API_KEY"]) },
-    models: Object.values(XIAOMI_TOKEN_PLAN_SGP_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/zai.js
-function zaiProvider() {
-  return createProvider({
-    id: "zai",
-    name: "Z.AI",
-    baseUrl: "https://api.z.ai/api/coding/paas/v4",
-    auth: { apiKey: envApiKeyAuth("Z.AI API key", ["ZAI_API_KEY"]) },
-    models: Object.values(ZAI_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/zai-coding-cn.js
-function zaiCodingCnProvider() {
-  return createProvider({
-    id: "zai-coding-cn",
-    name: "Z.AI Coding CN",
-    baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
-    auth: { apiKey: envApiKeyAuth("Z.AI Coding CN API key", ["ZAI_CODING_CN_API_KEY"]) },
-    models: Object.values(ZAI_CODING_CN_MODELS),
-    api: openAICompletionsApi()
-  });
-}
-
-// target/vendor-pi/pi-ai/dist/providers/all.js
-function getBuiltinModel(provider, modelId) {
-  return MODELS[provider]?.[modelId];
-}
-function getBuiltinImageModel(provider, modelId) {
-  return IMAGE_MODELS[provider]?.[modelId];
-}
-function getBuiltinClassifierModel(provider, modelId) {
-  return CLASSIFIER_MODELS[provider]?.[modelId];
-}
-function getBuiltinProviders() {
-  return Object.keys(MODELS);
-}
-function getBuiltinModelDataGeneratedAt() {
-  const generatedAt = Date.parse(manifest_default.generatedAt);
-  return Number.isNaN(generatedAt) ? void 0 : generatedAt;
-}
-function getBuiltinModels(provider) {
-  const models = MODELS[provider];
-  return Object.values(models ?? {});
-}
-function getBuiltinImageModels(provider) {
-  const models = IMAGE_MODELS[provider];
-  return Object.values(models ?? {});
-}
-function getBuiltinClassifierModels(provider) {
-  const models = CLASSIFIER_MODELS[provider];
-  return Object.values(models ?? {});
-}
-function getAllBuiltinModels(provider) {
-  return [...getBuiltinModels(provider), ...getBuiltinImageModels(provider), ...getBuiltinClassifierModels(provider)];
-}
-function builtinProviders() {
-  return [
-    amazonBedrockProvider(),
-    antLingProvider(),
-    anthropicProvider(),
-    azureOpenAIResponsesProvider(),
-    basetenProvider(),
-    cerebrasProvider(),
-    cloudflareAIGatewayProvider(),
-    cloudflareWorkersAIProvider(),
-    deepseekProvider(),
-    fireworksProvider(),
-    githubCopilotProvider(),
-    googleProvider(),
-    googleVertexProvider(),
-    groqProvider(),
-    huggingfaceProvider(),
-    kimiCodingProvider(),
-    metaProvider(),
-    minimaxProvider(),
-    minimaxCnProvider(),
-    mistralProvider(),
-    moonshotaiProvider(),
-    moonshotaiCnProvider(),
-    nvidiaProvider(),
-    openaiProvider(),
-    openaiCodexProvider(),
-    opencodeProvider(),
-    opencodeGoProvider(),
-    openrouterProvider(),
-    qwenTokenPlanProvider(),
-    qwenTokenPlanCnProvider(),
-    qwenTokenPlanIndividualProvider(),
-    radiusProvider(),
-    togetherProvider(),
-    typesafeProvider(),
-    vercelAIGatewayProvider(),
-    xaiProvider(),
-    xiaomiProvider(),
-    xiaomiTokenPlanAmsProvider(),
-    xiaomiTokenPlanCnProvider(),
-    xiaomiTokenPlanSgpProvider(),
-    zaiProvider(),
-    zaiCodingCnProvider()
-  ];
-}
-function builtinModels(options) {
-  const models = createModels(options);
-  for (const provider of builtinProviders()) {
-    models.setProvider(provider);
-  }
-  return models;
 }
 
 // target/vendor-pi/pi-ai/dist/providers/faux.js
@@ -4484,19 +3392,122 @@ function fauxProvider(options = {}) {
   };
 }
 
+// target/vendor-pi/pi-ai/dist/providers/opencode-headers.js
+var OPENCODE_SESSION_HEADER = "x-opencode-session";
+function hasHeader(headers, name) {
+  const expected = name.toLowerCase();
+  return Object.keys(headers ?? {}).some((key) => key.toLowerCase() === expected);
+}
+function withSessionHeader(options) {
+  if (!options?.sessionId || hasHeader(options.headers, OPENCODE_SESSION_HEADER))
+    return options;
+  return {
+    ...options,
+    headers: { ...options.headers, [OPENCODE_SESSION_HEADER]: options.sessionId }
+  };
+}
+function withOpenCodeSessionHeader(streams) {
+  return {
+    ...streams,
+    stream: (model, context, options) => streams.stream(model, context, withSessionHeader(options)),
+    streamSimple: (model, context, options) => streams.streamSimple(model, context, withSessionHeader(options))
+  };
+}
+
+// target/vendor-pi/pi-ai/dist/providers/radius-config.js
+var DEFAULT_RADIUS_GATEWAY = "https://radius.pi.dev";
+function isRadiusGatewayModel(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
+  const model = value;
+  return typeof model.id === "string" && typeof model.name === "string" && typeof model.reasoning === "boolean" && Array.isArray(model.input) && typeof model.cost === "object" && model.cost !== null && !Array.isArray(model.cost) && typeof model.contextWindow === "number" && typeof model.maxTokens === "number";
+}
+function sanitizeRadiusGatewayConfig(config) {
+  if (typeof config !== "object" || config === null || Array.isArray(config))
+    return void 0;
+  const { baseUrl, models } = config;
+  if (typeof baseUrl !== "string" || !Array.isArray(models))
+    return void 0;
+  return {
+    baseUrl,
+    models: models.filter(isRadiusGatewayModel).map((model) => ({ ...model }))
+  };
+}
+function normalizeRadiusGatewayUrl(value) {
+  const withScheme = /^https?:\/\//iu.test(value) ? value : `https://${value}`;
+  return withScheme.replace(/\/+$/u, "");
+}
+function getRadiusCredentialConfig(credential) {
+  return sanitizeRadiusGatewayConfig(credential?.gatewayConfig);
+}
+function getRadiusModelsFromConfig(providerId, config) {
+  return config.models.map((model) => ({
+    ...model,
+    api: "pi-messages",
+    provider: providerId,
+    baseUrl: config.baseUrl
+  }));
+}
+function getRadiusModels(providerId, credential) {
+  const config = getRadiusCredentialConfig(credential);
+  return config ? getRadiusModelsFromConfig(providerId, config) : [];
+}
+function truncateHttpBody(body) {
+  const trimmed = body.trim();
+  return trimmed.length > 512 ? `${trimmed.slice(0, 512)}\u2026` : trimmed;
+}
+async function loadRadiusGatewayConfig(gateway, apiKey, signal) {
+  const headers = { accept: "application/json" };
+  if (apiKey)
+    headers.authorization = `Bearer ${apiKey}`;
+  const response = await fetch(new URL("/v1/config", gateway), { headers, signal });
+  if (!response.ok) {
+    throw new Error(`Could not load Radius config from ${gateway}: ${response.status}: ${truncateHttpBody(await response.text())}`);
+  }
+  const config = sanitizeRadiusGatewayConfig(await response.json());
+  if (!config)
+    throw new Error(`Invalid Radius config from ${gateway}`);
+  return config;
+}
+
+// target/vendor-pi/pi-ai/dist/providers/data/.manifest.json
+var manifest_default = { schemaVersion: 6, generatedAt: "2026-10-01T18:57:11.882Z", structureHash: "235f2f320916ab6b0d7193e0bf66ec7983e9bc05abeddd7264923fb1e7eaf76e", files: { "amazon-bedrock.json": "b962444f8daad1e3022d3e4bd59af8e8802d6012615397015c825996219e4af5", "ant-ling.json": "628feab3ef6c7d80ce96f75999804e1d9f05fec3851e5302e30fff3b69db90f6", "anthropic.json": "3ff00b68990382e42626ebd1b65dcc28ae3cad9e6faa8920331ba92f067f1b3a", "azure-openai-responses.json": "adeb2cf9d944d84f81b0d633c2e4e6bfa548a806c431902bd037c5f36500be21", "baseten.json": "b04d1423d6958bec857ffccc36726f091ec1a8f3a09cf0836b64cc94b0ee697d", "cerebras.json": "3eccb58c5de3d0dc7ba49dc6e477ba29f00cb3150ce0a35cc90d59e6b5ab368e", "cloudflare-ai-gateway.json": "52decade622d1d25f1af90385b1aec7331dad00d56e010a5e4d15118efae67ce", "cloudflare-workers-ai.json": "b9f76cc83756a05920a8a7046c515919a1de918331b860a211f309bb716c4bb0", "deepseek.json": "10a296fb3e898f7715c80890c8af0af4f5fd58f22dbcd6612fdc5d762157ccdc", "fireworks.json": "d6144ba451bd7a0617669527bec1898f97a633f7d7ea5035d8e03234550340c0", "github-copilot.json": "573f05c2dfc0c8158e252dd286d6b174cd323f965284d7ae157439d8e3dea92c", "google-vertex.json": "40090c680538bc867f2624d986a449f361be4dfa6ba96d7a27402050f036e009", "google.json": "c0f5a633e5e5a5044432db3e537f4bc674d4de18df09325c6349547fcc13cabe", "groq.json": "910952ad9dad07856983459d63fce0148dba1203edd7b10d801a77c5824f3405", "huggingface.json": "1b8604bd31a5e05fe43a40ec1ec6dfc1a51a28b0b020151ef057fab43f57c923", "kimi-coding.json": "582250b920454d98940da3e7e99d30b807edbea28f2eb8ac15f658d2ef41e8fc", "meta.json": "0c7e9a370a7005c5a89dc94f0f93bc67b8935c3f802de324f11af6ff56fff429", "minimax-cn.json": "f962c20ee6a6a342820f778e9dc363a18a524bf11998f6e2c57f2989915d62e5", "minimax.json": "17a432f80d0ea6dd26eade80a4314250d3a855678601728a5f70dd8fa0d21dd2", "mistral.json": "10f33bff9adf1248f7e6848e5890c265399f1f94e5b42cfdc28c109d547af98d", "moonshotai-cn.json": "79c9585dc84ee525ebaebbc78b3c55f3d369ec884d4f943488f1e0b14e3587f5", "moonshotai.json": "1da2c4e34f22aef17a07c974d85bdee8e1b68b6dc712e3769c935b3f1e7dadca", "nvidia.json": "3b4e7b799bf3eaacd1af0491eef77fe33147ea7f72a3a9fa54d77af0e7eacf4c", "openai-codex.json": "3cc35a7e122e5c77ee8ec30a9a3bd8bd59629997e85ba2cb3f9e0ed62e9a09c0", "openai.json": "87faafcdd168c9b6fdaef521137834a207437daf0d71641fd0a2f3dddf4d1ecb", "opencode-go.json": "d05b3eb87b81c6e5a94801484e668e660fe60c68f06a972b716d581c3bbd7c25", "opencode.json": "1c504731d37468cc992a88b231cde29d46f0273e2710d8af227247c58afaa1b7", "openrouter.json": "767e2ea83edbbdfcc9e9d66a2d4e9eae9b14589fb97e137daebef7958b1b0283", "qwen-token-plan-cn.json": "2469a4091c474ec3db0a49a9962d8d2726c074ad9065b96bc4e0c87861c4c6c5", "qwen-token-plan-individual.json": "0fb7cf64faf39d1a3b0a884210a86c87084b805eda15644f5f39293287b959dd", "qwen-token-plan.json": "eff10620cb577142de4ec02698d5961a71fda2fe4f6ae7ea9432bad9d6844176", "radius.json": "c8e24a65119360946749c6d5e45782d84ab2794df661b369bb27c2bff3b72e67", "together.json": "94ec3839972061405885d64f5fdbde48eb1f29a159be5e607e9770befd54e28e", "typesafe.json": "a4429a2f696d5cc5273969af61a7310bda07d6bdcd27bf9ac9c76c534cc43716", "vercel-ai-gateway.json": "b3574cebd04f1db537c2d06517caf3e184360f181b9cbc5ce1c287886dbfce77", "xai.json": "879c49b78b663a52a220ac4ee013e726b10c4f50aaa03bc58ee53a4b54c76928", "xiaomi-token-plan-ams.json": "ca65178f4525d9705bc8d085ed136cecbe149c4080e857ea6a64ae643d2ac00a", "xiaomi-token-plan-cn.json": "b065326926681c2262084e59c1c19ebdaf146c07107b5242c76b456becf74db0", "xiaomi-token-plan-sgp.json": "92c3d6d707f81fd9cd2b6d1fb57dc431d90ba51e10fe49d97bc8806035c23492", "xiaomi.json": "b81d01a374f7b558728c78d81f4168efa9c8996e6e2b5618409a8094b083c759", "zai-coding-cn.json": "ee5ee705fb6e413a6088db5e3616c27fce802a8ece6c355f1db35490d787f610", "zai.json": "58e6642fdfb736f0b9a4a277c760c536a3cea66a030abbfb2615f7b2851d5c6f" } };
+
+// target/vendor-pi/pi-ai/dist/providers/all.js
+function getBuiltinModel(provider, modelId) {
+  return MODELS[provider]?.[modelId];
+}
+function getBuiltinImageModel(provider, modelId) {
+  return IMAGE_MODELS[provider]?.[modelId];
+}
+function getBuiltinClassifierModel(provider, modelId) {
+  return CLASSIFIER_MODELS[provider]?.[modelId];
+}
+function getBuiltinProviders() {
+  return Object.keys(MODELS);
+}
+function getBuiltinModelDataGeneratedAt() {
+  const generatedAt = Date.parse(manifest_default.generatedAt);
+  return Number.isNaN(generatedAt) ? void 0 : generatedAt;
+}
+function getBuiltinModels(provider) {
+  const models = MODELS[provider];
+  return Object.values(models ?? {});
+}
+function getBuiltinImageModels(provider) {
+  const models = IMAGE_MODELS[provider];
+  return Object.values(models ?? {});
+}
+function getBuiltinClassifierModels(provider) {
+  const models = CLASSIFIER_MODELS[provider];
+  return Object.values(models ?? {});
+}
+function getAllBuiltinModels(provider) {
+  return [...getBuiltinModels(provider), ...getBuiltinImageModels(provider), ...getBuiltinClassifierModels(provider)];
+}
+
 // target/vendor-pi/pi-ai/entry.mjs
 setBedrockProviderModule(bedrock_converse_stream_exports);
-registerBundledOAuthFlowLoaders({
-  anthropic: async () => (await import("./chunk-PGLP2ZTS.mjs")).anthropicOAuth,
-  openaiCodex: async () => (await import("./chunk-GBTGKDGZ.mjs")).openaiCodexOAuth,
-  openaiChatGPT: async () => (await import("./chunk-OGDY2RHW.mjs")).openaiChatGPTOAuth,
-  githubCopilot: async () => (await import("./chunk-5VHIA765.mjs")).githubCopilotOAuth,
-  openrouter: async () => (await import("./chunk-RJELU67E.mjs")).openRouterOAuth,
-  kimiCoding: async () => (await import("./chunk-AOAAX7MO.mjs")).kimiCodingOAuth,
-  meta: async () => (await import("./chunk-QSQ533LI.mjs")).metaOAuth,
-  xai: async () => (await import("./chunk-RCUWQ7KH.mjs")).xaiOAuth,
-  radius: async (options) => (await import("./chunk-5RVKTJ5S.mjs")).createRadiusOAuth(options)
-});
 export {
   AMAZON_BEDROCK_CLASSIFIER_MODELS,
   AMAZON_BEDROCK_IMAGE_MODELS,
@@ -4654,27 +3665,19 @@ export {
   ZAI_IMAGE_MODELS,
   ZAI_MODELS,
   adjustMaxTokensForThinking,
-  amazonBedrockProvider,
   answerFromProbabilities,
-  antLingProvider,
   anthropicMessagesApi,
-  anthropicProvider,
   appendAssistantMessageDiagnostic,
   appendGrammarToolInputJsonDelta,
   assertChatModel,
   assertClassifierModel,
   assertImageModel,
   azureOpenAIResponsesApi,
-  azureOpenAIResponsesProvider,
-  basetenProvider,
   bedrockConverseStreamApi,
   buildBaseOptions,
   buildCopilotDynamicHeaders,
-  builtinModels,
-  builtinProviders,
   calculateContextTokens,
   calculateCost,
-  cerebrasProvider,
   clampMaxTokensToContext,
   clampOpenAIPromptCacheKey,
   clampReasoning,
@@ -4684,12 +3687,8 @@ export {
   classify,
   classifySystemOne,
   cleanupSessionResources,
-  cloudflareAIGatewayAuth,
-  cloudflareAIGatewayProvider,
   cloudflareClassifier,
   cloudflareStreams,
-  cloudflareWorkersAIAuth,
-  cloudflareWorkersAIProvider,
   cloudflareWorkersAISystemOneApi,
   collapseSystemMessages,
   combineAbortSignals,
@@ -4704,11 +3703,8 @@ export {
   createFauxCore,
   createGrammarToolInputProperties,
   createInitialSystemMessage,
-  createModels,
   createProvider,
   declarationsEqual,
-  deepseekProvider,
-  defaultProviderAuthContext,
   envApiKeyAuth,
   estimateContextTokens,
   estimateMessageTokens,
@@ -4720,8 +3716,6 @@ export {
   fauxText,
   fauxThinking,
   fauxToolCall,
-  findEnvKeys,
-  fireworksProvider,
   formatProviderError,
   formatThrownValue,
   generateImages,
@@ -4740,7 +3734,6 @@ export {
   getCurrentTools,
   getDeclaredTools,
   getDisabledGoogleThinkingConfig,
-  getEnvApiKey,
   getGrammarToolInput,
   getImageModel,
   getImageModels,
@@ -4758,18 +3751,13 @@ export {
   getSupportedThinkingLevels,
   getSystemMessageText,
   getToolStateChanges,
-  githubCopilotProvider,
   googleGenerativeAIApi,
-  googleProvider,
   googleVertexApi,
-  googleVertexProvider,
-  groqProvider,
   hasApi,
   hasCopilotVisionInput,
   hasNonAdditiveToolChanges,
   hasToolRedefinitions,
   headersToRecord,
-  huggingfaceProvider,
   imageErrorResult,
   inferCopilotInitiator,
   isContextOverflow,
@@ -4778,7 +3766,6 @@ export {
   isRecoverableLength,
   isRetryableAssistantError,
   isThinkingPart,
-  kimiCodingProvider,
   labelProbabilities,
   lazyApi,
   lazyOAuth,
@@ -4790,42 +3777,25 @@ export {
   mapStopReason,
   mapStopReasonString,
   mapToolChoice,
-  metaProvider,
-  minimaxCnProvider,
-  minimaxProvider,
   mistralConversationsApi,
-  mistralProvider,
   modelsAreEqual,
-  moonshotaiCnProvider,
-  moonshotaiProvider,
   normalizeContext,
   normalizeProviderError,
   normalizeRadiusGatewayUrl,
-  nvidiaProvider,
   oauthErrorHtml,
   oauthSuccessHtml,
   openAICodexResponsesApi,
   openAICompletionsApi,
   openAIResponsesApi,
-  openaiCodexProvider,
-  openaiProvider,
-  opencodeGoProvider,
-  opencodeProvider,
   openrouterImagesApi,
-  openrouterProvider,
   operationSignal,
   peakConfidence,
   piMessagesApi,
   processResponsesStream,
   providerHeadersToRecord,
-  qwenTokenPlanCnProvider,
-  qwenTokenPlanIndividualProvider,
-  qwenTokenPlanProvider,
   raceWithAbortSignal,
-  radiusProvider,
   reduceAssistantMessageFrames,
   registerBuiltInImagesApiProviders,
-  registerImagesApiProvider,
   registerSessionResourceCleanup,
   renderQuestion,
   renderSystemMessageUpdate,
@@ -4845,9 +3815,8 @@ export {
   retryProviderRequest,
   safeJsonStringify,
   sanitizeSurrogates,
-  setBedrockProviderModule,
   shortHash,
-  sleep,
+  sleep2 as sleep,
   stream,
   streamAnthropic,
   streamAzureOpenAIResponses,
@@ -4871,21 +3840,11 @@ export {
   toGoogleSdkThinkingLevel,
   toGoogleThinkingLevel,
   toToolDeclaration,
-  togetherProvider,
   transformMessages,
   truncateErrorText,
-  typesafeProvider,
   typesafeSystemOneApi,
   usesGoogleThinkingLevel,
   uuidv7,
-  vercelAIGatewayProvider,
   withOpenCodeSessionHeader,
-  withoutInitialSystemMessage,
-  xaiProvider,
-  xiaomiProvider,
-  xiaomiTokenPlanAmsProvider,
-  xiaomiTokenPlanCnProvider,
-  xiaomiTokenPlanSgpProvider,
-  zaiCodingCnProvider,
-  zaiProvider
+  withoutInitialSystemMessage
 };
