@@ -2893,6 +2893,7 @@ impl Bridge for SessionBridge {
         &self,
         payload: Value,
         cancel: CancellationToken,
+        hooks: RequestHooks,
     ) -> BoxFuture<'static, Result<EventStream, String>> {
         let Some(session) = self.session() else {
             return Box::pin(async { Err(not_bound()) });
@@ -2902,7 +2903,8 @@ impl Bridge for SessionBridge {
                 .map_err(|err| format!("Invalid model: {err}"))?;
             let messages = serde_json::from_value(payload["context"]["messages"].clone())
                 .map_err(|err| format!("Invalid context: {err}"))?;
-            let options = crate::streams::options_from_json(&payload["options"], cancel);
+            let mut options = crate::streams::options_from_json(&payload["options"], cancel);
+            options.hooks = hooks;
             let mut request = Request {
                 model,
                 messages,

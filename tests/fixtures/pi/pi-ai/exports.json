@@ -509,6 +509,92 @@
 		false,
 		5
 	],
+	"callbacks": [
+		[
+			[
+				"payload",
+				{
+					"model": "claude-sonnet-4-5",
+					"messages": [
+						{
+							"role": "user",
+							"content": [
+								{
+									"type": "text",
+									"text": "Describe this picture"
+								},
+								{
+									"type": "image",
+									"source": {
+										"type": "base64",
+										"media_type": "image/png",
+										"data": "aGk="
+									},
+									"cache_control": {
+										"type": "ephemeral"
+									}
+								}
+							]
+						}
+					],
+					"max_tokens": 50,
+					"stream": true,
+					"thinking": {
+						"type": "disabled"
+					}
+				},
+				"claude-sonnet-4-5"
+			]
+		],
+		[
+			"error",
+			"Connection error."
+		],
+		[
+			[
+				"error",
+				"error",
+				"no payload",
+				[]
+			]
+		],
+		[
+			[
+				"payload",
+				{
+					"model": "black-forest-labs/flux.2-flex",
+					"messages": [
+						{
+							"role": "user",
+							"content": [
+								{
+									"type": "text",
+									"text": "a cat"
+								}
+							]
+						}
+					],
+					"stream": false,
+					"modalities": [
+						"image"
+					]
+				},
+				"black-forest-labs/flux.2-flex"
+			]
+		],
+		[
+			"error",
+			"Connection error."
+		],
+		{
+			"api": "openrouter-images",
+			"provider": "openrouter",
+			"model": "black-forest-labs/flux.2-flex",
+			"output": [],
+			"stopReason": "error",
+			"errorMessage": "no images"
+		}
+	],
 	"subpaths": [
 		"function",
 		false,

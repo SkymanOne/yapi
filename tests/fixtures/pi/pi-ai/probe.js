@@ -9,6 +9,7 @@ import { findEnvKeys, generateImages, getImageModel, getImageModels, getImagePro
 import { builtinProviders, builtinModels, getBuiltinImageModels, getBuiltinClassifierModels, getBuiltinModelDataGeneratedAt } from "@earendil-works/pi-ai/providers/all";
 import { OPENROUTER_IMAGE_MODELS } from "@earendil-works/pi-ai/providers/openrouter.models";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { cloudflareAIGatewayAuth, cloudflareWorkersAIAuth } from "@earendil-works/pi-ai/providers/cloudflare-auth";
 import { resolveCloudflareModel } from "@earendil-works/pi-ai/providers/cloudflare-stream";
 import { getRadiusModelsFromConfig, normalizeRadiusGatewayUrl } from "@earendil-works/pi-ai/providers/radius-config";
@@ -114,6 +115,25 @@ async function probe() {
 	const openRouter = await openRouterImages(imageModel, { input: [{ type: "text", text: "a cat" }] }, {});
 	const llama = llamaCppClassifyApi();
 
+	// Callbacks of requests that reach no server: what they get, and a throw.
+	const refused = { ...builtins.getModel("anthropic", "claude-sonnet-4-5"), baseUrl: "http://127.0.0.1:9" };
+	const calls = [];
+	const record = (name) => async (value, callbackModel) => void calls.push([name, value, callbackModel.id]);
+	const streamed = await anthropicMessagesApi()
+		.streamSimple(refused, { systemPrompt: "Be brief", messages: [user] }, { apiKey: "k", maxTokens: 50, onPayload: record("payload"), onResponse: record("response"), onProviderStreamEvent: record("event") })
+		.result();
+	const thrownPayload = [];
+	for await (const event of anthropicMessagesApi().streamSimple(refused, { messages: [user] }, { apiKey: "k", onPayload: () => { throw new Error("no payload"); } })) {
+		thrownPayload.push(event.type === "error" ? [event.type, event.reason, event.error.errorMessage, event.error.content] : event.type);
+	}
+	const imageCalls = [];
+	const refusedImages = await openRouterImages({ ...imageModel, baseUrl: "http://127.0.0.1:9/api/v1" }, { input: [{ type: "text", text: "a cat" }] }, {
+		apiKey: "k",
+		onPayload: async (payload, callbackModel) => void imageCalls.push(["payload", payload, callbackModel.id]),
+		onResponse: async (response) => void imageCalls.push(["response", response.status]),
+	});
+	const thrownImages = await openRouterImages(imageModel, { input: [{ type: "text", text: "a cat" }] }, { apiKey: "k", onPayload: () => { throw new Error("no images"); } });
+
 	return {
 		sessionResources: cleaned,
 		faux: [reduced.content, reduced.stopReason, frames.map((frame) => frame.type).join(" "), withoutTime(viaModels).content],
@@ -140,6 +160,7 @@ async function probe() {
 		small: [shortHash("abc"), sanitizeSurrogates("a\uD800b"), clampOpenAIPromptCacheKey("k".repeat(80)).length, headersToRecord(new Headers({ "X-A": "1" })), providerHeadersToRecord({ a: "1" }, { a: null, b: "2" }), isRecord({}), new PiMessagesResponseError("nope", 429).message, getPiUserAgent().startsWith("pi ("), resolveHttpProxyUrlForTarget("https://example.com", { HTTPS_PROXY: "http://proxy:8080" })],
 		pages: [oauthSuccessHtml("Done").length, oauthErrorHtml("Failed", "why").includes("why")],
 		signals: [combineAbortSignals([AbortSignal.abort("x"), new AbortController().signal]).signal.aborted, operationSignal().aborted, await raceWithAbortSignal(Promise.resolve(5), new AbortController().signal)],
+		callbacks: [calls, [streamed.stopReason, streamed.errorMessage], thrownPayload, imageCalls, [refusedImages.stopReason, refusedImages.errorMessage], withoutTime(thrownImages)],
 		subpaths: [typeof completions.stream, completions.convertMessages === google.convertMessages, typeof createAiBindingFetch, typeof withOpenCodeSessionHeader({ stream: () => {}, streamSimple: () => {} }).stream, [retried, attempts]],
 	};
 }

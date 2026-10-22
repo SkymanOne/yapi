@@ -11,7 +11,7 @@ use yapi_types::model::ImageModel;
 use yapi_types::models::InputKind;
 
 use crate::http::{self, Failure};
-use crate::stream::now_ms;
+use crate::stream::{RequestHooks, now_ms};
 
 /// Options of one image request.
 #[derive(Clone, Debug, Default)]
@@ -28,6 +28,8 @@ pub struct ImagesOptions {
     pub timeout_ms: Option<u64>,
     /// Cancels the request.
     pub cancel: CancellationToken,
+    /// See the request body, which `payload` may replace, and the response.
+    pub hooks: RequestHooks,
 }
 
 /// Generates images with `model`. Failures are reported in the result, as
@@ -147,7 +149,7 @@ async fn openrouter(
     let Some(api_key) = options.api_key.as_deref().filter(|key| !key.is_empty()) else {
         return Err(format!("No API key for provider: {}", model.provider));
     };
-    let body = yapi_types::json::stringify(&params(model, context));
+    let body = yapi_types::json::stringify(&options.hooks.payload(params(model, context)).await);
     let url = format!("{}/chat/completions", model.base_url.trim_end_matches('/'));
     let mut headers = super::openai_headers(api_key, model.headers.as_ref());
     headers.extend(&options.headers);
@@ -172,6 +174,7 @@ async fn openrouter(
                 .unwrap_or_default());
         }
     };
+    options.hooks.response(&response).await;
     let Some(bytes) = options.cancel.run_until_cancelled(response.bytes()).await else {
         return Err(http::ABORTED_DURING_STREAM.into());
     };

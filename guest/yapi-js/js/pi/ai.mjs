@@ -27,28 +27,65 @@ yapi.cleanupSessionResources = cleanupSessionResources;
 
 // ----- completions on yapi's providers --------------------------------------------------------------
 /**
- * Streams with yapi's implementation of `api`, or of the model's API. The
- * host sends the events that have arrived each time it is asked; the live
- * message is rebuilt here from them.
+ * The extension's own `onPayload`, `onResponse` and `onProviderStreamEvent`
+ * of `options`, by the host's names: not the session's hooks, which the host
+ * runs itself.
+ */
+function ownCallbacks(options) {
+	const own = (callback) => (typeof callback === "function" && callback.yapiStream === undefined ? callback : undefined);
+	return { payload: own(options?.onPayload), response: own(options?.onResponse), streamEvent: own(options?.onProviderStreamEvent) };
+}
+/** Which of `callbacks` the host calls back. */
+const wanted = (callbacks) => Object.fromEntries(Object.entries(callbacks).map(([name, callback]) => [name, callback !== undefined]));
+/**
+ * Runs callback call `wire` of host request `id` with `model`, as pi's wire
+ * APIs call it, and answers the host, which waits for it: `onPayload`'s
+ * result replaces the request body unless it is `undefined`.
+ */
+async function runCallback(id, wire, callbacks, model) {
+	const result = await callbacks[wire.callback](wire.value, model);
+	yapi.request("ai.callback", { id, call: wire.call, ...(wire.callback === "payload" ? { payload: result } : {}) });
+}
+
+/**
+ * Streams transcript `context` with yapi's implementation of `api`, or of the
+ * model's API. The host sends the events that have arrived each time it is
+ * asked; the live message is rebuilt here from them. The extension's callbacks run as the
+ * host calls them back; one that throws ends the stream with its error.
  */
 function hostStream(model, context, options, api, kind = "ai.stream") {
 	const stream = new AssistantMessageEventStream();
 	const { signal, onPayload, onResponse, onProviderStreamEvent, ...rest } = options ?? {};
 	// The session's hooks of the extension stream this request serves.
 	const hooks = [onPayload, onResponse, onProviderStreamEvent].find((hook) => hook?.yapiStream !== undefined)?.yapiStream;
+	const callbacks = ownCallbacks(options);
 	(async () => {
-		const id = await yapi.op(kind, { api, model, context: normalizeContext(context), options: rest, hooks });
+		const id = await yapi.op(kind, { api, model, context, options: rest, hooks, callbacks: wanted(callbacks) });
 		const abort = () => yapi.request("ai.abort", { id });
 		if (signal?.aborted) abort();
 		else signal?.addEventListener("abort", abort, { once: true });
 		try {
 			let partial;
+			let failed = false;
 			const arguments_ = [];
 			for (;;) {
 				const batch = await yapi.op("ai.next", { id });
 				if (batch.length === 0) return;
 				for (const wire of batch) {
-					if (wire.type === "start") {
+					if (wire.type === "callback") {
+						if (failed) continue;
+						try {
+							await runCallback(id, wire, callbacks, model);
+						} catch (error) {
+							// pi's wire APIs end with the error; the host's request ends unread.
+							failed = true;
+							abort();
+							const setup = yapi.setupError(model, error);
+							const message = partial ? { ...partial, stopReason: setup.stopReason, errorMessage: setup.errorMessage } : setup;
+							if (signal?.aborted) message.stopReason = "aborted";
+							stream.push({ type: "error", reason: message.stopReason, error: message });
+						}
+					} else if (wire.type === "start") {
 						partial = wire.message;
 						stream.push({ type: "start", partial });
 					} else if (wire.type === "done") stream.push({ type: "done", reason: wire.message.stopReason, message: wire.message });
@@ -100,29 +137,47 @@ function hostStream(model, context, options, api, kind = "ai.stream") {
 	return stream;
 }
 /** `ctx.modelRegistry`'s streams: the session's provider of `model`, with the registry's credentials. */
-yapi.registryStream = (model, context, options) => hostStream(model, context, options, undefined, "models.stream");
+yapi.registryStream = (model, context, options) => hostStream(model, normalizeContext(context), options, undefined, "models.stream");
 /** yapi's implementation of wire API `api`, which pi-ai's wire API modules stream with in the bundle. */
 const hostApi = (yapi.hostApi = (api) => {
 	const run = (model, context, options) => hostStream(model, context, options, api);
 	return { stream: run, streamSimple: run };
 });
 
-let nextImages = 0;
 /**
- * pi-ai's `generateImages` of `api/openrouter-images` on yapi's port of it.
- * Failures, and the host refusing the request, are reported in the result.
+ * pi-ai's `generateImages` of `api/openrouter-images` on yapi's port of it,
+ * with the extension's `onPayload` and `onResponse`. Failures, the host
+ * refusing the request and a callback that throws are reported in the
+ * result.
  */
 yapi.generateImages = async (model, context, options) => {
-	const { signal, ...rest } = options ?? {};
-	const id = nextImages++;
-	const result = yapi.op("ai.images", { id, model, context, options: rest });
-	const abort = () => yapi.request("ai.imagesAbort", { id });
-	if (signal?.aborted) abort();
-	else signal?.addEventListener("abort", abort, { once: true });
+	const { signal, onPayload, onResponse, ...rest } = options ?? {};
+	const callbacks = ownCallbacks({ onPayload, onResponse });
+	let id;
 	try {
-		return await result;
+		id = await yapi.op("ai.images", { model, context, options: rest, callbacks: wanted(callbacks) });
 	} catch (error) {
 		return imageErrorResult(model, error, signal?.aborted);
+	}
+	const abort = () => yapi.request("ai.abort", { id });
+	if (signal?.aborted) abort();
+	else signal?.addEventListener("abort", abort, { once: true });
+	let failure;
+	try {
+		for (;;) {
+			const batch = await yapi.op("ai.next", { id });
+			if (batch.length === 0) return failure ?? imageErrorResult(model, "The image request ended without a result", signal?.aborted);
+			for (const wire of batch) {
+				if (wire.type === "result") return failure ?? wire.result;
+				if (failure) continue;
+				try {
+					await runCallback(id, wire, callbacks, model);
+				} catch (error) {
+					failure = imageErrorResult(model, error, signal?.aborted);
+					abort();
+				}
+			}
+		}
 	} finally {
 		signal?.removeEventListener("abort", abort);
 	}
@@ -185,12 +240,14 @@ export function registerFauxProvider(options = {}) {
 	};
 }
 export function streamSimple(model, context, options) {
+	const transcript = normalizeContext(context);
 	const custom = apiProviders.get(model?.api);
-	return custom ? custom.provider.streamSimple(model, context, options) : hostStream(model, context, options);
+	return custom ? custom.provider.streamSimple(model, transcript, options) : hostStream(model, transcript, options);
 }
 export function stream(model, context, options) {
+	const transcript = normalizeContext(context);
 	const custom = apiProviders.get(model?.api);
-	return custom ? custom.provider.stream(model, context, options) : hostStream(model, context, options);
+	return custom ? custom.provider.stream(model, transcript, options) : hostStream(model, transcript, options);
 }
 export const complete = (model, context, options) => streamSimple(model, context, options).result();
 export const completeSimple = complete;
