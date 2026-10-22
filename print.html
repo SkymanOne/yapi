@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0ae61e44.js";
+            window.path_to_searchindex_js = "searchindex-2595db77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -269,14 +269,14 @@ Find why `cargo test` fails and fix it
 <tr><th>Option</th><th>Variable</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.3.0</code></td></tr>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.3.1</code></td></tr>
 <tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
 <tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
 </tbody>
 </table>
 </div>
 <p>Pass options after <code>sh -s --</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.0 --to /usr/local/bin
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
 </code></pre>
 <h2 id="cargo-binstall"><a class="header" href="#cargo-binstall">cargo-binstall</a></h2>
 <p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release binary into <code>~/.cargo/bin</code>:</p>
@@ -307,7 +307,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then run:</p>
-<pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.0 yapi
+<pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.1 yapi
 </code></pre>
 <p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>. To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
@@ -942,18 +942,18 @@ export default function (pi: ExtensionAPI) {
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.3.0
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.3.1
 ├── README.md
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
 <p>The package takes the directory’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
-<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.0 crates/yapi/templates/extension
+<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.1 crates/yapi/templates/extension
 </code></pre>
 <p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = "0.3.0"
+yapi-extension-api = "0.3.1"
 </code></pre>
 <p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1209,7 +1209,7 @@ api.register_command("deploy", "Deploys after asking", |_args, ctx| async move {
 <h3 id="widgets"><a class="header" href="#widgets">Widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.3.0", features = ["widgets"] }
+yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds the widgets.</p>
 <ul>
@@ -1631,7 +1631,7 @@ api.on("session_start", |_event, ctx| async move {
 </div>
 <h2 id="install-the-skills"><a class="header" href="#install-the-skills">Install the skills</a></h2>
 <p>In yapi or Pi, install the repository at a release tag as a package:</p>
-<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.3.0
+<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.3.1
 </code></pre>
 <p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
 <p>To use the skills without the rest of the repository, copy their folders into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
