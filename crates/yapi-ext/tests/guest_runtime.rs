@@ -207,14 +207,15 @@ async fn evaluates_no_source_text() {
 }
 
 /// pi exports yapi does not provide link, can be extended, and throw when
-/// called or constructed: those that would run a second agent, and those
-/// that reach credentials, trust, settings or session files, or grep's and
-/// find's programs, without the host.
+/// called or constructed: those that would run a second agent, reach
+/// credentials, trust, settings or session files without the host, replace
+/// code that receives credentials, or let grep and find fetch programs.
 #[tokio::test(flavor = "multi_thread")]
 async fn used_stubs_throw() {
     let main = r#"
 import { AgentSession, createAgentSession, createGrepTool, ProjectTrustStore, readStoredCredential, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { PiMessagesResponseError } from "@earendil-works/pi-ai/providers/pi-messages";
+import { createModels } from "@earendil-works/pi-ai";
+import { setBedrockProviderModule } from "@earendil-works/pi-ai/api/bedrock-converse-stream.lazy";
 class Session extends AgentSession {}
 const failure = (run) => {
 	try {
@@ -234,7 +235,8 @@ export default function (pi) {
 			failure(() => new SettingsManager()),
 			failure(() => new SessionManager()),
 			failure(() => createGrepTool("/", { operations: {} })),
-			failure(() => new PiMessagesResponseError()),
+			failure(() => createModels()),
+			failure(() => setBedrockProviderModule({})),
 			AgentSession.name,
 		].join("|"),
 		handler: async () => {},
@@ -250,7 +252,8 @@ export default function (pi) {
          ERR_NOT_SUPPORTED: SettingsManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: SessionManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: grep tool operations from @earendil-works/pi-coding-agent is not available in yapi extensions|\
-         ERR_NOT_SUPPORTED: PiMessagesResponseError from @earendil-works/pi-ai is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: createModels from @earendil-works/pi-ai is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: setBedrockProviderModule from @earendil-works/pi-ai is not available in yapi extensions|\
          AgentSession"
     );
 }

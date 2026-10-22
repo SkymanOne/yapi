@@ -1695,6 +1695,11 @@
 			for (const [name, value] of Object.entries(payload.values ?? {})) flagValues.set(name, value);
 			return null;
 		},
+		/** Session `{ sessionId }` ended: pi-ai's session resource cleanups run, as pi's `AgentSession.dispose` runs them. */
+		endSession(payload) {
+			yapi.cleanupSessionResources?.(payload.sessionId);
+			return null;
+		},
 		/** `{ channel, data }` emitted with `pi.events` in another runtime. */
 		events(payload) {
 			eventBus.emit(payload.channel, payload.data);

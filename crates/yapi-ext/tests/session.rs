@@ -25,8 +25,12 @@ use yapi_types::event::AgentEvent;
 use yapi_types::message::Message;
 
 const EXTENSION: &str = r#"
+import { appendFileSync } from "node:fs";
 import { Type } from "typebox";
+import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+registerSessionResourceCleanup((sessionId) => appendFileSync("ended.txt", `${sessionId}\n`));
 
 export default function (pi: ExtensionAPI) {
 	let started = 0;
@@ -186,6 +190,16 @@ async fn commands_input_and_new_sessions() {
     assert_eq!(
         custom_entries(&second, "started"),
         [json!({"count": 1, "flag": "calm"})]
+    );
+
+    // pi-ai's session resources end with each session, but not on reload.
+    second.shutdown_for(Replacement::Reload, None).await;
+    second.shutdown_for(Replacement::New, None).await;
+    let ids =
+        [&first, &second].map(|session| session.with_session(|manager| manager.id().to_owned()));
+    assert_eq!(
+        std::fs::read_to_string(dir.join("ended.txt")).unwrap(),
+        format!("{}\n{}\n", ids[0], ids[1])
     );
 }
 

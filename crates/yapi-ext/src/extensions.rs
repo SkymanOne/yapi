@@ -109,6 +109,8 @@ pub struct ExtensionHost {
     /// Where `auth.json` keeps the credentials providers are checked for as
     /// the extensions load.
     auth: PathBuf,
+    /// The session whose end the guest last heard of.
+    ended: Mutex<Option<String>>,
 }
 
 /// The extension hosts that share `pi.events`.
@@ -195,6 +197,7 @@ impl ExtensionHost {
             events,
             dropping: AtomicBool::new(false),
             auth: options.agent_dir.join("auth.json"),
+            ended: Mutex::default(),
         });
         let _ = extensions.bridge.owner.set(Arc::downgrade(&extensions));
         extensions.forward_events(queued);
@@ -514,6 +517,18 @@ impl ExtensionHost {
                 }) as Arc<dyn Extension>
             })
             .collect()
+    }
+
+    /// Runs the guest's session resource cleanups for `session_id`, once
+    /// however many of its extensions report the session's end.
+    async fn end_session(&self, session_id: &str) {
+        if lock(&self.ended).replace(session_id.to_owned()).as_deref() == Some(session_id) {
+            return;
+        }
+        let payload = json!({ "sessionId": session_id });
+        if let Err(err) = self.instance.call("endSession", &payload).await {
+            tracing::warn!("ending the resources of session {session_id}: {err}");
+        }
     }
 
     /// Binds the guest to session `generation`. `false` when the factories
@@ -1369,6 +1384,10 @@ impl Extension for JsExtension {
         Box::pin(async move {
             self.shared.bind(self.generation, ctx).await;
         })
+    }
+
+    fn end_session<'a>(&'a self, session_id: &'a str) -> BoxFuture<'a, ()> {
+        Box::pin(self.shared.end_session(session_id))
     }
 
     /// What the guest last reported: renderers registered once the session
@@ -2874,6 +2893,7 @@ impl Bridge for SessionBridge {
         &self,
         payload: Value,
         cancel: CancellationToken,
+        hooks: RequestHooks,
     ) -> BoxFuture<'static, Result<EventStream, String>> {
         let Some(session) = self.session() else {
             return Box::pin(async { Err(not_bound()) });
@@ -2883,7 +2903,8 @@ impl Bridge for SessionBridge {
                 .map_err(|err| format!("Invalid model: {err}"))?;
             let messages = serde_json::from_value(payload["context"]["messages"].clone())
                 .map_err(|err| format!("Invalid context: {err}"))?;
-            let options = crate::streams::options_from_json(&payload["options"], cancel);
+            let mut options = crate::streams::options_from_json(&payload["options"], cancel);
+            options.hooks = hooks;
             let mut request = Request {
                 model,
                 messages,

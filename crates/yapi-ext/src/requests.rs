@@ -15,10 +15,10 @@ use futures_util::FutureExt as _;
 use futures_util::future::BoxFuture;
 use md5::Digest as _;
 use serde_json::{Map, Value, json};
-
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use yapi_ai::api::Apis;
-use yapi_ai::stream::{EventStream, Request, RequestHooks, StreamEvent};
+use yapi_ai::stream::{EventStream, ProviderResponse, Request, RequestHooks};
 use yapi_core::tools::{RegisteredTool, ToolEnv};
 use yapi_types::message::Message;
 use yapi_types::model::Model;
@@ -46,31 +46,153 @@ impl Drop for Host {
     }
 }
 
-/// A running stream of one of yapi's wire APIs, with its cancellation. The
-/// events are out of the map while an `ai.next` call reads them.
-type AiStream = (Option<EventStream>, CancellationToken);
+/// A running request of yapi's wire APIs or image generation: what `ai.next`
+/// reads of it, out of the map while a call reads it, its cancellation, and
+/// the extension's callbacks it calls.
+struct Running {
+    reading: Option<Reading>,
+    cancel: CancellationToken,
+    callbacks: Arc<Callbacks>,
+}
 
-/// Streams of yapi's wire APIs that extensions read through pi-ai, by id.
+/// What `ai.next` reads of a request: the events of a stream and the calls
+/// of the extension's callbacks; an image request ends with a call that
+/// carries its result.
+struct Reading {
+    events: Option<EventStream>,
+    calls: mpsc::UnboundedReceiver<Value>,
+}
+
+impl Reading {
+    /// The next item as `ai.next` sends it, waiting for one; `None` once the
+    /// stream ended. Events that arrived come first, as a callback call
+    /// follows them in the request.
+    async fn wait(&mut self) -> Option<Value> {
+        match &mut self.events {
+            Some(events) => tokio::select! {
+                biased;
+                event = events.next() => event.map(|event| crate::streams::event_json(&event)),
+                Some(call) = self.calls.recv() => Some(call),
+            },
+            None => self.calls.recv().await,
+        }
+    }
+
+    /// The next item that has arrived, as [`Reading::wait`] gives it.
+    fn ready(&mut self) -> Option<Option<Value>> {
+        if let Some(events) = &mut self.events
+            && let Some(event) = events.next().now_or_never()
+        {
+            return Some(event.map(|event| crate::streams::event_json(&event)));
+        }
+        self.calls.try_recv().ok().map(Some)
+    }
+}
+
+/// pi-ai's `onPayload`, `onResponse` and `onProviderStreamEvent` an extension
+/// passed to one request. The guest reads each call through `ai.next`, runs
+/// the callback and answers with `ai.callback`; the request waits for the
+/// answer, as pi's wire APIs await the callback.
+struct Callbacks {
+    calls: mpsc::UnboundedSender<Value>,
+    answers: Mutex<HashMap<u64, oneshot::Sender<Value>>>,
+    next: AtomicU64,
+    cancel: CancellationToken,
+}
+
+impl Callbacks {
+    fn new(cancel: CancellationToken) -> (Arc<Callbacks>, mpsc::UnboundedReceiver<Value>) {
+        let (calls, receiver) = mpsc::unbounded_channel();
+        let callbacks = Callbacks {
+            calls,
+            answers: Mutex::default(),
+            next: AtomicU64::new(0),
+            cancel,
+        };
+        (Arc::new(callbacks), receiver)
+    }
+
+    /// Calls callback `name` with `value`: the guest's answer, or `None`
+    /// once the request is cancelled.
+    fn call(&self, name: &str, value: Value) -> BoxFuture<'static, Option<Value>> {
+        let call = self.next.fetch_add(1, Ordering::Relaxed);
+        let (answer, answered) = oneshot::channel();
+        lock(&self.answers).insert(call, answer);
+        let _ = self
+            .calls
+            .send(json!({"type": "callback", "callback": name, "call": call, "value": value}));
+        let cancel = self.cancel.clone();
+        Box::pin(async move {
+            tokio::select! {
+                answer = answered => answer.ok(),
+                () = cancel.cancelled() => None,
+            }
+        })
+    }
+
+    /// `hooks` with the callbacks `wanted`, `{ payload, response,
+    /// streamEvent }`, names in place of its own.
+    fn hooks(self: &Arc<Self>, wanted: &Value, mut hooks: RequestHooks) -> RequestHooks {
+        if wanted["payload"] == true {
+            let callbacks = self.clone();
+            hooks.payload = Some(Arc::new(move |body: Value| {
+                let answer = callbacks.call("payload", body.clone());
+                Box::pin(async move {
+                    // pi keeps the body when `onPayload` returns `undefined`.
+                    match answer.await {
+                        Some(Value::Object(mut answer)) => answer.remove("payload").unwrap_or(body),
+                        _ => body,
+                    }
+                })
+            }));
+        }
+        if wanted["response"] == true {
+            let callbacks = self.clone();
+            hooks.response = Some(Arc::new(move |response: ProviderResponse| {
+                let value = json!({"status": response.status, "headers": response.headers});
+                let answer = callbacks.call("response", value);
+                Box::pin(async move {
+                    answer.await;
+                })
+            }));
+        }
+        if wanted["streamEvent"] == true {
+            let callbacks = self.clone();
+            hooks.stream_event = Some(Arc::new(move |data: Value| {
+                let answer = callbacks.call("streamEvent", data);
+                Box::pin(async move {
+                    answer.await;
+                })
+            }));
+        }
+        hooks
+    }
+}
+
+/// Requests of yapi's wire APIs and image generation that extensions make
+/// through pi-ai, by id.
 #[derive(Clone, Default)]
 pub(crate) struct AiStreams {
-    running: Arc<Mutex<HashMap<u64, AiStream>>>,
+    running: Arc<Mutex<HashMap<u64, Running>>>,
     next_id: Arc<AtomicU64>,
 }
 
 impl AiStreams {
-    /// Starts streaming `{api, model, context, options}` with yapi's
-    /// implementation of `api`, or with the model's provider and API as
-    /// pi-ai's `streamSimple` does without one, and returns the stream's id.
-    /// A request without a key takes the provider's key variable when
-    /// `env_keys` allows it. `hooks` observe the request.
+    /// Starts streaming `{api, model, context, options, callbacks}` with
+    /// yapi's implementation of `api`, or with the model's provider and API
+    /// as pi-ai's `streamSimple` does without one, and returns the stream's
+    /// id. A request without a key takes the provider's key variable when
+    /// `env_keys` allows it. `hooks` observe the request, except where the
+    /// extension's own `callbacks` do.
     fn start(&self, payload: &Value, env_keys: bool, hooks: RequestHooks) -> Result<Value, String> {
         let model: Model = serde_json::from_value(payload["model"].clone())
             .map_err(|err| format!("Invalid model: {err}"))?;
         let messages: Vec<Message> = serde_json::from_value(payload["context"]["messages"].clone())
             .map_err(|err| format!("Invalid context: {err}"))?;
         let cancel = CancellationToken::new();
+        let (callbacks, calls) = Callbacks::new(cancel.clone());
         let mut options = crate::streams::options_from_json(&payload["options"], cancel.clone());
-        options.hooks = hooks;
+        options.hooks = callbacks.hooks(&payload["callbacks"], hooks);
         if env_keys
             && options
                 .api_key
@@ -95,56 +217,115 @@ impl AiStreams {
             }
             None => Apis::default().stream(request),
         };
-        Ok(self.insert(events, cancel))
+        Ok(self.insert(Some(events), calls, cancel, callbacks))
     }
 
-    /// Keeps `events`, which `cancel` aborts, for `ai.next`; the stream's id.
-    fn insert(&self, events: EventStream, cancel: CancellationToken) -> Value {
+    /// Starts generating images for `{ model, context, options, callbacks }`
+    /// as pi-ai's `generateImages` of `api/openrouter-images` does, and
+    /// returns the request's id. `ai.next` reads its result.
+    fn start_images(&self, payload: Value) -> Result<Value, String> {
+        fn parse<T: serde::de::DeserializeOwned>(payload: &Value, key: &str) -> Option<T> {
+            serde_json::from_value(payload["options"][key].clone()).ok()
+        }
+        let model = serde_json::from_value(payload["model"].clone())
+            .map_err(|err| format!("Invalid model: {err}"))?;
+        let context = serde_json::from_value(payload["context"].clone())
+            .map_err(|err| format!("Invalid context: {err}"))?;
+        let cancel = CancellationToken::new();
+        let (callbacks, calls) = Callbacks::new(cancel.clone());
+        let options = yapi_ai::api::images::ImagesOptions {
+            api_key: parse(&payload, "apiKey"),
+            headers: parse(&payload, "headers").unwrap_or_default(),
+            max_retries: parse(&payload, "maxRetries"),
+            max_retry_delay_ms: parse(&payload, "maxRetryDelayMs"),
+            timeout_ms: parse(&payload, "timeoutMs"),
+            cancel: cancel.clone(),
+            hooks: callbacks.hooks(&payload["callbacks"], RequestHooks::default()),
+        };
+        let results = callbacks.calls.clone();
+        tokio::spawn(async move {
+            let result = yapi_ai::api::images::generate_images(&model, &context, &options).await;
+            let result = serde_json::to_value(result).unwrap_or_default();
+            let _ = results.send(json!({"type": "result", "result": result}));
+        });
+        Ok(self.insert(None, calls, cancel, callbacks))
+    }
+
+    /// Keeps a request, which `cancel` aborts, for `ai.next`; its id.
+    fn insert(
+        &self,
+        events: Option<EventStream>,
+        calls: mpsc::UnboundedReceiver<Value>,
+        cancel: CancellationToken,
+        callbacks: Arc<Callbacks>,
+    ) -> Value {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        lock(&self.running).insert(id, (Some(events), cancel));
+        let reading = Some(Reading { events, calls });
+        lock(&self.running).insert(
+            id,
+            Running {
+                reading,
+                cancel,
+                callbacks,
+            },
+        );
         json!(id)
     }
 
-    /// The events of stream `id` that have arrived, waiting for at least
-    /// one; none once the stream has ended.
+    /// What request `id` sent that has arrived, waiting for at least one
+    /// item: events, callback calls and an image request's result; none
+    /// once the request has ended.
     async fn next(&self, id: u64) -> Value {
-        let Some(mut events) = lock(&self.running)
+        let Some(mut reading) = lock(&self.running)
             .get_mut(&id)
-            .and_then(|(events, _)| events.take())
+            .and_then(|running| running.reading.take())
         else {
             return json!([]);
         };
         let mut batch = Vec::new();
-        let mut next = events.next().await;
-        let mut ended = next.is_none();
-        while let Some(event) = next {
-            ended = matches!(event, StreamEvent::Done(_) | StreamEvent::Error(_));
-            batch.push(crate::streams::event_json(&event));
-            if ended {
+        let mut item = Some(reading.wait().await);
+        let mut ended = false;
+        while let Some(wire) = item {
+            let Some(wire) = wire else {
+                ended = true;
                 break;
-            }
-            next = events.next().now_or_never().flatten();
+            };
+            ended = matches!(wire["type"].as_str(), Some("done" | "error" | "result"));
+            batch.push(wire);
+            item = if ended { None } else { reading.ready() };
         }
         let mut running = lock(&self.running);
         if ended {
             running.remove(&id);
-        } else if let Some((slot, _)) = running.get_mut(&id) {
-            *slot = Some(events);
+        } else if let Some(running) = running.get_mut(&id) {
+            running.reading = Some(reading);
         }
         Value::Array(batch)
     }
 
-    /// Cancels stream `id`.
-    fn abort(&self, id: u64) {
-        if let Some((_, cancel)) = lock(&self.running).get(&id) {
-            cancel.cancel();
+    /// The guest's `answer` to callback call `{ call }` of request `id`.
+    fn answer(&self, id: u64, answer: &Value) {
+        let callbacks = lock(&self.running)
+            .get(&id)
+            .map(|running| running.callbacks.clone());
+        let call = answer["call"].as_u64().unwrap_or_default();
+        if let Some(sender) = callbacks.and_then(|callbacks| lock(&callbacks.answers).remove(&call))
+        {
+            let _ = sender.send(answer.clone());
         }
     }
 
-    /// Cancels every stream and forgets them.
+    /// Cancels request `id`.
+    fn abort(&self, id: u64) {
+        if let Some(running) = lock(&self.running).get(&id) {
+            running.cancel.cancel();
+        }
+    }
+
+    /// Cancels every request and forgets them.
     pub(crate) fn clear(&self) {
-        for (_, (_, cancel)) in lock(&self.running).drain() {
-            cancel.cancel();
+        for (_, running) in lock(&self.running).drain() {
+            running.cancel.cancel();
         }
     }
 }
@@ -221,19 +402,20 @@ impl Host {
             "tmpdir" => Ok(Value::String(
                 self.options.temp_dir.to_string_lossy().into_owned(),
             )),
-            // pi-ai's built-in catalog, which needs no session.
-            "models.providers" => Ok(json!(
-                yapi_ai::catalog::builtin_providers().collect::<Vec<_>>()
-            )),
-            "models.list" => Ok(serde_json::to_value(yapi_ai::catalog::builtin_models(text(
-                payload, "provider",
-            )))
-            .unwrap_or_default()),
-            "models.builtin" => Ok(yapi_ai::catalog::builtin_models(text(payload, "provider"))
-                .into_iter()
-                .find(|model| model.id == text(payload, "id"))
-                .and_then(|model| serde_json::to_value(model).ok())
-                .unwrap_or_default()),
+            // pi-ai's built-in catalog of `{ provider, type }`, which needs no session.
+            "models.list" => {
+                let provider = text(payload, "provider");
+                match text(payload, "type") {
+                    "image" => {
+                        serde_json::to_value(yapi_ai::catalog::builtin_image_models(provider))
+                    }
+                    "classifier" => {
+                        serde_json::to_value(yapi_ai::catalog::builtin_classifiers(provider))
+                    }
+                    _ => serde_json::to_value(yapi_ai::catalog::builtin_models(provider)),
+                }
+                .map_err(|err| err.to_string())
+            }
             "models.envApiKey" if self.reads_process_env() => Ok(
                 yapi_ai::credentials::env_api_key(text(payload, "provider"), None)
                     .map_or(Value::Null, |(_, key)| Value::String(key)),
@@ -357,6 +539,11 @@ impl Host {
                     .abort(payload["id"].as_u64().unwrap_or_default());
                 Ok(Value::Null)
             }
+            "ai.callback" => {
+                self.ai_streams
+                    .answer(payload["id"].as_u64().unwrap_or_default(), payload);
+                Ok(Value::Null)
+            }
             "language.fromPath" => Ok(json!(yapi_core::language::from_path(text(payload, "path")))),
             "frontmatter.parse" => {
                 let (frontmatter, body) =
@@ -424,12 +611,22 @@ impl Host {
                 Box::pin(async move { streams.start(&payload, env_keys, hooks) })
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
+            "ai.images" if self.options.grants.network => {
+                let streams = self.ai_streams.clone();
+                Box::pin(async move { streams.start_images(payload) })
+            }
+            "ai.images" => Box::pin(async { Err(denied("Network access")) }),
             // The session's requests, which `ai.next` reads as it reads `ai.stream`'s.
             "models.stream" if self.options.grants.network => {
                 let streams = self.ai_streams.clone();
                 let cancel = CancellationToken::new();
-                let started = self.bridge.stream_model(payload, cancel.clone());
-                Box::pin(async move { Ok(streams.insert(started.await?, cancel)) })
+                let (callbacks, calls) = Callbacks::new(cancel.clone());
+                let hooks = callbacks.hooks(&payload["callbacks"], RequestHooks::default());
+                let started = self.bridge.stream_model(payload, cancel.clone(), hooks);
+                Box::pin(async move {
+                    let events = started.await?;
+                    Ok(streams.insert(Some(events), calls, cancel, callbacks))
+                })
             }
             "models.stream" => Box::pin(async { Err(denied("Network access")) }),
             // Credentials are only good for requests, so they need the network grant.
@@ -544,7 +741,8 @@ mod tests {
     fn clear_cancels_streams() {
         let streams = AiStreams::default();
         let cancel = CancellationToken::new();
-        lock(&streams.running).insert(1, (None, cancel.clone()));
+        let (callbacks, calls) = Callbacks::new(cancel.clone());
+        streams.insert(None, calls, cancel.clone(), callbacks);
         streams.clear();
         assert!(cancel.is_cancelled());
         assert!(lock(&streams.running).is_empty());

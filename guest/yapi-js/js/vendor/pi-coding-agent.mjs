@@ -1,9 +1,5 @@
 const require = globalThis.__yapi_require_for('yapi:vendor');
 import {
-  typebox_exports
-} from "./chunk-OX5HQF2L.mjs";
-import "./chunk-A5T7ZXDE.mjs";
-import {
   Box,
   Container,
   Editor,
@@ -28,6 +24,10 @@ import {
   visibleWidth,
   wrapTextWithAnsi
 } from "./chunk-EGLY2VUN.mjs";
+import {
+  typebox_exports
+} from "./chunk-OX5HQF2L.mjs";
+import "./chunk-A5T7ZXDE.mjs";
 import {
   __commonJS,
   __reExport,

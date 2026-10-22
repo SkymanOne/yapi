@@ -6,6 +6,7 @@ each package is included once.
 
 | Package | Version | License | Copyright |
 |---|---|---|---|
+| `@earendil-works/pi-ai` (the parts `xtask/vendor-pi/pi-ai/entry.mjs` names, with yapi's replacements for the modules that call provider SDKs) | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 | `@earendil-works/pi-tui` | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 | `@earendil-works/pi-agent-core` | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
 | `@earendil-works/pi-coding-agent` (the modules its facade serves) | 1.0.0 | MIT | Copyright (c) 2025 Mario Zechner |
@@ -20,6 +21,7 @@ each package is included once.
 | `ignore` (bundled by pi-coding-agent) | 7.0.8 | MIT | Copyright (c) 2013 Kael Zhang, contributors |
 | `isexe` (bundled by pi-coding-agent) | 2.0.0 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors |
 | `minimatch` (bundled by pi-coding-agent) | 10.2.6 | BlueOak-1.0.0 | Isaac Z. Schlueter and Contributors |
+| `partial-json` (bundled by pi-ai) | 0.1.7 | MIT | Copyright (c) 2023 Promplate Dev Team |
 | `path-key` (bundled by pi-coding-agent) | 3.1.1 | MIT | Copyright (c) Sindre Sorhus |
 | `proper-lockfile` (bundled by pi-coding-agent) | 4.1.2 | MIT | Copyright (c) 2018 Made With MOXY Lda |
 | `retry` (bundled by pi-coding-agent) | 0.13.1 | MIT | Copyright (c) 2011 Tim Koschützki, Felix Geisendörfer |

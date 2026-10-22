@@ -19,7 +19,7 @@ use yapi_types::message::{
 use yapi_types::model::Model;
 use yapi_types::rpc::StreamingBehavior;
 use yapi_types::rpc::{CommandSource, SlashCommand, SourceInfo};
-use yapi_types::sync::{lock, read, write};
+use yapi_types::sync::{lock, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::extensions::{Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers};
@@ -1203,7 +1203,7 @@ impl AgentSession {
             target_session_file: None,
         })
         .await;
-        self.release_resources();
+        self.release_resources().await;
     }
 
     /// Stops extensions before a session replaces this one for `reason`;
@@ -1217,7 +1217,7 @@ impl AgentSession {
         })
         .await;
         if reason != Replacement::Reload {
-            self.release_resources();
+            self.release_resources().await;
         }
     }
 
@@ -1232,10 +1232,13 @@ impl AgentSession {
     }
 
     /// pi's `cleanupSessionResources`, run when a session ends or another
-    /// replaces it, but not on reload: the session's cached sockets close.
-    fn release_resources(&self) {
-        if let Some(id) = read(&self.inner.runtime).session_id.clone() {
-            yapi_ai::api::close_codex_websockets(Some(&id));
+    /// replaces it, but not on reload: the session's cached sockets close
+    /// and extensions release what they hold for it.
+    async fn release_resources(&self) {
+        let id = lock(&self.inner.state).session.id().to_owned();
+        yapi_ai::api::close_codex_websockets(Some(&id));
+        for extension in &self.inner.extensions {
+            extension.end_session(&id).await;
         }
     }
 
