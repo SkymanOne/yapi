@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1b0bf3ba.js";
+            window.path_to_searchindex_js = "searchindex-0ae61e44.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -217,6 +217,7 @@
 <p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code> or <code>streamSimple</code>, only with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
+<p>Pi’s exports that read <code>auth.json</code>, write <code>trust.json</code> or <code>settings.json</code>, or write session files directly throw in extensions, so extensions reach credentials, project trust, settings and sessions through the host. Until file grants can be limited to paths, an extension with the file grant can still open these files itself, as in Pi.</p>
 <p>Extensions share Pi’s <code>pi.events</code> bus, so every extension receives the events of every other extension.</p>
 <h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
 <p>Files in a project’s <code>.yapi</code> folder can change how yapi behaves and can run code: <code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, as well as an <code>.agents/skills</code> folder in the project or a parent folder. Until the project is trusted, yapi loads none of them, and no project extension runs.</p>

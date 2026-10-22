@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1b0bf3ba.js";
+            window.path_to_searchindex_js = "searchindex-0ae61e44.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -286,6 +286,7 @@ export default function (pi: ExtensionAPI) {
 <p>Pi extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js.</p>
 <ul>
 <li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi. <code>pi-ai</code> is Pi’s own code, with its wire APIs and image generation on yapi’s providers. Its exports that would handle provider credentials throw.</li>
+<li><code>pi-agent-core</code>, <code>pi-tui</code> and the parts of <code>pi-coding-agent</code> that run inside an extension, such as session entry helpers, compaction, skills and the interface components, are Pi’s own code, loaded the first time an extension uses them. They use yapi’s directories. Exports that would reach credentials, project trust, settings or session files without the host throw, as <a href="compat.html#extensions">Differences from Pi</a> lists. Built-in tool factories return yapi’s tools, which yapi runs, or Pi’s own over custom <code>operations</code>, as Pi’s <code>ssh</code> example uses them.</li>
 <li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
 <li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
