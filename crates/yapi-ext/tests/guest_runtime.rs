@@ -207,11 +207,13 @@ async fn evaluates_no_source_text() {
 }
 
 /// pi exports yapi does not provide link, can be extended, and throw when
-/// called or constructed.
+/// called or constructed: those that would run a second agent, and those
+/// that reach credentials, trust, settings or session files, or grep's and
+/// find's programs, without the host.
 #[tokio::test(flavor = "multi_thread")]
 async fn used_stubs_throw() {
     let main = r#"
-import { AgentSession, createAgentSession } from "@earendil-works/pi-coding-agent";
+import { AgentSession, createAgentSession, createGrepTool, ProjectTrustStore, readStoredCredential, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { PiMessagesResponseError } from "@earendil-works/pi-ai/providers/pi-messages";
 class Session extends AgentSession {}
 const failure = (run) => {
@@ -227,6 +229,11 @@ export default function (pi) {
 		description: [
 			failure(() => new Session()),
 			failure(() => createAgentSession()),
+			failure(() => readStoredCredential("anthropic")),
+			failure(() => new ProjectTrustStore()),
+			failure(() => new SettingsManager()),
+			failure(() => new SessionManager()),
+			failure(() => createGrepTool("/", { operations: {} })),
 			failure(() => new PiMessagesResponseError()),
 			AgentSession.name,
 		].join("|"),
@@ -238,14 +245,18 @@ export default function (pi) {
         probe("stubs", main).await,
         "ERR_NOT_SUPPORTED: AgentSession from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: createAgentSession from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: readStoredCredential from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: ProjectTrustStore from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: SettingsManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: SessionManager from @earendil-works/pi-coding-agent is not available in yapi extensions|\
+         ERR_NOT_SUPPORTED: grep tool operations from @earendil-works/pi-coding-agent is not available in yapi extensions|\
          ERR_NOT_SUPPORTED: PiMessagesResponseError from @earendil-works/pi-ai is not available in yapi extensions|\
          AgentSession"
     );
 }
 
 /// pi's exports that run inside the extension behave as in pi: session
-/// entries, compaction, settings saved to their file, skills, diffs,
-/// arguments, model scopes, images, components, pi-agent-core's agent loop
+/// entries, compaction, skills, diffs, arguments, model scopes, images, components, pi-agent-core's agent loop
 /// over the extension's own stream and tools, and built-in tools over custom
 /// operations. The expected results were recorded from pi's installed
 /// packages with Node.
@@ -254,11 +265,8 @@ async fn exports_match_pi() {
     let main = r#"
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Type } from "typebox";
-import { BranchSummaryMessageComponent, createBashTool, createEditTool, createReadTool, buildSessionContext, convertToPng, CredentialSynchronizationError, estimateTokens, findCutPoint, formatDimensionNote, formatSkillsForPrompt, generateDiffString, generateUnifiedPatch, initTheme, parseArgs, parseSessionEntries, parseSkillBlock, renderDiff, resizeImage, resolveCliModel, resolveModelScopeWithDiagnostics, SessionManager, SettingsManager, shouldCompact, truncateHead } from "@earendil-works/pi-coding-agent";
+import { BranchSummaryMessageComponent, createBashTool, createEditTool, createReadTool, buildSessionContext, convertToPng, CredentialSynchronizationError, estimateTokens, findCutPoint, formatDimensionNote, formatSkillsForPrompt, generateDiffString, generateUnifiedPatch, initTheme, parseArgs, parseSessionEntries, parseSkillBlock, renderDiff, resizeImage, resolveCliModel, resolveModelScopeWithDiagnostics, shouldCompact, truncateHead } from "@earendil-works/pi-coding-agent";
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGP4z8DwHxkzkC4AADxAH+HggXe0AAAAAElFTkSuQmCC";
 const plain = (lines) => lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd());
@@ -310,15 +318,6 @@ async function runOperations() {
 	const bash = await createBashTool("/remote", { operations: bashOps }).execute("b", { command: "make" }).then(text, (error) => `error: ${error.message}`);
 	return { read: text(read), edit: [text(edit), edit.details?.diff], file: files.get("/remote/a.txt"), bash };
 }
-/** pi's settings file after a setting changes: its keys keep their order and the user's own stay. */
-async function saveSettings() {
-	const dir = mkdtempSync(join(tmpdir(), "settings-"));
-	writeFileSync(join(dir, "settings.json"), '{\n  "theme": "dark",\n  "httpIdleTimeoutMs": 1000,\n  "custom": [1, 2]\n}\n');
-	const settings = SettingsManager.create(dir, dir);
-	settings.setHttpIdleTimeoutMs(60_000);
-	await settings.flush();
-	return [settings.getHttpIdleTimeoutMs(), readFileSync(join(dir, "settings.json"), "utf8")];
-}
 export async function probe() {
 	// pi renders only after `initTheme`; yapi draws with the session's theme.
 	initTheme("dark");
@@ -336,14 +335,8 @@ export async function probe() {
 	];
 	const runtime = { getModels: () => models, getAvailable: async () => models };
 	const resized = await resizeImage(Buffer.from(PNG, "base64"), "image/png", { maxWidth: 2, maxHeight: 2 });
-	const sessions = SessionManager.inMemory("/w");
-	sessions.appendMessage({ role: "user", content: "hi", timestamp: 1 });
-	sessions.appendThinkingLevelChange("low");
-	const settings = SettingsManager.inMemory({ defaultThinkingLevel: "high", compaction: { reserveTokens: 1 } });
 	return {
 		context: buildSessionContext(entries.slice(1)),
-		sessionManager: [sessions.getEntries().map((entry) => entry.type), sessions.buildSessionContext()],
-		settingsManager: [settings.getDefaultThinkingLevel(), settings.getCompactionSettings(), await saveSettings()],
 		tokens: estimateTokens(entries[2].message),
 		shouldCompact: [shouldCompact(90, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 }), shouldCompact(50, 100, { enabled: true, reserveTokens: 20, keepRecentTokens: 5 })],
 		cutPoint: findCutPoint(entries.slice(1), 0, 3, 1),
@@ -371,8 +364,6 @@ export default async function (pi) {
     let result: Value = serde_json::from_str(&probe("exports", main).await).unwrap();
     let expected = json!({
         "context": {"messages": [{"timestamp": 1, "role": "user", "content": "hello there"}, {"timestamp": 1, "role": "assistant", "content": [{"type": "text", "text": "hi"}], "api": "x", "provider": "p", "model": "m", "usage": {"input": 1, "output": 2, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 3, "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}, "stopReason": "stop"}], "thinkingLevel": "high", "model": {"provider": "p", "modelId": "m"}},
-        "sessionManager": [["message", "thinking_level_change"], {"messages": [{"role": "user", "content": "hi", "timestamp": 1}], "thinkingLevel": "low", "model": null}],
-        "settingsManager": ["high", {"enabled": true, "reserveTokens": 1, "keepRecentTokens": 20000}, [60000, "{\n  \"theme\": \"dark\",\n  \"httpIdleTimeoutMs\": 60000,\n  \"custom\": [\n    1,\n    2\n  ]\n}"]],
         "tokens": 1,
         "shouldCompact": [true, false],
         "cutPoint": {"firstKeptEntryIndex": 1, "turnStartIndex": 0, "isSplitTurn": true},

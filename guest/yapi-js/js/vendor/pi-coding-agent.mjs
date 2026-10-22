@@ -9,18 +9,15 @@ import {
   Editor,
   Image,
   Input,
-  KeybindingsManager,
   Loader,
   Markdown,
   MouseRegion,
   SelectList,
   SettingsList,
   Spacer,
-  TUI_KEYBINDINGS,
   Text,
   TruncatedText,
   fuzzyFilter,
-  fuzzyMatch,
   getCapabilities,
   getImageDimensions,
   getKeybindings,
@@ -44,7 +41,7 @@ var require_windows = __commonJS({
     module.exports = isexe;
     isexe.sync = sync;
     var fs = __require("fs");
-    function checkPathExt(path4, options) {
+    function checkPathExt(path2, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -55,25 +52,25 @@ var require_windows = __commonJS({
       }
       for (var i = 0; i < pathext.length; i++) {
         var p = pathext[i].toLowerCase();
-        if (p && path4.substr(-p.length).toLowerCase() === p) {
+        if (p && path2.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat2, path4, options) {
+    function checkStat(stat2, path2, options) {
       if (!stat2.isSymbolicLink() && !stat2.isFile()) {
         return false;
       }
-      return checkPathExt(path4, options);
+      return checkPathExt(path2, options);
     }
-    function isexe(path4, options, cb) {
-      fs.stat(path4, function(er, stat2) {
-        cb(er, er ? false : checkStat(stat2, path4, options));
+    function isexe(path2, options, cb) {
+      fs.stat(path2, function(er, stat2) {
+        cb(er, er ? false : checkStat(stat2, path2, options));
       });
     }
-    function sync(path4, options) {
-      return checkStat(fs.statSync(path4), path4, options);
+    function sync(path2, options) {
+      return checkStat(fs.statSync(path2), path2, options);
     }
   }
 });
@@ -84,13 +81,13 @@ var require_mode = __commonJS({
     module.exports = isexe;
     isexe.sync = sync;
     var fs = __require("fs");
-    function isexe(path4, options, cb) {
-      fs.stat(path4, function(er, stat2) {
+    function isexe(path2, options, cb) {
+      fs.stat(path2, function(er, stat2) {
         cb(er, er ? false : checkStat(stat2, options));
       });
     }
-    function sync(path4, options) {
-      return checkStat(fs.statSync(path4), options);
+    function sync(path2, options) {
+      return checkStat(fs.statSync(path2), options);
     }
     function checkStat(stat2, options) {
       return stat2.isFile() && checkMode(stat2, options);
@@ -123,7 +120,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path4, options, cb) {
+    function isexe(path2, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -133,7 +130,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve5, reject) {
-          isexe(path4, options || {}, function(er, is) {
+          isexe(path2, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -142,7 +139,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path4, options || {}, function(er, is) {
+      core(path2, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -152,9 +149,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path4, options) {
+    function sync(path2, options) {
       try {
-        return core.sync(path4, options || {});
+        return core.sync(path2, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -170,7 +167,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path4 = __require("path");
+    var path2 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError2 = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -208,7 +205,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve5(found) : reject(getNotFoundError2(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path4.join(pathPart, cmd);
+        const pCmd = path2.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve5(subStep(p, i, 0));
       });
@@ -235,7 +232,7 @@ var require_which = __commonJS({
       for (let i = 0; i < pathEnv.length; i++) {
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path4.join(pathPart, cmd);
+        const pCmd = path2.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -268,8 +265,8 @@ var require_path_key = __commonJS({
     "use strict";
     var pathKey = (options = {}) => {
       const environment = options.env || process.env;
-      const platform2 = options.platform || process.platform;
-      if (platform2 !== "win32") {
+      const platform = options.platform || process.platform;
+      if (platform !== "win32") {
         return "PATH";
       }
       return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
@@ -283,7 +280,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path4 = __require("path");
+    var path2 = __require("path");
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -301,7 +298,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path4.delimiter : void 0
+          pathExt: withoutPathExt ? path2.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -310,7 +307,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path4.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path2.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -364,8 +361,8 @@ var require_shebang_command = __commonJS({
       if (!match2) {
         return null;
       }
-      const [path4, argument] = match2[0].replace(/#! ?/, "").split(" ");
-      const binary = path4.split("/").pop();
+      const [path2, argument] = match2[0].replace(/#! ?/, "").split(" ");
+      const binary = path2.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -400,7 +397,7 @@ var require_readShebang = __commonJS({
 var require_parse = __commonJS({
   "../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path4 = __require("path");
+    var path2 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape2 = require_escape();
     var readShebang = require_readShebang();
@@ -425,7 +422,7 @@ var require_parse = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path4.normalize(parsed.command);
+        parsed.command = path2.normalize(parsed.command);
         parsed.command = escape2.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape2.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -515,21 +512,21 @@ var require_cross_spawn = __commonJS({
     var cp = __require("child_process");
     var parse = require_parse();
     var enoent = require_enoent();
-    function spawn7(command, args, options) {
+    function spawn5(command, args, options) {
       const parsed = parse(command, args, options);
       const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
       enoent.hookChildProcess(spawned, parsed);
       return spawned;
     }
-    function spawnSync5(command, args, options) {
+    function spawnSync2(command, args, options) {
       const parsed = parse(command, args, options);
       const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
       return result;
     }
-    module.exports = spawn7;
-    module.exports.spawn = spawn7;
-    module.exports.sync = spawnSync5;
+    module.exports = spawn5;
+    module.exports.spawn = spawn5;
+    module.exports.sync = spawnSync2;
     module.exports._parse = parse;
     module.exports._enoent = enoent;
   }
@@ -1042,26 +1039,26 @@ var require_ignore = __commonJS({
       const index = body.indexOf(SLASH);
       return index < 0 || index === body.length - 1;
     };
-    var basenameOf = (path4) => {
-      const end = path4.length - 1;
-      const index = path4.lastIndexOf(
+    var basenameOf = (path2) => {
+      const end = path2.length - 1;
+      const index = path2.lastIndexOf(
         SLASH,
-        path4[end] === SLASH ? end - 1 : end
+        path2[end] === SLASH ? end - 1 : end
       );
-      return index < 0 ? path4 : path4.slice(index + 1);
+      return index < 0 ? path2 : path2.slice(index + 1);
     };
-    var parentOf = (path4) => {
-      if (path4.charCodeAt(0) === SLASH_CODE || path4.indexOf(DOUBLE_SLASH) >= 0) {
-        const slices = path4.split(SLASH).filter(Boolean);
+    var parentOf = (path2) => {
+      if (path2.charCodeAt(0) === SLASH_CODE || path2.indexOf(DOUBLE_SLASH) >= 0) {
+        const slices = path2.split(SLASH).filter(Boolean);
         slices.pop();
         return slices.length ? slices.join(SLASH) + SLASH : EMPTY;
       }
-      const end = path4.length - 1;
-      const cut = path4.lastIndexOf(
+      const end = path2.length - 1;
+      const cut = path2.lastIndexOf(
         SLASH,
-        path4.charCodeAt(end) === SLASH_CODE ? end - 1 : end
+        path2.charCodeAt(end) === SLASH_CODE ? end - 1 : end
       );
-      return cut < 0 ? EMPTY : path4.slice(0, cut + 1);
+      return cut < 0 ? EMPTY : path2.slice(0, cut + 1);
     };
     var isString = (subject) => typeof subject === "string";
     var checkPattern = (pattern) => pattern && isString(pattern) && !REGEX_TEST_BLANK_LINE.test(pattern) && !REGEX_INVALID_TRAILING_BACKSLASH.test(pattern) && pattern.indexOf("#") !== 0;
@@ -1170,20 +1167,20 @@ var require_ignore = __commonJS({
       //   path matching.
       // - check `string` either `MODE_IGNORE` or `MODE_CHECK_IGNORE`
       // @returns {TestResult} true if a file is ignored
-      test(path4, checkUnignored, mode) {
+      test(path2, checkUnignored, mode) {
         let ignored = false;
         let unignored = false;
         let matchedRule;
         const rules = this._rules;
         const { length } = rules;
         const shortcut = this._basenameCount * 2 >= length;
-        const basename4 = shortcut ? basenameOf(path4) : path4;
+        const basename4 = shortcut ? basenameOf(path2) : path2;
         for (let index = 0; index < length; index++) {
           const rule = rules[index];
           const { negative } = rule;
           const skip = unignored === negative && ignored !== unignored || negative && !ignored && !unignored && !checkUnignored;
           if (!skip && rule[mode].test(
-            shortcut && rule._basenameOnly ? basename4 : path4
+            shortcut && rule._basenameOnly ? basename4 : path2
           )) {
             ignored = !negative;
             unignored = negative;
@@ -1203,17 +1200,17 @@ var require_ignore = __commonJS({
     var throwError = (message, Ctor) => {
       throw new Ctor(message);
     };
-    var checkPath = (path4, originalPath, doThrow) => {
-      if (!isString(path4)) {
+    var checkPath = (path2, originalPath, doThrow) => {
+      if (!isString(path2)) {
         return doThrow(
           `path must be a string, but got \`${originalPath}\``,
           TypeError
         );
       }
-      if (!path4) {
+      if (!path2) {
         return doThrow(`path must not be empty`, TypeError);
       }
-      if (checkPath.isNotRelative(path4)) {
+      if (checkPath.isNotRelative(path2)) {
         const r = "`path.relative()`d";
         return doThrow(
           `path should be a ${r} string, but got "${originalPath}"`,
@@ -1222,25 +1219,25 @@ var require_ignore = __commonJS({
       }
       return true;
     };
-    var isNotRelative = (path4) => {
-      const first = path4.charCodeAt(0);
+    var isNotRelative = (path2) => {
+      const first = path2.charCodeAt(0);
       if (first === SLASH_CODE) {
         return true;
       }
       if (first !== DOT_CODE) {
         return false;
       }
-      if (path4.length === 1) {
+      if (path2.length === 1) {
         return true;
       }
-      const second = path4.charCodeAt(1);
+      const second = path2.charCodeAt(1);
       if (second === SLASH_CODE) {
         return true;
       }
       if (second !== DOT_CODE) {
         return false;
       }
-      return path4.length === 2 || path4.charCodeAt(2) === SLASH_CODE;
+      return path2.length === 2 || path2.charCodeAt(2) === SLASH_CODE;
     };
     checkPath.isNotRelative = isNotRelative;
     checkPath.convert = (p) => p;
@@ -1271,56 +1268,56 @@ var require_ignore = __commonJS({
       }
       // @returns {TestResult}
       _test(originalPath, cache, checkUnignored) {
-        const path4 = originalPath && checkPath.convert(originalPath);
+        const path2 = originalPath && checkPath.convert(originalPath);
         checkPath(
-          path4,
+          path2,
           originalPath,
           this._strictPathCheck ? throwError : RETURN_FALSE
         );
-        return this._t(path4, cache, checkUnignored);
+        return this._t(path2, cache, checkUnignored);
       }
-      checkIgnore(path4) {
-        if (path4.charCodeAt(path4.length - 1) !== SLASH_CODE) {
-          return this.test(path4);
+      checkIgnore(path2) {
+        if (path2.charCodeAt(path2.length - 1) !== SLASH_CODE) {
+          return this.test(path2);
         }
-        const parentPath = parentOf(path4);
+        const parentPath = parentOf(path2);
         if (parentPath) {
           const parent = this._t(parentPath, this._testCache, true);
           if (parent.ignored) {
             return parent;
           }
         }
-        return this._rules.test(path4, false, MODE_CHECK_IGNORE);
+        return this._rules.test(path2, false, MODE_CHECK_IGNORE);
       }
-      _t(path4, cache, checkUnignored) {
-        if (path4 in cache) {
-          return cache[path4];
+      _t(path2, cache, checkUnignored) {
+        if (path2 in cache) {
+          return cache[path2];
         }
-        const parentPath = parentOf(path4);
+        const parentPath = parentOf(path2);
         const parent = parentPath ? this._t(parentPath, cache, checkUnignored) : UNDEFINED;
-        return cache[path4] = parent && parent.ignored ? parent : this._rules.test(path4, checkUnignored, MODE_IGNORE);
+        return cache[path2] = parent && parent.ignored ? parent : this._rules.test(path2, checkUnignored, MODE_IGNORE);
       }
-      ignores(path4) {
-        return this._test(path4, this._ignoreCache, false).ignored;
+      ignores(path2) {
+        return this._test(path2, this._ignoreCache, false).ignored;
       }
       createFilter() {
-        return (path4) => !this.ignores(path4);
+        return (path2) => !this.ignores(path2);
       }
       filter(paths) {
         return makeArray(paths).filter(this.createFilter());
       }
       // @returns {TestResult}
-      test(path4) {
-        return this._test(path4, this._testCache, true);
+      test(path2) {
+        return this._test(path2, this._testCache, true);
       }
     };
     var factory = (options) => new Ignore(options);
-    var isPathValid = (path4) => checkPath(path4 && checkPath.convert(path4), path4, RETURN_FALSE);
+    var isPathValid = (path2) => checkPath(path2 && checkPath.convert(path2), path2, RETURN_FALSE);
     var setupWindows = () => {
       const makePosix = (str2) => /^\\\\\?\\/.test(str2) || /["<>|\u0000-\u001F]+/u.test(str2) ? str2 : str2.replace(/\\/g, "/");
       checkPath.convert = makePosix;
       const REGEX_TEST_WINDOWS_PATH_ABSOLUTE = /^[a-z]:\//i;
-      checkPath.isNotRelative = (path4) => REGEX_TEST_WINDOWS_PATH_ABSOLUTE.test(path4) || isNotRelative(path4);
+      checkPath.isNotRelative = (path2) => REGEX_TEST_WINDOWS_PATH_ABSOLUTE.test(path2) || isNotRelative(path2);
     };
     if (
       // Detect `process` so that it can run in browsers.
@@ -1341,7 +1338,7 @@ var require_polyfills = __commonJS({
     var constants6 = __require("constants");
     var origCwd = process.cwd;
     var cwd = null;
-    var platform2 = process.env.GRACEFUL_FS_PLATFORM || process.platform;
+    var platform = process.env.GRACEFUL_FS_PLATFORM || process.platform;
     process.cwd = function() {
       if (!cwd)
         cwd = origCwd.call(process);
@@ -1387,20 +1384,20 @@ var require_polyfills = __commonJS({
       fs.fstatSync = statFixSync(fs.fstatSync);
       fs.lstatSync = statFixSync(fs.lstatSync);
       if (fs.chmod && !fs.lchmod) {
-        fs.lchmod = function(path4, mode, cb) {
+        fs.lchmod = function(path2, mode, cb) {
           if (cb) process.nextTick(cb);
         };
         fs.lchmodSync = function() {
         };
       }
       if (fs.chown && !fs.lchown) {
-        fs.lchown = function(path4, uid, gid, cb) {
+        fs.lchown = function(path2, uid, gid, cb) {
           if (cb) process.nextTick(cb);
         };
         fs.lchownSync = function() {
         };
       }
-      if (platform2 === "win32") {
+      if (platform === "win32") {
         fs.rename = typeof fs.rename !== "function" ? fs.rename : (function(fs$rename) {
           function rename(from, to, cb) {
             var start = Date.now();
@@ -1461,9 +1458,9 @@ var require_polyfills = __commonJS({
         };
       })(fs.readSync);
       function patchLchmod(fs2) {
-        fs2.lchmod = function(path4, mode, callback) {
+        fs2.lchmod = function(path2, mode, callback) {
           fs2.open(
-            path4,
+            path2,
             constants6.O_WRONLY | constants6.O_SYMLINK,
             mode,
             function(err, fd) {
@@ -1479,8 +1476,8 @@ var require_polyfills = __commonJS({
             }
           );
         };
-        fs2.lchmodSync = function(path4, mode) {
-          var fd = fs2.openSync(path4, constants6.O_WRONLY | constants6.O_SYMLINK, mode);
+        fs2.lchmodSync = function(path2, mode) {
+          var fd = fs2.openSync(path2, constants6.O_WRONLY | constants6.O_SYMLINK, mode);
           var threw = true;
           var ret;
           try {
@@ -1501,8 +1498,8 @@ var require_polyfills = __commonJS({
       }
       function patchLutimes(fs2) {
         if (constants6.hasOwnProperty("O_SYMLINK") && fs2.futimes) {
-          fs2.lutimes = function(path4, at, mt, cb) {
-            fs2.open(path4, constants6.O_SYMLINK, function(er, fd) {
+          fs2.lutimes = function(path2, at, mt, cb) {
+            fs2.open(path2, constants6.O_SYMLINK, function(er, fd) {
               if (er) {
                 if (cb) cb(er);
                 return;
@@ -1514,8 +1511,8 @@ var require_polyfills = __commonJS({
               });
             });
           };
-          fs2.lutimesSync = function(path4, at, mt) {
-            var fd = fs2.openSync(path4, constants6.O_SYMLINK);
+          fs2.lutimesSync = function(path2, at, mt) {
+            var fd = fs2.openSync(path2, constants6.O_SYMLINK);
             var ret;
             var threw = true;
             try {
@@ -1633,11 +1630,11 @@ var require_legacy_streams = __commonJS({
         ReadStream,
         WriteStream
       };
-      function ReadStream(path4, options) {
-        if (!(this instanceof ReadStream)) return new ReadStream(path4, options);
+      function ReadStream(path2, options) {
+        if (!(this instanceof ReadStream)) return new ReadStream(path2, options);
         Stream.call(this);
         var self = this;
-        this.path = path4;
+        this.path = path2;
         this.fd = null;
         this.readable = true;
         this.paused = false;
@@ -1682,10 +1679,10 @@ var require_legacy_streams = __commonJS({
           self._read();
         });
       }
-      function WriteStream(path4, options) {
-        if (!(this instanceof WriteStream)) return new WriteStream(path4, options);
+      function WriteStream(path2, options) {
+        if (!(this instanceof WriteStream)) return new WriteStream(path2, options);
         Stream.call(this);
-        this.path = path4;
+        this.path = path2;
         this.fd = null;
         this.writable = true;
         this.flags = "w";
@@ -1825,17 +1822,17 @@ var require_graceful_fs = __commonJS({
       polyfills(fs2);
       fs2.gracefulify = patch;
       fs2.createReadStream = createReadStream2;
-      fs2.createWriteStream = createWriteStream3;
+      fs2.createWriteStream = createWriteStream2;
       var fs$readFile = fs2.readFile;
       fs2.readFile = readFile2;
-      function readFile2(path4, options, cb) {
+      function readFile2(path2, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
-        return go$readFile(path4, options, cb);
-        function go$readFile(path5, options2, cb2, startTime) {
-          return fs$readFile(path5, options2, function(err) {
+        return go$readFile(path2, options, cb);
+        function go$readFile(path3, options2, cb2, startTime) {
+          return fs$readFile(path3, options2, function(err) {
             if (err && (err.code === "EMFILE" || err.code === "ENFILE"))
-              enqueue([go$readFile, [path5, options2, cb2], err, startTime || Date.now(), Date.now()]);
+              enqueue([go$readFile, [path3, options2, cb2], err, startTime || Date.now(), Date.now()]);
             else {
               if (typeof cb2 === "function")
                 cb2.apply(this, arguments);
@@ -1845,14 +1842,14 @@ var require_graceful_fs = __commonJS({
       }
       var fs$writeFile = fs2.writeFile;
       fs2.writeFile = writeFile;
-      function writeFile(path4, data, options, cb) {
+      function writeFile(path2, data, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
-        return go$writeFile(path4, data, options, cb);
-        function go$writeFile(path5, data2, options2, cb2, startTime) {
-          return fs$writeFile(path5, data2, options2, function(err) {
+        return go$writeFile(path2, data, options, cb);
+        function go$writeFile(path3, data2, options2, cb2, startTime) {
+          return fs$writeFile(path3, data2, options2, function(err) {
             if (err && (err.code === "EMFILE" || err.code === "ENFILE"))
-              enqueue([go$writeFile, [path5, data2, options2, cb2], err, startTime || Date.now(), Date.now()]);
+              enqueue([go$writeFile, [path3, data2, options2, cb2], err, startTime || Date.now(), Date.now()]);
             else {
               if (typeof cb2 === "function")
                 cb2.apply(this, arguments);
@@ -1863,14 +1860,14 @@ var require_graceful_fs = __commonJS({
       var fs$appendFile = fs2.appendFile;
       if (fs$appendFile)
         fs2.appendFile = appendFile;
-      function appendFile(path4, data, options, cb) {
+      function appendFile(path2, data, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
-        return go$appendFile(path4, data, options, cb);
-        function go$appendFile(path5, data2, options2, cb2, startTime) {
-          return fs$appendFile(path5, data2, options2, function(err) {
+        return go$appendFile(path2, data, options, cb);
+        function go$appendFile(path3, data2, options2, cb2, startTime) {
+          return fs$appendFile(path3, data2, options2, function(err) {
             if (err && (err.code === "EMFILE" || err.code === "ENFILE"))
-              enqueue([go$appendFile, [path5, data2, options2, cb2], err, startTime || Date.now(), Date.now()]);
+              enqueue([go$appendFile, [path3, data2, options2, cb2], err, startTime || Date.now(), Date.now()]);
             else {
               if (typeof cb2 === "function")
                 cb2.apply(this, arguments);
@@ -1901,31 +1898,31 @@ var require_graceful_fs = __commonJS({
       var fs$readdir = fs2.readdir;
       fs2.readdir = readdir2;
       var noReaddirOptionVersions = /^v[0-5]\./;
-      function readdir2(path4, options, cb) {
+      function readdir2(path2, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
-        var go$readdir = noReaddirOptionVersions.test(process.version) ? function go$readdir2(path5, options2, cb2, startTime) {
-          return fs$readdir(path5, fs$readdirCallback(
-            path5,
+        var go$readdir = noReaddirOptionVersions.test(process.version) ? function go$readdir2(path3, options2, cb2, startTime) {
+          return fs$readdir(path3, fs$readdirCallback(
+            path3,
             options2,
             cb2,
             startTime
           ));
-        } : function go$readdir2(path5, options2, cb2, startTime) {
-          return fs$readdir(path5, options2, fs$readdirCallback(
-            path5,
+        } : function go$readdir2(path3, options2, cb2, startTime) {
+          return fs$readdir(path3, options2, fs$readdirCallback(
+            path3,
             options2,
             cb2,
             startTime
           ));
         };
-        return go$readdir(path4, options, cb);
-        function fs$readdirCallback(path5, options2, cb2, startTime) {
+        return go$readdir(path2, options, cb);
+        function fs$readdirCallback(path3, options2, cb2, startTime) {
           return function(err, files) {
             if (err && (err.code === "EMFILE" || err.code === "ENFILE"))
               enqueue([
                 go$readdir,
-                [path5, options2, cb2],
+                [path3, options2, cb2],
                 err,
                 startTime || Date.now(),
                 Date.now()
@@ -1996,7 +1993,7 @@ var require_graceful_fs = __commonJS({
         enumerable: true,
         configurable: true
       });
-      function ReadStream(path4, options) {
+      function ReadStream(path2, options) {
         if (this instanceof ReadStream)
           return fs$ReadStream.apply(this, arguments), this;
         else
@@ -2016,7 +2013,7 @@ var require_graceful_fs = __commonJS({
           }
         });
       }
-      function WriteStream(path4, options) {
+      function WriteStream(path2, options) {
         if (this instanceof WriteStream)
           return fs$WriteStream.apply(this, arguments), this;
         else
@@ -2034,22 +2031,22 @@ var require_graceful_fs = __commonJS({
           }
         });
       }
-      function createReadStream2(path4, options) {
-        return new fs2.ReadStream(path4, options);
+      function createReadStream2(path2, options) {
+        return new fs2.ReadStream(path2, options);
       }
-      function createWriteStream3(path4, options) {
-        return new fs2.WriteStream(path4, options);
+      function createWriteStream2(path2, options) {
+        return new fs2.WriteStream(path2, options);
       }
       var fs$open = fs2.open;
       fs2.open = open3;
-      function open3(path4, flags, mode, cb) {
+      function open3(path2, flags, mode, cb) {
         if (typeof mode === "function")
           cb = mode, mode = null;
-        return go$open(path4, flags, mode, cb);
-        function go$open(path5, flags2, mode2, cb2, startTime) {
-          return fs$open(path5, flags2, mode2, function(err, fd) {
+        return go$open(path2, flags, mode, cb);
+        function go$open(path3, flags2, mode2, cb2, startTime) {
+          return fs$open(path3, flags2, mode2, function(err, fd) {
             if (err && (err.code === "EMFILE" || err.code === "ENFILE"))
-              enqueue([go$open, [path5, flags2, mode2, cb2], err, startTime || Date.now(), Date.now()]);
+              enqueue([go$open, [path3, flags2, mode2, cb2], err, startTime || Date.now(), Date.now()]);
             else {
               if (typeof cb2 === "function")
                 cb2.apply(this, arguments);
@@ -2578,7 +2575,7 @@ var require_mtime_precision = __commonJS({
 var require_lockfile = __commonJS({
   "../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/proper-lockfile/lib/lockfile.js"(exports, module) {
     "use strict";
-    var path4 = __require("path");
+    var path2 = __require("path");
     var fs = require_graceful_fs();
     var retry = require_retry2();
     var onExit = require_signal_exit();
@@ -2589,7 +2586,7 @@ var require_lockfile = __commonJS({
     }
     function resolveCanonicalPath(file, options, callback) {
       if (!options.realpath) {
-        return callback(null, path4.resolve(file));
+        return callback(null, path2.resolve(file));
       }
       options.fs.realpath(file, callback);
     }
@@ -2880,27 +2877,27 @@ var require_adapter = __commonJS({
 var require_proper_lockfile = __commonJS({
   "../../../tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent/node_modules/proper-lockfile/index.js"(exports, module) {
     "use strict";
-    var lockfile4 = require_lockfile();
+    var lockfile3 = require_lockfile();
     var { toPromise, toSync, toSyncOptions } = require_adapter();
     async function lock(file, options) {
-      const release = await toPromise(lockfile4.lock)(file, options);
+      const release = await toPromise(lockfile3.lock)(file, options);
       return toPromise(release);
     }
     function lockSync(file, options) {
-      const release = toSync(lockfile4.lock)(file, toSyncOptions(options));
+      const release = toSync(lockfile3.lock)(file, toSyncOptions(options));
       return toSync(release);
     }
     function unlock(file, options) {
-      return toPromise(lockfile4.unlock)(file, options);
+      return toPromise(lockfile3.unlock)(file, options);
     }
     function unlockSync(file, options) {
-      return toSync(lockfile4.unlock)(file, toSyncOptions(options));
+      return toSync(lockfile3.unlock)(file, toSyncOptions(options));
     }
     function check(file, options) {
-      return toPromise(lockfile4.check)(file, options);
+      return toPromise(lockfile3.check)(file, options);
     }
     function checkSync(file, options) {
-      return toSync(lockfile4.check)(file, toSyncOptions(options));
+      return toSync(lockfile3.check)(file, toSyncOptions(options));
     }
     module.exports = lock;
     module.exports.lock = lock;
@@ -3020,11 +3017,11 @@ function waitForChildProcess(child) {
 
 // target/vendor-pi/dist/utils/paths.js
 var UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
-function canonicalizePath(path4) {
+function canonicalizePath(path2) {
   try {
-    return realpathSync(path4);
+    return realpathSync(path2);
   } catch {
-    return path4;
+    return path2;
   }
 }
 function normalizeWindowsShellPath(filePath) {
@@ -3187,14 +3184,6 @@ function convertToLlm(messages) {
 
 // target/vendor-pi/dist/core/session-manager.js
 var CURRENT_SESSION_VERSION = 3;
-function createSessionId() {
-  return uuidv7();
-}
-function assertValidSessionId(id) {
-  if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(id)) {
-    throw new Error("Session id must be non-empty, contain only alphanumeric characters, '-', '_', and '.', and start and end with an alphanumeric character");
-  }
-}
 function generateId(byId) {
   for (let i = 0; i < 100; i++) {
     const id = randomUUID().slice(0, 8);
@@ -3290,19 +3279,19 @@ function buildSessionPath(entries, leafId, byId) {
   if (!leaf) {
     return [];
   }
-  const path4 = [];
+  const path2 = [];
   let current = leaf;
   while (current) {
-    path4.push(current);
+    path2.push(current);
     current = current.parentId ? index.get(current.parentId) : void 0;
   }
-  path4.reverse();
-  return path4;
+  path2.reverse();
+  return path2;
 }
-function getSessionContextSettings(path4) {
+function getSessionContextSettings(path2) {
   let thinkingLevel = "off";
   let model = null;
-  for (const entry of path4) {
+  for (const entry of path2) {
     if (entry.type === "thinking_level_change") {
       thinkingLevel = entry.thinkingLevel;
     } else if (entry.type === "model_change") {
@@ -3338,24 +3327,24 @@ function sessionEntryToContextMessages(entry) {
   return [];
 }
 function buildContextEntries(entries, leafId, byId) {
-  const path4 = buildSessionPath(entries, leafId, byId);
+  const path2 = buildSessionPath(entries, leafId, byId);
   let compaction = null;
-  for (const entry of path4) {
+  for (const entry of path2) {
     if (entry.type === "compaction") {
       compaction = entry;
     }
   }
   if (!compaction) {
-    return path4;
+    return path2;
   }
-  const compactionIdx = path4.findIndex((entry) => entry.id === compaction.id);
+  const compactionIdx = path2.findIndex((entry) => entry.id === compaction.id);
   if (compactionIdx < 0) {
-    return path4;
+    return path2;
   }
   const contextEntries = [compaction];
   let foundFirstKept = false;
   for (let i = 0; i < compactionIdx; i++) {
-    const entry = path4[i];
+    const entry = path2[i];
     if (entry.id === compaction.firstKeptEntryId) {
       foundFirstKept = true;
     }
@@ -3363,7 +3352,7 @@ function buildContextEntries(entries, leafId, byId) {
       contextEntries.push(entry);
     }
   }
-  contextEntries.push(...path4.slice(compactionIdx + 1));
+  contextEntries.push(...path2.slice(compactionIdx + 1));
   return contextEntries;
 }
 function projectContextEntry(entry, edit) {
@@ -3382,8 +3371,8 @@ function projectContextEntry(entry, edit) {
   });
 }
 function buildSessionProjection(entries, leafId, byId) {
-  const path4 = buildSessionPath(entries, leafId, byId);
-  const { thinkingLevel, model } = getSessionContextSettings(path4);
+  const path2 = buildSessionPath(entries, leafId, byId);
+  const { thinkingLevel, model } = getSessionContextSettings(path2);
   const contextEntries = buildContextEntries(entries, leafId, byId);
   const edits = /* @__PURE__ */ new Map();
   for (const entry of contextEntries) {
@@ -3408,1127 +3397,8 @@ function buildSessionContext(entries, leafId, byId) {
   const { messages, thinkingLevel, model } = buildSessionProjection(entries, leafId, byId);
   return { messages, thinkingLevel, model };
 }
-function getDefaultSessionDirPath(cwd, agentDir = (0, config_exports.getAgentDir)()) {
-  const resolvedCwd = resolvePath(cwd);
-  const resolvedAgentDir = resolvePath(agentDir);
-  const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-  return join2(resolvedAgentDir, "sessions", safePath);
-}
-function getDefaultSessionDir(cwd, agentDir = (0, config_exports.getAgentDir)()) {
-  const sessionDir = getDefaultSessionDirPath(cwd, agentDir);
-  if (!existsSync(sessionDir)) {
-    mkdirSync(sessionDir, { recursive: true });
-  }
-  return sessionDir;
-}
 var SESSION_READ_BUFFER_SIZE = 1024 * 1024;
-var SESSION_HEADER_READ_BUFFER_SIZE = 4096;
 var MAX_SESSION_HEADER_SCAN_BYTES = 1024 * 1024;
-var SessionHeaderScanLimitError = class extends Error {
-  constructor(filePath) {
-    super(`Session header exceeds ${MAX_SESSION_HEADER_SCAN_BYTES}-byte scan limit: ${filePath}`);
-    this.name = "SessionHeaderScanLimitError";
-  }
-};
-function parseSessionEntryLine(line) {
-  if (!line.trim())
-    return null;
-  try {
-    return JSON.parse(line);
-  } catch {
-    return null;
-  }
-}
-function loadEntriesFromFile(filePath) {
-  const resolvedFilePath = normalizePath(filePath);
-  if (!existsSync(resolvedFilePath))
-    return [];
-  const entries = [];
-  let pending = "";
-  const fd = openSync(resolvedFilePath, "r");
-  try {
-    const decoder = new StringDecoder("utf8");
-    const buffer = Buffer.allocUnsafe(SESSION_READ_BUFFER_SIZE);
-    while (true) {
-      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
-      if (bytesRead === 0)
-        break;
-      pending += decoder.write(buffer.subarray(0, bytesRead));
-      let lineStart = 0;
-      let newlineIndex = pending.indexOf("\n", lineStart);
-      while (newlineIndex !== -1) {
-        const entry = parseSessionEntryLine(pending.slice(lineStart, newlineIndex));
-        if (entry)
-          entries.push(entry);
-        lineStart = newlineIndex + 1;
-        newlineIndex = pending.indexOf("\n", lineStart);
-      }
-      pending = pending.slice(lineStart);
-    }
-    pending += decoder.end();
-    const finalEntry = parseSessionEntryLine(pending);
-    if (finalEntry)
-      entries.push(finalEntry);
-  } finally {
-    closeSync(fd);
-  }
-  if (entries.length === 0)
-    return entries;
-  const header = entries[0];
-  if (header.type !== "session" || typeof header.id !== "string") {
-    return [];
-  }
-  if (pending)
-    appendFileSync(resolvedFilePath, "\n");
-  return entries;
-}
-function parseSessionHeaderCandidate(line) {
-  if (!line.trim())
-    return void 0;
-  const entry = parseSessionEntryLine(line);
-  if (!entry)
-    return void 0;
-  if (entry.type !== "session" || typeof entry.id !== "string")
-    return null;
-  return entry;
-}
-function readSessionHeader(filePath) {
-  const fd = openSync(filePath, "r");
-  try {
-    const decoder = new StringDecoder("utf8");
-    const buffer = Buffer.allocUnsafe(SESSION_HEADER_READ_BUFFER_SIZE);
-    const lineChunks = [];
-    let scannedBytes = 0;
-    while (scannedBytes < MAX_SESSION_HEADER_SCAN_BYTES) {
-      const readLength = Math.min(buffer.length, MAX_SESSION_HEADER_SCAN_BYTES - scannedBytes);
-      const bytesRead = readSync(fd, buffer, 0, readLength, null);
-      if (bytesRead === 0) {
-        lineChunks.push(decoder.end());
-        return parseSessionHeaderCandidate(lineChunks.join("")) ?? null;
-      }
-      scannedBytes += bytesRead;
-      const chunk = decoder.write(buffer.subarray(0, bytesRead));
-      let lineStart = 0;
-      let newlineIndex = chunk.indexOf("\n", lineStart);
-      while (newlineIndex !== -1) {
-        lineChunks.push(chunk.slice(lineStart, newlineIndex));
-        const header = parseSessionHeaderCandidate(lineChunks.join(""));
-        if (header !== void 0)
-          return header;
-        lineChunks.length = 0;
-        lineStart = newlineIndex + 1;
-        newlineIndex = chunk.indexOf("\n", lineStart);
-      }
-      lineChunks.push(chunk.slice(lineStart));
-    }
-    const probe = Buffer.allocUnsafe(1);
-    if (readSync(fd, probe, 0, probe.length, null) === 0) {
-      lineChunks.push(decoder.end());
-      return parseSessionHeaderCandidate(lineChunks.join("")) ?? null;
-    }
-    throw new SessionHeaderScanLimitError(filePath);
-  } finally {
-    closeSync(fd);
-  }
-}
-function readSessionHeaderForDiscovery(filePath) {
-  try {
-    return readSessionHeader(filePath);
-  } catch {
-    return null;
-  }
-}
-function getSessionHeaderCwd(header) {
-  const cwd = header.cwd;
-  return typeof cwd === "string" ? cwd : void 0;
-}
-function sessionCwdMatches(cwd, resolvedCwd) {
-  return cwd !== void 0 && cwd !== "" && resolvePath(cwd) === resolvedCwd;
-}
-function findMostRecentSession(sessionDir, cwd) {
-  const resolvedSessionDir = normalizePath(sessionDir);
-  const resolvedCwd = cwd ? resolvePath(cwd) : void 0;
-  try {
-    const files = readdirSync(resolvedSessionDir).filter((file) => file.endsWith(".jsonl")).map((file) => join2(resolvedSessionDir, file)).map((path4) => ({ path: path4, mtime: statSync2(path4).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
-    for (const { path: path4 } of files) {
-      const header = readSessionHeaderForDiscovery(path4);
-      if (header && (!resolvedCwd || sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd)))
-        return path4;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-function isMessageWithContent(message) {
-  return typeof message.role === "string" && "content" in message;
-}
-function extractTextContent(message) {
-  const content = message.content;
-  if (typeof content === "string") {
-    return content;
-  }
-  return content.filter((block) => block.type === "text").map((block) => block.text).join(" ");
-}
-function getMessageActivityTime(entry) {
-  const message = entry.message;
-  if (!isMessageWithContent(message))
-    return void 0;
-  if (message.role !== "user" && message.role !== "assistant")
-    return void 0;
-  const msgTimestamp = message.timestamp;
-  if (typeof msgTimestamp === "number") {
-    return msgTimestamp;
-  }
-  const t = new Date(entry.timestamp).getTime();
-  return Number.isNaN(t) ? void 0 : t;
-}
-async function buildSessionInfo(filePath, signal, fileStats) {
-  try {
-    const stats = fileStats ?? await stat(filePath);
-    let header = null;
-    let messageCount = 0;
-    let firstMessage = "";
-    const allMessages = [];
-    let name;
-    let lastActivityTime;
-    const rl = createInterface({
-      input: createReadStream(filePath, { encoding: "utf8", signal }),
-      crlfDelay: Infinity
-    });
-    for await (const line of rl) {
-      const entry = parseSessionEntryLine(line);
-      if (!entry)
-        continue;
-      if (!header) {
-        if (entry.type !== "session")
-          return null;
-        header = entry;
-        continue;
-      }
-      if (entry.type === "session_info") {
-        name = entry.name?.trim() || void 0;
-      }
-      if (entry.type !== "message")
-        continue;
-      messageCount++;
-      const activityTime = getMessageActivityTime(entry);
-      if (typeof activityTime === "number") {
-        lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
-      }
-      const message = entry.message;
-      if (!isMessageWithContent(message))
-        continue;
-      if (message.role !== "user" && message.role !== "assistant")
-        continue;
-      const textContent = extractTextContent(message);
-      if (!textContent)
-        continue;
-      allMessages.push(textContent);
-      if (!firstMessage && message.role === "user") {
-        firstMessage = textContent;
-      }
-    }
-    if (!header)
-      return null;
-    const cwd = typeof header.cwd === "string" ? header.cwd : "";
-    const parentSessionPath = header.parentSession;
-    const headerTime = typeof header.timestamp === "string" ? new Date(header.timestamp).getTime() : NaN;
-    const modified = typeof lastActivityTime === "number" && lastActivityTime > 0 ? new Date(lastActivityTime) : !Number.isNaN(headerTime) ? new Date(headerTime) : stats.mtime;
-    return {
-      path: filePath,
-      id: header.id,
-      cwd,
-      name,
-      parentSessionPath,
-      created: new Date(header.timestamp),
-      modified,
-      messageCount,
-      firstMessage: firstMessage || "(no messages)",
-      allMessagesText: allMessages.join(" ")
-    };
-  } catch {
-    signal?.throwIfAborted();
-    return null;
-  }
-}
-var MAX_CONCURRENT_SESSION_INFO_LOADS = 10;
-var MAX_CONCURRENT_SESSION_DISCOVERY_LOADS = 64;
-var CURRENT_SESSION_LIST_PUBLISH_INTERVAL = 10;
-var ALL_SESSION_LIST_PUBLISH_INTERVAL = 100;
-async function mapWithConcurrency(items, limit, map, signal) {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  const worker = async () => {
-    while (nextIndex < items.length) {
-      signal?.throwIfAborted();
-      const index = nextIndex++;
-      results[index] = await map(items[index], index);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-  return results;
-}
-function sortSessionInfos(sessions) {
-  return sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
-}
-function buildSessionInfosWithConcurrency(files, onLoaded, signal) {
-  return mapWithConcurrency(files, MAX_CONCURRENT_SESSION_INFO_LOADS, async (file, index) => {
-    const info = await buildSessionInfo(file.path, signal, file.stats);
-    onLoaded(info, index);
-    return info;
-  }, signal);
-}
-async function listSessionsFromDir(dir, onProgress, signal) {
-  signal?.throwIfAborted();
-  if (!existsSync(dir))
-    return [];
-  try {
-    const dirEntries = await readdir(dir);
-    const files = dirEntries.filter((file) => file.endsWith(".jsonl")).sort((a, b) => b.localeCompare(a)).map((file) => ({ path: join2(dir, file) }));
-    const total = files.length;
-    const partialSessions = [];
-    let loaded = 0;
-    const results = await buildSessionInfosWithConcurrency(files, (info) => {
-      loaded++;
-      if (info)
-        partialSessions.push(info);
-      const publishPartial = loaded === 1 || loaded % CURRENT_SESSION_LIST_PUBLISH_INTERVAL === 0 || loaded === files.length;
-      onProgress?.(loaded, total, publishPartial ? sortSessionInfos([...partialSessions]) : void 0);
-    }, signal);
-    return results.filter((info) => info !== null);
-  } catch {
-    signal?.throwIfAborted();
-    return [];
-  }
-}
-var SessionManager = class _SessionManager {
-  sessionId = "";
-  sessionFile;
-  sessionDir;
-  cwd;
-  persist;
-  flushed = false;
-  fileEntries = [];
-  byId = /* @__PURE__ */ new Map();
-  labelsById = /* @__PURE__ */ new Map();
-  labelTimestampsById = /* @__PURE__ */ new Map();
-  leafId = null;
-  constructor(cwd, sessionDir, sessionFile, persist, newSessionOptions, preloadedFileEntries) {
-    this.cwd = resolvePath(cwd);
-    this.sessionDir = normalizePath(sessionDir);
-    this.persist = persist;
-    if (persist && this.sessionDir && !existsSync(this.sessionDir)) {
-      mkdirSync(this.sessionDir, { recursive: true });
-    }
-    if (sessionFile) {
-      this._setSessionFile(sessionFile, preloadedFileEntries);
-    } else if (preloadedFileEntries?.length) {
-      this._loadEntries(preloadedFileEntries, newSessionOptions);
-    } else {
-      this.newSession(newSessionOptions);
-    }
-  }
-  /** Switch to a different session file (used for resume and branching) */
-  setSessionFile(sessionFile) {
-    this._setSessionFile(sessionFile);
-  }
-  _setSessionFile(sessionFile, preloadedFileEntries) {
-    this.sessionFile = resolvePath(sessionFile);
-    if (existsSync(this.sessionFile)) {
-      const entries = preloadedFileEntries ?? loadEntriesFromFile(this.sessionFile);
-      if (entries.length === 0) {
-        const explicitPath = this.sessionFile;
-        if (statSync2(explicitPath).size > 0) {
-          throw new Error(`Session file is not a valid ${config_exports.APP_NAME} session: ${explicitPath}`);
-        }
-        this.newSession();
-        this.sessionFile = explicitPath;
-        this._rewriteFile();
-        this.flushed = true;
-        return;
-      }
-      this._loadEntries(entries);
-      this.flushed = true;
-    } else {
-      const explicitPath = this.sessionFile;
-      this.newSession();
-      this.sessionFile = explicitPath;
-    }
-  }
-  newSession(options) {
-    if (options?.id !== void 0) {
-      assertValidSessionId(options.id);
-    }
-    this.sessionId = options?.id ?? createSessionId();
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const header = {
-      type: "session",
-      version: CURRENT_SESSION_VERSION,
-      id: this.sessionId,
-      timestamp,
-      cwd: this.cwd,
-      parentSession: options?.parentSession
-    };
-    this.fileEntries = [header];
-    this.byId.clear();
-    this.labelsById.clear();
-    this.labelTimestampsById.clear();
-    this.leafId = null;
-    this.flushed = false;
-    if (this.persist) {
-      const fileTimestamp = timestamp.replace(/[:.]/g, "-");
-      this.sessionFile = join2(this.getSessionDir(), `${fileTimestamp}_${this.sessionId}.jsonl`);
-    }
-    return this.sessionFile;
-  }
-  _loadEntries(entries, options) {
-    const header = entries.find((e) => e.type === "session");
-    if (header) {
-      this.fileEntries = entries;
-      this.sessionId = header.id;
-      if (migrateToCurrentVersion(this.fileEntries)) {
-        this._rewriteFile();
-      }
-    } else {
-      this.newSession(options);
-      this.fileEntries = this.fileEntries.concat(entries);
-    }
-    this._buildIndex();
-  }
-  _buildIndex() {
-    this.byId.clear();
-    this.labelsById.clear();
-    this.labelTimestampsById.clear();
-    this.leafId = null;
-    for (const entry of this.fileEntries) {
-      if (entry.type === "session")
-        continue;
-      this.byId.set(entry.id, entry);
-      this.leafId = entry.id;
-      if (entry.type === "label") {
-        if (entry.label) {
-          this.labelsById.set(entry.targetId, entry.label);
-          this.labelTimestampsById.set(entry.targetId, entry.timestamp);
-        } else {
-          this.labelsById.delete(entry.targetId);
-          this.labelTimestampsById.delete(entry.targetId);
-        }
-      }
-    }
-  }
-  _rewriteFile() {
-    if (!this.persist || !this.sessionFile)
-      return;
-    const fd = openSync(this.sessionFile, "w");
-    try {
-      for (const entry of this.fileEntries) {
-        writeFileSync(fd, `${JSON.stringify(entry)}
-`);
-      }
-    } finally {
-      closeSync(fd);
-    }
-  }
-  isPersisted() {
-    return this.persist;
-  }
-  getCwd() {
-    return this.cwd;
-  }
-  getSessionDir() {
-    return this.sessionDir;
-  }
-  usesDefaultSessionDir() {
-    return this.sessionDir === getDefaultSessionDirPath(this.cwd);
-  }
-  getSessionId() {
-    return this.sessionId;
-  }
-  getSessionFile() {
-    return this.sessionFile;
-  }
-  /**
-   * A new session file is created only once the session contains a user or assistant message.
-   * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
-   * closing pi without chatting leaves no file behind. Starting at the user message (not the
-   * first assistant reply) keeps the prompt on disk if the first turn never completes (#10000).
-   */
-  _hasConversation() {
-    return this.fileEntries.some((e) => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"));
-  }
-  _persist(entry) {
-    if (!this.persist || !this.sessionFile)
-      return;
-    if (!this.flushed) {
-      if (!this._hasConversation())
-        return;
-      const fd = openSync(this.sessionFile, "wx");
-      try {
-        for (const e of this.fileEntries) {
-          writeFileSync(fd, `${JSON.stringify(e)}
-`);
-        }
-      } finally {
-        closeSync(fd);
-      }
-      this.flushed = true;
-    } else {
-      appendFileSync(this.sessionFile, `${JSON.stringify(entry)}
-`);
-    }
-  }
-  _appendEntry(entry) {
-    this.fileEntries.push(entry);
-    this.byId.set(entry.id, entry);
-    this.leafId = entry.id;
-    this._persist(entry);
-  }
-  /** Append a message as child of current leaf, then advance leaf. Returns entry id.
-   * Does not allow writing CompactionSummaryMessage and BranchSummaryMessage directly.
-   * Reason: we want these to be top-level entries in the session, not message session entries,
-   * so it is easier to find them.
-   * These need to be appended via appendCompaction() and appendBranchSummary() methods.
-   */
-  appendMessage(message) {
-    const entry = {
-      type: "message",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      message
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append a thinking level change as child of current leaf, then advance leaf. Returns entry id. */
-  appendThinkingLevelChange(thinkingLevel) {
-    const entry = {
-      type: "thinking_level_change",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      thinkingLevel
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append a model change as child of current leaf, then advance leaf. Returns entry id. */
-  appendModelChange(provider, modelId) {
-    const entry = {
-      type: "model_change",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      provider,
-      modelId
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append model-attributed usage that does not participate in LLM context. Returns the appended entry. */
-  appendUsage(kind, provider, model, usage, note) {
-    const entry = {
-      type: "usage",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      kind,
-      provider,
-      model,
-      usage,
-      ...note ? { note } : {}
-    };
-    this._appendEntry(entry);
-    return entry;
-  }
-  /** Append a compaction summary as child of current leaf, then advance leaf. Returns entry id. */
-  appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromHook, usage) {
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const systemMessage = getCurrentSystemMessage(this.buildSessionProjection().messages);
-    const id = generateId(this.byId);
-    const entry = {
-      type: "compaction",
-      id,
-      parentId: this.leafId,
-      timestamp,
-      summary,
-      firstKeptEntryId: firstKeptEntryId ?? id,
-      tokensBefore,
-      details,
-      usage,
-      fromHook,
-      ...systemMessage ? { systemMessage: { ...systemMessage, timestamp: new Date(timestamp).getTime() } } : {}
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append a custom entry (for extensions) as child of current leaf, then advance leaf. Returns entry id. */
-  appendCustomEntry(customType, data) {
-    const entry = {
-      type: "custom",
-      customType,
-      data,
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append a session info entry (e.g., display name). Returns entry id. */
-  appendSessionInfo(name) {
-    const sanitizedName = name.replace(/[\r\n]+/g, " ").trim();
-    const entry = {
-      type: "session_info",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      name: sanitizedName
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Get the current session name from the latest session_info entry, if any. */
-  getSessionName() {
-    for (let i = this.fileEntries.length - 1; i >= 0; i--) {
-      const entry = this.fileEntries[i];
-      if (entry.type === "session_info") {
-        return entry.name?.trim() || void 0;
-      }
-    }
-    return void 0;
-  }
-  /**
-   * Append a custom message entry (for extensions) that participates in LLM context.
-   * @param customType Extension identifier for filtering on reload
-   * @param content Message content (string or TextContent/ImageContent array)
-   * @param display Whether to show in TUI (true = styled display, false = hidden)
-   * @param details Optional extension-specific metadata (not sent to LLM)
-   * @returns Entry id
-   */
-  appendCustomMessageEntry(customType, content, display, details) {
-    const entry = {
-      type: "custom_message",
-      customType,
-      content,
-      display,
-      details,
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /** Append a branch-local edit to an earlier model-visible entry. */
-  appendContextEdit(targetId, replacement) {
-    if (replacement !== null && (typeof replacement !== "object" || !("content" in replacement) || typeof replacement.content !== "string" && !Array.isArray(replacement.content))) {
-      throw new Error("Context edit replacement must be null or contain string/array content");
-    }
-    const target = this.byId.get(targetId);
-    if (!target)
-      throw new Error(`Entry ${targetId} not found`);
-    if (!this.getBranch().some((entry2) => entry2.id === targetId)) {
-      throw new Error(`Entry ${targetId} is not on the active branch`);
-    }
-    const editable = target.type === "custom_message" || target.type === "message" && (target.message.role === "user" || target.message.role === "assistant" || target.message.role === "toolResult");
-    if (!editable)
-      throw new Error(`Entry ${targetId} does not contribute editable model content`);
-    const targetRole = target.type === "message" ? target.message.role : "custom";
-    const normalizedReplacement = replacement !== null && (targetRole === "assistant" || targetRole === "toolResult") && typeof replacement.content === "string" ? { content: [{ type: "text", text: replacement.content }] } : replacement;
-    const entry = {
-      type: "context_edit",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      targetId,
-      replacement: normalizedReplacement
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  // =========================================================================
-  // Tree Traversal
-  // =========================================================================
-  getLeafId() {
-    return this.leafId;
-  }
-  getLeafEntry() {
-    return this.leafId ? this.byId.get(this.leafId) : void 0;
-  }
-  getEntry(id) {
-    return this.byId.get(id);
-  }
-  /**
-   * Get all direct children of an entry.
-   */
-  getChildren(parentId) {
-    const children = [];
-    for (const entry of this.byId.values()) {
-      if (entry.parentId === parentId) {
-        children.push(entry);
-      }
-    }
-    return children;
-  }
-  /**
-   * Get the label for an entry, if any.
-   */
-  getLabel(id) {
-    return this.labelsById.get(id);
-  }
-  /**
-   * Set or clear a label on an entry.
-   * Labels are user-defined markers for bookmarking/navigation.
-   * Pass undefined or empty string to clear the label.
-   */
-  appendLabelChange(targetId, label) {
-    if (!this.byId.has(targetId)) {
-      throw new Error(`Entry ${targetId} not found`);
-    }
-    const entry = {
-      type: "label",
-      id: generateId(this.byId),
-      parentId: this.leafId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      targetId,
-      label
-    };
-    this._appendEntry(entry);
-    if (label) {
-      this.labelsById.set(targetId, label);
-      this.labelTimestampsById.set(targetId, entry.timestamp);
-    } else {
-      this.labelsById.delete(targetId);
-      this.labelTimestampsById.delete(targetId);
-    }
-    return entry.id;
-  }
-  /**
-   * Walk from entry to root, returning all entries in path order.
-   * Includes all entry types (messages, compaction, model changes, etc.).
-   * Use buildSessionContext() to get the resolved messages for the LLM.
-   */
-  getBranch(fromId) {
-    const path4 = [];
-    const startId = fromId ?? this.leafId;
-    let current = startId ? this.byId.get(startId) : void 0;
-    while (current) {
-      path4.push(current);
-      current = current.parentId ? this.byId.get(current.parentId) : void 0;
-    }
-    path4.reverse();
-    return path4;
-  }
-  /**
-   * Build the active, compaction-aware entry list for context/rendering.
-   * Uses tree traversal from current leaf.
-   */
-  buildContextEntries() {
-    return buildContextEntries(this.getEntries(), this.leafId, this.byId);
-  }
-  /**
-   * Build the session context (what gets sent to the LLM).
-   * Uses tree traversal from current leaf.
-   */
-  buildSessionProjection() {
-    return buildSessionProjection(this.getEntries(), this.leafId, this.byId);
-  }
-  buildSessionContext() {
-    const { messages, thinkingLevel, model } = this.buildSessionProjection();
-    return { messages, thinkingLevel, model };
-  }
-  /**
-   * Get session header.
-   */
-  getHeader() {
-    const h = this.fileEntries.find((e) => e.type === "session");
-    return h ? h : null;
-  }
-  /** Number of session entries (excludes header), without copying them like `getEntries()`. */
-  getEntryCount() {
-    return this.byId.size;
-  }
-  /**
-   * Get all session entries (excludes header). Returns a shallow copy.
-   * The session is append-only: use appendXXX() to add entries, branch() to
-   * change the leaf pointer. Entries cannot be modified or deleted.
-   */
-  getEntries() {
-    return this.fileEntries.filter((e) => e.type !== "session");
-  }
-  /**
-   * Get the session as a tree structure. Returns a shallow defensive copy of all entries.
-   * A well-formed session has exactly one root (first entry with parentId === null).
-   * Orphaned entries (broken parent chain) are also returned as roots.
-   */
-  getTree() {
-    const entries = this.getEntries();
-    const nodeMap = /* @__PURE__ */ new Map();
-    const roots = [];
-    for (const entry of entries) {
-      const label = this.labelsById.get(entry.id);
-      const labelTimestamp = this.labelTimestampsById.get(entry.id);
-      nodeMap.set(entry.id, { entry, children: [], label, labelTimestamp });
-    }
-    for (const entry of entries) {
-      const node = nodeMap.get(entry.id);
-      if (entry.parentId === null || entry.parentId === entry.id) {
-        roots.push(node);
-      } else {
-        const parent = nodeMap.get(entry.parentId);
-        if (parent) {
-          parent.children.push(node);
-        } else {
-          roots.push(node);
-        }
-      }
-    }
-    const stack = [...roots];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      node.children.sort((a, b) => new Date(a.entry.timestamp).getTime() - new Date(b.entry.timestamp).getTime());
-      stack.push(...node.children);
-    }
-    return roots;
-  }
-  // =========================================================================
-  // Branching
-  // =========================================================================
-  /**
-   * Start a new branch from an earlier entry.
-   * Moves the leaf pointer to the specified entry. The next appendXXX() call
-   * will create a child of that entry, forming a new branch. Existing entries
-   * are not modified or deleted.
-   */
-  branch(branchFromId) {
-    if (!this.byId.has(branchFromId)) {
-      throw new Error(`Entry ${branchFromId} not found`);
-    }
-    this.leafId = branchFromId;
-  }
-  /**
-   * Reset the leaf pointer to null (before any entries).
-   * The next appendXXX() call will create a new root entry (parentId = null).
-   * Use this when navigating to re-edit the first user message.
-   */
-  resetLeaf() {
-    this.leafId = null;
-  }
-  /**
-   * Start a new branch with a summary of the abandoned path.
-   * Same as branch(), but also appends a branch_summary entry that captures
-   * context from the abandoned conversation path.
-   */
-  branchWithSummary(branchFromId, summary, details, fromHook, usage) {
-    if (branchFromId !== null && !this.byId.has(branchFromId)) {
-      throw new Error(`Entry ${branchFromId} not found`);
-    }
-    const fromId = this.leafId ?? "root";
-    this.leafId = branchFromId;
-    const entry = {
-      type: "branch_summary",
-      id: generateId(this.byId),
-      parentId: branchFromId,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      fromId,
-      summary,
-      details,
-      usage,
-      fromHook
-    };
-    this._appendEntry(entry);
-    return entry.id;
-  }
-  /**
-   * Create a new session file containing only the path from root to the specified leaf.
-   * Useful for extracting a single conversation path from a branched session.
-   * Returns the new session file path, or undefined if not persisting.
-   */
-  createBranchedSession(leafId) {
-    const previousSessionFile = this.sessionFile;
-    const path4 = this.getBranch(leafId);
-    if (path4.length === 0) {
-      throw new Error(`Entry ${leafId} not found`);
-    }
-    const pathWithoutLabels = [];
-    const replacementByLabelId = /* @__PURE__ */ new Map();
-    const pendingLabelIds = [];
-    let pathParentId = null;
-    for (const entry of path4) {
-      if (entry.type === "label") {
-        pendingLabelIds.push(entry.id);
-        continue;
-      }
-      for (const labelId of pendingLabelIds) {
-        replacementByLabelId.set(labelId, entry.id);
-      }
-      pendingLabelIds.length = 0;
-      pathWithoutLabels.push(entry.type === "compaction" ? {
-        ...entry,
-        parentId: pathParentId,
-        firstKeptEntryId: entry.firstKeptEntryId === entry.id ? entry.id : replacementByLabelId.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId
-      } : { ...entry, parentId: pathParentId });
-      pathParentId = entry.id;
-    }
-    const newSessionId = createSessionId();
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const fileTimestamp = timestamp.replace(/[:.]/g, "-");
-    const newSessionFile = join2(this.getSessionDir(), `${fileTimestamp}_${newSessionId}.jsonl`);
-    const header = {
-      type: "session",
-      version: CURRENT_SESSION_VERSION,
-      id: newSessionId,
-      timestamp,
-      cwd: this.cwd,
-      parentSession: this.persist ? previousSessionFile : void 0
-    };
-    const pathEntryIds = new Set(pathWithoutLabels.map((e) => e.id));
-    const labelsToWrite = [];
-    for (const [targetId, label] of this.labelsById) {
-      if (pathEntryIds.has(targetId)) {
-        labelsToWrite.push({ targetId, label, timestamp: this.labelTimestampsById.get(targetId) });
-      }
-    }
-    if (this.persist) {
-      const lastEntryId = pathWithoutLabels[pathWithoutLabels.length - 1]?.id || null;
-      let parentId2 = lastEntryId;
-      const labelEntries2 = [];
-      for (const { targetId, label, timestamp: labelTimestamp } of labelsToWrite) {
-        const labelEntry = {
-          type: "label",
-          id: generateId(new Set(pathEntryIds)),
-          parentId: parentId2,
-          timestamp: labelTimestamp,
-          targetId,
-          label
-        };
-        pathEntryIds.add(labelEntry.id);
-        labelEntries2.push(labelEntry);
-        parentId2 = labelEntry.id;
-      }
-      this.fileEntries = [header, ...pathWithoutLabels, ...labelEntries2];
-      this.sessionId = newSessionId;
-      this.sessionFile = newSessionFile;
-      this._buildIndex();
-      if (this._hasConversation()) {
-        this._rewriteFile();
-        this.flushed = true;
-      } else {
-        this.flushed = false;
-      }
-      return newSessionFile;
-    }
-    const labelEntries = [];
-    let parentId = pathWithoutLabels[pathWithoutLabels.length - 1]?.id || null;
-    for (const { targetId, label, timestamp: labelTimestamp } of labelsToWrite) {
-      const labelEntry = {
-        type: "label",
-        id: generateId(/* @__PURE__ */ new Set([...pathEntryIds, ...labelEntries.map((e) => e.id)])),
-        parentId,
-        timestamp: labelTimestamp,
-        targetId,
-        label
-      };
-      labelEntries.push(labelEntry);
-      parentId = labelEntry.id;
-    }
-    this.fileEntries = [header, ...pathWithoutLabels, ...labelEntries];
-    this.sessionId = newSessionId;
-    this._buildIndex();
-    return void 0;
-  }
-  /**
-   * Create a new session.
-   * @param cwd Working directory (stored in session header)
-   * @param sessionDir Optional session directory. If omitted, uses default (~/.pi/agent/sessions/<encoded-cwd>/).
-   */
-  static create(cwd, sessionDir, options) {
-    const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-    return new _SessionManager(cwd, dir, void 0, true, options);
-  }
-  /**
-   * Open a specific session file.
-   * @param path Path to session file
-   * @param sessionDir Optional session directory for /new or /branch. If omitted, derives from file's parent.
-   * @param cwdOverride Optional cwd override instead of the session header cwd.
-   */
-  static open(path4, sessionDir, cwdOverride) {
-    const resolvedPath = resolvePath(path4);
-    let header = null;
-    let preloadedFileEntries;
-    if (cwdOverride === void 0 && existsSync(resolvedPath)) {
-      try {
-        header = readSessionHeader(resolvedPath);
-      } catch (error) {
-        if (!(error instanceof SessionHeaderScanLimitError))
-          throw error;
-        preloadedFileEntries = loadEntriesFromFile(resolvedPath);
-        const firstEntry = preloadedFileEntries[0];
-        header = firstEntry?.type === "session" ? firstEntry : null;
-      }
-    }
-    const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : void 0) ?? process.cwd();
-    const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
-    return new _SessionManager(cwd, dir, resolvedPath, true, void 0, preloadedFileEntries);
-  }
-  /**
-   * Continue the most recent session, or create new if none.
-   * @param cwd Working directory
-   * @param sessionDir Optional session directory. If omitted, uses default (~/.pi/agent/sessions/<encoded-cwd>/).
-   */
-  static continueRecent(cwd, sessionDir) {
-    const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-    const filterCwd = sessionDir !== void 0 && dir !== getDefaultSessionDirPath(cwd);
-    const mostRecent = findMostRecentSession(dir, filterCwd ? cwd : void 0);
-    if (mostRecent) {
-      return new _SessionManager(cwd, dir, mostRecent, true);
-    }
-    return new _SessionManager(cwd, dir, void 0, true);
-  }
-  /** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */
-  static inMemory(cwd = process.cwd(), options, entries) {
-    return new _SessionManager(cwd, "", void 0, false, options, entries);
-  }
-  /**
-   * Fork a session from another project directory into the current project.
-   * Creates a new session in the target cwd with the full history from the source session.
-   * @param sourcePath Path to the source session file
-   * @param targetCwd Target working directory (where the new session will be stored)
-   * @param sessionDir Optional session directory. If omitted, uses default for targetCwd.
-   */
-  static forkFrom(sourcePath, targetCwd, sessionDir, options) {
-    const resolvedSourcePath = resolvePath(sourcePath);
-    const resolvedTargetCwd = resolvePath(targetCwd);
-    const sourceEntries = loadEntriesFromFile(resolvedSourcePath);
-    if (sourceEntries.length === 0) {
-      throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
-    }
-    const sourceHeader = sourceEntries.find((e) => e.type === "session");
-    if (!sourceHeader) {
-      throw new Error(`Cannot fork: source session has no header: ${resolvedSourcePath}`);
-    }
-    const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(resolvedTargetCwd);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    if (options?.id !== void 0) {
-      assertValidSessionId(options.id);
-    }
-    const newSessionId = options?.id ?? createSessionId();
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const fileTimestamp = timestamp.replace(/[:.]/g, "-");
-    const newSessionFile = join2(dir, `${fileTimestamp}_${newSessionId}.jsonl`);
-    const newHeader = {
-      type: "session",
-      version: CURRENT_SESSION_VERSION,
-      id: newSessionId,
-      timestamp,
-      cwd: resolvedTargetCwd,
-      parentSession: resolvedSourcePath
-    };
-    writeFileSync(newSessionFile, `${JSON.stringify(newHeader)}
-`, { flag: "wx" });
-    for (const entry of sourceEntries) {
-      if (entry.type !== "session") {
-        appendFileSync(newSessionFile, `${JSON.stringify(entry)}
-`);
-      }
-    }
-    return new _SessionManager(resolvedTargetCwd, dir, newSessionFile, true);
-  }
-  /**
-   * Find an exact session ID without loading transcript bodies.
-   * @param cwd Working directory (used to compute default session directory)
-   * @param id Exact session ID
-   * @param sessionDir Optional session directory. If omitted, uses default (~/.pi/agent/sessions/<encoded-cwd>/).
-   */
-  static findById(cwd, id, sessionDir) {
-    const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-    const filterCwd = sessionDir !== void 0 && dir !== getDefaultSessionDirPath(cwd);
-    const resolvedCwd = resolvePath(cwd);
-    try {
-      for (const file of readdirSync(dir)) {
-        if (!file.endsWith(".jsonl"))
-          continue;
-        const path4 = join2(dir, file);
-        const header = readSessionHeaderForDiscovery(path4);
-        if (header?.id !== id)
-          continue;
-        if (filterCwd && !sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd))
-          continue;
-        return path4;
-      }
-    } catch {
-    }
-    return void 0;
-  }
-  /**
-   * List all sessions for a directory.
-   * @param cwd Working directory (used to compute default session directory)
-   * @param sessionDir Optional session directory. If omitted, uses default (~/.pi/agent/sessions/<encoded-cwd>/).
-   * @param onProgress Optional callback for progress updates (loaded, total)
-   */
-  static async list(cwd, sessionDir, onProgress, signal) {
-    const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
-    const filterCwd = sessionDir !== void 0 && dir !== getDefaultSessionDirPath(cwd);
-    const resolvedCwd = resolvePath(cwd);
-    const includeSession = (session) => !filterCwd || sessionCwdMatches(session.cwd, resolvedCwd);
-    const progress = onProgress ? (loaded, total, partialSessions) => onProgress(loaded, total, partialSessions?.filter(includeSession)) : void 0;
-    const sessions = (await listSessionsFromDir(dir, progress, signal)).filter(includeSession);
-    return sortSessionInfos(sessions);
-  }
-  static async listAll(sessionDirOrOnProgress, onProgressOrSignal, signal) {
-    const customSessionDir = typeof sessionDirOrOnProgress === "string" ? normalizePath(sessionDirOrOnProgress) : void 0;
-    const progress = typeof sessionDirOrOnProgress === "function" ? sessionDirOrOnProgress : typeof onProgressOrSignal === "function" ? onProgressOrSignal : void 0;
-    const abortSignal = typeof sessionDirOrOnProgress === "string" || typeof onProgressOrSignal === "function" ? signal : onProgressOrSignal ?? signal;
-    abortSignal?.throwIfAborted();
-    if (customSessionDir) {
-      return sortSessionInfos(await listSessionsFromDir(customSessionDir, progress, abortSignal));
-    }
-    const sessionsDir = (0, config_exports.getSessionsDir)();
-    try {
-      if (!existsSync(sessionsDir))
-        return [];
-      const entries = await readdir(sessionsDir, { withFileTypes: true });
-      const dirs = entries.filter((entry) => entry.isDirectory() || entry.isSymbolicLink()).map((entry) => join2(sessionsDir, entry.name));
-      const dirFiles = await mapWithConcurrency(dirs, MAX_CONCURRENT_SESSION_DISCOVERY_LOADS, async (dir) => {
-        try {
-          return (await readdir(dir)).filter((file) => file.endsWith(".jsonl")).map((file) => join2(dir, file));
-        } catch {
-          return [];
-        }
-      }, abortSignal);
-      const allFiles = dirFiles.flat();
-      const candidates = await mapWithConcurrency(allFiles, MAX_CONCURRENT_SESSION_DISCOVERY_LOADS, async (path4) => {
-        try {
-          return { path: path4, stats: await stat(path4) };
-        } catch {
-          return { path: path4 };
-        }
-      }, abortSignal);
-      candidates.sort((a, b) => (b.stats?.mtimeMs ?? Number.NEGATIVE_INFINITY) - (a.stats?.mtimeMs ?? Number.NEGATIVE_INFINITY) || basename(b.path).localeCompare(basename(a.path)));
-      const totalFiles = candidates.length;
-      let loaded = 0;
-      let firstCandidateLoaded = false;
-      const partialSessions = [];
-      const results = await buildSessionInfosWithConcurrency(candidates, (info, index) => {
-        loaded++;
-        if (index === 0)
-          firstCandidateLoaded = true;
-        if (info)
-          partialSessions.push(info);
-        const publishPartial = firstCandidateLoaded && (index === 0 || loaded % ALL_SESSION_LIST_PUBLISH_INTERVAL === 0 || loaded === totalFiles);
-        progress?.(loaded, totalFiles, publishPartial ? sortSessionInfos([...partialSessions]) : void 0);
-      }, abortSignal);
-      return sortSessionInfos(results.filter((info) => info !== null));
-    } catch {
-      abortSignal?.throwIfAborted();
-      return [];
-    }
-  }
-};
 
 // target/vendor-pi/dist/core/compaction/branch-summarization.js
 import { contentText as contentText3, normalizeContext as normalizeContext2 } from "@earendil-works/pi-ai";
@@ -4603,18 +3473,18 @@ function extractFileOpsFromMessage(message, fileOps) {
   }
 }
 function addFileOp(toolName, args, fileOps) {
-  const path4 = typeof args?.path === "string" ? args.path : void 0;
-  if (!path4)
+  const path2 = typeof args?.path === "string" ? args.path : void 0;
+  if (!path2)
     return;
   switch (toolName) {
     case "read":
-      fileOps.read.add(path4);
+      fileOps.read.add(path2);
       break;
     case "write":
-      fileOps.written.add(path4);
+      fileOps.written.add(path2);
       break;
     case "edit":
-      fileOps.edited.add(path4);
+      fileOps.edited.add(path2);
       break;
   }
 }
@@ -5284,9 +4154,9 @@ __reExport(frontmatter_exports, host_star2);
 import * as host_star2 from "yapi:pi/host";
 
 // target/vendor-pi/dist/core/source-info.js
-function createSyntheticSourceInfo(path4, options) {
+function createSyntheticSourceInfo(path2, options) {
   return {
-    path: path4,
+    path: path2,
     source: options.source,
     scope: options.scope ?? "temporary",
     origin: options.origin ?? "top-level",
@@ -5735,16 +4605,16 @@ var Diff = class {
       }
     }
   }
-  addToPath(path4, added, removed, oldPosInc, options) {
-    const last = path4.lastComponent;
+  addToPath(path2, added, removed, oldPosInc, options) {
+    const last = path2.lastComponent;
     if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
       return {
-        oldPos: path4.oldPos + oldPosInc,
+        oldPos: path2.oldPos + oldPosInc,
         lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
       };
     } else {
       return {
-        oldPos: path4.oldPos + oldPosInc,
+        oldPos: path2.oldPos + oldPosInc,
         lastComponent: { count: 1, added, removed, previousComponent: last }
       };
     }
@@ -6529,38 +5399,38 @@ function countOccurrences(content, oldText) {
   const fuzzyOldText = normalizeForFuzzyMatch(oldText);
   return fuzzyContent.split(fuzzyOldText).length - 1;
 }
-function getNotFoundError(path4, editIndex, totalEdits) {
+function getNotFoundError(path2, editIndex, totalEdits) {
   if (totalEdits === 1) {
-    return new Error(`Could not find the exact text in ${path4}. The old text must match exactly including all whitespace and newlines.`);
+    return new Error(`Could not find the exact text in ${path2}. The old text must match exactly including all whitespace and newlines.`);
   }
-  return new Error(`Could not find edits[${editIndex}] in ${path4}. The oldText must match exactly including all whitespace and newlines.`);
+  return new Error(`Could not find edits[${editIndex}] in ${path2}. The oldText must match exactly including all whitespace and newlines.`);
 }
-function getDuplicateError(path4, editIndex, totalEdits, occurrences) {
+function getDuplicateError(path2, editIndex, totalEdits, occurrences) {
   if (totalEdits === 1) {
-    return new Error(`Found ${occurrences} occurrences of the text in ${path4}. The text must be unique. Please provide more context to make it unique.`);
+    return new Error(`Found ${occurrences} occurrences of the text in ${path2}. The text must be unique. Please provide more context to make it unique.`);
   }
-  return new Error(`Found ${occurrences} occurrences of edits[${editIndex}] in ${path4}. Each oldText must be unique. Please provide more context to make it unique.`);
+  return new Error(`Found ${occurrences} occurrences of edits[${editIndex}] in ${path2}. Each oldText must be unique. Please provide more context to make it unique.`);
 }
-function getEmptyOldTextError(path4, editIndex, totalEdits) {
+function getEmptyOldTextError(path2, editIndex, totalEdits) {
   if (totalEdits === 1) {
-    return new Error(`oldText must not be empty in ${path4}.`);
+    return new Error(`oldText must not be empty in ${path2}.`);
   }
-  return new Error(`edits[${editIndex}].oldText must not be empty in ${path4}.`);
+  return new Error(`edits[${editIndex}].oldText must not be empty in ${path2}.`);
 }
-function getNoChangeError(path4, totalEdits) {
+function getNoChangeError(path2, totalEdits) {
   if (totalEdits === 1) {
-    return new Error(`No changes made to ${path4}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`);
+    return new Error(`No changes made to ${path2}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`);
   }
-  return new Error(`No changes made to ${path4}. The replacements produced identical content.`);
+  return new Error(`No changes made to ${path2}. The replacements produced identical content.`);
 }
-function applyEditsToNormalizedContent(normalizedContent, edits, path4) {
+function applyEditsToNormalizedContent(normalizedContent, edits, path2) {
   const normalizedEdits = edits.map((edit) => ({
     oldText: normalizeToLF(edit.oldText),
     newText: normalizeToLF(edit.newText)
   }));
   for (let i = 0; i < normalizedEdits.length; i++) {
     if (normalizedEdits[i].oldText.length === 0) {
-      throw getEmptyOldTextError(path4, i, normalizedEdits.length);
+      throw getEmptyOldTextError(path2, i, normalizedEdits.length);
     }
   }
   const initialMatches = normalizedEdits.map((edit) => fuzzyFindText(normalizedContent, edit.oldText));
@@ -6571,11 +5441,11 @@ function applyEditsToNormalizedContent(normalizedContent, edits, path4) {
     const edit = normalizedEdits[i];
     const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText);
     if (!matchResult.found) {
-      throw getNotFoundError(path4, i, normalizedEdits.length);
+      throw getNotFoundError(path2, i, normalizedEdits.length);
     }
     const occurrences = countOccurrences(replacementBaseContent, edit.oldText);
     if (occurrences > 1) {
-      throw getDuplicateError(path4, i, normalizedEdits.length, occurrences);
+      throw getDuplicateError(path2, i, normalizedEdits.length, occurrences);
     }
     matchedEdits.push({
       editIndex: i,
@@ -6589,18 +5459,18 @@ function applyEditsToNormalizedContent(normalizedContent, edits, path4) {
     const previous = matchedEdits[i - 1];
     const current = matchedEdits[i];
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
-      throw new Error(`edits[${previous.editIndex}] and edits[${current.editIndex}] overlap in ${path4}. Merge them into one edit or target disjoint regions.`);
+      throw new Error(`edits[${previous.editIndex}] and edits[${current.editIndex}] overlap in ${path2}. Merge them into one edit or target disjoint regions.`);
     }
   }
   const baseContent = normalizedContent;
   const newContent = usedFuzzyMatch ? applyReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits) : applyReplacements(replacementBaseContent, matchedEdits);
   if (baseContent === newContent) {
-    throw getNoChangeError(path4, normalizedEdits.length);
+    throw getNoChangeError(path2, normalizedEdits.length);
   }
   return { baseContent, newContent };
 }
-function generateUnifiedPatch(path4, oldContent, newContent, contextLines = 4) {
-  return createTwoFilesPatch(path4, path4, oldContent, newContent, void 0, void 0, {
+function generateUnifiedPatch(path2, oldContent, newContent, contextLines = 4) {
+  return createTwoFilesPatch(path2, path2, oldContent, newContent, void 0, void 0, {
     context: contextLines,
     headerOptions: FILE_HEADERS_ONLY
   });
@@ -6706,19 +5576,19 @@ function generateDiffString(oldContent, newContent, contextLines = 4) {
   }
   return { diff: output.join("\n"), firstChangedLine };
 }
-async function computeEditsDiff(path4, edits, cwd) {
-  const absolutePath = resolveToCwd(path4, cwd);
+async function computeEditsDiff(path2, edits, cwd) {
+  const absolutePath = resolveToCwd(path2, cwd);
   try {
     try {
       await access2(absolutePath, constants2.R_OK);
     } catch (error) {
       const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
-      return { error: `Could not edit file: ${path4}. ${errorMessage}.` };
+      return { error: `Could not edit file: ${path2}. ${errorMessage}.` };
     }
     const rawContent = await readFile(absolutePath, "utf-8");
     const { text: content } = splitBom(rawContent);
     const normalizedContent = normalizeToLF(content);
-    const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path4);
+    const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path2);
     return generateDiffString(baseContent, newContent);
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
@@ -9121,66 +7991,71 @@ function resolveCliModel(options) {
   };
 }
 
-// target/vendor-pi/dist/core/auth-storage.js
+// target/vendor-pi/dist/core/trust-manager.js
 var import_proper_lockfile = __toESM(require_proper_lockfile());
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { dirname as dirname2, join as join5 } from "path";
-import { setTimeout as sleep } from "timers/promises";
-
-// target/vendor-pi/dist/utils/abort.js
-function abortReason(signal) {
-  if (signal.reason !== void 0)
-    return signal.reason;
-  const error = new Error("The operation was aborted");
-  error.name = "AbortError";
-  return error;
-}
-function raceWithAbortSignal(operation, signal) {
-  if (!signal)
-    return operation;
-  if (signal.aborted) {
-    void operation.catch(() => {
-    });
-    return Promise.reject(abortReason(signal));
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { dirname as dirname2, join as join4 } from "node:path";
+var TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES = [
+  "settings.json",
+  "mcp.json",
+  "extensions",
+  "skills",
+  "prompts",
+  "themes",
+  "SYSTEM.md",
+  "APPEND_SYSTEM.md"
+];
+function hasTrustRequiringProjectResources(cwd) {
+  const homeDir = canonicalizePath(resolvePath(process.env.HOME || homedir2()));
+  const userAgentsSkillsDir = join4(homeDir, ".agents", "skills");
+  let currentDir = canonicalizePath(resolvePath(cwd));
+  const configDir = join4(currentDir, config_exports.CONFIG_DIR_NAME);
+  if (TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES.some((entry) => existsSync3(join4(configDir, entry)))) {
+    return true;
   }
-  return new Promise((resolve5, reject) => {
-    let settled = false;
-    const cleanup = () => signal.removeEventListener("abort", onAbort);
-    const onAbort = () => {
-      if (settled)
-        return;
-      settled = true;
-      cleanup();
-      reject(abortReason(signal));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    void operation.then((value) => {
-      if (settled)
-        return;
-      settled = true;
-      cleanup();
-      resolve5(value);
-    }, (error) => {
-      if (settled)
-        return;
-      settled = true;
-      cleanup();
-      reject(error);
-    });
-    if (signal.aborted)
-      onAbort();
-  });
+  while (true) {
+    const agentsSkillsDir = join4(currentDir, ".agents", "skills");
+    if (agentsSkillsDir !== userAgentsSkillsDir && existsSync3(agentsSkillsDir)) {
+      return true;
+    }
+    const parentDir = dirname2(currentDir);
+    if (parentDir === currentDir) {
+      return false;
+    }
+    currentDir = parentDir;
+  }
 }
 
-// target/vendor-pi/dist/core/resolve-config-value.js
-import { execSync, spawnSync as spawnSync2 } from "child_process";
+// target/vendor-pi/dist/core/tools/tool-definition-wrapper.js
+function wrapToolDefinition(definition, ctxFactory) {
+  return {
+    name: definition.name,
+    label: definition.label,
+    description: definition.description,
+    parameters: definition.parameters,
+    outputSchema: definition.outputSchema,
+    constrainedSampling: definition.constrainedSampling,
+    prepareArguments: definition.prepareArguments,
+    executionMode: definition.executionMode,
+    execute: (toolCallId, params, signal, onUpdate, ctx) => definition.execute(toolCallId, params, signal, onUpdate, ctx ?? ctxFactory?.(toolCallId, signal))
+  };
+}
+
+// target/vendor-pi/dist/core/extensions/wrapper.js
+function wrapRegisteredTool(registeredTool, runner) {
+  return wrapToolDefinition(registeredTool.definition, (toolCallId, signal) => runner.createToolContext(toolCallId, signal));
+}
+function wrapRegisteredTools(registeredTools, runner) {
+  return registeredTools.map((tool) => wrapRegisteredTool(tool, runner));
+}
 
 // target/vendor-pi/dist/utils/shell.js
-import { existsSync as existsSync3 } from "node:fs";
-import { delimiter, join as join4 } from "node:path";
+import { existsSync as existsSync4 } from "node:fs";
+import { delimiter, join as join5 } from "node:path";
 import { spawn, spawnSync } from "child_process";
-function isLegacyWslBashPath(path4) {
-  const normalized = path4.replace(/\//g, "\\").toLowerCase();
+function isLegacyWslBashPath(path2) {
+  const normalized = path2.replace(/\//g, "\\").toLowerCase();
   return /^[a-z]:\\windows\\(?:system32|sysnative)\\bash\.exe$/.test(normalized);
 }
 function getBashShellConfig(shell) {
@@ -9196,7 +8071,7 @@ function findExecutableOnPath(executable) {
       });
       if (result.status === 0 && result.stdout) {
         const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
-        if (firstMatch && existsSync3(firstMatch)) {
+        if (firstMatch && existsSync4(firstMatch)) {
           return firstMatch;
         }
       }
@@ -9218,7 +8093,7 @@ function findExecutableOnPath(executable) {
 }
 function getShellConfig(customShellPath) {
   if (customShellPath) {
-    if (existsSync3(customShellPath)) {
+    if (existsSync4(customShellPath)) {
       return getBashShellConfig(customShellPath);
     }
     throw new Error(`Custom shell path not found: ${customShellPath}`);
@@ -9233,9 +8108,9 @@ function getShellConfig(customShellPath) {
     if (programFilesX86) {
       paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
     }
-    for (const path4 of paths) {
-      if (existsSync3(path4)) {
-        return getBashShellConfig(path4);
+    for (const path2 of paths) {
+      if (existsSync4(path2)) {
+        return getBashShellConfig(path2);
       }
     }
     const bashOnPath2 = findExecutableOnPath("bash.exe");
@@ -9250,7 +8125,7 @@ function getShellConfig(customShellPath) {
 Searched Git Bash in:
 ${paths.map((p) => `  ${p}`).join("\n")}`);
   }
-  if (existsSync3("/bin/bash")) {
+  if (existsSync4("/bin/bash")) {
     return getBashShellConfig("/bin/bash");
   }
   const bashOnPath = findExecutableOnPath("bash");
@@ -9295,7 +8170,7 @@ function untrackDetachedChildPid(pid) {
 function killProcessTree(pid) {
   if (process.platform === "win32") {
     try {
-      const child = spawn(join4(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/F", "/T", "/PID", String(pid)], {
+      const child = spawn(join5(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/F", "/T", "/PID", String(pid)], {
         stdio: "ignore",
         detached: true,
         windowsHide: true
@@ -9314,1287 +8189,6 @@ function killProcessTree(pid) {
       }
     }
   }
-}
-
-// target/vendor-pi/dist/core/auth-storage.js
-function readStoredCredential(providerId, authPath = join5((0, config_exports.getAgentDir)(), "auth.json")) {
-  try {
-    const data = JSON.parse(stripBom(readFileSync2(normalizePath(authPath), "utf-8")));
-    return data[providerId];
-  } catch {
-    return void 0;
-  }
-}
-
-// target/vendor-pi/dist/core/trust-manager.js
-var import_proper_lockfile2 = __toESM(require_proper_lockfile());
-import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { dirname as dirname3, join as join6 } from "node:path";
-var TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES = [
-  "settings.json",
-  "mcp.json",
-  "extensions",
-  "skills",
-  "prompts",
-  "themes",
-  "SYSTEM.md",
-  "APPEND_SYSTEM.md"
-];
-function normalizeCwd(cwd) {
-  return canonicalizePath(resolvePath(cwd));
-}
-function findNearestTrustEntry(data, cwd) {
-  let currentDir = normalizeCwd(cwd);
-  while (true) {
-    const value = data[currentDir];
-    if (value === true || value === false) {
-      return { path: currentDir, decision: value };
-    }
-    const parentDir = dirname3(currentDir);
-    if (parentDir === currentDir) {
-      return null;
-    }
-    currentDir = parentDir;
-  }
-}
-function readTrustFile(path4) {
-  if (!existsSync5(path4)) {
-    return {};
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(stripBom(readFileSync3(path4, "utf-8")));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read trust store ${path4}: ${message}`);
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`Invalid trust store ${path4}: expected an object`);
-  }
-  const data = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (value !== true && value !== false && value !== null) {
-      throw new Error(`Invalid trust store ${path4}: value for ${JSON.stringify(key)} must be true, false, or null`);
-    }
-    data[key] = value;
-  }
-  return data;
-}
-function writeTrustFile(path4, data) {
-  const sorted = {};
-  for (const key of Object.keys(data).sort()) {
-    const value = data[key];
-    if (value === true || value === false || value === null) {
-      sorted[key] = value;
-    }
-  }
-  mkdirSync3(dirname3(path4), { recursive: true });
-  writeFileSync3(path4, `${JSON.stringify(sorted, null, 2)}
-`, "utf-8");
-}
-function acquireTrustLockSync(path4) {
-  const trustDir = dirname3(path4);
-  mkdirSync3(trustDir, { recursive: true });
-  const maxAttempts = 10;
-  const delayMs = 20;
-  let lastError;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return import_proper_lockfile2.default.lockSync(trustDir, { realpath: false, lockfilePath: `${path4}.lock` });
-    } catch (error) {
-      const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : void 0;
-      if (code !== "ELOCKED" || attempt === maxAttempts) {
-        throw error;
-      }
-      lastError = error;
-      const start = Date.now();
-      while (Date.now() - start < delayMs) {
-      }
-    }
-  }
-  if (lastError instanceof Error) {
-    throw lastError;
-  }
-  throw new Error("Failed to acquire trust store lock");
-}
-function withTrustFileLock(path4, fn) {
-  const release = acquireTrustLockSync(path4);
-  try {
-    return fn();
-  } finally {
-    release();
-  }
-}
-function hasTrustRequiringProjectResources(cwd) {
-  const homeDir = canonicalizePath(resolvePath(process.env.HOME || homedir2()));
-  const userAgentsSkillsDir = join6(homeDir, ".agents", "skills");
-  let currentDir = canonicalizePath(resolvePath(cwd));
-  const configDir = join6(currentDir, config_exports.CONFIG_DIR_NAME);
-  if (TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES.some((entry) => existsSync5(join6(configDir, entry)))) {
-    return true;
-  }
-  while (true) {
-    const agentsSkillsDir = join6(currentDir, ".agents", "skills");
-    if (agentsSkillsDir !== userAgentsSkillsDir && existsSync5(agentsSkillsDir)) {
-      return true;
-    }
-    const parentDir = dirname3(currentDir);
-    if (parentDir === currentDir) {
-      return false;
-    }
-    currentDir = parentDir;
-  }
-}
-var ProjectTrustStore = class {
-  trustPath;
-  constructor(agentDir) {
-    this.trustPath = join6(resolvePath(agentDir), "trust.json");
-  }
-  get(cwd) {
-    return this.getEntry(cwd)?.decision ?? null;
-  }
-  getEntry(cwd) {
-    return withTrustFileLock(this.trustPath, () => {
-      const data = readTrustFile(this.trustPath);
-      return findNearestTrustEntry(data, cwd);
-    });
-  }
-  set(cwd, decision) {
-    this.setMany([{ path: cwd, decision }]);
-  }
-  setMany(decisions) {
-    withTrustFileLock(this.trustPath, () => {
-      const data = readTrustFile(this.trustPath);
-      for (const { path: path4, decision } of decisions) {
-        const key = normalizeCwd(path4);
-        if (decision === null) {
-          delete data[key];
-        } else {
-          data[key] = decision;
-        }
-      }
-      writeTrustFile(this.trustPath, data);
-    });
-  }
-};
-
-// target/vendor-pi/dist/core/settings-manager.js
-var import_proper_lockfile3 = __toESM(require_proper_lockfile());
-import { DEFAULT_MAX_AGENT_RETRY_DELAY_MS } from "@earendil-works/pi-ai";
-import { randomUUID as randomUUID2 } from "crypto";
-import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync4 } from "fs";
-import { dirname as dirname4, join as join7 } from "path";
-
-// target/vendor-pi/dist/core/http-dispatcher.js
-import { EventEmitter } from "node:events";
-var DEFAULT_HTTP_IDLE_TIMEOUT_MS = 3e5;
-var HTTP_IDLE_TIMEOUT_CHOICES = [
-  { label: "30 sec", timeoutMs: 3e4 },
-  { label: "1 min", timeoutMs: 6e4 },
-  { label: "2 min", timeoutMs: 12e4 },
-  { label: "5 min", timeoutMs: 3e5 },
-  { label: "disabled", timeoutMs: 0 }
-];
-var originalGlobalFetch = globalThis.fetch;
-function parseHttpIdleTimeoutMs(value) {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed.toLowerCase() === "disabled") {
-      return 0;
-    }
-    if (trimmed.length === 0) {
-      return void 0;
-    }
-    return parseHttpIdleTimeoutMs(Number(trimmed));
-  }
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return void 0;
-  }
-  return Math.floor(value);
-}
-function formatHttpIdleTimeoutMs(timeoutMs) {
-  const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.timeoutMs === timeoutMs);
-  if (choice) {
-    return choice.label;
-  }
-  return `${timeoutMs / 1e3} sec`;
-}
-
-// target/vendor-pi/dist/core/settings-manager.js
-var DEFAULT_COMPACTION_TOKEN_SETTINGS = {
-  reserveTokens: 16384,
-  keepRecentTokens: 2e4
-};
-var CACHE_WARMING_MODES = ["off", "streaming", "idle"];
-function isMergeableObject(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function deepMergeObjects(base, overrides) {
-  const result = { ...base };
-  for (const key of Object.keys(overrides)) {
-    const overrideValue = overrides[key];
-    if (overrideValue === void 0) {
-      continue;
-    }
-    const baseValue = base[key];
-    result[key] = isMergeableObject(baseValue) && isMergeableObject(overrideValue) ? deepMergeObjects(baseValue, overrideValue) : overrideValue;
-  }
-  return result;
-}
-var DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"];
-function isToolModifier(entry) {
-  return typeof entry === "string" && (entry.startsWith("+") || entry.startsWith("-"));
-}
-function mergeDefaultTools(base, overrides) {
-  if (overrides === void 0)
-    return base;
-  if (!Array.isArray(base) || !Array.isArray(overrides) || !overrides.every(isToolModifier))
-    return overrides;
-  return [...base, ...overrides];
-}
-function resolveDefaultTools(entries) {
-  const plain = entries.filter((entry) => !isToolModifier(entry));
-  const tools = plain.length > 0 || entries.length === 0 ? plain : [...DEFAULT_TOOL_NAMES];
-  for (const entry of entries) {
-    if (!isToolModifier(entry))
-      continue;
-    const name = entry.slice(1);
-    const index = tools.indexOf(name);
-    if (entry.startsWith("+") && index === -1 && name)
-      tools.push(name);
-    else if (entry.startsWith("-") && index !== -1)
-      tools.splice(index, 1);
-  }
-  return tools;
-}
-function deepMergeSettings(base, overrides) {
-  const merged = deepMergeObjects(base, overrides);
-  const defaultTools = mergeDefaultTools(base.defaultTools, overrides.defaultTools);
-  return defaultTools === void 0 ? merged : { ...merged, defaultTools };
-}
-function parseTimeoutSetting(value, settingName) {
-  const timeoutMs = parseHttpIdleTimeoutMs(value);
-  if (timeoutMs !== void 0) {
-    return timeoutMs;
-  }
-  if (value !== void 0) {
-    throw new Error(`Invalid ${settingName} setting: ${String(value)}`);
-  }
-  return void 0;
-}
-function toSettingsError(scope, error, path4) {
-  return {
-    scope,
-    ...path4 ? { path: path4 } : {},
-    error: error instanceof Error ? error : new Error(String(error))
-  };
-}
-var FileSettingsStorage = class {
-  globalSettingsPath;
-  projectSettingsPath;
-  constructor(cwd, agentDir) {
-    const resolvedCwd = resolvePath(cwd);
-    const resolvedAgentDir = resolvePath(agentDir);
-    this.globalSettingsPath = join7(resolvedAgentDir, "settings.json");
-    this.projectSettingsPath = join7(resolvedCwd, config_exports.CONFIG_DIR_NAME, "settings.json");
-  }
-  acquireLockSyncWithRetry(path4) {
-    const maxAttempts = 10;
-    const delayMs = 20;
-    let lastError;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return import_proper_lockfile3.default.lockSync(path4, { realpath: false });
-      } catch (error) {
-        const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : void 0;
-        if (code !== "ELOCKED" || attempt === maxAttempts) {
-          throw error;
-        }
-        lastError = error;
-        const start = Date.now();
-        while (Date.now() - start < delayMs) {
-        }
-      }
-    }
-    throw lastError ?? new Error("Failed to acquire settings lock");
-  }
-  withLock(scope, fn) {
-    const path4 = scope === "global" ? this.globalSettingsPath : this.projectSettingsPath;
-    const dir = dirname4(path4);
-    let release;
-    try {
-      const fileExists = existsSync6(path4);
-      if (fileExists) {
-        release = this.acquireLockSyncWithRetry(path4);
-      }
-      const current = fileExists ? readFileSync4(path4, "utf-8") : void 0;
-      const next = fn(current);
-      if (next !== void 0) {
-        if (!existsSync6(dir)) {
-          mkdirSync4(dir, { recursive: true });
-        }
-        if (!release) {
-          release = this.acquireLockSyncWithRetry(path4);
-        }
-        writeFileSync4(path4, next, "utf-8");
-      }
-    } finally {
-      if (release) {
-        release();
-      }
-    }
-  }
-};
-var InMemorySettingsStorage = class {
-  global;
-  project;
-  withLock(scope, fn) {
-    const current = scope === "global" ? this.global : this.project;
-    const next = fn(current);
-    if (next !== void 0) {
-      if (scope === "global") {
-        this.global = next;
-      } else {
-        this.project = next;
-      }
-    }
-  }
-};
-var SettingsManager = class _SettingsManager {
-  storage;
-  globalSettings;
-  projectSettings;
-  settings;
-  projectTrusted;
-  modifiedFields = /* @__PURE__ */ new Set();
-  // Track global fields modified during session
-  modifiedNestedFields = /* @__PURE__ */ new Map();
-  // Track global nested field modifications
-  modifiedProjectFields = /* @__PURE__ */ new Set();
-  // Track project fields modified during session
-  modifiedProjectNestedFields = /* @__PURE__ */ new Map();
-  // Track project nested field modifications
-  globalSettingsLoadError = null;
-  // Track if global settings file had parse errors
-  projectSettingsLoadError = null;
-  // Track if project settings file had parse errors
-  writeQueue = Promise.resolve();
-  errors;
-  settingsPaths;
-  constructor(storage, initialGlobal, initialProject, globalLoadError = null, projectLoadError = null, initialErrors = [], projectTrusted = true, settingsPaths = {}) {
-    this.storage = storage;
-    this.globalSettings = initialGlobal;
-    this.projectSettings = initialProject;
-    this.projectTrusted = projectTrusted;
-    this.globalSettingsLoadError = globalLoadError;
-    this.projectSettingsLoadError = projectLoadError;
-    this.errors = [...initialErrors];
-    this.settingsPaths = settingsPaths;
-    this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-  }
-  /** Create a SettingsManager that loads from files */
-  static create(cwd, agentDir = (0, config_exports.getAgentDir)(), options = {}) {
-    const resolvedCwd = resolvePath(cwd);
-    const resolvedAgentDir = resolvePath(agentDir);
-    const storage = new FileSettingsStorage(resolvedCwd, resolvedAgentDir);
-    return _SettingsManager.fromStorageWithPaths(storage, options, {
-      global: join7(resolvedAgentDir, "settings.json"),
-      project: join7(resolvedCwd, config_exports.CONFIG_DIR_NAME, "settings.json")
-    });
-  }
-  /** Create a SettingsManager from an arbitrary storage backend */
-  static fromStorage(storage, options = {}) {
-    return _SettingsManager.fromStorageWithPaths(storage, options);
-  }
-  /** Create a manager while retaining optional file paths for reported storage errors. */
-  static fromStorageWithPaths(storage, options, settingsPaths = {}) {
-    const projectTrusted = options.projectTrusted ?? true;
-    const globalLoad = _SettingsManager.tryLoadFromStorage(storage, "global");
-    const projectLoad = _SettingsManager.tryLoadFromStorage(storage, "project", projectTrusted);
-    const initialErrors = [];
-    if (globalLoad.error) {
-      initialErrors.push(toSettingsError("global", globalLoad.error, settingsPaths.global));
-    }
-    if (projectLoad.error) {
-      initialErrors.push(toSettingsError("project", projectLoad.error, settingsPaths.project));
-    }
-    return new _SettingsManager(storage, globalLoad.settings, projectLoad.settings, globalLoad.error, projectLoad.error, initialErrors, projectTrusted, settingsPaths);
-  }
-  /** Create an in-memory SettingsManager (no file I/O) */
-  static inMemory(settings = {}, options = {}) {
-    const storage = new InMemorySettingsStorage();
-    const initialSettings = _SettingsManager.migrateSettings(structuredClone(settings));
-    storage.withLock("global", () => JSON.stringify(initialSettings, null, 2));
-    return _SettingsManager.fromStorage(storage, options);
-  }
-  static loadFromStorage(storage, scope, projectTrusted = true) {
-    if (scope === "project" && !projectTrusted) {
-      return {};
-    }
-    let content;
-    storage.withLock(scope, (current) => {
-      content = current;
-      return void 0;
-    });
-    if (!content) {
-      return {};
-    }
-    const settings = JSON.parse(stripBom(content));
-    return _SettingsManager.migrateSettings(settings);
-  }
-  static tryLoadFromStorage(storage, scope, projectTrusted = true) {
-    try {
-      return { settings: _SettingsManager.loadFromStorage(storage, scope, projectTrusted), error: null };
-    } catch (error) {
-      return { settings: {}, error };
-    }
-  }
-  /** Migrate old settings format to new format */
-  static migrateSettings(settings) {
-    if ("queueMode" in settings && !("steeringMode" in settings)) {
-      settings.steeringMode = settings.queueMode;
-      delete settings.queueMode;
-    }
-    if (!("transport" in settings) && typeof settings.websockets === "boolean") {
-      settings.transport = settings.websockets ? "websocket" : "sse";
-      delete settings.websockets;
-    }
-    if ("skills" in settings && typeof settings.skills === "object" && settings.skills !== null && !Array.isArray(settings.skills)) {
-      const skillsSettings = settings.skills;
-      if (skillsSettings.enableSkillCommands !== void 0 && settings.enableSkillCommands === void 0) {
-        settings.enableSkillCommands = skillsSettings.enableSkillCommands;
-      }
-      if (Array.isArray(skillsSettings.customDirectories) && skillsSettings.customDirectories.length > 0) {
-        settings.skills = skillsSettings.customDirectories;
-      } else {
-        delete settings.skills;
-      }
-    }
-    if ("retry" in settings && typeof settings.retry === "object" && settings.retry !== null && !Array.isArray(settings.retry)) {
-      const retrySettings = settings.retry;
-      const providerSettings = typeof retrySettings.provider === "object" && retrySettings.provider !== null ? retrySettings.provider : void 0;
-      if (typeof retrySettings.maxDelayMs === "number" && (providerSettings?.maxRetryDelayMs === void 0 || providerSettings?.maxRetryDelayMs === null)) {
-        retrySettings.provider = {
-          ...providerSettings ?? {},
-          maxRetryDelayMs: retrySettings.maxDelayMs
-        };
-      }
-      delete retrySettings.maxDelayMs;
-    }
-    return settings;
-  }
-  /** A copy of the effective settings: global and project settings merged, with overrides. */
-  getSettings() {
-    return structuredClone(this.settings);
-  }
-  getGlobalSettings() {
-    return structuredClone(this.globalSettings);
-  }
-  getProjectSettings() {
-    return structuredClone(this.projectSettings);
-  }
-  isProjectTrusted() {
-    return this.projectTrusted;
-  }
-  setProjectTrusted(trusted) {
-    if (this.projectTrusted === trusted) {
-      return;
-    }
-    this.projectTrusted = trusted;
-    this.modifiedProjectFields.clear();
-    this.modifiedProjectNestedFields.clear();
-    if (!trusted) {
-      this.projectSettings = {};
-      this.projectSettingsLoadError = null;
-      this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-      return;
-    }
-    const projectLoad = _SettingsManager.tryLoadFromStorage(this.storage, "project", trusted);
-    this.projectSettings = projectLoad.settings;
-    this.projectSettingsLoadError = projectLoad.error;
-    if (projectLoad.error) {
-      this.recordError("project", projectLoad.error);
-    }
-    this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-  }
-  async reload() {
-    await this.writeQueue;
-    const globalLoad = _SettingsManager.tryLoadFromStorage(this.storage, "global");
-    if (!globalLoad.error) {
-      this.globalSettings = globalLoad.settings;
-      this.globalSettingsLoadError = null;
-    } else {
-      this.globalSettingsLoadError = globalLoad.error;
-      this.recordError("global", globalLoad.error);
-    }
-    this.modifiedFields.clear();
-    this.modifiedNestedFields.clear();
-    this.modifiedProjectFields.clear();
-    this.modifiedProjectNestedFields.clear();
-    const projectLoad = _SettingsManager.tryLoadFromStorage(this.storage, "project", this.projectTrusted);
-    if (!projectLoad.error) {
-      this.projectSettings = projectLoad.settings;
-      this.projectSettingsLoadError = null;
-    } else {
-      this.projectSettingsLoadError = projectLoad.error;
-      this.recordError("project", projectLoad.error);
-    }
-    this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-  }
-  /** Apply additional overrides on top of current settings */
-  applyOverrides(overrides) {
-    this.settings = deepMergeSettings(this.settings, overrides);
-  }
-  /** Mark a global field as modified during this session */
-  markModified(field, nestedKey) {
-    this.modifiedFields.add(field);
-    if (nestedKey) {
-      if (!this.modifiedNestedFields.has(field)) {
-        this.modifiedNestedFields.set(field, /* @__PURE__ */ new Set());
-      }
-      this.modifiedNestedFields.get(field).add(nestedKey);
-    }
-  }
-  /** Mark a project field as modified during this session */
-  markProjectModified(field, nestedKey) {
-    this.modifiedProjectFields.add(field);
-    if (nestedKey) {
-      if (!this.modifiedProjectNestedFields.has(field)) {
-        this.modifiedProjectNestedFields.set(field, /* @__PURE__ */ new Set());
-      }
-      this.modifiedProjectNestedFields.get(field).add(nestedKey);
-    }
-  }
-  assertProjectTrustedForWrite() {
-    if (!this.projectTrusted) {
-      throw new Error("Project is not trusted; refusing to write project settings");
-    }
-  }
-  recordError(scope, error) {
-    this.errors.push(toSettingsError(scope, error, this.settingsPaths[scope]));
-  }
-  clearModifiedScope(scope) {
-    if (scope === "global") {
-      this.modifiedFields.clear();
-      this.modifiedNestedFields.clear();
-      return;
-    }
-    this.modifiedProjectFields.clear();
-    this.modifiedProjectNestedFields.clear();
-  }
-  enqueueWrite(scope, task) {
-    this.writeQueue = this.writeQueue.then(() => {
-      if (scope === "project") {
-        this.assertProjectTrustedForWrite();
-      }
-      task();
-      this.clearModifiedScope(scope);
-    }).catch((error) => {
-      this.recordError(scope, error);
-    });
-  }
-  cloneModifiedNestedFields(source) {
-    const snapshot = /* @__PURE__ */ new Map();
-    for (const [key, value] of source.entries()) {
-      snapshot.set(key, new Set(value));
-    }
-    return snapshot;
-  }
-  persistScopedSettings(scope, snapshotSettings, modifiedFields, modifiedNestedFields) {
-    this.storage.withLock(scope, (current) => {
-      const currentFileSettings = current ? _SettingsManager.migrateSettings(JSON.parse(stripBom(current))) : {};
-      const mergedSettings = { ...currentFileSettings };
-      for (const field of modifiedFields) {
-        const value = snapshotSettings[field];
-        if (modifiedNestedFields.has(field) && typeof value === "object" && value !== null) {
-          const nestedModified = modifiedNestedFields.get(field);
-          const baseNested = currentFileSettings[field] ?? {};
-          const inMemoryNested = value;
-          const mergedNested = { ...baseNested };
-          for (const nestedKey of nestedModified) {
-            mergedNested[nestedKey] = inMemoryNested[nestedKey];
-          }
-          mergedSettings[field] = mergedNested;
-        } else {
-          mergedSettings[field] = value;
-        }
-      }
-      return JSON.stringify(mergedSettings, null, 2);
-    });
-  }
-  save() {
-    this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-    if (this.globalSettingsLoadError) {
-      return;
-    }
-    const snapshotGlobalSettings = structuredClone(this.globalSettings);
-    const modifiedFields = new Set(this.modifiedFields);
-    const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedNestedFields);
-    this.enqueueWrite("global", () => {
-      this.persistScopedSettings("global", snapshotGlobalSettings, modifiedFields, modifiedNestedFields);
-    });
-  }
-  saveProjectSettings(settings) {
-    this.assertProjectTrustedForWrite();
-    this.projectSettings = structuredClone(settings);
-    this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
-    if (this.projectSettingsLoadError) {
-      return;
-    }
-    const snapshotProjectSettings = structuredClone(this.projectSettings);
-    const modifiedFields = new Set(this.modifiedProjectFields);
-    const modifiedNestedFields = this.cloneModifiedNestedFields(this.modifiedProjectNestedFields);
-    this.enqueueWrite("project", () => {
-      this.persistScopedSettings("project", snapshotProjectSettings, modifiedFields, modifiedNestedFields);
-    });
-  }
-  updateProjectSettings(field, update) {
-    this.assertProjectTrustedForWrite();
-    const projectSettings = structuredClone(this.projectSettings);
-    update(projectSettings);
-    this.markProjectModified(field);
-    this.saveProjectSettings(projectSettings);
-  }
-  async flush() {
-    await this.writeQueue;
-  }
-  drainErrors() {
-    const drained = [...this.errors];
-    this.errors = [];
-    return drained;
-  }
-  getLastChangelogVersion() {
-    return this.settings.lastChangelogVersion;
-  }
-  setLastChangelogVersion(version) {
-    this.globalSettings.lastChangelogVersion = version;
-    this.markModified("lastChangelogVersion");
-    this.save();
-  }
-  getSessionDir() {
-    const sessionDir = this.settings.sessionDir;
-    return sessionDir ? normalizePath(sessionDir) : sessionDir;
-  }
-  getDefaultProvider() {
-    return this.settings.defaultProvider;
-  }
-  getDefaultModel() {
-    return this.settings.defaultModel;
-  }
-  setDefaultProvider(provider) {
-    this.globalSettings.defaultProvider = provider;
-    this.markModified("defaultProvider");
-    this.save();
-  }
-  setDefaultModel(modelId) {
-    this.globalSettings.defaultModel = modelId;
-    this.markModified("defaultModel");
-    this.save();
-  }
-  setDefaultModelAndProvider(provider, modelId) {
-    this.globalSettings.defaultProvider = provider;
-    this.globalSettings.defaultModel = modelId;
-    this.markModified("defaultProvider");
-    this.markModified("defaultModel");
-    this.save();
-  }
-  getSteeringMode() {
-    return this.settings.steeringMode || "one-at-a-time";
-  }
-  setSteeringMode(mode) {
-    this.globalSettings.steeringMode = mode;
-    this.markModified("steeringMode");
-    this.save();
-  }
-  getFollowUpMode() {
-    return this.settings.followUpMode || "one-at-a-time";
-  }
-  setFollowUpMode(mode) {
-    this.globalSettings.followUpMode = mode;
-    this.markModified("followUpMode");
-    this.save();
-  }
-  getThemeSetting() {
-    const value = this.settings.theme;
-    if (typeof value === "string")
-      return value;
-    return void 0;
-  }
-  getTheme() {
-    const theme31 = this.getThemeSetting();
-    return theme31?.includes("/") ? void 0 : theme31;
-  }
-  setTheme(theme31) {
-    this.globalSettings.theme = theme31;
-    this.markModified("theme");
-    this.save();
-  }
-  getDefaultThinkingLevel() {
-    return this.settings.defaultThinkingLevel;
-  }
-  setDefaultThinkingLevel(level) {
-    this.globalSettings.defaultThinkingLevel = level;
-    this.markModified("defaultThinkingLevel");
-    this.save();
-  }
-  getModelThinkingLevel(provider, modelId) {
-    return this.settings.modelThinkingLevels?.[`${provider}/${modelId}`];
-  }
-  getAllModelThinkingLevels() {
-    return { ...this.settings.modelThinkingLevels ?? {} };
-  }
-  setModelThinkingLevel(provider, modelId, level) {
-    if (!this.globalSettings.modelThinkingLevels) {
-      this.globalSettings.modelThinkingLevels = {};
-    }
-    this.globalSettings.modelThinkingLevels[`${provider}/${modelId}`] = level;
-    this.markModified("modelThinkingLevels");
-    this.save();
-  }
-  removeModelThinkingLevel(provider, modelId) {
-    if (!this.globalSettings.modelThinkingLevels)
-      return;
-    delete this.globalSettings.modelThinkingLevels[`${provider}/${modelId}`];
-    if (Object.keys(this.globalSettings.modelThinkingLevels).length === 0) {
-      delete this.globalSettings.modelThinkingLevels;
-    }
-    this.markModified("modelThinkingLevels");
-    this.save();
-  }
-  getTransport() {
-    return this.settings.transport ?? "auto";
-  }
-  setTransport(transport) {
-    this.globalSettings.transport = transport;
-    this.markModified("transport");
-    this.save();
-  }
-  getCompactionEnabled() {
-    return this.settings.compaction?.enabled ?? true;
-  }
-  setCompactionEnabled(enabled) {
-    if (!this.globalSettings.compaction) {
-      this.globalSettings.compaction = {};
-    }
-    this.globalSettings.compaction.enabled = enabled;
-    this.markModified("compaction", "enabled");
-    this.save();
-  }
-  getCompactionTokenSetting(field, model) {
-    const compaction = this.settings.compaction;
-    const ordinary = compaction?.[field];
-    if (ordinary !== void 0 && (typeof ordinary !== "number" || !Number.isSafeInteger(ordinary) || ordinary < 0)) {
-      throw new Error(`Invalid compaction.${field} setting: ${String(ordinary)}. Expected a non-negative safe integer.`);
-    }
-    const modelKey = model ? `${model.provider}/${model.id}` : void 0;
-    const entry = modelKey !== void 0 ? compaction?.modelOverrides?.[modelKey] : void 0;
-    if (entry !== void 0 && !isMergeableObject(entry)) {
-      throw new Error(`Invalid compaction.modelOverrides["${modelKey}"] setting: ${String(entry)}. Expected an object.`);
-    }
-    const override = entry?.[field];
-    if (override !== void 0 && (typeof override !== "number" || !Number.isSafeInteger(override) || override < 0)) {
-      throw new Error(`Invalid compaction.modelOverrides["${modelKey}"].${field} setting: ${String(override)}. Expected a non-negative safe integer.`);
-    }
-    return override ?? ordinary ?? DEFAULT_COMPACTION_TOKEN_SETTINGS[field];
-  }
-  getCompactionReserveTokens(model) {
-    return this.getCompactionTokenSetting("reserveTokens", model);
-  }
-  getCompactionKeepRecentTokens(model) {
-    return this.getCompactionTokenSetting("keepRecentTokens", model);
-  }
-  /** Resolve each token setting through model override, ordinary setting, then built-in default. */
-  getCompactionSettings(model) {
-    return {
-      enabled: this.getCompactionEnabled(),
-      reserveTokens: this.getCompactionReserveTokens(model),
-      keepRecentTokens: this.getCompactionKeepRecentTokens(model)
-    };
-  }
-  getBranchSummarySettings() {
-    return {
-      reserveTokens: this.settings.branchSummary?.reserveTokens ?? 16384,
-      skipPrompt: this.settings.branchSummary?.skipPrompt ?? false
-    };
-  }
-  getBranchSummarySkipPrompt() {
-    return this.settings.branchSummary?.skipPrompt ?? false;
-  }
-  getRetryEnabled() {
-    return this.settings.retry?.enabled ?? true;
-  }
-  setRetryEnabled(enabled) {
-    if (!this.globalSettings.retry) {
-      this.globalSettings.retry = {};
-    }
-    this.globalSettings.retry.enabled = enabled;
-    this.markModified("retry", "enabled");
-    this.save();
-  }
-  getRetrySettings() {
-    return {
-      enabled: this.getRetryEnabled(),
-      maxRetries: this.settings.retry?.maxRetries ?? 3,
-      baseDelayMs: this.settings.retry?.baseDelayMs ?? 2e3,
-      maxAgentDelayMs: this.settings.retry?.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS
-    };
-  }
-  getHttpIdleTimeoutMs() {
-    return parseTimeoutSetting(this.settings.httpIdleTimeoutMs, "httpIdleTimeoutMs") ?? DEFAULT_HTTP_IDLE_TIMEOUT_MS;
-  }
-  setHttpIdleTimeoutMs(timeoutMs) {
-    if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
-      throw new Error(`Invalid httpIdleTimeoutMs setting: ${String(timeoutMs)}`);
-    }
-    this.globalSettings.httpIdleTimeoutMs = Math.floor(timeoutMs);
-    this.markModified("httpIdleTimeoutMs");
-    this.save();
-  }
-  /** Read from global settings only because warming costs money. */
-  getCacheWarmingMode() {
-    const mode = this.globalSettings.cacheWarming;
-    return mode !== void 0 && CACHE_WARMING_MODES.includes(mode) ? mode : "streaming";
-  }
-  setCacheWarmingMode(mode) {
-    this.globalSettings.cacheWarming = mode;
-    this.markModified("cacheWarming");
-    this.save();
-  }
-  getProviderRetrySettings() {
-    return {
-      timeoutMs: this.settings.retry?.provider?.timeoutMs,
-      maxRetries: this.settings.retry?.provider?.maxRetries,
-      maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs ?? 6e4
-    };
-  }
-  getWebSocketConnectTimeoutMs() {
-    return parseTimeoutSetting(this.settings.websocketConnectTimeoutMs, "websocketConnectTimeoutMs");
-  }
-  getHideThinkingBlock() {
-    return this.settings.hideThinkingBlock ?? false;
-  }
-  getShowCacheMissNotices() {
-    return this.settings.showCacheMissNotices ?? false;
-  }
-  getExternalEditorCommand() {
-    const configuredEditor = this.settings.externalEditor;
-    if (typeof configuredEditor === "string" && configuredEditor.trim() !== "") {
-      return configuredEditor;
-    }
-    const environmentEditor = process.env.VISUAL || process.env.EDITOR;
-    if (environmentEditor) {
-      return environmentEditor;
-    }
-    return process.platform === "win32" ? "notepad" : "nano";
-  }
-  setHideThinkingBlock(hide) {
-    this.globalSettings.hideThinkingBlock = hide;
-    this.markModified("hideThinkingBlock");
-    this.save();
-  }
-  setShowCacheMissNotices(show) {
-    this.globalSettings.showCacheMissNotices = show;
-    this.markModified("showCacheMissNotices");
-    this.save();
-  }
-  getShellPath() {
-    const shellPath = this.settings.shellPath;
-    return shellPath ? normalizePath(shellPath) : shellPath;
-  }
-  setShellPath(path4) {
-    this.globalSettings.shellPath = path4;
-    this.markModified("shellPath");
-    this.save();
-  }
-  getQuietStartup() {
-    const value = this.settings.quietStartup;
-    return value === true || value === "header" ? value : false;
-  }
-  setQuietStartup(quiet) {
-    this.globalSettings.quietStartup = quiet;
-    this.markModified("quietStartup");
-    this.save();
-  }
-  getDefaultProjectTrust() {
-    const value = this.globalSettings.defaultProjectTrust;
-    return value === "always" || value === "never" ? value : "ask";
-  }
-  setDefaultProjectTrust(defaultProjectTrust) {
-    this.globalSettings.defaultProjectTrust = defaultProjectTrust;
-    this.markModified("defaultProjectTrust");
-    this.save();
-  }
-  getShellCommandPrefix() {
-    return this.settings.shellCommandPrefix;
-  }
-  setShellCommandPrefix(prefix) {
-    this.globalSettings.shellCommandPrefix = prefix;
-    this.markModified("shellCommandPrefix");
-    this.save();
-  }
-  getNpmCommand() {
-    return this.settings.npmCommand ? [...this.settings.npmCommand] : void 0;
-  }
-  setNpmCommand(command) {
-    this.globalSettings.npmCommand = command ? [...command] : void 0;
-    this.markModified("npmCommand");
-    this.save();
-  }
-  getCollapseChangelog() {
-    return this.settings.collapseChangelog ?? false;
-  }
-  setCollapseChangelog(collapse) {
-    this.globalSettings.collapseChangelog = collapse;
-    this.markModified("collapseChangelog");
-    this.save();
-  }
-  getEnableInstallTelemetry() {
-    return this.settings.enableInstallTelemetry ?? true;
-  }
-  setEnableInstallTelemetry(enabled) {
-    this.globalSettings.enableInstallTelemetry = enabled;
-    this.markModified("enableInstallTelemetry");
-    this.save();
-  }
-  getEnableAnalytics() {
-    return this.settings.enableAnalytics ?? false;
-  }
-  getTrackingId() {
-    return this.settings.trackingId;
-  }
-  /** Set the analytics opt-in preference; generates a tracking identifier on first opt-in */
-  setEnableAnalytics(enabled) {
-    this.globalSettings.enableAnalytics = enabled;
-    this.markModified("enableAnalytics");
-    if (enabled && !this.globalSettings.trackingId) {
-      this.globalSettings.trackingId = randomUUID2();
-      this.markModified("trackingId");
-    }
-    this.save();
-  }
-  /**
-   * Stable ID of this installation, e.g. sent to OpenAI as its agent host ID.
-   * Created on first use. Project settings are ignored so a committed project
-   * settings file cannot give every clone the same ID.
-   */
-  getOrCreateDeviceId() {
-    if (!this.globalSettings.deviceId) {
-      this.globalSettings.deviceId = randomUUID2();
-      this.markModified("deviceId");
-      this.save();
-    }
-    return this.globalSettings.deviceId;
-  }
-  getPackages() {
-    return [...this.settings.packages ?? []];
-  }
-  setPackages(packages) {
-    this.globalSettings.packages = packages;
-    this.markModified("packages");
-    this.save();
-  }
-  setProjectPackages(packages) {
-    this.updateProjectSettings("packages", (settings) => {
-      settings.packages = packages;
-    });
-  }
-  getExtensionPaths() {
-    return [...this.settings.extensions ?? []];
-  }
-  setExtensionPaths(paths) {
-    this.globalSettings.extensions = paths;
-    this.markModified("extensions");
-    this.save();
-  }
-  setProjectExtensionPaths(paths) {
-    this.updateProjectSettings("extensions", (settings) => {
-      settings.extensions = paths;
-    });
-  }
-  getSkillPaths() {
-    return [...this.settings.skills ?? []];
-  }
-  setSkillPaths(paths) {
-    this.globalSettings.skills = paths;
-    this.markModified("skills");
-    this.save();
-  }
-  setProjectSkillPaths(paths) {
-    this.updateProjectSettings("skills", (settings) => {
-      settings.skills = paths;
-    });
-  }
-  getPromptTemplatePaths() {
-    return [...this.settings.prompts ?? []];
-  }
-  setPromptTemplatePaths(paths) {
-    this.globalSettings.prompts = paths;
-    this.markModified("prompts");
-    this.save();
-  }
-  setProjectPromptTemplatePaths(paths) {
-    this.updateProjectSettings("prompts", (settings) => {
-      settings.prompts = paths;
-    });
-  }
-  getThemePaths() {
-    return [...this.settings.themes ?? []];
-  }
-  setThemePaths(paths) {
-    this.globalSettings.themes = paths;
-    this.markModified("themes");
-    this.save();
-  }
-  setProjectThemePaths(paths) {
-    this.updateProjectSettings("themes", (settings) => {
-      settings.themes = paths;
-    });
-  }
-  getEnableSkillCommands() {
-    return this.settings.enableSkillCommands ?? true;
-  }
-  setEnableSkillCommands(enabled) {
-    this.globalSettings.enableSkillCommands = enabled;
-    this.markModified("enableSkillCommands");
-    this.save();
-  }
-  getThinkingBudgets() {
-    return this.settings.thinkingBudgets;
-  }
-  getTerminalCapabilityOverrides() {
-    const terminal = this.settings.terminal;
-    const images = terminal?.images;
-    return {
-      ...images === "kitty" || images === "iterm2" ? { images } : images === false ? { images: null } : {},
-      ...typeof terminal?.trueColor === "boolean" ? { trueColor: terminal.trueColor } : {},
-      ...typeof terminal?.hyperlinks === "boolean" ? { hyperlinks: terminal.hyperlinks } : {}
-    };
-  }
-  getShowImages() {
-    return this.settings.terminal?.showImages ?? true;
-  }
-  setShowImages(show) {
-    if (!this.globalSettings.terminal) {
-      this.globalSettings.terminal = {};
-    }
-    this.globalSettings.terminal.showImages = show;
-    this.markModified("terminal", "showImages");
-    this.save();
-  }
-  getImageWidthCells() {
-    const width = this.settings.terminal?.imageWidthCells;
-    if (typeof width !== "number" || !Number.isFinite(width)) {
-      return 60;
-    }
-    return Math.max(1, Math.floor(width));
-  }
-  setImageWidthCells(width) {
-    if (!this.globalSettings.terminal) {
-      this.globalSettings.terminal = {};
-    }
-    this.globalSettings.terminal.imageWidthCells = Math.max(1, Math.floor(width));
-    this.markModified("terminal", "imageWidthCells");
-    this.save();
-  }
-  getClearOnShrink() {
-    if (this.settings.terminal?.clearOnShrink !== void 0) {
-      return this.settings.terminal.clearOnShrink;
-    }
-    return process.env.PI_CLEAR_ON_SHRINK === "1";
-  }
-  setClearOnShrink(enabled) {
-    if (!this.globalSettings.terminal) {
-      this.globalSettings.terminal = {};
-    }
-    this.globalSettings.terminal.clearOnShrink = enabled;
-    this.markModified("terminal", "clearOnShrink");
-    this.save();
-  }
-  getShowTerminalProgress() {
-    return this.settings.terminal?.showTerminalProgress ?? false;
-  }
-  setShowTerminalProgress(enabled) {
-    if (!this.globalSettings.terminal) {
-      this.globalSettings.terminal = {};
-    }
-    this.globalSettings.terminal.showTerminalProgress = enabled;
-    this.markModified("terminal", "showTerminalProgress");
-    this.save();
-  }
-  getTuiMode() {
-    return this.settings.tuiMode === "regular" ? "regular" : "fullscreen";
-  }
-  setTuiMode(mode) {
-    this.globalSettings.tuiMode = mode;
-    this.markModified("tuiMode");
-    this.save();
-  }
-  getFullscreenExitOutput() {
-    return this.settings.fullscreenExitOutput === "resume-hint" ? "resume-hint" : "transcript";
-  }
-  setFullscreenExitOutput(output) {
-    this.globalSettings.fullscreenExitOutput = output;
-    this.markModified("fullscreenExitOutput");
-    this.save();
-  }
-  getFullscreenScrollbar() {
-    const mode = this.settings.fullscreenScrollbar;
-    return mode === "always" || mode === "hidden" ? mode : "auto";
-  }
-  setFullscreenScrollbar(mode) {
-    this.globalSettings.fullscreenScrollbar = mode;
-    this.markModified("fullscreenScrollbar");
-    this.save();
-  }
-  getFullscreenCopyOnSelect() {
-    return this.settings.fullscreenCopyOnSelect ?? true;
-  }
-  setFullscreenCopyOnSelect(enabled) {
-    this.globalSettings.fullscreenCopyOnSelect = enabled;
-    this.markModified("fullscreenCopyOnSelect");
-    this.save();
-  }
-  getFullscreenWheelScrollLines() {
-    const lines = this.settings.fullscreenWheelScrollLines;
-    return typeof lines === "number" && Number.isFinite(lines) ? Math.max(1, Math.min(100, Math.floor(lines))) : "auto";
-  }
-  setFullscreenWheelScrollLines(lines) {
-    this.globalSettings.fullscreenWheelScrollLines = lines === "auto" ? lines : Math.max(1, Math.min(100, Math.floor(lines)));
-    this.markModified("fullscreenWheelScrollLines");
-    this.save();
-  }
-  getImageAutoResize() {
-    return this.settings.images?.autoResize ?? true;
-  }
-  setImageAutoResize(enabled) {
-    if (!this.globalSettings.images) {
-      this.globalSettings.images = {};
-    }
-    this.globalSettings.images.autoResize = enabled;
-    this.markModified("images", "autoResize");
-    this.save();
-  }
-  getBlockImages() {
-    return this.settings.images?.blockImages ?? false;
-  }
-  setBlockImages(blocked) {
-    if (!this.globalSettings.images) {
-      this.globalSettings.images = {};
-    }
-    this.globalSettings.images.blockImages = blocked;
-    this.markModified("images", "blockImages");
-    this.save();
-  }
-  getEnabledModels() {
-    return this.settings.enabledModels;
-  }
-  /** The resolved `defaultTools` selection, or undefined when no settings layer sets it. */
-  getDefaultTools() {
-    const tools = this.settings.defaultTools;
-    if (tools === void 0)
-      return void 0;
-    return resolveDefaultTools(Array.isArray(tools) ? tools.filter((tool) => typeof tool === "string") : []);
-  }
-  setEnabledModels(patterns) {
-    this.globalSettings.enabledModels = patterns;
-    this.markModified("enabledModels");
-    this.save();
-  }
-  getDoubleEscapeAction() {
-    return this.settings.doubleEscapeAction ?? "tree";
-  }
-  setDoubleEscapeAction(action) {
-    this.globalSettings.doubleEscapeAction = action;
-    this.markModified("doubleEscapeAction");
-    this.save();
-  }
-  getTreeFilterMode() {
-    const mode = this.settings.treeFilterMode;
-    const valid = ["default", "no-tools", "user-only", "labeled-only", "all"];
-    return mode && valid.includes(mode) ? mode : "default";
-  }
-  setTreeFilterMode(mode) {
-    this.globalSettings.treeFilterMode = mode;
-    this.markModified("treeFilterMode");
-    this.save();
-  }
-  getShowHardwareCursor() {
-    return this.settings.showHardwareCursor ?? process.env.PI_HARDWARE_CURSOR === "1";
-  }
-  setShowHardwareCursor(enabled) {
-    this.globalSettings.showHardwareCursor = enabled;
-    this.markModified("showHardwareCursor");
-    this.save();
-  }
-  getEditorPaddingX() {
-    return this.settings.editorPaddingX ?? 0;
-  }
-  setEditorPaddingX(padding) {
-    this.globalSettings.editorPaddingX = Math.max(0, Math.min(3, Math.floor(padding)));
-    this.markModified("editorPaddingX");
-    this.save();
-  }
-  getOutputPad() {
-    return this.settings.outputPad === 0 ? 0 : 1;
-  }
-  setOutputPad(padding) {
-    this.globalSettings.outputPad = padding;
-    this.markModified("outputPad");
-    this.save();
-  }
-  getAutocompleteMaxVisible() {
-    return this.settings.autocompleteMaxVisible ?? 5;
-  }
-  setAutocompleteMaxVisible(maxVisible) {
-    this.globalSettings.autocompleteMaxVisible = Math.max(3, Math.min(20, Math.floor(maxVisible)));
-    this.markModified("autocompleteMaxVisible");
-    this.save();
-  }
-  getCodeBlockIndent() {
-    return this.settings.markdown?.codeBlockIndent ?? "  ";
-  }
-  getMermaidRenderingMode() {
-    const mode = this.settings.markdown?.mermaid;
-    return mode === "off" || mode === "final" ? mode : "streaming";
-  }
-  setMermaidRenderingMode(mode) {
-    this.globalSettings.markdown ??= {};
-    this.globalSettings.markdown.mermaid = mode;
-    this.markModified("markdown", "mermaid");
-    this.save();
-  }
-  getWarnings() {
-    return { ...this.settings.warnings ?? {} };
-  }
-  setWarnings(warnings) {
-    this.globalSettings.warnings = { ...warnings };
-    this.markModified("warnings");
-    this.save();
-  }
-};
-
-// target/vendor-pi/dist/core/tools/tool-definition-wrapper.js
-function wrapToolDefinition(definition, ctxFactory) {
-  return {
-    name: definition.name,
-    label: definition.label,
-    description: definition.description,
-    parameters: definition.parameters,
-    outputSchema: definition.outputSchema,
-    constrainedSampling: definition.constrainedSampling,
-    prepareArguments: definition.prepareArguments,
-    executionMode: definition.executionMode,
-    execute: (toolCallId, params, signal, onUpdate, ctx) => definition.execute(toolCallId, params, signal, onUpdate, ctx ?? ctxFactory?.(toolCallId, signal))
-  };
-}
-
-// target/vendor-pi/dist/core/extensions/wrapper.js
-function wrapRegisteredTool(registeredTool, runner) {
-  return wrapToolDefinition(registeredTool.definition, (toolCallId, signal) => runner.createToolContext(toolCallId, signal));
-}
-function wrapRegisteredTools(registeredTools, runner) {
-  return registeredTools.map((tool) => wrapRegisteredTool(tool, runner));
 }
 
 // target/vendor-pi/dist/utils/mime.js
@@ -10871,7 +8465,7 @@ import { randomBytes } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { open as open2 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join as join8 } from "node:path";
+import { join as join6 } from "node:path";
 
 // target/vendor-pi/dist/core/tools/truncate.js
 var DEFAULT_MAX_LINES = 2e3;
@@ -11046,7 +8640,7 @@ function truncateLine(line, maxChars = GREP_MAX_LINE_LENGTH) {
 // target/vendor-pi/dist/core/tools/output-accumulator.js
 function defaultTempFilePath(prefix) {
   const id = randomBytes(8).toString("hex");
-  return join8(tmpdir(), `${prefix}-${id}.log`);
+  return join6(tmpdir(), `${prefix}-${id}.log`);
 }
 function byteLength(text) {
   return Buffer.byteLength(text, "utf-8");
@@ -11345,14 +8939,14 @@ function stripAnsi(value) {
 }
 
 // target/vendor-pi/dist/core/tools/render-utils.js
-function shortenPath(path4) {
-  if (typeof path4 !== "string")
+function shortenPath(path2) {
+  if (typeof path2 !== "string")
     return "";
   const home = os.homedir();
-  if (path4.startsWith(home)) {
-    return `~${path4.slice(home.length)}`;
+  if (path2.startsWith(home)) {
+    return `~${path2.slice(home.length)}`;
   }
-  return path4;
+  return path2;
 }
 function linkPath(styledText, rawPath, cwd) {
   if (!getCapabilities().hyperlinks)
@@ -11392,8 +8986,8 @@ ${imageIndicators}` : imageIndicators;
   return output;
 }
 var COLLAPSED_ARGS_CHARS = 100;
-function formatToolCallWithArgs(title, args, theme31, expanded) {
-  const header = theme31.fg("toolTitle", theme31.bold(title));
+function formatToolCallWithArgs(title, args, theme26, expanded) {
+  const header = theme26.fg("toolTitle", theme26.bold(title));
   if (args == null)
     return header;
   const entries = typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : [["args", args]];
@@ -11405,22 +8999,22 @@ function formatToolCallWithArgs(title, args, theme31, expanded) {
       return `  ${key}: ${replaceTabs(text).replace(/\r/g, "").split("\n").join("\n    ")}`;
     });
     return `${header}
-${theme31.fg("muted", lines.join("\n"))}`;
+${theme26.fg("muted", lines.join("\n"))}`;
   }
   const pairs = entries.map(([key, value]) => `${key}=${JSON.stringify(value) ?? String(value)}`).join(" ");
   const preview = pairs.length > COLLAPSED_ARGS_CHARS ? `${pairs.slice(0, COLLAPSED_ARGS_CHARS - 3)}...` : pairs;
-  return `${header} ${theme31.fg("muted", preview)}`;
+  return `${header} ${theme26.fg("muted", preview)}`;
 }
-function invalidArgText(theme31) {
-  return theme31.fg("error", "[invalid arg]");
+function invalidArgText(theme26) {
+  return theme26.fg("error", "[invalid arg]");
 }
-function renderToolPath(rawPath, theme31, cwd, options) {
+function renderToolPath(rawPath, theme26, cwd, options) {
   if (rawPath === null)
-    return invalidArgText(theme31);
+    return invalidArgText(theme26);
   const value = rawPath || options?.emptyFallback;
   if (!value)
-    return theme31.fg("toolOutput", "...");
-  return linkPath(theme31.fg("accent", shortenPath(value)), value, cwd);
+    return theme26.fg("toolOutput", "...");
+  return linkPath(theme26.fg("accent", shortenPath(value)), value, cwd);
 }
 
 // target/vendor-pi/dist/core/tools/renderers/bash.js
@@ -12005,23 +9599,23 @@ function getRenderablePreviewInput(args) {
   if (!args) {
     return null;
   }
-  const path4 = typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : null;
-  if (!path4) {
+  const path2 = typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : null;
+  if (!path2) {
     return null;
   }
   if (Array.isArray(args.edits) && args.edits.length > 0 && args.edits.every((edit) => typeof edit?.oldText === "string" && typeof edit?.newText === "string")) {
-    return { path: path4, edits: args.edits };
+    return { path: path2, edits: args.edits };
   }
   if (typeof args.oldText === "string" && typeof args.newText === "string") {
-    return { path: path4, edits: [{ oldText: args.oldText, newText: args.newText }] };
+    return { path: path2, edits: [{ oldText: args.oldText, newText: args.newText }] };
   }
   return null;
 }
-function formatEditCall(args, theme31, cwd) {
-  const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme31, cwd);
-  return `${theme31.fg("toolTitle", theme31.bold("edit"))} ${pathDisplay}`;
+function formatEditCall(args, theme26, cwd) {
+  const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme26, cwd);
+  return `${theme26.fg("toolTitle", theme26.bold("edit"))} ${pathDisplay}`;
 }
-function formatEditResult(args, preview, result, theme31, isError) {
+function formatEditResult(args, preview, result, theme26, isError) {
   const rawPath = str(args?.file_path ?? args?.path);
   const previewDiff = preview && !("error" in preview) ? preview.diff : void 0;
   const previewError = preview && "error" in preview ? preview.error : void 0;
@@ -12030,7 +9624,7 @@ function formatEditResult(args, preview, result, theme31, isError) {
     if (!errorText || errorText === previewError) {
       return void 0;
     }
-    return theme31.fg("error", errorText);
+    return theme26.fg("error", errorText);
   }
   const resultDiff = result.details?.diff;
   if (resultDiff && resultDiff !== previewDiff) {
@@ -12038,26 +9632,26 @@ function formatEditResult(args, preview, result, theme31, isError) {
   }
   return void 0;
 }
-function getEditHeaderBg(preview, settledError, theme31) {
+function getEditHeaderBg(preview, settledError, theme26) {
   if (preview) {
     if ("error" in preview) {
-      return (text) => theme31.bg("toolErrorBg", text);
+      return (text) => theme26.bg("toolErrorBg", text);
     }
-    return (text) => theme31.bg("toolSuccessBg", text);
+    return (text) => theme26.bg("toolSuccessBg", text);
   }
   if (settledError) {
-    return (text) => theme31.bg("toolErrorBg", text);
+    return (text) => theme26.bg("toolErrorBg", text);
   }
-  return (text) => theme31.bg("toolPendingBg", text);
+  return (text) => theme26.bg("toolPendingBg", text);
 }
-function buildEditCallComponent(component, args, theme31, cwd) {
-  component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme31));
+function buildEditCallComponent(component, args, theme26, cwd) {
+  component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme26));
   component.clear();
-  component.addChild(new Text(formatEditCall(args, theme31, cwd), 0, 0));
+  component.addChild(new Text(formatEditCall(args, theme26, cwd), 0, 0));
   if (!component.preview) {
     return component;
   }
-  const body = "error" in component.preview ? theme31.fg("error", component.preview.error) : renderDiff(component.preview.diff);
+  const body = "error" in component.preview ? theme26.fg("error", component.preview.error) : renderDiff(component.preview.diff);
   component.addChild(new Spacer(1));
   component.addChild(new Text(body, 0, 0));
   return component;
@@ -12071,7 +9665,7 @@ function setEditPreview(component, preview, argsKey) {
   return changed;
 }
 var editRenderers = {
-  renderCall(args, theme31, context) {
+  renderCall(args, theme26, context) {
     const component = getEditCallRenderComponent(context.state, context.lastComponent);
     const previewInput = getRenderablePreviewInput(args);
     const argsKey = previewInput ? JSON.stringify({ path: previewInput.path, edits: previewInput.edits }) : void 0;
@@ -12091,9 +9685,9 @@ var editRenderers = {
         }
       });
     }
-    return buildEditCallComponent(component, args, theme31, context.cwd);
+    return buildEditCallComponent(component, args, theme26, context.cwd);
   },
-  renderResult(result, _options, theme31, context) {
+  renderResult(result, _options, theme26, context) {
     const callComponent = context.state.callComponent;
     const previewInput = getRenderablePreviewInput(context.args);
     const argsKey = previewInput ? JSON.stringify({ path: previewInput.path, edits: previewInput.edits }) : void 0;
@@ -12109,10 +9703,10 @@ var editRenderers = {
         changed = true;
       }
       if (changed) {
-        buildEditCallComponent(callComponent, context.args, theme31, context.cwd);
+        buildEditCallComponent(callComponent, context.args, theme26, context.cwd);
       }
     }
-    const output = formatEditResult(context.args, callComponent?.preview, typedResult, theme31, context.isError);
+    const output = formatEditResult(context.args, callComponent?.preview, typedResult, theme26, context.isError);
     const component = context.lastComponent ?? new Container();
     component.clear();
     if (!output) {
@@ -12154,9 +9748,9 @@ function isSingleEditInput(value) {
   return typeof edit.oldText === "string" && typeof edit.newText === "string";
 }
 var defaultEditOperations = {
-  readFile: (path4) => fsReadFile(path4),
-  writeFile: (path4, content) => fsWriteFile(path4, content, "utf-8"),
-  access: (path4) => fsAccess2(path4, constants4.R_OK | constants4.W_OK)
+  readFile: (path2) => fsReadFile(path2),
+  writeFile: (path2, content) => fsWriteFile(path2, content, "utf-8"),
+  access: (path2) => fsAccess2(path2, constants4.R_OK | constants4.W_OK)
 };
 function prepareEditArguments(input) {
   if (!input || typeof input !== "object") {
@@ -12204,8 +9798,8 @@ function createEditToolDefinition(cwd, options) {
     renderShell: "self",
     prepareArguments: prepareEditArguments,
     async execute(_toolCallId, input, signal, _onUpdate, ctx) {
-      const { path: path4, edits } = validateEditInput(input);
-      const absolutePath = resolveToCwd(path4, ctx?.cwd || cwd);
+      const { path: path2, edits } = validateEditInput(input);
+      const absolutePath = resolveToCwd(path2, ctx?.cwd || cwd);
       return withFileMutationQueue(absolutePath, async () => {
         const throwIfAborted = () => {
           if (signal?.aborted)
@@ -12217,7 +9811,7 @@ function createEditToolDefinition(cwd, options) {
         } catch (error) {
           throwIfAborted();
           const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
-          throw new Error(`Could not edit file: ${path4}. ${errorMessage}.`);
+          throw new Error(`Could not edit file: ${path2}. ${errorMessage}.`);
         }
         throwIfAborted();
         const buffer = await ops.readFile(absolutePath);
@@ -12226,18 +9820,18 @@ function createEditToolDefinition(cwd, options) {
         const { bom, text: content } = splitBom(rawContent);
         const originalEnding = detectLineEnding(content);
         const normalizedContent = normalizeToLF(content);
-        const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path4);
+        const { baseContent, newContent } = applyEditsToNormalizedContent(normalizedContent, edits, path2);
         throwIfAborted();
         const finalContent = bom + restoreLineEndings(newContent, originalEnding);
         await ops.writeFile(absolutePath, finalContent);
         throwIfAborted();
         const diffResult = generateDiffString(baseContent, newContent);
-        const patch = generateUnifiedPatch(path4, baseContent, newContent);
+        const patch = generateUnifiedPatch(path2, baseContent, newContent);
         return {
           content: [
             {
               type: "text",
-              text: `Successfully replaced ${edits.length} block(s) in ${path4}.`
+              text: `Successfully replaced ${edits.length} block(s) in ${path2}.`
             }
           ],
           details: { diff: diffResult.diff, patch, firstChangedLine: diffResult.firstChangedLine }
@@ -12251,934 +9845,21 @@ function createEditTool(cwd, options) {
   return wrapToolDefinition(createEditToolDefinition(cwd, options));
 }
 
-// target/vendor-pi/dist/core/tools/find.js
-import { createInterface as createInterface2 } from "node:readline";
-import { spawn as spawn3 } from "child_process";
-import path2 from "path";
-
-// target/vendor-pi/dist/utils/tools-manager.js
-import { spawnSync as spawnSync3 } from "child_process";
-import { chmodSync, createWriteStream as createWriteStream2, existsSync as existsSync7, mkdirSync as mkdirSync5, readdirSync as readdirSync3, renameSync, rmSync } from "fs";
-import { arch, platform } from "os";
-import { join as join9 } from "path";
-import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-
-// target/vendor-pi/dist/utils/management-http.js
-var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([408, 425, 429, 500, 502, 503, 504]);
-async function fetchWithRetry(input, init = void 0, options = {}) {
-  const maxRetries = options.maxRetries === void 0 || !Number.isFinite(options.maxRetries) ? 2 : Math.max(0, Math.floor(options.maxRetries));
-  const retryOnStatus = options.retryOnStatus ?? true;
-  const parentSignal = init?.signal ?? void 0;
-  const timeoutSignal = options.timeoutMs !== void 0 && options.timeoutMs > 0 ? AbortSignal.timeout(options.timeoutMs) : void 0;
-  const attemptTimeoutMs = options.attemptTimeoutMs !== void 0 && options.attemptTimeoutMs > 0 ? options.attemptTimeoutMs : void 0;
-  for (let attempt = 0; ; attempt++) {
-    parentSignal?.throwIfAborted();
-    timeoutSignal?.throwIfAborted();
-    const attemptTimeoutSignal = attemptTimeoutMs ? AbortSignal.timeout(attemptTimeoutMs) : void 0;
-    const signals = [parentSignal, timeoutSignal, attemptTimeoutSignal].filter((signal2) => signal2 !== void 0);
-    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
-    try {
-      const response = await fetch(input, signal ? { ...init, signal } : init);
-      const shouldRetry = retryOnStatus && RETRYABLE_STATUS_CODES.has(response.status) && attempt < maxRetries;
-      if (!shouldRetry)
-        return response;
-      try {
-        await response.body?.cancel();
-      } catch {
-      }
-    } catch (error) {
-      const attemptTimedOut = attemptTimeoutSignal?.aborted === true && !parentSignal?.aborted && !timeoutSignal?.aborted;
-      if (parentSignal?.aborted || timeoutSignal?.aborted || error instanceof Error && error.name === "AbortError" && !attemptTimedOut && timeoutSignal === void 0 || attempt >= maxRetries) {
-        throw error;
-      }
-    }
-  }
-}
-
-// target/vendor-pi/dist/utils/tools-manager.js
-var TOOLS_DIR = (0, config_exports.getBinDir)();
-var NETWORK_TIMEOUT_MS = 1e4;
-var DOWNLOAD_TIMEOUT_MS = 12e4;
-function isOfflineModeEnabled() {
-  const value = process.env.PI_OFFLINE;
-  if (!value)
-    return false;
-  return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
-}
-var TOOLS = {
-  fd: {
-    name: "fd",
-    repo: "sharkdp/fd",
-    binaryName: "fd",
-    systemBinaryNames: ["fd", "fdfind"],
-    tagPrefix: "v",
-    getAssetName: (version, plat, architecture) => {
-      if (plat === "darwin") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `fd-v${version}-${archStr}-apple-darwin.tar.gz`;
-      } else if (plat === "linux") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `fd-v${version}-${archStr}-unknown-linux-musl.tar.gz`;
-      } else if (plat === "win32") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `fd-v${version}-${archStr}-pc-windows-msvc.zip`;
-      }
-      return null;
-    }
-  },
-  rg: {
-    name: "ripgrep",
-    repo: "BurntSushi/ripgrep",
-    binaryName: "rg",
-    tagPrefix: "",
-    getAssetName: (version, plat, architecture) => {
-      if (plat === "darwin") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `ripgrep-${version}-${archStr}-apple-darwin.tar.gz`;
-      } else if (plat === "linux") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `ripgrep-${version}-${archStr}-unknown-linux-musl.tar.gz`;
-      } else if (plat === "win32") {
-        const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
-        return `ripgrep-${version}-${archStr}-pc-windows-msvc.zip`;
-      }
-      return null;
-    }
-  }
-};
-function commandExists(cmd) {
-  try {
-    const result = spawnSync3(cmd, ["--version"], { stdio: "pipe" });
-    return result.error === void 0 || result.error === null;
-  } catch {
-    return false;
-  }
-}
-function getToolPath(tool) {
-  const config = TOOLS[tool];
-  if (!config)
-    return null;
-  const localPath = join9(TOOLS_DIR, config.binaryName + (platform() === "win32" ? ".exe" : ""));
-  if (existsSync7(localPath)) {
-    return localPath;
-  }
-  const systemBinaryNames = config.systemBinaryNames ?? [config.binaryName];
-  for (const systemBinaryName of systemBinaryNames) {
-    if (commandExists(systemBinaryName)) {
-      return systemBinaryName;
-    }
-  }
-  return null;
-}
-async function getLatestVersion(repo) {
-  const response = await fetchWithRetry(`https://github.com/${repo}/releases/latest`, {
-    headers: { "User-Agent": `${config_exports.APP_NAME}-coding-agent` },
-    redirect: "manual"
-  }, { timeoutMs: NETWORK_TIMEOUT_MS });
-  try {
-    await response.body?.cancel();
-  } catch {
-  }
-  const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
-  if (!location) {
-    throw new Error(`Failed to resolve latest ${repo} release: HTTP ${response.status} without redirect`);
-  }
-  const tag = new URL(location, "https://github.com").pathname.split("/").pop();
-  if (!tag || !location.includes("/releases/tag/")) {
-    throw new Error(`Failed to resolve latest ${repo} release: unexpected redirect to ${location}`);
-  }
-  return decodeURIComponent(tag).replace(/^v/, "");
-}
-async function downloadFile(url, dest) {
-  const response = await fetchWithRetry(url, void 0, { timeoutMs: DOWNLOAD_TIMEOUT_MS });
-  if (!response.ok) {
-    throw new Error(`Download failed with HTTP ${response.status}: ${url}`);
-  }
-  if (!response.body) {
-    throw new Error("No response body");
-  }
-  const fileStream = createWriteStream2(dest);
-  await pipeline(Readable.fromWeb(response.body), fileStream);
-}
-function findBinaryRecursively(rootDir, binaryFileName) {
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const currentDir = stack.pop();
-    if (!currentDir)
-      continue;
-    const entries = readdirSync3(currentDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join9(currentDir, entry.name);
-      if (entry.isFile() && entry.name === binaryFileName) {
-        return fullPath;
-      }
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      }
-    }
-  }
-  return null;
-}
-function formatSpawnFailure(result) {
-  if (result.error?.message) {
-    return result.error.message;
-  }
-  const stderr = result.stderr?.toString().trim();
-  if (stderr) {
-    return stderr;
-  }
-  const stdout = result.stdout?.toString().trim();
-  if (stdout) {
-    return stdout;
-  }
-  return `exit status ${result.status ?? "unknown"}`;
-}
-function runExtractionCommand(command, args) {
-  const result = spawnSync3(command, args, { stdio: "pipe" });
-  if (!result.error && result.status === 0) {
-    return null;
-  }
-  return `${command}: ${formatSpawnFailure(result)}`;
-}
-function extractTarGzArchive(archivePath, extractDir, assetName) {
-  const failure = runExtractionCommand("tar", ["xzf", archivePath, "-C", extractDir]);
-  if (failure) {
-    throw new Error(`Failed to extract ${assetName}: ${failure}`);
-  }
-}
-function getWindowsTarCommand() {
-  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
-  if (systemRoot) {
-    const systemTar = join9(systemRoot, "System32", "tar.exe");
-    if (existsSync7(systemTar)) {
-      return systemTar;
-    }
-  }
-  return "tar.exe";
-}
-function extractZipArchive(archivePath, extractDir, assetName) {
-  const failures = [];
-  if (platform() === "win32") {
-    const tarFailure = runExtractionCommand(getWindowsTarCommand(), ["xf", archivePath, "-C", extractDir]);
-    if (!tarFailure)
-      return;
-    failures.push(tarFailure);
-    const script = "& { param($archive, $destination) $ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force }";
-    const powershellFailure = runExtractionCommand("powershell.exe", [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      script,
-      archivePath,
-      extractDir
-    ]);
-    if (!powershellFailure)
-      return;
-    failures.push(powershellFailure);
-  } else {
-    const unzipFailure = runExtractionCommand("unzip", ["-q", archivePath, "-d", extractDir]);
-    if (!unzipFailure)
-      return;
-    failures.push(unzipFailure);
-    const tarFailure = runExtractionCommand("tar", ["xf", archivePath, "-C", extractDir]);
-    if (!tarFailure)
-      return;
-    failures.push(tarFailure);
-  }
-  throw new Error(`Failed to extract ${assetName}: ${failures.join("; ")}`);
-}
-async function downloadTool(tool) {
-  const config = TOOLS[tool];
-  if (!config)
-    throw new Error(`Unknown tool: ${tool}`);
-  const plat = platform();
-  const architecture = arch();
-  const version = tool === "fd" && plat === "darwin" && architecture === "x64" ? "10.3.0" : await getLatestVersion(config.repo);
-  const assetName = config.getAssetName(version, plat, architecture);
-  if (!assetName) {
-    throw new Error(`Unsupported platform: ${plat}/${architecture}`);
-  }
-  mkdirSync5(TOOLS_DIR, { recursive: true });
-  const downloadUrl = `https://github.com/${config.repo}/releases/download/${config.tagPrefix}${version}/${assetName}`;
-  const archivePath = join9(TOOLS_DIR, assetName);
-  const binaryExt = plat === "win32" ? ".exe" : "";
-  const binaryPath = join9(TOOLS_DIR, config.binaryName + binaryExt);
-  await downloadFile(downloadUrl, archivePath);
-  const extractDir = join9(TOOLS_DIR, `extract_tmp_${config.binaryName}_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
-  mkdirSync5(extractDir, { recursive: true });
-  try {
-    if (assetName.endsWith(".tar.gz")) {
-      extractTarGzArchive(archivePath, extractDir, assetName);
-    } else if (assetName.endsWith(".zip")) {
-      extractZipArchive(archivePath, extractDir, assetName);
-    } else {
-      throw new Error(`Unsupported archive format: ${assetName}`);
-    }
-    const binaryFileName = config.binaryName + binaryExt;
-    const extractedDir = join9(extractDir, assetName.replace(/\.(tar\.gz|zip)$/, ""));
-    const extractedBinaryCandidates = [join9(extractedDir, binaryFileName), join9(extractDir, binaryFileName)];
-    let extractedBinary = extractedBinaryCandidates.find((candidate) => existsSync7(candidate));
-    if (!extractedBinary) {
-      extractedBinary = findBinaryRecursively(extractDir, binaryFileName) ?? void 0;
-    }
-    if (extractedBinary) {
-      renameSync(extractedBinary, binaryPath);
-    } else {
-      throw new Error(`Binary not found in archive: expected ${binaryFileName} under ${extractDir}`);
-    }
-    if (plat !== "win32") {
-      chmodSync(binaryPath, 493);
-    }
-  } finally {
-    rmSync(archivePath, { force: true });
-    rmSync(extractDir, { recursive: true, force: true });
-  }
-  return binaryPath;
-}
-var TERMUX_PACKAGES = {
-  fd: "fd",
-  rg: "ripgrep"
-};
-async function ensureTool(tool, onStatus) {
-  const existingPath = getToolPath(tool);
-  if (existingPath) {
-    return existingPath;
-  }
-  const config = TOOLS[tool];
-  if (!config)
-    return void 0;
-  if (isOfflineModeEnabled()) {
-    onStatus?.({ type: "warning", message: `${config.name} not found. Offline mode enabled, skipping download.` });
-    return void 0;
-  }
-  if (platform() === "android") {
-    const pkgName = TERMUX_PACKAGES[tool] ?? tool;
-    onStatus?.({ type: "warning", message: `${config.name} not found. Install with: pkg install ${pkgName}` });
-    return void 0;
-  }
-  onStatus?.({ type: "info", message: `${config.name} not found. Downloading...` });
-  try {
-    const path4 = await downloadTool(tool);
-    onStatus?.({ type: "info", message: `${config.name} installed to ${path4}` });
-    return path4;
-  } catch (e) {
-    const messages = [];
-    for (let current = e, depth = 0; current instanceof Error && depth < 5; current = current.cause, depth++) {
-      if (!messages.includes(current.message))
-        messages.push(current.message);
-    }
-    onStatus?.({
-      type: "warning",
-      message: `Failed to download ${config.name}: ${messages.length > 0 ? messages.join(": ") : String(e)}`
-    });
-    return void 0;
-  }
-}
-
-// target/vendor-pi/dist/core/tools/renderers/find.js
-function formatFindCall(args, theme31) {
-  const pattern = str(args?.pattern);
-  const rawPath = str(args?.path);
-  const path4 = rawPath !== null ? shortenPath(rawPath || ".") : null;
-  const limit = args?.limit;
-  const invalidArg = invalidArgText(theme31);
-  let text = theme31.fg("toolTitle", theme31.bold("find")) + " " + (pattern === null ? invalidArg : theme31.fg("accent", pattern || "")) + theme31.fg("toolOutput", ` in ${path4 === null ? invalidArg : path4}`);
-  if (limit !== void 0) {
-    text += theme31.fg("toolOutput", ` (limit ${limit})`);
-  }
-  return text;
-}
-function formatFindResult(result, options, theme31, showImages) {
-  const output = getTextOutput(result, showImages).trim();
-  let text = "";
-  if (output) {
-    const lines = output.split("\n");
-    const maxLines = options.expanded ? lines.length : 20;
-    const displayLines = lines.slice(0, maxLines);
-    const remaining = lines.length - maxLines;
-    text += `
-${displayLines.map((line) => theme31.fg("toolOutput", line)).join("\n")}`;
-    if (remaining > 0) {
-      text += `${theme31.fg("muted", `
-... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme31.fg("muted", ")")}`;
-    }
-  }
-  const resultLimit = result.details?.resultLimitReached;
-  const truncation = result.details?.truncation;
-  if (resultLimit || truncation?.truncated) {
-    const warnings = [];
-    if (resultLimit)
-      warnings.push(`${resultLimit} results limit`);
-    if (truncation?.truncated)
-      warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
-    text += `
-${theme31.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
-  }
-  return text;
-}
-var findRenderers = {
-  renderCall(args, theme31, context) {
-    const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatFindCall(args, theme31));
-    return text;
-  },
-  renderResult(result, options, theme31, context) {
-    const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatFindResult(result, options, theme31, context.showImages));
-    return text;
-  }
-};
-
-// target/vendor-pi/dist/core/tools/find.js
-function relativizeFindResultPath(resultPath, searchPath, pathModule = path2) {
-  const hadTrailingSeparator = resultPath.endsWith(pathModule.sep) || pathModule.sep === "\\" && resultPath.endsWith("/");
-  const relativePath = pathModule.isAbsolute(resultPath) ? pathModule.relative(searchPath, resultPath) : resultPath;
-  const posixPath = relativePath.split(pathModule.sep).join("/");
-  return hadTrailingSeparator && !posixPath.endsWith("/") ? `${posixPath}/` : posixPath;
-}
-var findSchema = typebox_exports.Object({
-  pattern: typebox_exports.String({
-    description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"
-  }),
-  path: typebox_exports.Optional(typebox_exports.String({ description: "Directory to search in (default: current directory)" })),
-  limit: typebox_exports.Optional(typebox_exports.Number({ description: "Maximum number of results (default: 1000)" }))
-});
-var findToolSystemPromptContribution = {
-  snippet: "Find files by glob pattern (respects .gitignore)",
-  guidelines: []
-};
-var DEFAULT_LIMIT = 1e3;
-var defaultFindOperations = {
-  exists: pathExists,
-  // This is a placeholder. Actual fd execution happens in execute() when no custom glob is provided.
-  glob: () => []
-};
-function createFindToolDefinition(cwd, options) {
-  const customOps = options?.operations;
-  return {
-    name: "find",
-    label: "find",
-    description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
-    promptSnippet: findToolSystemPromptContribution.snippet,
-    parameters: findSchema,
-    async execute(_toolCallId, { pattern, path: searchDir, limit }, signal, _onUpdate, ctx) {
-      return new Promise((resolve5, reject) => {
-        if (signal?.aborted) {
-          reject(new Error("Operation aborted"));
-          return;
-        }
-        let settled = false;
-        let stopChild;
-        const settle = (fn) => {
-          if (settled)
-            return;
-          settled = true;
-          signal?.removeEventListener("abort", onAbort);
-          stopChild = void 0;
-          fn();
-        };
-        const onAbort = () => {
-          stopChild?.();
-          settle(() => reject(new Error("Operation aborted")));
-        };
-        signal?.addEventListener("abort", onAbort, { once: true });
-        (async () => {
-          try {
-            const searchPath = resolveToCwd(searchDir || ".", ctx?.cwd || cwd);
-            const effectiveLimit = limit ?? DEFAULT_LIMIT;
-            const ops = customOps ?? defaultFindOperations;
-            if (customOps?.glob) {
-              if (!await ops.exists(searchPath)) {
-                settle(() => reject(new Error(`Path not found: ${searchPath}`)));
-                return;
-              }
-              if (signal?.aborted) {
-                settle(() => reject(new Error("Operation aborted")));
-                return;
-              }
-              const results = await ops.glob(pattern, searchPath, {
-                ignore: ["**/node_modules/**", "**/.git/**"],
-                limit: effectiveLimit
-              });
-              if (signal?.aborted) {
-                settle(() => reject(new Error("Operation aborted")));
-                return;
-              }
-              if (results.length === 0) {
-                settle(() => resolve5({
-                  content: [{ type: "text", text: "No files found matching pattern" }],
-                  details: void 0
-                }));
-                return;
-              }
-              const relativized = results.map((p) => relativizeFindResultPath(p, searchPath));
-              const resultLimitReached = relativized.length >= effectiveLimit;
-              const rawOutput = relativized.join("\n");
-              const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
-              let resultOutput = truncation.content;
-              const details = {};
-              const notices = [];
-              if (resultLimitReached) {
-                notices.push(`${effectiveLimit} results limit reached`);
-                details.resultLimitReached = effectiveLimit;
-              }
-              if (truncation.truncated) {
-                notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-                details.truncation = truncation;
-              }
-              if (notices.length > 0) {
-                resultOutput += `
-
-[${notices.join(". ")}]`;
-              }
-              settle(() => resolve5({
-                content: [{ type: "text", text: resultOutput }],
-                details: Object.keys(details).length > 0 ? details : void 0
-              }));
-              return;
-            }
-            const fdPath = await ensureTool("fd");
-            if (signal?.aborted) {
-              settle(() => reject(new Error("Operation aborted")));
-              return;
-            }
-            if (!fdPath) {
-              settle(() => reject(new Error("fd is not available and could not be downloaded")));
-              return;
-            }
-            const args = ["--glob", "--color=never", "--hidden"];
-            let insideGitRepo = false;
-            for (let current = searchPath; ; ) {
-              if (await pathExists(path2.join(current, ".git"))) {
-                insideGitRepo = true;
-                break;
-              }
-              const parent = path2.dirname(current);
-              if (parent === current)
-                break;
-              current = parent;
-            }
-            if (!insideGitRepo)
-              args.push("--no-require-git");
-            args.push("--max-results", String(effectiveLimit));
-            let effectivePattern = pattern;
-            if (pattern.includes("/")) {
-              args.push("--full-path");
-              if (!pattern.startsWith("/") && !pattern.startsWith("**/") && pattern !== "**") {
-                effectivePattern = `**/${pattern}`;
-              }
-              if (process.platform === "win32")
-                effectivePattern = effectivePattern.replaceAll("/", String.raw`[/\\]`);
-            }
-            args.push("--", effectivePattern, searchPath);
-            const child = spawn3(fdPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-            const rl = createInterface2({ input: child.stdout });
-            let stderr = "";
-            const lines = [];
-            stopChild = () => {
-              if (!child.killed) {
-                child.kill();
-              }
-            };
-            const cleanup = () => {
-              rl.close();
-            };
-            child.stderr?.on("data", (chunk) => {
-              stderr += chunk.toString();
-            });
-            rl.on("line", (line) => {
-              lines.push(line);
-            });
-            child.on("error", (error) => {
-              cleanup();
-              settle(() => reject(new Error(`Failed to run fd: ${error.message}`)));
-            });
-            child.on("close", (code) => {
-              cleanup();
-              if (signal?.aborted) {
-                settle(() => reject(new Error("Operation aborted")));
-                return;
-              }
-              const output = lines.join("\n");
-              if (code !== 0) {
-                const errorMsg = stderr.trim() || `fd exited with code ${code}`;
-                if (!output) {
-                  settle(() => reject(new Error(errorMsg)));
-                  return;
-                }
-              }
-              if (!output) {
-                settle(() => resolve5({
-                  content: [{ type: "text", text: "No files found matching pattern" }],
-                  details: void 0
-                }));
-                return;
-              }
-              const relativized = [];
-              for (const rawLine of lines) {
-                const line = rawLine.replace(/\r$/, "").trim();
-                if (!line)
-                  continue;
-                relativized.push(relativizeFindResultPath(line, searchPath));
-              }
-              const resultLimitReached = relativized.length >= effectiveLimit;
-              const rawOutput = relativized.join("\n");
-              const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
-              let resultOutput = truncation.content;
-              const details = {};
-              const notices = [];
-              if (resultLimitReached) {
-                notices.push(`${effectiveLimit} results limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`);
-                details.resultLimitReached = effectiveLimit;
-              }
-              if (truncation.truncated) {
-                notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-                details.truncation = truncation;
-              }
-              if (notices.length > 0) {
-                resultOutput += `
-
-[${notices.join(". ")}]`;
-              }
-              settle(() => resolve5({
-                content: [{ type: "text", text: resultOutput }],
-                details: Object.keys(details).length > 0 ? details : void 0
-              }));
-            });
-          } catch (e) {
-            if (signal?.aborted) {
-              settle(() => reject(new Error("Operation aborted")));
-              return;
-            }
-            const error = e instanceof Error ? e : new Error(String(e));
-            settle(() => reject(error));
-          }
-        })();
-      });
-    },
-    ...findRenderers
-  };
-}
-function createFindTool(cwd, options) {
-  return wrapToolDefinition(createFindToolDefinition(cwd, options));
-}
-
-// target/vendor-pi/dist/core/tools/grep.js
-import { readFile as fsReadFile2, stat as fsStat } from "node:fs/promises";
-import { createInterface as createInterface3 } from "node:readline";
-import { spawn as spawn4 } from "child_process";
-import path3 from "path";
-
-// target/vendor-pi/dist/core/tools/renderers/grep.js
-function formatGrepCall(args, theme31) {
-  const pattern = str(args?.pattern);
-  const rawPath = str(args?.path);
-  const path4 = rawPath !== null ? shortenPath(rawPath || ".") : null;
-  const glob = str(args?.glob);
-  const limit = args?.limit;
-  const invalidArg = invalidArgText(theme31);
-  let text = theme31.fg("toolTitle", theme31.bold("grep")) + " " + (pattern === null ? invalidArg : theme31.fg("accent", `/${pattern || ""}/`)) + theme31.fg("toolOutput", ` in ${path4 === null ? invalidArg : path4}`);
-  if (glob)
-    text += theme31.fg("toolOutput", ` (${glob})`);
-  if (limit !== void 0)
-    text += theme31.fg("toolOutput", ` limit ${limit}`);
-  return text;
-}
-function formatGrepResult(result, options, theme31, showImages) {
-  const output = getTextOutput(result, showImages).trim();
-  let text = "";
-  if (output) {
-    const lines = output.split("\n");
-    const maxLines = options.expanded ? lines.length : 15;
-    const displayLines = lines.slice(0, maxLines);
-    const remaining = lines.length - maxLines;
-    text += `
-${displayLines.map((line) => theme31.fg("toolOutput", line)).join("\n")}`;
-    if (remaining > 0) {
-      text += `${theme31.fg("muted", `
-... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme31.fg("muted", ")")}`;
-    }
-  }
-  const matchLimit = result.details?.matchLimitReached;
-  const truncation = result.details?.truncation;
-  const linesTruncated = result.details?.linesTruncated;
-  if (matchLimit || truncation?.truncated || linesTruncated) {
-    const warnings = [];
-    if (matchLimit)
-      warnings.push(`${matchLimit} matches limit`);
-    if (truncation?.truncated)
-      warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
-    if (linesTruncated)
-      warnings.push("some lines truncated");
-    text += `
-${theme31.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
-  }
-  return text;
-}
-var grepRenderers = {
-  renderCall(args, theme31, context) {
-    const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatGrepCall(args, theme31));
-    return text;
-  },
-  renderResult(result, options, theme31, context) {
-    const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatGrepResult(result, options, theme31, context.showImages));
-    return text;
-  }
-};
-
-// target/vendor-pi/dist/core/tools/grep.js
-var grepSchema = typebox_exports.Object({
-  pattern: typebox_exports.String({ description: "Search pattern (regex or literal string)" }),
-  path: typebox_exports.Optional(typebox_exports.String({ description: "Directory or file to search (default: current directory)" })),
-  glob: typebox_exports.Optional(typebox_exports.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" })),
-  ignoreCase: typebox_exports.Optional(typebox_exports.Boolean({ description: "Case-insensitive search (default: false)" })),
-  literal: typebox_exports.Optional(typebox_exports.Boolean({ description: "Treat pattern as literal string instead of regex (default: false)" })),
-  context: typebox_exports.Optional(typebox_exports.Number({ description: "Number of lines to show before and after each match (default: 0)" })),
-  limit: typebox_exports.Optional(typebox_exports.Number({ description: "Maximum number of matches to return (default: 100)" }))
-});
-var grepToolSystemPromptContribution = {
-  snippet: "Search file contents for patterns (respects .gitignore)",
-  guidelines: []
-};
-var DEFAULT_LIMIT2 = 100;
-var defaultGrepOperations = {
-  isDirectory: async (p) => (await fsStat(p)).isDirectory(),
-  readFile: (p) => fsReadFile2(p, "utf-8")
-};
-function createGrepToolDefinition(cwd, options) {
-  const customOps = options?.operations;
-  return {
-    name: "grep",
-    label: "grep",
-    description: `Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT2} matches or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Long lines are truncated to ${GREP_MAX_LINE_LENGTH} chars.`,
-    promptSnippet: grepToolSystemPromptContribution.snippet,
-    parameters: grepSchema,
-    async execute(_toolCallId, { pattern, path: searchDir, glob, ignoreCase, literal, context, limit }, signal, _onUpdate, ctx) {
-      return new Promise((resolve5, reject) => {
-        if (signal?.aborted) {
-          reject(new Error("Operation aborted"));
-          return;
-        }
-        let settled = false;
-        const settle = (fn) => {
-          if (!settled) {
-            settled = true;
-            fn();
-          }
-        };
-        (async () => {
-          try {
-            const rgPath = await ensureTool("rg");
-            if (!rgPath) {
-              settle(() => reject(new Error("ripgrep (rg) is not available and could not be downloaded")));
-              return;
-            }
-            const searchPath = resolveToCwd(searchDir || ".", ctx?.cwd || cwd);
-            const ops = customOps ?? defaultGrepOperations;
-            let isDirectory;
-            try {
-              isDirectory = await ops.isDirectory(searchPath);
-            } catch {
-              settle(() => reject(new Error(`Path not found: ${searchPath}`)));
-              return;
-            }
-            const contextValue = context && context > 0 ? context : 0;
-            const effectiveLimit = Math.max(1, limit ?? DEFAULT_LIMIT2);
-            const formatPath = (filePath) => {
-              if (isDirectory) {
-                const relative5 = path3.relative(searchPath, filePath);
-                if (relative5 && !relative5.startsWith("..")) {
-                  return relative5.replace(/\\/g, "/");
-                }
-              }
-              return path3.basename(filePath);
-            };
-            const fileCache = /* @__PURE__ */ new Map();
-            const getFileLines = async (filePath) => {
-              let lines = fileCache.get(filePath);
-              if (!lines) {
-                try {
-                  const content = await ops.readFile(filePath);
-                  lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-                } catch {
-                  lines = [];
-                }
-                fileCache.set(filePath, lines);
-              }
-              return lines;
-            };
-            const args = ["--json", "--line-number", "--color=never", "--hidden"];
-            if (ignoreCase)
-              args.push("--ignore-case");
-            if (literal)
-              args.push("--fixed-strings");
-            if (glob)
-              args.push("--glob", glob);
-            args.push("--", pattern, searchPath);
-            const child = spawn4(rgPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-            const rl = createInterface3({ input: child.stdout });
-            let stderr = "";
-            let matchCount = 0;
-            let matchLimitReached = false;
-            let linesTruncated = false;
-            let aborted = false;
-            let killedDueToLimit = false;
-            const outputLines = [];
-            const cleanup = () => {
-              rl.close();
-              signal?.removeEventListener("abort", onAbort);
-            };
-            const stopChild = (dueToLimit = false) => {
-              if (!child.killed) {
-                killedDueToLimit = dueToLimit;
-                child.kill();
-              }
-            };
-            const onAbort = () => {
-              aborted = true;
-              stopChild();
-            };
-            signal?.addEventListener("abort", onAbort, { once: true });
-            child.stderr?.on("data", (chunk) => {
-              stderr += chunk.toString();
-            });
-            const formatBlock = async (filePath, lineNumber) => {
-              const relativePath = formatPath(filePath);
-              const lines = await getFileLines(filePath);
-              if (!lines.length)
-                return [`${relativePath}:${lineNumber}: (unable to read file)`];
-              const block = [];
-              const start = contextValue > 0 ? Math.max(1, lineNumber - contextValue) : lineNumber;
-              const end = contextValue > 0 ? Math.min(lines.length, lineNumber + contextValue) : lineNumber;
-              for (let current = start; current <= end; current++) {
-                const lineText = lines[current - 1] ?? "";
-                const sanitized = lineText.replace(/\r/g, "");
-                const isMatchLine = current === lineNumber;
-                const { text: truncatedText, wasTruncated } = truncateLine(sanitized);
-                if (wasTruncated)
-                  linesTruncated = true;
-                if (isMatchLine)
-                  block.push(`${relativePath}:${current}: ${truncatedText}`);
-                else
-                  block.push(`${relativePath}-${current}- ${truncatedText}`);
-              }
-              return block;
-            };
-            const matches = [];
-            rl.on("line", (line) => {
-              if (!line.trim() || matchCount >= effectiveLimit)
-                return;
-              let event;
-              try {
-                event = JSON.parse(line);
-              } catch {
-                return;
-              }
-              if (event.type === "match") {
-                matchCount++;
-                const filePath = event.data?.path?.text;
-                const lineNumber = event.data?.line_number;
-                const lineText = event.data?.lines?.text;
-                if (filePath && typeof lineNumber === "number")
-                  matches.push({ filePath, lineNumber, lineText });
-                if (matchCount >= effectiveLimit) {
-                  matchLimitReached = true;
-                  stopChild(true);
-                }
-              }
-            });
-            child.on("error", (error) => {
-              cleanup();
-              settle(() => reject(new Error(`Failed to run ripgrep: ${error.message}`)));
-            });
-            child.on("close", async (code) => {
-              cleanup();
-              if (aborted) {
-                settle(() => reject(new Error("Operation aborted")));
-                return;
-              }
-              if (!killedDueToLimit && code !== 0 && code !== 1) {
-                const errorMsg = stderr.trim() || `ripgrep exited with code ${code}`;
-                settle(() => reject(new Error(errorMsg)));
-                return;
-              }
-              if (matchCount === 0) {
-                settle(() => resolve5({ content: [{ type: "text", text: "No matches found" }], details: void 0 }));
-                return;
-              }
-              for (const match2 of matches) {
-                if (contextValue === 0 && match2.lineText !== void 0) {
-                  const relativePath = formatPath(match2.filePath);
-                  const sanitized = match2.lineText.replace(/\r\n/g, "\n").replace(/\r/g, "").replace(/\n$/, "");
-                  const { text: truncatedText, wasTruncated } = truncateLine(sanitized);
-                  if (wasTruncated)
-                    linesTruncated = true;
-                  outputLines.push(`${relativePath}:${match2.lineNumber}: ${truncatedText}`);
-                } else {
-                  const block = await formatBlock(match2.filePath, match2.lineNumber);
-                  outputLines.push(...block);
-                }
-              }
-              const rawOutput = outputLines.join("\n");
-              const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
-              let output = truncation.content;
-              const details = {};
-              const notices = [];
-              if (matchLimitReached) {
-                notices.push(`${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`);
-                details.matchLimitReached = effectiveLimit;
-              }
-              if (truncation.truncated) {
-                notices.push(`${formatSize(DEFAULT_MAX_BYTES)} limit reached`);
-                details.truncation = truncation;
-              }
-              if (linesTruncated) {
-                notices.push(`Some lines truncated to ${GREP_MAX_LINE_LENGTH} chars. Use read tool to see full lines`);
-                details.linesTruncated = true;
-              }
-              if (notices.length > 0)
-                output += `
-
-[${notices.join(". ")}]`;
-              settle(() => resolve5({
-                content: [{ type: "text", text: output }],
-                details: Object.keys(details).length > 0 ? details : void 0
-              }));
-            });
-          } catch (err) {
-            settle(() => reject(err));
-          }
-        })();
-      });
-    },
-    ...grepRenderers
-  };
-}
-function createGrepTool(cwd, options) {
-  return wrapToolDefinition(createGrepToolDefinition(cwd, options));
-}
-
 // target/vendor-pi/dist/core/tools/ls.js
-import { readdir as fsReaddir, stat as fsStat2 } from "node:fs/promises";
+import { readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
 import nodePath from "path";
 
 // target/vendor-pi/dist/core/tools/renderers/ls.js
-function formatLsCall(args, theme31, cwd) {
+function formatLsCall(args, theme26, cwd) {
   const limit = args?.limit;
-  const pathDisplay = renderToolPath(str(args?.path), theme31, cwd, { emptyFallback: "." });
-  let text = `${theme31.fg("toolTitle", theme31.bold("ls"))} ${pathDisplay}`;
+  const pathDisplay = renderToolPath(str(args?.path), theme26, cwd, { emptyFallback: "." });
+  let text = `${theme26.fg("toolTitle", theme26.bold("ls"))} ${pathDisplay}`;
   if (limit !== void 0) {
-    text += theme31.fg("toolOutput", ` (limit ${limit})`);
+    text += theme26.fg("toolOutput", ` (limit ${limit})`);
   }
   return text;
 }
-function formatLsResult(result, options, theme31, showImages) {
+function formatLsResult(result, options, theme26, showImages) {
   const output = getTextOutput(result, showImages).trim();
   let text = "";
   if (output) {
@@ -13187,10 +9868,10 @@ function formatLsResult(result, options, theme31, showImages) {
     const displayLines = lines.slice(0, maxLines);
     const remaining = lines.length - maxLines;
     text += `
-${displayLines.map((line) => theme31.fg("toolOutput", line)).join("\n")}`;
+${displayLines.map((line) => theme26.fg("toolOutput", line)).join("\n")}`;
     if (remaining > 0) {
-      text += `${theme31.fg("muted", `
-... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme31.fg("muted", ")")}`;
+      text += `${theme26.fg("muted", `
+... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme26.fg("muted", ")")}`;
     }
   }
   const entryLimit = result.details?.entryLimitReached;
@@ -13202,19 +9883,19 @@ ${displayLines.map((line) => theme31.fg("toolOutput", line)).join("\n")}`;
     if (truncation?.truncated)
       warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
     text += `
-${theme31.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
+${theme26.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
   }
   return text;
 }
 var lsRenderers = {
-  renderCall(args, theme31, context) {
+  renderCall(args, theme26, context) {
     const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatLsCall(args, theme31, context.cwd));
+    text.setText(formatLsCall(args, theme26, context.cwd));
     return text;
   },
-  renderResult(result, options, theme31, context) {
+  renderResult(result, options, theme26, context) {
     const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatLsResult(result, options, theme31, context.showImages));
+    text.setText(formatLsResult(result, options, theme26, context.showImages));
     return text;
   }
 };
@@ -13228,10 +9909,10 @@ var lsToolSystemPromptContribution = {
   snippet: "List directory contents",
   guidelines: []
 };
-var DEFAULT_LIMIT3 = 500;
+var DEFAULT_LIMIT = 500;
 var defaultLsOperations = {
   exists: pathExists,
-  stat: fsStat2,
+  stat: fsStat,
   readdir: fsReaddir
 };
 function createLsToolDefinition(cwd, options) {
@@ -13239,10 +9920,10 @@ function createLsToolDefinition(cwd, options) {
   return {
     name: "ls",
     label: "ls",
-    description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT3} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
+    description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     promptSnippet: lsToolSystemPromptContribution.snippet,
     parameters: lsSchema,
-    async execute(_toolCallId, { path: path4, limit }, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, { path: path2, limit }, signal, _onUpdate, ctx) {
       return new Promise((resolve5, reject) => {
         if (signal?.aborted) {
           reject(new Error("Operation aborted"));
@@ -13252,8 +9933,8 @@ function createLsToolDefinition(cwd, options) {
         signal?.addEventListener("abort", onAbort, { once: true });
         (async () => {
           try {
-            const dirPath = resolveToCwd(path4 || ".", ctx?.cwd || cwd);
-            const effectiveLimit = limit ?? DEFAULT_LIMIT3;
+            const dirPath = resolveToCwd(path2 || ".", ctx?.cwd || cwd);
+            const effectiveLimit = limit ?? DEFAULT_LIMIT;
             if (!await ops.exists(dirPath)) {
               reject(new Error(`Path not found: ${dirPath}`));
               return;
@@ -13369,7 +10050,7 @@ function createPowerShellTool(cwd, options) {
 
 // target/vendor-pi/dist/core/tools/read.js
 import { constants as constants5 } from "fs";
-import { access as fsAccess3, readFile as fsReadFile3 } from "fs/promises";
+import { access as fsAccess3, readFile as fsReadFile2 } from "fs/promises";
 
 // target/vendor-pi/dist/utils/image-convert.js
 var image_convert_exports = {};
@@ -13464,18 +10145,18 @@ async function processImage(bytes, mimeType, options) {
 }
 
 // target/vendor-pi/dist/core/tools/renderers/read.js
-import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute2, relative as relative3, resolve as resolvePath2, sep as sep4 } from "node:path";
+import { basename as basename3, dirname as dirname3, isAbsolute as isAbsolute2, relative as relative3, resolve as resolvePath2, sep as sep4 } from "node:path";
 var COMPACT_RESOURCE_FILE_NAMES = /* @__PURE__ */ new Set(["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]);
-function formatReadLineRange(args, theme31) {
+function formatReadLineRange(args, theme26) {
   if (args?.offset == null && args?.limit == null)
     return "";
   const startLine = args.offset ?? 1;
   const endLine = args.limit != null ? startLine + args.limit - 1 : "";
-  return theme31.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
+  return theme26.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
 }
-function formatReadCall(args, theme31, cwd) {
-  const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme31, cwd);
-  return `${theme31.fg("toolTitle", theme31.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme31)}`;
+function formatReadCall(args, theme26, cwd) {
+  const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme26, cwd);
+  return `${theme26.fg("toolTitle", theme26.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme26)}`;
 }
 function trimTrailingEmptyLines(lines) {
   let end = lines.length;
@@ -13488,7 +10169,7 @@ function toPosixPath2(filePath) {
   return filePath.split(sep4).join("/");
 }
 function getPiDocsClassification(absolutePath) {
-  const packageRoot = dirname5((0, config_exports.getReadmePath)());
+  const packageRoot = dirname3((0, config_exports.getReadmePath)());
   const relativePath = relative3(resolvePath2(packageRoot), resolvePath2(absolutePath));
   if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep4}`) || isAbsolute2(relativePath)) {
     return void 0;
@@ -13506,7 +10187,7 @@ function getCompactReadClassification(args, cwd) {
   const absolutePath = resolveToCwd(rawPath, cwd);
   const fileName = basename3(absolutePath);
   if (fileName === "SKILL.md") {
-    return { kind: "skill", label: basename3(dirname5(absolutePath)) || fileName };
+    return { kind: "skill", label: basename3(dirname3(absolutePath)) || fileName };
   }
   const docsClassification = getPiDocsClassification(absolutePath);
   if (docsClassification)
@@ -13516,14 +10197,14 @@ function getCompactReadClassification(args, cwd) {
   }
   return void 0;
 }
-function formatCompactReadCall(classification, args, theme31) {
-  const expandHint = theme31.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+function formatCompactReadCall(classification, args, theme26) {
+  const expandHint = theme26.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
   if (classification.kind === "skill") {
-    return theme31.fg("customMessageLabel", `\x1B[1m[skill]\x1B[22m `) + theme31.fg("customMessageText", classification.label) + formatReadLineRange(args, theme31) + expandHint;
+    return theme26.fg("customMessageLabel", `\x1B[1m[skill]\x1B[22m `) + theme26.fg("customMessageText", classification.label) + formatReadLineRange(args, theme26) + expandHint;
   }
-  return theme31.fg("toolTitle", theme31.bold(`read ${classification.kind}`)) + " " + theme31.fg("accent", classification.label) + formatReadLineRange(args, theme31) + expandHint;
+  return theme26.fg("toolTitle", theme26.bold(`read ${classification.kind}`)) + " " + theme26.fg("accent", classification.label) + formatReadLineRange(args, theme26) + expandHint;
 }
-function formatReadResult(args, result, options, theme31, showImages, _cwd, isError) {
+function formatReadResult(args, result, options, theme26, showImages, _cwd, isError) {
   if (!options.expanded && !isError) {
     return "";
   }
@@ -13536,37 +10217,37 @@ function formatReadResult(args, result, options, theme31, showImages, _cwd, isEr
   const displayLines = lines.slice(0, maxLines);
   const remaining = lines.length - maxLines;
   let text = `
-${displayLines.map((line) => lang ? replaceTabs(line) : theme31.fg("toolOutput", replaceTabs(line))).join("\n")}`;
+${displayLines.map((line) => lang ? replaceTabs(line) : theme26.fg("toolOutput", replaceTabs(line))).join("\n")}`;
   if (remaining > 0) {
-    text += `${theme31.fg("muted", `
-... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme31.fg("muted", ")")}`;
+    text += `${theme26.fg("muted", `
+... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme26.fg("muted", ")")}`;
   }
   const truncation = result.details?.truncation;
   if (truncation?.truncated) {
     if (truncation.firstLineExceedsLimit) {
       text += `
-${theme31.fg("warning", `[First line exceeds ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit]`)}`;
+${theme26.fg("warning", `[First line exceeds ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit]`)}`;
     } else if (truncation.truncatedBy === "lines") {
       text += `
-${theme31.fg("warning", `[Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${truncation.maxLines ?? DEFAULT_MAX_LINES} line limit)]`)}`;
+${theme26.fg("warning", `[Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${truncation.maxLines ?? DEFAULT_MAX_LINES} line limit)]`)}`;
     } else {
       text += `
-${theme31.fg("warning", `[Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)]`)}`;
+${theme26.fg("warning", `[Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)]`)}`;
     }
   }
   return text;
 }
 var readRenderers = {
-  renderCall(rawArgs, theme31, context) {
+  renderCall(rawArgs, theme26, context) {
     const args = rawArgs;
     const text = context.lastComponent ?? new Text("", 0, 0);
     const classification = !context.expanded ? getCompactReadClassification(args, context.cwd) : void 0;
-    text.setText(classification ? formatCompactReadCall(classification, args, theme31) : formatReadCall(args, theme31, context.cwd));
+    text.setText(classification ? formatCompactReadCall(classification, args, theme26) : formatReadCall(args, theme26, context.cwd));
     return text;
   },
-  renderResult(result, options, theme31, context) {
+  renderResult(result, options, theme26, context) {
     const text = context.lastComponent ?? new Text("", 0, 0);
-    text.setText(formatReadResult(context.args, result, options, theme31, context.showImages, context.cwd, context.isError));
+    text.setText(formatReadResult(context.args, result, options, theme26, context.showImages, context.cwd, context.isError));
     return text;
   }
 };
@@ -13582,8 +10263,8 @@ var readToolSystemPromptContribution = {
   guidelines: ["Use read to examine files instead of cat or sed."]
 };
 var defaultReadOperations = {
-  readFile: (path4) => fsReadFile3(path4),
-  access: (path4) => fsAccess3(path4, constants5.R_OK),
+  readFile: (path2) => fsReadFile2(path2),
+  access: (path2) => fsAccess3(path2, constants5.R_OK),
   detectImageMimeType: detectSupportedImageMimeTypeFromFile
 };
 function getNonVisionImageNote(model) {
@@ -13604,7 +10285,7 @@ function createReadToolDefinition(cwd, options) {
     promptGuidelines: [...readToolSystemPromptContribution.guidelines],
     parameters: readSchema,
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute(_toolCallId, { path: path4, offset, limit }, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, { path: path2, offset, limit }, signal, _onUpdate, ctx) {
       return new Promise((resolve5, reject) => {
         if (signal?.aborted) {
           reject(new Error("Operation aborted"));
@@ -13618,7 +10299,7 @@ function createReadToolDefinition(cwd, options) {
         signal?.addEventListener("abort", onAbort, { once: true });
         (async () => {
           try {
-            const absolutePath = await resolveReadPathAsync(path4, ctx?.cwd || cwd);
+            const absolutePath = await resolveReadPathAsync(path2, ctx?.cwd || cwd);
             if (aborted)
               return;
             await ops.access(absolutePath);
@@ -13677,7 +10358,7 @@ ${nonVisionImageNote}`;
               let outputText;
               if (truncation.firstLineExceedsLimit) {
                 const firstLineSize = formatSize(Buffer.byteLength(allLines[startLine], "utf-8"));
-                outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path4} | head -c ${DEFAULT_MAX_BYTES}]`;
+                outputText = `[Line ${startLineDisplay} is ${firstLineSize}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${startLineDisplay}p' ${path2} | head -c ${DEFAULT_MAX_BYTES}]`;
                 details = { truncation };
               } else if (truncation.truncated) {
                 const endLineDisplay = startLineDisplay + truncation.outputLines - 1;
@@ -13725,7 +10406,7 @@ function createReadTool(cwd, options) {
 
 // target/vendor-pi/dist/core/tools/write.js
 import { mkdir as fsMkdir, writeFile as fsWriteFile2 } from "fs/promises";
-import { dirname as dirname6 } from "path";
+import { dirname as dirname4 } from "path";
 
 // target/vendor-pi/dist/core/tools/renderers/write.js
 var WriteCallRenderComponent = class extends Text {
@@ -13801,15 +10482,15 @@ function trimTrailingEmptyLines2(lines) {
   }
   return lines.slice(0, end);
 }
-function formatWriteCall(args, options, theme31, cache, cwd) {
+function formatWriteCall(args, options, theme26, cache, cwd) {
   const rawPath = str(args?.file_path ?? args?.path);
   const fileContent = str(args?.content);
-  const pathDisplay = renderToolPath(rawPath, theme31, cwd);
-  let text = `${theme31.fg("toolTitle", theme31.bold("write"))} ${pathDisplay}`;
+  const pathDisplay = renderToolPath(rawPath, theme26, cwd);
+  let text = `${theme26.fg("toolTitle", theme26.bold("write"))} ${pathDisplay}`;
   if (fileContent === null) {
     text += `
 
-${theme31.fg("error", "[invalid content arg - expected string]")}`;
+${theme26.fg("error", "[invalid content arg - expected string]")}`;
   } else if (fileContent) {
     const lang = rawPath ? (0, theme_exports.getLanguageFromPath)(rawPath) : void 0;
     const renderedLines = lang ? cache?.highlightedLines ?? (0, theme_exports.highlightCode)(replaceTabs(normalizeDisplayText(fileContent)), lang) : normalizeDisplayText(fileContent).split("\n");
@@ -13820,15 +10501,15 @@ ${theme31.fg("error", "[invalid content arg - expected string]")}`;
     const remaining = lines.length - maxLines;
     text += `
 
-${displayLines.map((line) => lang ? line : theme31.fg("toolOutput", replaceTabs(line))).join("\n")}`;
+${displayLines.map((line) => lang ? line : theme26.fg("toolOutput", replaceTabs(line))).join("\n")}`;
     if (remaining > 0) {
-      text += `${theme31.fg("muted", `
-... (${remaining} more lines, ${totalLines} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme31.fg("muted", ")")}`;
+      text += `${theme26.fg("muted", `
+... (${remaining} more lines, ${totalLines} total,`)} ${keyHint("app.tools.expand", "to expand")}${theme26.fg("muted", ")")}`;
     }
   }
   return text;
 }
-function formatWriteResult(result, theme31) {
+function formatWriteResult(result, theme26) {
   if (!result.isError) {
     return void 0;
   }
@@ -13837,10 +10518,10 @@ function formatWriteResult(result, theme31) {
     return void 0;
   }
   return `
-${theme31.fg("error", output)}`;
+${theme26.fg("error", output)}`;
 }
 var writeRenderers = {
-  renderCall(args, theme31, context) {
+  renderCall(args, theme26, context) {
     const renderArgs = args;
     const rawPath = str(renderArgs?.file_path ?? renderArgs?.path);
     const fileContent = str(renderArgs?.content);
@@ -13850,11 +10531,11 @@ var writeRenderers = {
     } else {
       component.cache = void 0;
     }
-    component.setText(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme31, component.cache, context.cwd));
+    component.setText(formatWriteCall(renderArgs, { expanded: context.expanded, isPartial: context.isPartial }, theme26, component.cache, context.cwd));
     return component;
   },
-  renderResult(result, _options, theme31, context) {
-    const output = formatWriteResult({ ...result, isError: context.isError }, theme31);
+  renderResult(result, _options, theme26, context) {
+    const output = formatWriteResult({ ...result, isError: context.isError }, theme26);
     if (!output) {
       const component = context.lastComponent ?? new Container();
       component.clear();
@@ -13876,7 +10557,7 @@ var writeToolSystemPromptContribution = {
   guidelines: ["Use write only for new files or complete rewrites."]
 };
 var defaultWriteOperations = {
-  writeFile: (path4, content) => fsWriteFile2(path4, content, "utf-8"),
+  writeFile: (path2, content) => fsWriteFile2(path2, content, "utf-8"),
   mkdir: (dir) => fsMkdir(dir, { recursive: true }).then(() => {
   })
 };
@@ -13890,9 +10571,9 @@ function createWriteToolDefinition(cwd, options) {
     promptGuidelines: [...writeToolSystemPromptContribution.guidelines],
     parameters: writeSchema,
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute(_toolCallId, { path: path4, content }, signal, _onUpdate, ctx) {
-      const absolutePath = resolveToCwd(path4, ctx?.cwd || cwd);
-      const dir = dirname6(absolutePath);
+    async execute(_toolCallId, { path: path2, content }, signal, _onUpdate, ctx) {
+      const absolutePath = resolveToCwd(path2, ctx?.cwd || cwd);
+      const dir = dirname4(absolutePath);
       return withFileMutationQueue(absolutePath, async () => {
         const throwIfAborted = () => {
           if (signal?.aborted)
@@ -13904,7 +10585,7 @@ function createWriteToolDefinition(cwd, options) {
         await ops.writeFile(absolutePath, content);
         throwIfAborted();
         return {
-          content: [{ type: "text", text: `Successfully wrote to ${path4}` }],
+          content: [{ type: "text", text: `Successfully wrote to ${path2}` }],
           details: void 0
         };
       });
@@ -13914,118 +10595,6 @@ function createWriteToolDefinition(cwd, options) {
 }
 function createWriteTool(cwd, options) {
   return wrapToolDefinition(createWriteToolDefinition(cwd, options));
-}
-
-// target/vendor-pi/dist/core/tools/index.js
-var allToolNames = /* @__PURE__ */ new Set([
-  "read",
-  "bash",
-  "powershell",
-  "edit",
-  "write",
-  "grep",
-  "find",
-  "ls"
-]);
-function createToolDefinition(toolName, cwd, options) {
-  switch (toolName) {
-    case "read":
-      return createReadToolDefinition(cwd, options?.read);
-    case "bash":
-      return createBashToolDefinition(cwd, options?.bash);
-    case "powershell":
-      return createPowerShellToolDefinition(cwd, options?.powershell);
-    case "edit":
-      return createEditToolDefinition(cwd, options?.edit);
-    case "write":
-      return createWriteToolDefinition(cwd, options?.write);
-    case "grep":
-      return createGrepToolDefinition(cwd, options?.grep);
-    case "find":
-      return createFindToolDefinition(cwd, options?.find);
-    case "ls":
-      return createLsToolDefinition(cwd, options?.ls);
-    default:
-      throw new Error(`Unknown tool name: ${toolName}`);
-  }
-}
-function createTool(toolName, cwd, options) {
-  switch (toolName) {
-    case "read":
-      return createReadTool(cwd, options?.read);
-    case "bash":
-      return createBashTool(cwd, options?.bash);
-    case "powershell":
-      return createPowerShellTool(cwd, options?.powershell);
-    case "edit":
-      return createEditTool(cwd, options?.edit);
-    case "write":
-      return createWriteTool(cwd, options?.write);
-    case "grep":
-      return createGrepTool(cwd, options?.grep);
-    case "find":
-      return createFindTool(cwd, options?.find);
-    case "ls":
-      return createLsTool(cwd, options?.ls);
-    default:
-      throw new Error(`Unknown tool name: ${toolName}`);
-  }
-}
-function createCodingToolDefinitions(cwd, options) {
-  return [
-    createReadToolDefinition(cwd, options?.read),
-    createBashToolDefinition(cwd, options?.bash),
-    createEditToolDefinition(cwd, options?.edit),
-    createWriteToolDefinition(cwd, options?.write)
-  ];
-}
-function createReadOnlyToolDefinitions(cwd, options) {
-  return [
-    createReadToolDefinition(cwd, options?.read),
-    createGrepToolDefinition(cwd, options?.grep),
-    createFindToolDefinition(cwd, options?.find),
-    createLsToolDefinition(cwd, options?.ls)
-  ];
-}
-function createAllToolDefinitions(cwd, options) {
-  return {
-    read: createReadToolDefinition(cwd, options?.read),
-    bash: createBashToolDefinition(cwd, options?.bash),
-    powershell: createPowerShellToolDefinition(cwd, options?.powershell),
-    edit: createEditToolDefinition(cwd, options?.edit),
-    write: createWriteToolDefinition(cwd, options?.write),
-    grep: createGrepToolDefinition(cwd, options?.grep),
-    find: createFindToolDefinition(cwd, options?.find),
-    ls: createLsToolDefinition(cwd, options?.ls)
-  };
-}
-function createCodingTools(cwd, options) {
-  return [
-    createReadTool(cwd, options?.read),
-    createBashTool(cwd, options?.bash),
-    createEditTool(cwd, options?.edit),
-    createWriteTool(cwd, options?.write)
-  ];
-}
-function createReadOnlyTools(cwd, options) {
-  return [
-    createReadTool(cwd, options?.read),
-    createGrepTool(cwd, options?.grep),
-    createFindTool(cwd, options?.find),
-    createLsTool(cwd, options?.ls)
-  ];
-}
-function createAllTools(cwd, options) {
-  return {
-    read: createReadTool(cwd, options?.read),
-    bash: createBashTool(cwd, options?.bash),
-    powershell: createPowerShellTool(cwd, options?.powershell),
-    edit: createEditTool(cwd, options?.edit),
-    write: createWriteTool(cwd, options?.write),
-    grep: createGrepTool(cwd, options?.grep),
-    find: createFindTool(cwd, options?.find),
-    ls: createLsTool(cwd, options?.ls)
-  };
 }
 
 // target/vendor-pi/dist/modes/interactive/components/armin.js
@@ -14927,21 +11496,21 @@ var CustomMessageComponent = class extends Container {
 };
 
 // target/vendor-pi/dist/modes/interactive/external-editor.js
-import { spawn as spawn5 } from "node:child_process";
-import { mkdtempSync, readFileSync as readFileSync5, rmSync as rmSync2, writeFileSync as writeFileSync5 } from "node:fs";
+import { spawn as spawn3 } from "node:child_process";
+import { mkdtempSync, readFileSync as readFileSync3, rmSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join10 } from "node:path";
+import { join as join7 } from "node:path";
 async function editInExternalEditor(options) {
-  const directory = mkdtempSync(join10(tmpdir2(), "pi-editor-"));
-  const filePath = join10(directory, "prompt.md");
+  const directory = mkdtempSync(join7(tmpdir2(), "pi-editor-"));
+  const filePath = join7(directory, "prompt.md");
   try {
-    writeFileSync5(filePath, options.content, "utf-8");
+    writeFileSync3(filePath, options.content, "utf-8");
     const [editor, ...editorArgs] = options.command.split(" ");
     process.stdout.write(`Launching external editor: ${options.command}
 Pi will resume when the editor exits.
 `);
     const exitCode = await new Promise((resolve5) => {
-      const child = spawn5(editor, [...editorArgs, filePath], {
+      const child = spawn3(editor, [...editorArgs, filePath], {
         stdio: "inherit",
         shell: process.platform === "win32"
       });
@@ -14951,10 +11520,10 @@ Pi will resume when the editor exits.
     if (exitCode !== 0) {
       return { status: "failed" };
     }
-    return { status: "complete", content: stripBom(readFileSync5(filePath, "utf-8")).replace(/\n$/, "") };
+    return { status: "complete", content: stripBom(readFileSync3(filePath, "utf-8")).replace(/\n$/, "") };
   } finally {
     try {
-      rmSync2(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true });
     } catch {
     }
   }
@@ -15194,95 +11763,6 @@ var ExtensionSelectorComponent = class extends Container {
   }
 };
 
-// target/vendor-pi/dist/modes/interactive/theme/system-theme.js
-var TOOL_PANELS = ["toolPendingBg", "toolSuccessBg", "toolErrorBg"];
-var MESSAGE_PANELS = ["userMessageBg", "customMessageBg"];
-var PANELS = [
-  "userMessageBg",
-  "toolPendingBg",
-  "toolSuccessBg",
-  "toolErrorBg",
-  "selectedBg",
-  "searchMatchBg",
-  "customMessageBg"
-];
-var THINKING = [
-  "thinkingOff",
-  "thinkingMinimal",
-  "thinkingLow",
-  "thinkingMedium",
-  "thinkingHigh",
-  "thinkingXhigh",
-  "thinkingMax"
-];
-var THINKING_LEVELS = [
-  "thinking0",
-  "thinking1",
-  "thinking2",
-  "thinking3",
-  "thinking4",
-  "thinking5",
-  "thinking6"
-];
-var each = (tokens, on, level) => tokens.map((token) => ({ token, on, level }));
-var RULES = [
-  ...each(PANELS, ["background"], "panel"),
-  { token: "text", on: ["background"], level: "text" },
-  { token: "text", on: ["selectedBg"], level: "textOnPanel" },
-  { token: "userMessageText", on: ["userMessageBg"], level: "textOnPanel" },
-  { token: "toolTitle", on: TOOL_PANELS, level: "textOnPanel" },
-  ...each(["accent", "success", "error", "warning"], ["background", "selectedBg", ...TOOL_PANELS], "readable"),
-  { token: "muted", on: ["background", "selectedBg", "customMessageBg", ...TOOL_PANELS], level: "readable" },
-  { token: "dim", on: ["background", "selectedBg", "customMessageBg", ...TOOL_PANELS], level: "subtle" },
-  { token: "thinkingText", on: ["background"], level: "readable" },
-  { token: "customMessageText", on: ["customMessageBg", ...TOOL_PANELS], level: "readable" },
-  {
-    token: "customMessageLabel",
-    on: ["background", "customMessageBg", "selectedBg", ...TOOL_PANELS],
-    level: "readable"
-  },
-  { token: "toolOutput", on: ["background", ...TOOL_PANELS], level: "readable" },
-  ...each(["mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdQuote", "mdCodeBlockBorder", "mdListBullet"], ["background", ...MESSAGE_PANELS], "readable"),
-  { token: "mdCodeBlock", on: ["background", ...MESSAGE_PANELS, ...TOOL_PANELS], level: "readable" },
-  ...each(["toolDiffAdded", "toolDiffRemoved", "toolDiffContext"], ["background", ...TOOL_PANELS], "readable"),
-  ...each([
-    "syntaxComment",
-    "syntaxKeyword",
-    "syntaxFunction",
-    "syntaxVariable",
-    "syntaxString",
-    "syntaxNumber",
-    "syntaxType",
-    "syntaxOperator",
-    "syntaxPunctuation"
-  ], ["background", ...MESSAGE_PANELS, ...TOOL_PANELS], "readable"),
-  { token: "searchMatchText", on: ["searchMatchBg"], level: "readable" },
-  ...each(["bashMode", "border", "borderAccent"], ["background"], "readable"),
-  { token: "borderMuted", on: ["background"], level: "subtle" },
-  ...each(["mdQuoteBorder", "mdHr"], ["background", ...MESSAGE_PANELS, ...TOOL_PANELS], "readable"),
-  { token: "scrollbarTrack", on: ["background"], level: "track" },
-  { token: "scrollbarThumb", on: ["scrollbarTrack"], level: "thumb" },
-  ...THINKING.map((token, index) => ({ token, on: ["background"], level: THINKING_LEVELS[index] }))
-];
-var SOLVE_ORDER = (() => {
-  const order = [];
-  const visit = (token) => {
-    if (order.includes(token))
-      return;
-    for (const rule of RULES) {
-      if (rule.token !== token)
-        continue;
-      for (const surface of rule.on)
-        if (surface !== "background")
-          visit(surface);
-    }
-    order.push(token);
-  };
-  for (const rule of RULES)
-    visit(rule.token);
-  return order;
-})();
-
 // target/vendor-pi/dist/modes/interactive/components/footer.js
 import { isAbsolute as isAbsolute3, relative as relative4, resolve as resolve4, sep as sep5 } from "node:path";
 
@@ -15491,10 +11971,10 @@ var FooterComponent = class {
 };
 
 // target/vendor-pi/dist/utils/open-browser.js
-import { spawn as spawn6 } from "node:child_process";
+import { spawn as spawn4 } from "node:child_process";
 function openBrowser(target) {
   const [cmd, args] = process.platform === "darwin" ? ["open", [target]] : process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", target]] : ["xdg-open", [target]];
-  spawn6(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {
+  spawn4(cmd, args, { stdio: "ignore", detached: true }).on("error", () => {
   }).unref();
 }
 
@@ -15675,6 +12155,51 @@ var LoginDialogComponent = class extends Container {
 
 // target/vendor-pi/dist/modes/interactive/components/model-selector.js
 import { modelsAreEqual as modelsAreEqual2 } from "@earendil-works/pi-ai";
+
+// target/vendor-pi/dist/utils/abort.js
+function abortReason(signal) {
+  if (signal.reason !== void 0)
+    return signal.reason;
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+function raceWithAbortSignal(operation, signal) {
+  if (!signal)
+    return operation;
+  if (signal.aborted) {
+    void operation.catch(() => {
+    });
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise((resolve5, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      if (settled)
+        return;
+      settled = true;
+      cleanup();
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void operation.then((value) => {
+      if (settled)
+        return;
+      settled = true;
+      cleanup();
+      resolve5(value);
+    }, (error) => {
+      if (settled)
+        return;
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+    if (signal.aborted)
+      onAbort();
+  });
+}
 
 // target/vendor-pi/dist/modes/interactive/model-catalog-refresh.js
 var ModelCatalogRefreshCoordinator = class {
@@ -16160,1271 +12685,34 @@ var OAuthSelectorComponent = class extends Container {
   }
 };
 
-// target/vendor-pi/dist/modes/interactive/components/session-selector.js
-import { spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync9 } from "node:fs";
-import { unlink } from "node:fs/promises";
-import * as os2 from "node:os";
-
-// target/vendor-pi/dist/core/keybindings.js
-import { existsSync as existsSync8, readFileSync as readFileSync6 } from "fs";
-import { join as join11 } from "path";
-function useWindowsKeybindings(platform2 = process.platform, env = process.env) {
-  return platform2 === "win32" || platform2 === "linux" && Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
-}
-var windowsKeybindings = useWindowsKeybindings();
-var KEYBINDINGS = {
-  ...TUI_KEYBINDINGS,
-  "tui.editor.undo": {
-    ...TUI_KEYBINDINGS["tui.editor.undo"],
-    defaultKeys: process.platform === "win32" ? "ctrl+z" : windowsKeybindings ? "alt+z" : "ctrl+-"
-  },
-  "tui.altScreen.previousPrompt": {
-    ...TUI_KEYBINDINGS["tui.altScreen.previousPrompt"],
-    defaultKeys: windowsKeybindings ? "ctrl+up" : ["ctrl+shift+up", "ctrl+up"]
-  },
-  "tui.altScreen.nextPrompt": {
-    ...TUI_KEYBINDINGS["tui.altScreen.nextPrompt"],
-    defaultKeys: windowsKeybindings ? "ctrl+down" : ["ctrl+shift+down", "ctrl+down"]
-  },
-  "tui.altScreen.search": {
-    ...TUI_KEYBINDINGS["tui.altScreen.search"],
-    defaultKeys: windowsKeybindings ? "ctrl+f" : "ctrl+shift+f"
-  },
-  "app.interrupt": { defaultKeys: "escape", description: "Cancel or abort" },
-  "app.clear": { defaultKeys: "ctrl+c", description: "Clear editor" },
-  "app.exit": { defaultKeys: "ctrl+d", description: "Exit when editor is empty" },
-  "app.suspend": {
-    defaultKeys: process.platform === "win32" ? [] : "ctrl+z",
-    description: "Suspend to background"
-  },
-  "app.thinking.cycle": {
-    defaultKeys: "shift+tab",
-    description: "Cycle thinking level"
-  },
-  "app.thinking.save": {
-    defaultKeys: "ctrl+s",
-    description: "Save thinking level"
-  },
-  "app.model.cycleForward": {
-    defaultKeys: "ctrl+p",
-    description: "Cycle to next model"
-  },
-  "app.model.cycleBackward": {
-    defaultKeys: windowsKeybindings ? "alt+p" : "shift+ctrl+p",
-    description: "Cycle to previous model"
-  },
-  "app.model.select": { defaultKeys: "ctrl+l", description: "Open model selector" },
-  "app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" },
-  "app.thinking.toggle": {
-    defaultKeys: "ctrl+t",
-    description: "Toggle thinking blocks"
-  },
-  "app.session.toggleNamedFilter": {
-    defaultKeys: "ctrl+n",
-    description: "Toggle named session filter"
-  },
-  "app.editor.external": {
-    defaultKeys: "ctrl+g",
-    description: "Open external editor"
-  },
-  "app.message.copy": {
-    defaultKeys: "ctrl+x",
-    description: "Copy selection or last assistant message"
-  },
-  "app.message.followUp": {
-    defaultKeys: windowsKeybindings ? "ctrl+q" : "alt+enter",
-    description: "Queue follow-up message"
-  },
-  "app.message.dequeue": {
-    defaultKeys: windowsKeybindings ? "alt+q" : "alt+up",
-    description: "Restore queued messages"
-  },
-  "app.clipboard.pasteImage": {
-    defaultKeys: windowsKeybindings ? "alt+v" : "ctrl+v",
-    description: "Paste files on macOS, images, or text from clipboard"
-  },
-  "app.session.new": { defaultKeys: [], description: "Start a new session" },
-  "app.session.tree": { defaultKeys: [], description: "Open session tree" },
-  "app.session.fork": { defaultKeys: [], description: "Fork current session" },
-  "app.session.resume": { defaultKeys: [], description: "Resume a session" },
-  "app.tree.foldOrUp": {
-    defaultKeys: process.platform === "darwin" ? ["alt+left", "ctrl+left"] : ["ctrl+left", "alt+left"],
-    description: "Fold tree branch or move up"
-  },
-  "app.tree.unfoldOrDown": {
-    defaultKeys: process.platform === "darwin" ? ["alt+right", "ctrl+right"] : ["ctrl+right", "alt+right"],
-    description: "Unfold tree branch or move down"
-  },
-  "app.tree.editLabel": {
-    defaultKeys: "shift+l",
-    description: "Edit tree label"
-  },
-  "app.tree.toggleLabelTimestamp": {
-    defaultKeys: "shift+t",
-    description: "Toggle tree label timestamps"
-  },
-  "app.session.togglePath": {
-    defaultKeys: "ctrl+p",
-    description: "Toggle session path display"
-  },
-  "app.session.toggleSort": {
-    defaultKeys: "ctrl+s",
-    description: "Toggle session sort mode"
-  },
-  "app.session.rename": {
-    defaultKeys: "ctrl+r",
-    description: "Rename session"
-  },
-  "app.session.delete": {
-    defaultKeys: "ctrl+d",
-    description: "Delete session"
-  },
-  "app.session.deleteNoninvasive": {
-    defaultKeys: "ctrl+backspace",
-    description: "Delete session when query is empty"
-  },
-  "app.models.save": {
-    defaultKeys: "ctrl+s",
-    description: "Save model selection"
-  },
-  "app.models.enableAll": {
-    defaultKeys: "ctrl+a",
-    description: "Enable all models"
-  },
-  "app.models.clearAll": {
-    defaultKeys: "ctrl+x",
-    description: "Clear all models"
-  },
-  "app.models.toggleProvider": {
-    defaultKeys: "ctrl+p",
-    description: "Toggle all models for provider"
-  },
-  "app.models.reorderUp": {
-    defaultKeys: "alt+up",
-    description: "Move model up in order"
-  },
-  "app.models.reorderDown": {
-    defaultKeys: "alt+down",
-    description: "Move model down in order"
-  },
-  "app.tree.filter.default": {
-    defaultKeys: "ctrl+d",
-    description: "Tree filter: default view"
-  },
-  "app.tree.filter.noTools": {
-    defaultKeys: "ctrl+t",
-    description: "Tree filter: hide tool results"
-  },
-  "app.tree.filter.userOnly": {
-    defaultKeys: "ctrl+u",
-    description: "Tree filter: user messages only"
-  },
-  "app.tree.filter.labeledOnly": {
-    defaultKeys: "ctrl+l",
-    description: "Tree filter: labeled entries only"
-  },
-  "app.tree.filter.all": {
-    defaultKeys: "ctrl+a",
-    description: "Tree filter: show all entries"
-  },
-  "app.tree.filter.cycleForward": {
-    defaultKeys: "ctrl+o",
-    description: "Tree filter: cycle forward"
-  },
-  "app.tree.filter.cycleBackward": {
-    defaultKeys: "shift+ctrl+o",
-    description: "Tree filter: cycle backward"
-  }
-};
-var KEYBINDING_NAME_MIGRATIONS = {
-  cursorUp: "tui.editor.cursorUp",
-  cursorDown: "tui.editor.cursorDown",
-  cursorLeft: "tui.editor.cursorLeft",
-  cursorRight: "tui.editor.cursorRight",
-  cursorWordLeft: "tui.editor.cursorWordLeft",
-  cursorWordRight: "tui.editor.cursorWordRight",
-  cursorLineStart: "tui.editor.cursorLineStart",
-  cursorLineEnd: "tui.editor.cursorLineEnd",
-  jumpForward: "tui.editor.jumpForward",
-  jumpBackward: "tui.editor.jumpBackward",
-  pageUp: "tui.editor.pageUp",
-  pageDown: "tui.editor.pageDown",
-  deleteCharBackward: "tui.editor.deleteCharBackward",
-  deleteCharForward: "tui.editor.deleteCharForward",
-  deleteWordBackward: "tui.editor.deleteWordBackward",
-  deleteWordForward: "tui.editor.deleteWordForward",
-  deleteToLineStart: "tui.editor.deleteToLineStart",
-  deleteToLineEnd: "tui.editor.deleteToLineEnd",
-  yank: "tui.editor.yank",
-  yankPop: "tui.editor.yankPop",
-  undo: "tui.editor.undo",
-  newLine: "tui.input.newLine",
-  submit: "tui.input.submit",
-  tab: "tui.input.tab",
-  copy: "tui.input.copy",
-  selectUp: "tui.select.up",
-  selectDown: "tui.select.down",
-  selectPageUp: "tui.select.pageUp",
-  selectPageDown: "tui.select.pageDown",
-  selectConfirm: "tui.select.confirm",
-  selectCancel: "tui.select.cancel",
-  interrupt: "app.interrupt",
-  clear: "app.clear",
-  exit: "app.exit",
-  suspend: "app.suspend",
-  cycleThinkingLevel: "app.thinking.cycle",
-  cycleModelForward: "app.model.cycleForward",
-  cycleModelBackward: "app.model.cycleBackward",
-  selectModel: "app.model.select",
-  expandTools: "app.tools.expand",
-  toggleThinking: "app.thinking.toggle",
-  toggleSessionNamedFilter: "app.session.toggleNamedFilter",
-  externalEditor: "app.editor.external",
-  followUp: "app.message.followUp",
-  dequeue: "app.message.dequeue",
-  pasteImage: "app.clipboard.pasteImage",
-  newSession: "app.session.new",
-  tree: "app.session.tree",
-  fork: "app.session.fork",
-  resume: "app.session.resume",
-  treeFoldOrUp: "app.tree.foldOrUp",
-  treeUnfoldOrDown: "app.tree.unfoldOrDown",
-  treeEditLabel: "app.tree.editLabel",
-  treeToggleLabelTimestamp: "app.tree.toggleLabelTimestamp",
-  toggleSessionPath: "app.session.togglePath",
-  toggleSessionSort: "app.session.toggleSort",
-  renameSession: "app.session.rename",
-  deleteSession: "app.session.delete",
-  deleteSessionNoninvasive: "app.session.deleteNoninvasive"
-};
-function isLegacyKeybindingName(key) {
-  return key in KEYBINDING_NAME_MIGRATIONS;
-}
-function toKeybindingsConfig(value) {
-  const config = {};
-  for (const [key, binding] of Object.entries(value)) {
-    if (typeof binding === "string") {
-      config[key] = binding;
-      continue;
-    }
-    if (Array.isArray(binding) && binding.every((entry) => typeof entry === "string")) {
-      config[key] = binding;
-    }
-  }
-  return config;
-}
-function migrateKeybindingsConfig(rawConfig) {
-  const config = {};
-  let migrated = false;
-  for (const [key, value] of Object.entries(rawConfig)) {
-    const nextKey = isLegacyKeybindingName(key) ? KEYBINDING_NAME_MIGRATIONS[key] : key;
-    if (nextKey !== key) {
-      migrated = true;
-    }
-    if (key !== nextKey && Object.hasOwn(rawConfig, nextKey)) {
-      migrated = true;
-      continue;
-    }
-    config[nextKey] = value;
-  }
-  return { config: orderKeybindingsConfig(config), migrated };
-}
-function orderKeybindingsConfig(config) {
-  const ordered = {};
-  for (const keybinding of Object.keys(KEYBINDINGS)) {
-    if (Object.hasOwn(config, keybinding)) {
-      ordered[keybinding] = config[keybinding];
-    }
-  }
-  const extras = Object.keys(config).filter((key) => !Object.hasOwn(ordered, key)).sort();
-  for (const key of extras) {
-    ordered[key] = config[key];
-  }
-  return ordered;
-}
-function loadRawConfig(path4) {
-  if (!existsSync8(path4))
-    return void 0;
-  try {
-    const parsed = JSON.parse(stripBom(readFileSync6(path4, "utf-8")));
-    if (typeof parsed !== "object" || parsed === null)
-      return void 0;
-    return parsed;
-  } catch {
-    return void 0;
-  }
-}
-var KeybindingsManager2 = class _KeybindingsManager extends KeybindingsManager {
-  configPath;
-  constructor(userBindings = {}, configPath) {
-    super(KEYBINDINGS, userBindings);
-    this.configPath = configPath;
-  }
-  static create(agentDir = (0, config_exports.getAgentDir)()) {
-    const configPath = join11(agentDir, "keybindings.json");
-    const userBindings = _KeybindingsManager.loadFromFile(configPath);
-    return new _KeybindingsManager(userBindings, configPath);
-  }
-  reload() {
-    if (!this.configPath)
-      return;
-    this.setUserBindings(_KeybindingsManager.loadFromFile(this.configPath));
-  }
-  getEffectiveConfig() {
-    return this.getResolvedBindings();
-  }
-  static loadFromFile(path4) {
-    const rawConfig = loadRawConfig(path4);
-    if (!rawConfig)
-      return {};
-    return toKeybindingsConfig(migrateKeybindingsConfig(rawConfig).config);
-  }
-};
-
-// target/vendor-pi/dist/modes/interactive/components/session-selector-search.js
-function normalizeWhitespaceLower(text) {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-function getSessionSearchText(session) {
-  return `${session.id} ${session.name ?? ""} ${session.allMessagesText} ${session.cwd}`;
-}
-function hasSessionName(session) {
-  return Boolean(session.name?.trim());
-}
-function matchesNameFilter(session, filter2) {
-  if (filter2 === "all")
-    return true;
-  return hasSessionName(session);
-}
-function parseSearchQuery(query) {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    return { mode: "tokens", tokens: [], regex: null };
-  }
-  if (trimmed.startsWith("re:")) {
-    const pattern = trimmed.slice(3).trim();
-    if (!pattern) {
-      return { mode: "regex", tokens: [], regex: null, error: "Empty regex" };
-    }
-    try {
-      return { mode: "regex", tokens: [], regex: new RegExp(pattern, "i") };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { mode: "regex", tokens: [], regex: null, error: msg };
-    }
-  }
-  const tokens = [];
-  let buf = "";
-  let inQuote = false;
-  let hadUnclosedQuote = false;
-  const flush = (kind) => {
-    const v = buf.trim();
-    buf = "";
-    if (!v)
-      return;
-    tokens.push({ kind, value: v });
-  };
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '"') {
-      if (inQuote) {
-        flush("phrase");
-        inQuote = false;
-      } else {
-        flush("fuzzy");
-        inQuote = true;
-      }
-      continue;
-    }
-    if (!inQuote && /\s/.test(ch)) {
-      flush("fuzzy");
-      continue;
-    }
-    buf += ch;
-  }
-  if (inQuote) {
-    hadUnclosedQuote = true;
-  }
-  if (hadUnclosedQuote) {
-    return {
-      mode: "tokens",
-      tokens: trimmed.split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0).map((t) => ({ kind: "fuzzy", value: t })),
-      regex: null
-    };
-  }
-  flush(inQuote ? "phrase" : "fuzzy");
-  return { mode: "tokens", tokens, regex: null };
-}
-function matchSession(session, parsed) {
-  const text = getSessionSearchText(session);
-  if (parsed.mode === "regex") {
-    if (!parsed.regex) {
-      return { matches: false, score: 0 };
-    }
-    const idx = text.search(parsed.regex);
-    if (idx < 0)
-      return { matches: false, score: 0 };
-    return { matches: true, score: idx * 0.1 };
-  }
-  if (parsed.tokens.length === 0) {
-    return { matches: true, score: 0 };
-  }
-  let totalScore = 0;
-  let normalizedText = null;
-  for (const token of parsed.tokens) {
-    if (token.kind === "phrase") {
-      if (normalizedText === null) {
-        normalizedText = normalizeWhitespaceLower(text);
-      }
-      const phrase = normalizeWhitespaceLower(token.value);
-      if (!phrase)
-        continue;
-      const idx = normalizedText.indexOf(phrase);
-      if (idx < 0)
-        return { matches: false, score: 0 };
-      totalScore += idx * 0.1;
-      continue;
-    }
-    const m = fuzzyMatch(token.value, text);
-    if (!m.matches)
-      return { matches: false, score: 0 };
-    totalScore += m.score;
-  }
-  return { matches: true, score: totalScore };
-}
-function filterAndSortSessions(sessions, query, sortMode, nameFilter = "all") {
-  const nameFiltered = nameFilter === "all" ? sessions : sessions.filter((session) => matchesNameFilter(session, nameFilter));
-  const trimmed = query.trim();
-  if (!trimmed)
-    return nameFiltered;
-  const parsed = parseSearchQuery(query);
-  if (parsed.error)
-    return [];
-  if (sortMode === "recent") {
-    const filtered = [];
-    for (const s of nameFiltered) {
-      const res = matchSession(s, parsed);
-      if (res.matches)
-        filtered.push(s);
-    }
-    return filtered;
-  }
-  const scored = [];
-  for (const s of nameFiltered) {
-    const res = matchSession(s, parsed);
-    if (!res.matches)
-      continue;
-    scored.push({ session: s, score: res.score });
-  }
-  scored.sort((a, b) => {
-    if (a.score !== b.score)
-      return a.score - b.score;
-    return b.session.modified.getTime() - a.session.modified.getTime();
-  });
-  return scored.map((r) => r.session);
-}
-
-// target/vendor-pi/dist/modes/interactive/components/session-selector.js
-function shortenPath2(path4) {
-  const home = os2.homedir();
-  if (!path4)
-    return path4;
-  if (path4.startsWith(home)) {
-    return `~${path4.slice(home.length)}`;
-  }
-  return path4;
-}
-function formatSessionDate(date) {
-  const now = /* @__PURE__ */ new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 6e4);
-  const diffHours = Math.floor(diffMs / 36e5);
-  const diffDays = Math.floor(diffMs / 864e5);
-  if (diffMins < 1)
-    return "now";
-  if (diffMins < 60)
-    return `${diffMins}m`;
-  if (diffHours < 24)
-    return `${diffHours}h`;
-  if (diffDays < 7)
-    return `${diffDays}d`;
-  if (diffDays < 30)
-    return `${Math.floor(diffDays / 7)}w`;
-  if (diffDays < 365)
-    return `${Math.floor(diffDays / 30)}mo`;
-  return `${Math.floor(diffDays / 365)}y`;
-}
-function canonicalizePath2(path4) {
-  if (!path4)
-    return path4;
-  return canonicalizePath(path4);
-}
-var SessionSelectorHeader = class {
-  scope;
-  sortMode;
-  nameFilter;
-  requestRender;
-  loading = false;
-  loadProgress = null;
-  showPath = false;
-  confirmingDeletePath = null;
-  statusMessage = null;
-  statusTimeout = null;
-  showRenameHint = false;
-  constructor(scope, sortMode, nameFilter, requestRender) {
-    this.scope = scope;
-    this.sortMode = sortMode;
-    this.nameFilter = nameFilter;
-    this.requestRender = requestRender;
-  }
-  setScope(scope) {
-    this.scope = scope;
-  }
-  setSortMode(sortMode) {
-    this.sortMode = sortMode;
-  }
-  setNameFilter(nameFilter) {
-    this.nameFilter = nameFilter;
-  }
-  setLoading(loading) {
-    this.loading = loading;
-    this.loadProgress = null;
-  }
-  setProgress(loaded, total) {
-    this.loadProgress = { loaded, total };
-  }
-  setShowPath(showPath) {
-    this.showPath = showPath;
-  }
-  setShowRenameHint(show) {
-    this.showRenameHint = show;
-  }
-  setConfirmingDeletePath(path4) {
-    this.confirmingDeletePath = path4;
-  }
-  clearStatusTimeout() {
-    if (!this.statusTimeout)
-      return;
-    clearTimeout(this.statusTimeout);
-    this.statusTimeout = null;
-  }
-  setStatusMessage(msg, autoHideMs) {
-    this.clearStatusTimeout();
-    this.statusMessage = msg;
-    if (!msg || !autoHideMs)
-      return;
-    this.statusTimeout = setTimeout(() => {
-      this.statusMessage = null;
-      this.statusTimeout = null;
-      this.requestRender();
-    }, autoHideMs);
-  }
-  invalidate() {
-  }
-  render(width) {
-    const title = this.scope === "current" ? "Resume Session (Current Folder)" : "Resume Session (All)";
-    const leftText = theme_exports.theme.bold(title);
-    const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
-    const sortText = theme_exports.theme.fg("muted", "Sort: ") + theme_exports.theme.fg("accent", sortLabel);
-    const nameLabel = this.nameFilter === "all" ? "All" : "Named";
-    const nameText = theme_exports.theme.fg("muted", "Name: ") + theme_exports.theme.fg("accent", nameLabel);
-    let scopeText;
-    if (this.loading) {
-      const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
-      scopeText = `${theme_exports.theme.fg("muted", "\u25CB Current Folder | ")}${theme_exports.theme.fg("accent", `Loading ${progressText}`)}`;
-    } else if (this.scope === "current") {
-      scopeText = `${theme_exports.theme.fg("accent", "\u25C9 Current Folder")}${theme_exports.theme.fg("muted", " | \u25CB All")}`;
-    } else {
-      scopeText = `${theme_exports.theme.fg("muted", "\u25CB Current Folder | ")}${theme_exports.theme.fg("accent", "\u25C9 All")}`;
-    }
-    const rightText = truncateToWidth(`${scopeText}  ${nameText}  ${sortText}`, width, "");
-    const availableLeft = Math.max(0, width - visibleWidth(rightText) - 1);
-    const left = truncateToWidth(leftText, availableLeft, "");
-    const spacing = Math.max(0, width - visibleWidth(left) - visibleWidth(rightText));
-    let hintLine1;
-    let hintLine2;
-    if (this.confirmingDeletePath !== null) {
-      const confirmHint = `Delete session? ${keyHint("tui.select.confirm", "confirm")} \xB7 ${keyHint("tui.select.cancel", "cancel")}`;
-      hintLine1 = theme_exports.theme.fg("error", truncateToWidth(confirmHint, width, "\u2026"));
-      hintLine2 = "";
-    } else if (this.statusMessage) {
-      const color = this.statusMessage.type === "error" ? "error" : "accent";
-      hintLine1 = theme_exports.theme.fg(color, truncateToWidth(this.statusMessage.message, width, "\u2026"));
-      hintLine2 = "";
-    } else {
-      const pathState = this.showPath ? "(on)" : "(off)";
-      const sep6 = theme_exports.theme.fg("muted", " \xB7 ");
-      const hint1 = keyHint("tui.input.tab", "scope") + sep6 + theme_exports.theme.fg("muted", 're:<pattern> regex \xB7 "phrase" exact');
-      const hint2Parts = [
-        keyHint("app.session.toggleSort", "sort"),
-        keyHint("app.session.toggleNamedFilter", "named"),
-        keyHint("app.session.delete", "delete"),
-        keyHint("app.session.togglePath", `path ${pathState}`)
-      ];
-      if (this.showRenameHint) {
-        hint2Parts.push(keyHint("app.session.rename", "rename"));
-      }
-      const hint2 = hint2Parts.join(sep6);
-      hintLine1 = truncateToWidth(hint1, width, "\u2026");
-      hintLine2 = truncateToWidth(hint2, width, "\u2026");
-    }
-    return [`${left}${" ".repeat(spacing)}${rightText}`, hintLine1, hintLine2];
-  }
-};
-function buildSessionTree(sessions) {
-  const byPath = /* @__PURE__ */ new Map();
-  for (const session of sessions) {
-    const sessionPath = canonicalizePath2(session.path) ?? session.path;
-    byPath.set(sessionPath, { session, children: [], latestActivity: session.modified.getTime() });
-  }
-  const roots = [];
-  for (const session of sessions) {
-    const sessionPath = canonicalizePath2(session.path) ?? session.path;
-    const node = byPath.get(sessionPath);
-    const parentPath = canonicalizePath2(session.parentSessionPath);
-    if (parentPath && byPath.has(parentPath)) {
-      byPath.get(parentPath).children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-  const updateLatestActivity = (node) => {
-    let latestActivity = node.session.modified.getTime();
-    for (const child of node.children) {
-      latestActivity = Math.max(latestActivity, updateLatestActivity(child));
-    }
-    node.latestActivity = latestActivity;
-    return latestActivity;
-  };
-  for (const root of roots) {
-    updateLatestActivity(root);
-  }
-  const sortNodes = (nodes) => {
-    nodes.sort((a, b) => b.latestActivity - a.latestActivity);
-    for (const node of nodes) {
-      sortNodes(node.children);
-    }
-  };
-  sortNodes(roots);
-  return roots;
-}
-function flattenSessionTree(roots) {
-  const result = [];
-  const walk = (node, depth, ancestorContinues, isLast) => {
-    result.push({ session: node.session, depth, isLast, ancestorContinues });
-    for (let i = 0; i < node.children.length; i++) {
-      const childIsLast = i === node.children.length - 1;
-      const continues = depth > 0 ? !isLast : false;
-      walk(node.children[i], depth + 1, [...ancestorContinues, continues], childIsLast);
-    }
-  };
-  for (let i = 0; i < roots.length; i++) {
-    walk(roots[i], 0, [], i === roots.length - 1);
-  }
-  return result;
-}
-var SessionList = class {
-  getSelectedSessionPath() {
-    const selected = this.filteredSessions[this.selectedIndex];
-    return selected?.session.path;
-  }
-  allSessions = [];
-  filteredSessions = [];
-  selectedIndex = 0;
-  selectionTouched = false;
-  searchInput;
-  showCwd = false;
-  sortMode = "threaded";
-  nameFilter = "all";
-  keybindings;
-  showPath = false;
-  confirmingDeletePath = null;
-  currentSessionCanonicalPath;
-  onSelect;
-  onCancel;
-  onExit = () => {
-  };
-  onToggleScope;
-  onToggleSort;
-  onToggleNameFilter;
-  onTogglePath;
-  onDeleteConfirmationChange;
-  onDeleteSession;
-  onRenameSession;
-  onError;
-  maxVisible = 10;
-  // Max sessions visible (one line each)
-  // Focusable implementation - propagate to searchInput for IME cursor positioning
-  _focused = false;
-  get focused() {
-    return this._focused;
-  }
-  set focused(value) {
-    this._focused = value;
-    this.searchInput.focused = value;
-  }
-  constructor(sessions, showCwd, sortMode, nameFilter, keybindings, currentSessionFilePath) {
-    this.allSessions = sessions;
-    this.filteredSessions = [];
-    this.searchInput = new Input();
-    this.showCwd = showCwd;
-    this.sortMode = sortMode;
-    this.nameFilter = nameFilter;
-    this.keybindings = keybindings;
-    this.currentSessionCanonicalPath = canonicalizePath2(currentSessionFilePath);
-    this.filterSessions("");
-    this.searchInput.onSubmit = () => {
-      if (this.filteredSessions[this.selectedIndex]) {
-        const selected = this.filteredSessions[this.selectedIndex];
-        if (this.onSelect) {
-          this.onSelect(selected.session.path);
-        }
-      }
-    };
-  }
-  setSortMode(sortMode) {
-    this.sortMode = sortMode;
-    this.filterSessions(this.searchInput.getValue());
-  }
-  setNameFilter(nameFilter) {
-    this.nameFilter = nameFilter;
-    this.filterSessions(this.searchInput.getValue());
-  }
-  setSessions(sessions, showCwd) {
-    const selectedPath = this.selectionTouched ? this.getSelectedSessionPath() : void 0;
-    this.allSessions = sessions;
-    this.showCwd = showCwd;
-    this.filterSessions(this.searchInput.getValue());
-    if (!this.selectionTouched) {
-      this.selectedIndex = 0;
-    } else if (selectedPath) {
-      const selectedIndex = this.filteredSessions.findIndex((node) => node.session.path === selectedPath);
-      if (selectedIndex >= 0)
-        this.selectedIndex = selectedIndex;
-    }
-  }
-  filterSessions(query) {
-    const trimmed = query.trim();
-    const nameFiltered = this.nameFilter === "all" ? this.allSessions : this.allSessions.filter((session) => hasSessionName(session));
-    if (this.sortMode === "threaded" && !trimmed) {
-      const roots = buildSessionTree(nameFiltered);
-      this.filteredSessions = flattenSessionTree(roots);
-    } else {
-      const filtered = filterAndSortSessions(nameFiltered, query, this.sortMode, "all");
-      this.filteredSessions = filtered.map((session) => ({
-        session,
-        depth: 0,
-        isLast: true,
-        ancestorContinues: []
-      }));
-    }
-    this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredSessions.length - 1));
-  }
-  setConfirmingDeletePath(path4) {
-    this.confirmingDeletePath = path4;
-    this.onDeleteConfirmationChange?.(path4);
-  }
-  startDeleteConfirmationForSelectedSession() {
-    const selected = this.filteredSessions[this.selectedIndex];
-    if (!selected)
-      return;
-    if (this.isCurrentSessionPath(selected.session.path)) {
-      this.onError?.("Cannot delete the currently active session");
-      return;
-    }
-    this.setConfirmingDeletePath(selected.session.path);
-  }
-  isCurrentSessionPath(path4) {
-    if (!this.currentSessionCanonicalPath)
-      return false;
-    return (canonicalizePath2(path4) ?? path4) === this.currentSessionCanonicalPath;
-  }
-  invalidate() {
-  }
-  render(width) {
-    const lines = [];
-    lines.push(...this.searchInput.render(width));
-    lines.push("");
-    if (this.filteredSessions.length === 0) {
-      let emptyMessage;
-      if (this.nameFilter === "named") {
-        const toggleKey = keyText("app.session.toggleNamedFilter");
-        if (this.showCwd) {
-          emptyMessage = `  No named sessions found. Press ${toggleKey} to show all.`;
-        } else {
-          emptyMessage = `  No named sessions in current folder. Press ${toggleKey} to show all, or Tab to view all.`;
-        }
-      } else if (this.showCwd) {
-        emptyMessage = "  No sessions found";
-      } else {
-        emptyMessage = "  No sessions in current folder. Press Tab to view all.";
-      }
-      lines.push(theme_exports.theme.fg("muted", truncateToWidth(emptyMessage, width, "\u2026")));
-      return lines;
-    }
-    const startIndex = Math.max(0, Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.filteredSessions.length - this.maxVisible));
-    const endIndex = Math.min(startIndex + this.maxVisible, this.filteredSessions.length);
-    for (let i = startIndex; i < endIndex; i++) {
-      const node = this.filteredSessions[i];
-      const session = node.session;
-      const isSelected = i === this.selectedIndex;
-      const isConfirmingDelete = session.path === this.confirmingDeletePath;
-      const isCurrent = this.isCurrentSessionPath(session.path);
-      const prefix = this.buildTreePrefix(node);
-      const hasName = !!session.name;
-      const displayText = session.name ?? session.firstMessage;
-      const normalizedMessage = displayText.replace(/[\x00-\x1f\x7f]/g, " ").trim();
-      const age = formatSessionDate(session.modified);
-      const msgCount = String(session.messageCount);
-      let rightPart = `${msgCount} ${age}`;
-      if (this.showCwd && session.cwd) {
-        rightPart = `${shortenPath2(session.cwd)} ${rightPart}`;
-      }
-      if (this.showPath) {
-        rightPart = `${shortenPath2(session.path)} ${rightPart}`;
-      }
-      const cursor = isSelected ? theme_exports.theme.fg("accent", "\u203A ") : "  ";
-      const prefixWidth = visibleWidth(prefix);
-      const rightWidth = visibleWidth(rightPart) + 2;
-      const availableForMsg = width - 2 - prefixWidth - rightWidth;
-      const truncatedMsg = truncateToWidth(normalizedMessage, Math.max(10, availableForMsg), "\u2026");
-      let messageColor = null;
-      if (isConfirmingDelete) {
-        messageColor = "error";
-      } else if (isCurrent) {
-        messageColor = "accent";
-      } else if (hasName) {
-        messageColor = "warning";
-      }
-      let styledMsg = messageColor ? theme_exports.theme.fg(messageColor, truncatedMsg) : truncatedMsg;
-      if (isSelected) {
-        styledMsg = theme_exports.theme.bold(styledMsg);
-      }
-      const leftPart = cursor + theme_exports.theme.fg("dim", prefix) + styledMsg;
-      const leftWidth = visibleWidth(leftPart);
-      const spacing = Math.max(1, width - leftWidth - visibleWidth(rightPart));
-      const styledRight = theme_exports.theme.fg(isConfirmingDelete ? "error" : "dim", rightPart);
-      let line = leftPart + " ".repeat(spacing) + styledRight;
-      if (isSelected) {
-        line = theme_exports.theme.bg("selectedBg", line);
-      }
-      lines.push(truncateToWidth(line, width));
-    }
-    if (startIndex > 0 || endIndex < this.filteredSessions.length) {
-      const scrollText = `  (${this.selectedIndex + 1}/${this.filteredSessions.length})`;
-      const scrollInfo = theme_exports.theme.fg("muted", truncateToWidth(scrollText, width, ""));
-      lines.push(scrollInfo);
-    }
-    return lines;
-  }
-  buildTreePrefix(node) {
-    if (node.depth === 0) {
-      return "";
-    }
-    const parts = node.ancestorContinues.map((continues) => continues ? "\u2502  " : "   ");
-    const branch = node.isLast ? "\u2514\u2500 " : "\u251C\u2500 ";
-    return parts.join("") + branch;
-  }
-  handleInput(keyData) {
-    const kb = getKeybindings();
-    if (this.confirmingDeletePath !== null) {
-      if (kb.matches(keyData, "tui.select.confirm")) {
-        const pathToDelete = this.confirmingDeletePath;
-        this.setConfirmingDeletePath(null);
-        void this.onDeleteSession?.(pathToDelete);
-        return;
-      }
-      if (kb.matches(keyData, "tui.select.cancel")) {
-        this.setConfirmingDeletePath(null);
-        return;
-      }
-      return;
-    }
-    if (kb.matches(keyData, "tui.input.tab")) {
-      if (this.onToggleScope) {
-        this.onToggleScope();
-      }
-      return;
-    }
-    if (kb.matches(keyData, "app.session.toggleSort")) {
-      this.onToggleSort?.();
-      return;
-    }
-    if (this.keybindings.matches(keyData, "app.session.toggleNamedFilter")) {
-      this.onToggleNameFilter?.();
-      return;
-    }
-    if (kb.matches(keyData, "app.session.togglePath")) {
-      this.showPath = !this.showPath;
-      this.onTogglePath?.(this.showPath);
-      return;
-    }
-    if (kb.matches(keyData, "app.session.delete")) {
-      this.startDeleteConfirmationForSelectedSession();
-      return;
-    }
-    if (kb.matches(keyData, "app.session.rename")) {
-      const selected = this.filteredSessions[this.selectedIndex];
-      if (selected) {
-        this.onRenameSession?.(selected.session.path);
-      }
-      return;
-    }
-    if (kb.matches(keyData, "app.session.deleteNoninvasive")) {
-      if (this.searchInput.getValue().length > 0) {
-        this.searchInput.handleInput(keyData);
-        this.filterSessions(this.searchInput.getValue());
-        return;
-      }
-      this.startDeleteConfirmationForSelectedSession();
-      return;
-    }
-    this.selectionTouched = true;
-    if (kb.matches(keyData, "tui.select.up")) {
-      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-    } else if (kb.matches(keyData, "tui.select.down")) {
-      this.selectedIndex = Math.min(this.filteredSessions.length - 1, this.selectedIndex + 1);
-    } else if (kb.matches(keyData, "tui.select.pageUp")) {
-      this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
-    } else if (kb.matches(keyData, "tui.select.pageDown")) {
-      this.selectedIndex = Math.min(this.filteredSessions.length - 1, this.selectedIndex + this.maxVisible);
-    } else if (kb.matches(keyData, "tui.select.confirm")) {
-      const selected = this.filteredSessions[this.selectedIndex];
-      if (selected && this.onSelect) {
-        this.onSelect(selected.session.path);
-      }
-    } else if (kb.matches(keyData, "tui.select.cancel")) {
-      if (this.onCancel) {
-        this.onCancel();
-      }
-    } else {
-      this.searchInput.handleInput(keyData);
-      this.filterSessions(this.searchInput.getValue());
-    }
-  }
-};
-async function deleteSessionFile(sessionPath) {
-  const trashArgs = sessionPath.startsWith("-") ? ["--", sessionPath] : [sessionPath];
-  const trashResult = spawnSync4("trash", trashArgs, { encoding: "utf-8" });
-  const getTrashErrorHint = () => {
-    const parts = [];
-    if (trashResult.error) {
-      parts.push(trashResult.error.message);
-    }
-    const stderr = trashResult.stderr?.trim();
-    if (stderr) {
-      parts.push(stderr.split("\n")[0] ?? stderr);
-    }
-    if (parts.length === 0)
-      return null;
-    return `trash: ${parts.join(" \xB7 ").slice(0, 200)}`;
-  };
-  if (trashResult.status === 0 || !existsSync9(sessionPath)) {
-    return { ok: true, method: "trash" };
-  }
-  try {
-    await unlink(sessionPath);
-    return { ok: true, method: "unlink" };
-  } catch (err) {
-    const unlinkError = err instanceof Error ? err.message : String(err);
-    const trashErrorHint = getTrashErrorHint();
-    const error = trashErrorHint ? `${unlinkError} (${trashErrorHint})` : unlinkError;
-    return { ok: false, method: "unlink", error };
-  }
-}
-var SessionSelectorComponent = class extends Container {
-  handleInput(data) {
-    if (this.mode === "rename") {
-      const kb = getKeybindings();
-      if (kb.matches(data, "tui.select.cancel")) {
-        this.exitRenameMode();
-        return;
-      }
-      this.renameInput.handleInput(data);
-      return;
-    }
-    this.sessionList.handleInput(data);
-  }
-  canRename = true;
-  sessionList;
-  header;
-  keybindings;
-  scope = "current";
-  sortMode = "threaded";
-  nameFilter = "all";
-  currentSessions = null;
-  allSessions = null;
-  currentSessionsLoader;
-  allSessionsLoader;
-  requestRender;
-  renameSession;
-  currentLoad = null;
-  allLoad = null;
-  mode = "list";
-  renameInput = new Input();
-  renameTargetPath = null;
-  // Focusable implementation - propagate to sessionList for IME cursor positioning
-  _focused = false;
-  get focused() {
-    return this._focused;
-  }
-  set focused(value) {
-    this._focused = value;
-    this.sessionList.focused = value;
-    this.renameInput.focused = value;
-    if (value && this.mode === "rename") {
-      this.renameInput.focused = true;
-    }
-  }
-  buildBaseLayout(content, options) {
-    this.clear();
-    this.addChild(new Spacer(1));
-    this.addChild(new DynamicBorder((s) => theme_exports.theme.fg("accent", s)));
-    this.addChild(new Spacer(1));
-    if (options?.showHeader ?? true) {
-      this.addChild(this.header);
-      this.addChild(new Spacer(1));
-    }
-    this.addChild(content);
-    this.addChild(new Spacer(1));
-    this.addChild(new DynamicBorder((s) => theme_exports.theme.fg("accent", s)));
-  }
-  constructor(currentSessionsLoader, allSessionsLoader, onSelect, onCancel, onExit, requestRender, options, currentSessionFilePath) {
-    super();
-    this.keybindings = options?.keybindings ?? KeybindingsManager2.create();
-    this.currentSessionsLoader = currentSessionsLoader;
-    this.allSessionsLoader = allSessionsLoader;
-    this.requestRender = requestRender;
-    this.header = new SessionSelectorHeader(this.scope, this.sortMode, this.nameFilter, this.requestRender);
-    const renameSession = options?.renameSession;
-    this.renameSession = renameSession;
-    this.canRename = !!renameSession;
-    this.header.setShowRenameHint(options?.showRenameHint ?? this.canRename);
-    this.sessionList = new SessionList([], false, this.sortMode, this.nameFilter, this.keybindings, currentSessionFilePath);
-    this.buildBaseLayout(this.sessionList);
-    this.renameInput.onSubmit = (value) => {
-      void this.confirmRename(value);
-    };
-    const clearStatusMessage = () => this.header.setStatusMessage(null);
-    this.sessionList.onSelect = (sessionPath) => {
-      clearStatusMessage();
-      this.cancelLoads();
-      onSelect(sessionPath);
-    };
-    this.sessionList.onCancel = () => {
-      clearStatusMessage();
-      this.cancelLoads();
-      onCancel();
-    };
-    this.sessionList.onExit = () => {
-      clearStatusMessage();
-      this.cancelLoads();
-      onExit();
-    };
-    this.sessionList.onToggleScope = () => this.toggleScope();
-    this.sessionList.onToggleSort = () => this.toggleSortMode();
-    this.sessionList.onToggleNameFilter = () => this.toggleNameFilter();
-    this.sessionList.onRenameSession = (sessionPath) => {
-      if (!renameSession)
-        return;
-      if (this.scope === "current" ? this.currentLoad : this.allLoad)
-        return;
-      const sessions = this.scope === "all" ? this.allSessions ?? [] : this.currentSessions ?? [];
-      const session = sessions.find((s) => s.path === sessionPath);
-      this.enterRenameMode(sessionPath, session?.name);
-    };
-    this.sessionList.onTogglePath = (showPath) => {
-      this.header.setShowPath(showPath);
-      this.requestRender();
-    };
-    this.sessionList.onDeleteConfirmationChange = (path4) => {
-      this.header.setConfirmingDeletePath(path4);
-      this.requestRender();
-    };
-    this.sessionList.onError = (msg) => {
-      this.header.setStatusMessage({ type: "error", message: msg }, 3e3);
-      this.requestRender();
-    };
-    this.sessionList.onDeleteSession = async (sessionPath) => {
-      const result = await deleteSessionFile(sessionPath);
-      if (result.ok) {
-        if (this.currentSessions) {
-          this.currentSessions = this.currentSessions.filter((s) => s.path !== sessionPath);
-        }
-        if (this.allSessions) {
-          this.allSessions = this.allSessions.filter((s) => s.path !== sessionPath);
-        }
-        const sessions = this.scope === "all" ? this.allSessions ?? [] : this.currentSessions ?? [];
-        const showCwd = this.scope === "all";
-        this.sessionList.setSessions(sessions, showCwd);
-        const msg = result.method === "trash" ? "Session moved to trash" : "Session deleted";
-        this.header.setStatusMessage({ type: "info", message: msg }, 2e3);
-        await this.refreshSessionsAfterMutation();
-      } else {
-        const errorMessage = result.error ?? "Unknown error";
-        this.header.setStatusMessage({ type: "error", message: `Failed to delete: ${errorMessage}` }, 3e3);
-      }
-      this.requestRender();
-    };
-    void this.loadScope("current");
-  }
-  cancelLoads() {
-    if (this.currentLoad) {
-      this.currentLoad.abort();
-      this.currentLoad = null;
-      this.currentSessions = null;
-    }
-    if (this.allLoad) {
-      this.allLoad.abort();
-      this.allLoad = null;
-      this.allSessions = null;
-    }
-  }
-  enterRenameMode(sessionPath, currentName) {
-    this.mode = "rename";
-    this.renameTargetPath = sessionPath;
-    this.renameInput.setValue(currentName ?? "");
-    this.renameInput.focused = true;
-    const panel = new Container();
-    panel.addChild(new Text(theme_exports.theme.bold("Rename Session"), 1, 0));
-    panel.addChild(new Spacer(1));
-    panel.addChild(this.renameInput);
-    panel.addChild(new Spacer(1));
-    panel.addChild(new Text(theme_exports.theme.fg("muted", `${keyText("tui.select.confirm")} to save \xB7 ${keyText("tui.select.cancel")} to cancel`), 1, 0));
-    this.buildBaseLayout(panel, { showHeader: false });
-    this.requestRender();
-  }
-  exitRenameMode() {
-    this.mode = "list";
-    this.renameTargetPath = null;
-    this.buildBaseLayout(this.sessionList);
-    this.requestRender();
-  }
-  async confirmRename(value) {
-    const next = value.trim();
-    if (!next)
-      return;
-    const target = this.renameTargetPath;
-    if (!target) {
-      this.exitRenameMode();
-      return;
-    }
-    const renameSession = this.renameSession;
-    if (!renameSession) {
-      this.exitRenameMode();
-      return;
-    }
-    try {
-      await renameSession(target, next);
-      await this.refreshSessionsAfterMutation();
-    } finally {
-      this.exitRenameMode();
-    }
-  }
-  async loadScope(scope) {
-    if (scope === "current" ? this.currentLoad : this.allLoad)
-      return;
-    const showCwd = scope === "all";
-    const controller = new AbortController();
-    if (scope === "current") {
-      this.currentLoad = controller;
-    } else {
-      this.allLoad = controller;
-    }
-    this.header.setScope(scope);
-    this.header.setLoading(true);
-    this.requestRender();
-    const isActive = () => (scope === "current" ? this.currentLoad : this.allLoad) === controller;
-    const onProgress = (loaded, total, partialSessions) => {
-      if (!isActive())
-        return;
-      if (partialSessions) {
-        const sessions = [...partialSessions];
-        if (scope === "current") {
-          this.currentSessions = sessions;
-        } else {
-          this.allSessions = sessions;
-        }
-        if (scope === this.scope)
-          this.sessionList.setSessions(sessions, showCwd);
-      }
-      if (scope !== this.scope)
-        return;
-      this.header.setProgress(loaded, total);
-      this.requestRender();
-    };
-    try {
-      const sessions = await (scope === "current" ? this.currentSessionsLoader(onProgress, controller.signal) : this.allSessionsLoader(onProgress, controller.signal));
-      if (!isActive())
-        return;
-      if (scope === "current") {
-        this.currentSessions = sessions;
-        this.currentLoad = null;
-      } else {
-        this.allSessions = sessions;
-        this.allLoad = null;
-      }
-      if (scope !== this.scope)
-        return;
-      this.header.setLoading(false);
-      this.sessionList.setSessions(sessions, showCwd);
-      this.requestRender();
-    } catch (err) {
-      if (!isActive())
-        return;
-      if (scope === "current") {
-        this.currentLoad = null;
-        this.currentSessions = null;
-      } else {
-        this.allLoad = null;
-        this.allSessions = null;
-      }
-      if (scope !== this.scope)
-        return;
-      const message = err instanceof Error ? err.message : String(err);
-      this.header.setLoading(false);
-      this.header.setStatusMessage({ type: "error", message: `Failed to load sessions: ${message}` }, 4e3);
-      this.sessionList.setSessions([], showCwd);
-      this.requestRender();
-    }
-  }
-  toggleSortMode() {
-    this.sortMode = this.sortMode === "threaded" ? "recent" : this.sortMode === "recent" ? "relevance" : "threaded";
-    this.header.setSortMode(this.sortMode);
-    this.sessionList.setSortMode(this.sortMode);
-    this.requestRender();
-  }
-  toggleNameFilter() {
-    this.nameFilter = this.nameFilter === "all" ? "named" : "all";
-    this.header.setNameFilter(this.nameFilter);
-    this.sessionList.setNameFilter(this.nameFilter);
-    this.requestRender();
-  }
-  async refreshSessionsAfterMutation() {
-    this.cancelLoads();
-    this.currentSessions = null;
-    this.allSessions = null;
-    await this.loadScope(this.scope);
-  }
-  toggleScope() {
-    this.scope = this.scope === "current" ? "all" : "current";
-    const sessions = this.scope === "current" ? this.currentSessions : this.allSessions;
-    const loading = (this.scope === "current" ? this.currentLoad : this.allLoad) !== null;
-    this.header.setScope(this.scope);
-    this.header.setLoading(loading);
-    this.sessionList.setSessions(sessions ?? [], this.scope === "all");
-    this.requestRender();
-    if (sessions === null && !loading)
-      void this.loadScope(this.scope);
-  }
-  getSessionList() {
-    return this.sessionList;
-  }
-};
-
 // target/vendor-pi/dist/modes/interactive/components/settings-selector.js
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+
+// target/vendor-pi/dist/core/http-dispatcher.js
+import { EventEmitter } from "node:events";
+var HTTP_IDLE_TIMEOUT_CHOICES = [
+  { label: "30 sec", timeoutMs: 3e4 },
+  { label: "1 min", timeoutMs: 6e4 },
+  { label: "2 min", timeoutMs: 12e4 },
+  { label: "5 min", timeoutMs: 3e5 },
+  { label: "disabled", timeoutMs: 0 }
+];
+var originalGlobalFetch = globalThis.fetch;
+function formatHttpIdleTimeoutMs(timeoutMs) {
+  const choice = HTTP_IDLE_TIMEOUT_CHOICES.find((item) => item.timeoutMs === timeoutMs);
+  if (choice) {
+    return choice.label;
+  }
+  return `${timeoutMs / 1e3} sec`;
+}
+
+// target/vendor-pi/dist/core/settings-manager.js
+var import_proper_lockfile2 = __toESM(require_proper_lockfile());
+import { DEFAULT_MAX_AGENT_RETRY_DELAY_MS } from "@earendil-works/pi-ai";
+import { randomUUID as randomUUID2 } from "crypto";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync4 } from "fs";
+import { dirname as dirname5, join as join8 } from "path";
+var CACHE_WARMING_MODES = ["off", "streaming", "idle"];
 
 // target/vendor-pi/dist/modes/interactive/components/settings-submenu.js
 var SUBMENU_SELECT_LIST_LAYOUT = {
@@ -19468,7 +14756,7 @@ var TreeList = class {
     return false;
   }
   formatToolCall(name, args) {
-    const shortenPath3 = (p) => {
+    const shortenPath2 = (p) => {
       const home = process.env.HOME || process.env.USERPROFILE || "";
       if (home && p.startsWith(home))
         return `~${p.slice(home.length)}`;
@@ -19476,10 +14764,10 @@ var TreeList = class {
     };
     switch (name) {
       case "read": {
-        const path4 = shortenPath3(String(args.path || args.file_path || ""));
+        const path2 = shortenPath2(String(args.path || args.file_path || ""));
         const offset = args.offset;
         const limit = args.limit;
-        let display = path4;
+        let display = path2;
         if (offset !== void 0 || limit !== void 0) {
           const start = offset ?? 1;
           const end = limit !== void 0 ? start + limit - 1 : "";
@@ -19488,12 +14776,12 @@ var TreeList = class {
         return `[read: ${display}]`;
       }
       case "write": {
-        const path4 = shortenPath3(String(args.path || args.file_path || ""));
-        return `[write: ${path4}]`;
+        const path2 = shortenPath2(String(args.path || args.file_path || ""));
+        return `[write: ${path2}]`;
       }
       case "edit": {
-        const path4 = shortenPath3(String(args.path || args.file_path || ""));
-        return `[edit: ${path4}]`;
+        const path2 = shortenPath2(String(args.path || args.file_path || ""));
+        return `[edit: ${path2}]`;
       }
       case "bash": {
         const rawCmd = String(args.command || "");
@@ -19502,17 +14790,17 @@ var TreeList = class {
       }
       case "grep": {
         const pattern = String(args.pattern || "");
-        const path4 = shortenPath3(String(args.path || "."));
-        return `[grep: /${pattern}/ in ${path4}]`;
+        const path2 = shortenPath2(String(args.path || "."));
+        return `[grep: /${pattern}/ in ${path2}]`;
       }
       case "find": {
         const pattern = String(args.pattern || "");
-        const path4 = shortenPath3(String(args.path || "."));
-        return `[find: ${pattern} in ${path4}]`;
+        const path2 = shortenPath2(String(args.path || "."));
+        return `[find: ${pattern} in ${path2}]`;
       }
       case "ls": {
-        const path4 = shortenPath3(String(args.path || "."));
-        return `[ls: ${path4}]`;
+        const path2 = shortenPath2(String(args.path || "."));
+        return `[ls: ${path2}]`;
       }
       default: {
         const argsStr = JSON.stringify(args).slice(0, 40);
@@ -20015,8 +15303,6 @@ export {
   BranchSummaryMessageComponent,
   CompactionSummaryMessageComponent,
   CustomMessageComponent,
-  DEFAULT_MAX_BYTES,
-  DEFAULT_MAX_LINES,
   ExtensionEditorComponent,
   ExtensionInputComponent,
   ExtensionSelectorComponent,
@@ -20024,10 +15310,6 @@ export {
   LoginDialogComponent,
   ModelSelectorComponent,
   OAuthSelectorComponent,
-  ProjectTrustStore,
-  SessionManager,
-  SessionSelectorComponent,
-  SettingsManager,
   SettingsSelectorComponent,
   ShowImagesSelectorComponent,
   SkillInvocationMessageComponent,
@@ -20037,37 +15319,23 @@ export {
   TreeSelectorComponent,
   UserMessageComponent,
   UserMessageSelectorComponent,
-  allToolNames,
   buildContextEntries,
   buildSessionContext,
   buildSessionProjection,
   calculateContextTokens,
   collectEntriesForBranchSummary,
   compact,
-  createAllToolDefinitions,
-  createAllTools,
   createBashTool,
   createBashToolDefinition,
-  createCodingToolDefinitions,
-  createCodingTools,
   createEditTool,
   createEditToolDefinition,
-  createFindTool,
-  createFindToolDefinition,
-  createGrepTool,
-  createGrepToolDefinition,
-  createLocalBashOperations,
   createLocalPowerShellOperations,
   createLsTool,
   createLsToolDefinition,
   createPowerShellTool,
   createPowerShellToolDefinition,
-  createReadOnlyToolDefinitions,
-  createReadOnlyTools,
   createReadTool,
   createReadToolDefinition,
-  createTool,
-  createToolDefinition,
   createToolSearchExtension,
   createWriteTool,
   createWriteToolDefinition,
@@ -20091,7 +15359,6 @@ export {
   parseArgs,
   parseSessionEntries,
   prepareBranchEntries,
-  readStoredCredential,
   renderDiff,
   resolveCliModel,
   resolveModelScopeWithDiagnostics,
@@ -20100,7 +15367,6 @@ export {
   truncateHead,
   truncateLine,
   truncateTail,
-  withFileMutationQueue,
   wrapRegisteredTool,
   wrapRegisteredTools
 };

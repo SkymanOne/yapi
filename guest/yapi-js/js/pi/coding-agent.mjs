@@ -1,11 +1,14 @@
 // `@earendil-works/pi-coding-agent` for extensions in yapi: pi's own modules
 // for what runs inside the extension, built-in tools backed by yapi's own, and
-// stubs for the exports that would run a second agent, so every import links.
+// stubs, so every import links, for the exports that would run a second agent
+// or reach credentials, trust, settings or session files without the host.
 // A stub throws when called.
 import { Container, Editor, Text, getKeybindings } from "@earendil-works/pi-tui";
 import { theme } from "yapi:pi/host";
 
 const yapi = globalThis.__yapi;
+
+const unavailable = (name) => yapi.unsupported(`${name} from @earendil-works/pi-coding-agent is not available in yapi extensions`);
 
 /** pi's bundled modules, evaluated on first use: parsing them would cost every extension load. */
 const vendored = () => yapi.importSync("yapi:vendor/pi-coding-agent");
@@ -28,19 +31,17 @@ const lazy = new Proxy(
 export { CONFIG_DIR_NAME, VERSION, convertToPng, formatDimensionNote, getAgentDir, getDocsPath, getEditorTheme, getExamplesPath,
 	getLanguageFromPath, getMarkdownTheme, getPackageDir, getReadmePath, getSelectListTheme, getSettingsListTheme, highlightCode, initTheme,
 	parseFrontmatter, resizeImage, stripFrontmatter, Theme } from "yapi:pi/host";
-export const { ArminComponent, AssistantMessageComponent, BashExecutionComponent,
-	BranchSummaryMessageComponent, buildContextEntries, buildSessionContext, buildSessionProjection, calculateContextTokens,
-	collectEntriesForBranchSummary, compact, CompactionSummaryMessageComponent, createLocalPowerShellOperations, createPowerShellTool,
-	createPowerShellToolDefinition, createToolSearchExtension, CustomMessageComponent, detectSupportedImageMimeTypeFromFile, estimateTokens,
-	ExtensionEditorComponent, ExtensionInputComponent, ExtensionSelectorComponent, findCutPoint, findTurnStartIndex, FooterComponent,
-	formatSize, formatSkillsForPrompt, generateBranchSummary, generateDiffString, generateSummary, generateSummaryWithUsage,
-	generateUnifiedPatch, getLastAssistantUsage, getPowerShellConfig, hasTrustRequiringProjectResources, loadSkills, loadSkillsFromDir,
-	LoginDialogComponent, migrateSessionEntries, ModelSelectorComponent, OAuthSelectorComponent, parseArgs, parseSessionEntries,
-	prepareBranchEntries, ProjectTrustStore, readStoredCredential, renderDiff, resolveCliModel, resolveModelScopeWithDiagnostics,
-	SessionManager, SessionSelectorComponent, sessionEntryToContextMessages, SettingsManager, SettingsSelectorComponent, shouldCompact,
-	ShowImagesSelectorComponent, SkillInvocationMessageComponent, ThemeSelectorComponent, ThinkingSelectorComponent, ToolExecutionComponent,
-	TreeSelectorComponent, truncateHead, truncateLine, truncateTail, UserMessageComponent, UserMessageSelectorComponent, wrapRegisteredTool,
-	wrapRegisteredTools } = lazy;
+export const { ArminComponent, AssistantMessageComponent, BashExecutionComponent, BranchSummaryMessageComponent, buildContextEntries,
+	buildSessionContext, buildSessionProjection, calculateContextTokens, collectEntriesForBranchSummary, compact,
+	CompactionSummaryMessageComponent, createLocalPowerShellOperations, createPowerShellTool, createPowerShellToolDefinition,
+	createToolSearchExtension, CustomMessageComponent, detectSupportedImageMimeTypeFromFile, estimateTokens, ExtensionEditorComponent,
+	ExtensionInputComponent, ExtensionSelectorComponent, findCutPoint, findTurnStartIndex, FooterComponent, formatSize, formatSkillsForPrompt,
+	generateBranchSummary, generateDiffString, generateSummary, generateSummaryWithUsage, generateUnifiedPatch, getLastAssistantUsage,
+	getPowerShellConfig, hasTrustRequiringProjectResources, loadSkills, loadSkillsFromDir, LoginDialogComponent, migrateSessionEntries,
+	ModelSelectorComponent, OAuthSelectorComponent, parseArgs, parseSessionEntries, prepareBranchEntries, renderDiff, resolveCliModel,
+	resolveModelScopeWithDiagnostics, sessionEntryToContextMessages, SettingsSelectorComponent, shouldCompact, ShowImagesSelectorComponent,
+	SkillInvocationMessageComponent, ThemeSelectorComponent, ThinkingSelectorComponent, ToolExecutionComponent, TreeSelectorComponent,
+	truncateHead, truncateLine, truncateTail, UserMessageComponent, UserMessageSelectorComponent, wrapRegisteredTool, wrapRegisteredTools } = lazy;
 
 export const CURRENT_SESSION_VERSION = 3;
 export const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -99,10 +100,15 @@ export const createEventBus = yapi.createEventBus;
  * pi's factory for built-in tool `name`: yapi's tool, which the host runs, or
  * pi's own tool from its factory `piFactory` when the options change how it
  * runs, as custom `operations` (a remote filesystem, say) or bash's spawn
- * hook and command prefix do.
+ * hook and command prefix do. pi's grep and find run ripgrep and fd locally
+ * whatever the operations, and download them into the agent directory's
+ * `bin`, which yapi puts on every command's `PATH`, so they refuse options.
  */
 function builtinTool(name, cwd, options, piFactory) {
-	if (options?.operations || options?.spawnHook || options?.commandPrefix) return vendored()[piFactory](cwd ?? process.cwd(), options);
+	if (options?.operations || options?.spawnHook || options?.commandPrefix) {
+		if (name === "grep" || name === "find") unavailable(`${name} tool operations`);
+		return vendored()[piFactory](cwd ?? process.cwd(), options);
+	}
 	const info = yapi.request("builtin.tool", { name, cwd: cwd ?? process.cwd() });
 	return {
 		name: info.name,
@@ -501,6 +507,13 @@ for (const [method, type, keys, returns] of RPC_COMMANDS) {
 export const { AgentSession, AgentSessionRuntime, DefaultPackageManager, DefaultResourceLoader, ExtensionRunner, InteractiveMode, ModelRegistry,
 	ModelRuntime, createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, createExtensionRuntime,
 	createMcpExtension, discoverAndLoadExtensions, main, runPrintMode, runRpcMode } = yapi.stubs("@earendil-works/pi-coding-agent");
+// These reach what only the host may touch, through files the file grant
+// alone would guard: stored credentials (`readStoredCredential`), project
+// trust (`ProjectTrustStore`), settings that run or load code
+// (`SettingsManager`), and session files (`SessionManager`, and
+// `SessionSelectorComponent`, which deletes them).
+export const { ProjectTrustStore, SessionManager, SessionSelectorComponent, SettingsManager, readStoredCredential } =
+	yapi.stubs("@earendil-works/pi-coding-agent");
 /**
  * pi's codemode extension, for packages that decorate the tool before
  * registering it. yapi runs the scripts; `mode`, `inlineBudget` and `models`

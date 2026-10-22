@@ -31,23 +31,51 @@ const ENTRIES: [(&str, &str); 6] = [
     ("pi-coding-agent", PI_CODING_AGENT),
 ];
 /// The pi-coding-agent exports its facade takes from pi, from the copy of
-/// pi's `dist` that [`OVERRIDES`] patches.
+/// pi's `dist` that [`OVERRIDES`] patches. Exports that reach credentials,
+/// project trust, settings or session files directly stay out, and so do
+/// grep and find, which download their programs into the agent directory.
 const PI_CODING_AGENT: &str = "\
-export { buildContextEntries, buildSessionContext, buildSessionProjection, migrateSessionEntries, parseSessionEntries, sessionEntryToContextMessages, SessionManager } from '../dist/core/session-manager.js';
+export { buildContextEntries, buildSessionContext, buildSessionProjection, migrateSessionEntries, parseSessionEntries, sessionEntryToContextMessages } from '../dist/core/session-manager.js';
 export { calculateContextTokens, collectEntriesForBranchSummary, compact, estimateTokens, findCutPoint, findTurnStartIndex, generateBranchSummary, generateSummary, generateSummaryWithUsage, getLastAssistantUsage, prepareBranchEntries, shouldCompact } from '../dist/core/compaction/index.js';
 export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from '../dist/core/skills.js';
 export { generateDiffString, generateUnifiedPatch } from '../dist/core/tools/edit-diff.js';
 export { resolveCliModel, resolveModelScopeWithDiagnostics } from '../dist/core/model-resolver.js';
 export { parseArgs } from '../dist/cli/args.js';
-export { readStoredCredential } from '../dist/core/auth-storage.js';
-export { hasTrustRequiringProjectResources, ProjectTrustStore } from '../dist/core/trust-manager.js';
-export { SettingsManager } from '../dist/core/settings-manager.js';
+export { hasTrustRequiringProjectResources } from '../dist/core/trust-manager.js';
 export { wrapRegisteredTool, wrapRegisteredTools } from '../dist/core/extensions/wrapper.js';
 export { getPowerShellConfig } from '../dist/utils/shell.js';
 export { detectSupportedImageMimeTypeFromFile } from '../dist/utils/mime.js';
 export { createToolSearchExtension } from '../dist/extensions/tool-search/index.js';
-export * from '../dist/core/tools/index.js';
-export { ArminComponent, AssistantMessageComponent, BashExecutionComponent, BranchSummaryMessageComponent, CompactionSummaryMessageComponent, CustomMessageComponent, ExtensionEditorComponent, ExtensionInputComponent, ExtensionSelectorComponent, FooterComponent, LoginDialogComponent, ModelSelectorComponent, OAuthSelectorComponent, renderDiff, SessionSelectorComponent, SettingsSelectorComponent, ShowImagesSelectorComponent, SkillInvocationMessageComponent, ThemeSelectorComponent, ThinkingSelectorComponent, ToolExecutionComponent, TreeSelectorComponent, UserMessageComponent, UserMessageSelectorComponent } from '../dist/modes/interactive/components/index.js';
+export { createBashTool, createBashToolDefinition } from '../dist/core/tools/bash.js';
+export { createEditTool, createEditToolDefinition } from '../dist/core/tools/edit.js';
+export { createLsTool, createLsToolDefinition } from '../dist/core/tools/ls.js';
+export { createLocalPowerShellOperations, createPowerShellTool, createPowerShellToolDefinition } from '../dist/core/tools/powershell.js';
+export { createReadTool, createReadToolDefinition } from '../dist/core/tools/read.js';
+export { createWriteTool, createWriteToolDefinition } from '../dist/core/tools/write.js';
+export { formatSize, truncateHead, truncateLine, truncateTail } from '../dist/core/tools/truncate.js';
+export { ArminComponent } from '../dist/modes/interactive/components/armin.js';
+export { AssistantMessageComponent } from '../dist/modes/interactive/components/assistant-message.js';
+export { BashExecutionComponent } from '../dist/modes/interactive/components/bash-execution.js';
+export { BranchSummaryMessageComponent } from '../dist/modes/interactive/components/branch-summary-message.js';
+export { CompactionSummaryMessageComponent } from '../dist/modes/interactive/components/compaction-summary-message.js';
+export { CustomMessageComponent } from '../dist/modes/interactive/components/custom-message.js';
+export { ExtensionEditorComponent } from '../dist/modes/interactive/components/extension-editor.js';
+export { ExtensionInputComponent } from '../dist/modes/interactive/components/extension-input.js';
+export { ExtensionSelectorComponent } from '../dist/modes/interactive/components/extension-selector.js';
+export { FooterComponent } from '../dist/modes/interactive/components/footer.js';
+export { LoginDialogComponent } from '../dist/modes/interactive/components/login-dialog.js';
+export { ModelSelectorComponent } from '../dist/modes/interactive/components/model-selector.js';
+export { OAuthSelectorComponent } from '../dist/modes/interactive/components/oauth-selector.js';
+export { renderDiff } from '../dist/modes/interactive/components/diff.js';
+export { SettingsSelectorComponent } from '../dist/modes/interactive/components/settings-selector.js';
+export { ShowImagesSelectorComponent } from '../dist/modes/interactive/components/show-images-selector.js';
+export { SkillInvocationMessageComponent } from '../dist/modes/interactive/components/skill-invocation-message.js';
+export { ThemeSelectorComponent } from '../dist/modes/interactive/components/theme-selector.js';
+export { ThinkingSelectorComponent } from '../dist/modes/interactive/components/thinking-selector.js';
+export { ToolExecutionComponent } from '../dist/modes/interactive/components/tool-execution.js';
+export { TreeSelectorComponent } from '../dist/modes/interactive/components/tree-selector.js';
+export { UserMessageComponent } from '../dist/modes/interactive/components/user-message.js';
+export { UserMessageSelectorComponent } from '../dist/modes/interactive/components/user-message-selector.js';
 ";
 /// pi's installed package, whose `dist` the bundle copies.
 const PI_PACKAGE: &str = "tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent";
