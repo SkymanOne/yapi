@@ -5,7 +5,7 @@
 # yapi's agent directory, replacing the previous copy.
 #
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.0 --to /usr/local/bin
+#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
 #
 # Options, or the environment variables that set them:
 #   --version <tag>   YAPI_VERSION       release to install (default: the latest)
