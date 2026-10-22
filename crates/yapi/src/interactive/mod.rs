@@ -35,7 +35,7 @@ use std::collections::HashMap;
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use ratatui_core::text::{Line, Span};
@@ -360,7 +360,9 @@ fn terminal_leave(protocol: &mut KeyboardProtocol) -> String {
 /// Terminal input decoded into keys and bracketed pastes, in order, through
 /// the keyboard protocol filter, on pi-tui's timers: a partial sequence is
 /// released after the input buffer's timeout, and a partial negotiation reply
-/// [`NEGOTIATION_FRAGMENT_TIMEOUT`] after its last piece.
+/// [`NEGOTIATION_FRAGMENT_TIMEOUT`] after its last piece. A held piece waits
+/// while input already read is queued, since that input came first and may
+/// complete it, however long the loop was busy.
 struct TerminalInput {
     buffer: InputBuffer,
     escape_wait: Duration,
@@ -368,6 +370,10 @@ struct TerminalInput {
     sequence_at: Option<Instant>,
     /// When the protocol's partial reply is released as input.
     negotiation_at: Option<Instant>,
+    /// The reads the stdin thread has sent, and how many were decoded. Every
+    /// counted read must reach `decode`, or held pieces are never released.
+    reads: Arc<AtomicUsize>,
+    decoded: usize,
 }
 
 impl TerminalInput {
@@ -377,19 +383,26 @@ impl TerminalInput {
             escape_wait: escape_timeout(|name| std::env::var(name).ok()),
             sequence_at: None,
             negotiation_at: None,
+            reads: Arc::default(),
+            decoded: 0,
         }
     }
 
     /// Decodes `bytes` just read, writing back the protocol's replies.
     fn decode(&mut self, protocol: &mut KeyboardProtocol, bytes: &[u8]) -> Vec<String> {
+        self.decoded += 1;
         let inputs = self.buffer.push(bytes);
         let now = Instant::now();
         self.sequence_at = self.buffer.timeout(self.escape_wait).map(|wait| now + wait);
         self.filter(protocol, inputs)
     }
 
-    /// How long until the next held piece is due; `None` when nothing is held.
+    /// How long until the next held piece is due; `None` when nothing is held
+    /// or a read is still queued.
     fn wait(&self) -> Option<Duration> {
+        if self.reads.load(Ordering::SeqCst) > self.decoded {
+            return None;
+        }
         let next = self
             .sequence_at
             .into_iter()
@@ -4180,8 +4193,9 @@ fn error_result(text: &str) -> ToolResult {
     }
 }
 
-/// Reads stdin on a thread. While `paused`, input is left for another program.
-fn spawn_stdin(tx: UnboundedSender<Event>, paused: Arc<AtomicBool>) {
+/// Reads stdin on a thread, counting each read in `reads` before sending it.
+/// While `paused`, input is left for another program.
+fn spawn_stdin(tx: UnboundedSender<Event>, paused: Arc<AtomicBool>, reads: Arc<AtomicUsize>) {
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin();
         let mut buffer = [0u8; 4096];
@@ -4200,6 +4214,7 @@ fn spawn_stdin(tx: UnboundedSender<Event>, paused: Arc<AtomicBool>) {
                     return;
                 }
                 Ok(count) => {
+                    reads.fetch_add(1, Ordering::SeqCst);
                     if tx.send(Event::Input(buffer[..count].to_vec())).is_err() {
                         return;
                     }
@@ -4251,7 +4266,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     };
     let (tx, mut rx): (UnboundedSender<Event>, UnboundedReceiver<Event>) = unbounded_channel();
     let stdin_paused = Arc::new(AtomicBool::new(false));
-    spawn_stdin(tx.clone(), stdin_paused.clone());
+    let mut input = TerminalInput::new();
+    spawn_stdin(tx.clone(), stdin_paused.clone(), input.reads.clone());
     subscribe(&session, &tx, 0);
     {
         let tx = tx.clone();
@@ -4286,7 +4302,6 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     emit(&terminal_enter(&mut terminal.protocol));
 
     // Wait briefly for the color replies; keys typed meanwhile are kept.
-    let mut input = TerminalInput::new();
     let mut early: Vec<String> = Vec::new();
     let mut early_events: Vec<Event> = Vec::new();
     let deadline = Instant::now() + COLOR_QUERY_TIMEOUT;
@@ -5838,6 +5853,24 @@ mod tests {
         assert_eq!(detect(Some(BoolOr::Bool(true)), &herdr), kitty);
         let kitty_setting = Some(BoolOr::Other(ImageProtocol::Kitty));
         assert_eq!(detect(kitty_setting, &none), kitty);
+    }
+
+    #[test]
+    fn queued_reply_rest() {
+        // A partial reply past its deadline whose rest the stdin thread read
+        // while the loop was busy: the rest completes it, nothing is typed.
+        let mut protocol = KeyboardProtocol::default();
+        let mut input = TerminalInput::new();
+        assert!(input.decode(&mut protocol, b"\x1b[?").is_empty());
+        input.sequence_at = Some(Instant::now());
+        assert!(input.expire(&mut protocol).is_empty());
+        input.negotiation_at = Some(Instant::now());
+        input.reads.store(2, Ordering::SeqCst);
+        assert_eq!(input.wait(), None);
+        let keys = input.decode(&mut protocol, b"1utyped");
+        assert_eq!(keys, ["t", "y", "p", "e", "d"]);
+        assert!(protocol.kitty);
+        assert_eq!(input.wait(), None);
     }
 
     #[test]
