@@ -696,6 +696,63 @@ fn sigterm_cleanup() {
     pty.finish().unwrap();
 }
 
+/// The external editor runs beside the event loop, as pi's does: its text
+/// comes back to the prompt, and SIGTERM ends yapi while it is open.
+#[cfg(unix)]
+#[test]
+fn editor_beside_loop() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+    let root = common::scratch("external-editor");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let script = |name: &str, body: &str| {
+        let path = root.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.into_os_string()
+    };
+    let spawn = |editor: std::ffi::OsString| {
+        let env = [
+            ("HOME", root.clone().into_os_string()),
+            ("YAPI_CODING_AGENT_DIR", agent.clone().into_os_string()),
+            ("PI_OFFLINE", "1".into()),
+            ("ANTHROPIC_API_KEY", "mock".into()),
+            ("VISUAL", editor),
+        ];
+        let args = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"].map(str::to_owned);
+        let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap()
+    };
+    let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
+
+    let mut pty = spawn(script("quick.sh", r#"printf 'from the editor' > "$1""#));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x07").unwrap();
+    let edited = pty.wait_for(Duration::from_secs(10), shown("from the editor"));
+    assert!(edited.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
+
+    let mut pty = spawn(script("slow.sh", "/bin/sleep 30"));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x07").unwrap();
+    let opened = pty.wait_for(Duration::from_secs(10), shown("Launching external editor"));
+    assert!(opened.is_some(), "{:#?}", pty.rows());
+    let killed = Command::new("kill")
+        .args(["-TERM", &pty.pid().unwrap().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    pty.settle();
+    assert_eq!(pty.finish().unwrap(), 0, "yapi waited for the editor");
+}
+
 /// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset,
 /// and `/reload` applies the setting once it is set, as pi's
 /// `applyRuntimeSettings` does.
