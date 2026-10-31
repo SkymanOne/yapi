@@ -128,58 +128,69 @@ impl V8Scan<'_> {
         self.at - start
     }
 
+    /// A value, read iteratively as V8 does, so nesting depth is bounded
+    /// only by the input.
     fn value(&mut self) -> Result<(), V8Failure> {
-        self.skip_whitespace();
-        match self.peek() {
-            Some(b'"') => self.string(),
-            Some(b'-' | b'0'..=b'9') => self.number(),
-            Some(b't') => self.literal(b"true"),
-            Some(b'f') => self.literal(b"false"),
-            Some(b'n') => self.literal(b"null"),
-            Some(b'{') => {
-                self.at += 1;
-                self.skip_whitespace();
-                if self.peek() == Some(b'}') {
+        // The closing token of each container whose next element is pending.
+        let mut open = Vec::new();
+        loop {
+            self.skip_whitespace();
+            match self.peek() {
+                Some(b'"') => self.string()?,
+                Some(b'-' | b'0'..=b'9') => self.number()?,
+                Some(b't') => self.literal(b"true")?,
+                Some(b'f') => self.literal(b"false")?,
+                Some(b'n') => self.literal(b"null")?,
+                Some(token @ (b'{' | b'[')) => {
+                    let close = if token == b'{' { b'}' } else { b']' };
                     self.at += 1;
-                    return Ok(());
-                }
-                let mut name = "Expected property name or '}' in JSON";
-                loop {
                     self.skip_whitespace();
-                    if self.peek() != Some(b'"') {
-                        return Err(Some(name));
+                    if self.peek() == Some(close) {
+                        self.at += 1;
+                    } else {
+                        if close == b'}' {
+                            self.property("Expected property name or '}' in JSON")?;
+                        }
+                        open.push(close);
+                        continue;
                     }
-                    self.string()?;
-                    self.expect(b':', "Expected ':' after property name in JSON")?;
-                    self.value()?;
-                    self.skip_whitespace();
-                    if self.peek() != Some(b',') {
-                        return self
-                            .expect(b'}', "Expected ',' or '}' after property value in JSON");
-                    }
-                    self.at += 1;
-                    name = "Expected double-quoted property name in JSON";
                 }
+                _ => return Err(None),
             }
-            Some(b'[') => {
-                self.at += 1;
-                self.skip_whitespace();
-                if self.peek() == Some(b']') {
-                    self.at += 1;
+            loop {
+                let Some(&close) = open.last() else {
                     return Ok(());
-                }
-                loop {
-                    self.value()?;
-                    self.skip_whitespace();
-                    if self.peek() != Some(b',') {
-                        return self
-                            .expect(b']', "Expected ',' or ']' after array element in JSON");
-                    }
+                };
+                self.skip_whitespace();
+                if self.peek() == Some(b',') {
                     self.at += 1;
+                    if close == b'}' {
+                        self.property("Expected double-quoted property name in JSON")?;
+                    }
+                    break;
                 }
+                self.expect(
+                    close,
+                    if close == b'}' {
+                        "Expected ',' or '}' after property value in JSON"
+                    } else {
+                        "Expected ',' or ']' after array element in JSON"
+                    },
+                )?;
+                open.pop();
             }
-            _ => Err(None),
         }
+    }
+
+    /// A property name and its colon, or a failure with `message` when no
+    /// name starts here.
+    fn property(&mut self, message: &'static str) -> Result<(), V8Failure> {
+        self.skip_whitespace();
+        if self.peek() != Some(b'"') {
+            return Err(Some(message));
+        }
+        self.string()?;
+        self.expect(b':', "Expected ':' after property name in JSON")
     }
 
     fn literal(&mut self, word: &[u8]) -> Result<(), V8Failure> {
@@ -334,6 +345,7 @@ fn parse_partial(text: &str) -> Option<Value> {
     let mut parser = Partial {
         chars: text.chars().collect(),
         index: 0,
+        depth: 0,
     };
     parser.whitespace();
     parser.value().map(|(value, _)| value)
@@ -342,7 +354,13 @@ fn parse_partial(text: &str) -> Option<Value> {
 struct Partial {
     chars: Vec<char>,
     index: usize,
+    /// Objects and arrays open at the cursor.
+    depth: usize,
 }
+
+/// Nesting past this fails the partial parse, as pi's recursive parser fails
+/// when the stack runs out.
+const MAX_PARTIAL_DEPTH: usize = 512;
 
 /// Whether a value ended before its closing token.
 type Complete = bool;
@@ -363,9 +381,21 @@ impl Partial {
 
     /// A value, or `None` when nothing usable precedes the end or an error.
     fn value(&mut self) -> Option<(Value, Complete)> {
-        match self.peek()? {
-            '{' => self.object(),
-            '[' => self.array(),
+        let next = self.peek()?;
+        if matches!(next, '{' | '[') {
+            if self.depth == MAX_PARTIAL_DEPTH {
+                return None;
+            }
+            self.depth += 1;
+            let value = if next == '{' {
+                self.object()
+            } else {
+                self.array()
+            };
+            self.depth -= 1;
+            return value;
+        }
+        match next {
             '"' => self
                 .string()
                 .map(|(text, complete)| (Value::String(text), complete)),
@@ -670,6 +700,13 @@ mod tests {
         ] {
             assert_eq!(js_parse_error(text).as_deref(), message, "{text}");
         }
+        // V8 parses iteratively, so depth alone never fails.
+        let deep = "[".repeat(100_000);
+        assert_eq!(
+            js_parse_error(&deep).as_deref(),
+            Some("Unexpected end of JSON input")
+        );
+        assert_eq!(js_parse_error(&(deep.clone() + &"]".repeat(100_000))), None);
     }
 
     #[test]
@@ -708,5 +745,10 @@ mod tests {
                 "{input}"
             );
         }
+        // Too deep for the partial parser, which gives up as pi's does.
+        let nested = |depth: usize| format!("{{\"a\":{}", "[".repeat(depth));
+        assert!(!parse_streaming_json(&nested(MAX_PARTIAL_DEPTH - 1)).is_empty());
+        assert!(parse_streaming_json(&nested(MAX_PARTIAL_DEPTH)).is_empty());
+        assert!(parse_streaming_json(&nested(100_000)).is_empty());
     }
 }
