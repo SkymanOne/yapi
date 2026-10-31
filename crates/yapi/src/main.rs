@@ -178,11 +178,13 @@ fn model_network() -> bool {
 
 /// Runs the interactive session so that a panic leaves the terminal usable,
 /// as pi's crash handler does: the terminal modes are reset and the message
-/// printed after them. Raw mode is restored as the session unwinds.
+/// printed after them. Raw mode is restored as the session unwinds. Every
+/// panic meanwhile, on any thread, is logged.
 async fn survive_crash(run: impl std::future::Future<Output = u8>) -> u8 {
     use futures_util::FutureExt;
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|info| {
+        tracing::error!("panic: {info}");
         if let Ok(mut slot) = PANIC_MESSAGE.lock() {
             *slot = Some(info.to_string());
         }
@@ -208,7 +210,6 @@ async fn survive_crash(run: impl std::future::Future<Output = u8>) -> u8 {
                 .ok()
                 .and_then(|mut slot| slot.take())
                 .unwrap_or_else(|| "unknown panic".to_owned());
-            tracing::error!("yapi crashed: {message}");
             eprintln!("yapi crashed: {message}");
             eprintln!("To resume, run `yapi -c`.");
             1
@@ -494,7 +495,8 @@ fn pick_session(
 
 #[cfg(all(test, unix))]
 mod tests {
-    /// A crash kills the commands still running, as pi's crash handler does.
+    /// A crash kills the commands still running, as pi's crash handler does,
+    /// and every panic until then, on any thread, is logged.
     #[tokio::test(flavor = "multi_thread")]
     async fn crash_kills_commands() {
         let running = || {
@@ -516,7 +518,13 @@ mod tests {
             assert!(started.elapsed() < std::time::Duration::from_secs(10));
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
-        let code = super::survive_crash(async { panic!("boom") }).await;
+        let log = std::env::temp_dir().join(format!("yapi-crash-{}.log", std::process::id()));
+        super::log::enable(&log).unwrap();
+        let code = super::survive_crash(async {
+            let _ = std::thread::spawn(|| panic!("aside")).join();
+            panic!("boom")
+        })
+        .await;
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let left = running();
         command.abort();
@@ -527,5 +535,8 @@ mod tests {
         }
         assert_eq!(code, 1);
         assert!(!left, "the command outlived the crash");
+        let text = std::fs::read_to_string(&log).unwrap();
+        let _ = std::fs::remove_file(&log);
+        assert!(text.contains("aside") && text.contains("boom"), "{text}");
     }
 }
