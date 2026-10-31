@@ -70,6 +70,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 | Area | Pi | yapi |
 |---|---|---|
 | Deeply nested tool arguments | Tool-call arguments parse at any depth | Arguments nested more than 512 levels deep read as `{}`, so a model's output cannot crash yapi with a stack overflow. |
+| `write` and `edit` arguments that are not strings | A `tool_call` handler can change the arguments after validation. The tool then fails with whatever Node error comes up, such as `Cannot read properties of undefined (reading 'replace')`, after `write` creates the parent folders. `edit` of a missing file reports the missing file first. | The tool fails with `The "<name>" argument must be of type string.` before it touches the path or the file, so the message is clear and nothing is created or changed. |
 | Sorting names | ICU's `localeCompare` sorts every script | Latin letters, accents and marks sort as ICU's root collation does. Letters of other scripts sort by code point, to keep ICU's data out of the binary. |
 | `edit` on a file that is not UTF-8 | Reads it as UTF-8 and writes every invalid byte back as U+FFFD | Refuses the edit with "File is not valid UTF-8.", so bytes outside the edit never change. |
 | Line endings after `edit` | The whole file takes the line ending of its first line break | Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break. |
