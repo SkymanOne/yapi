@@ -4252,6 +4252,18 @@ fn quote(value: &str) -> String {
     }
 }
 
+/// pi's `formatResumeCommand` for the session `id` stored in `file`: the
+/// session directory is named when it is not `default_dir`.
+fn resume_command(file: &Path, id: &str, default_dir: &Path) -> String {
+    match file.parent() {
+        Some(dir) if dir != default_dir => format!(
+            "yapi --session-dir {} --session {id}",
+            quote(&dir.display().to_string())
+        ),
+        _ => format!("yapi --session {id}"),
+    }
+}
+
 /// Runs interactive mode until the user quits. Returns the exit code.
 pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options) -> u8 {
     // SIGTERM, or SIGHUP when the terminal goes away, caught before the
@@ -4409,6 +4421,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change()).ok();
     let mut last_draw = Instant::now();
     let mut dirty = false;
+    // pi's shutdown on a signal shows no resume hint.
+    let mut signalled = false;
     while !app.quit {
         let mut tick = if app.animating() {
             app.animation_interval()
@@ -4485,7 +4499,10 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 app.invalidate_all();
                 dirty = true;
             }
-            _ = &mut terminated => app.quit = true,
+            _ = &mut terminated => {
+                app.quit = true;
+                signalled = true;
+            }
             _ = tokio::time::sleep(flush_wait), if dirty => {}
         }
         app.start_binding();
@@ -4541,20 +4558,13 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         .session
         .with_session(|session| session.header().map(|header| header.id.clone()));
     if app.exit_code == 0
+        && !signalled
         && std::io::stdout().is_terminal()
         && let (Some(file), Some(id)) = (file, id)
         && file.exists()
     {
         let default_dir = yapi_core::config::default_session_dir(&agent_dir, &app.cwd);
-        let command = match file.parent() {
-            Some(dir) if dir != default_dir => {
-                format!(
-                    "yapi --session-dir {} --session {id}",
-                    quote(&dir.display().to_string())
-                )
-            }
-            _ => format!("yapi --session {id}"),
-        };
+        let command = resume_command(&file, &id, &default_dir);
         // chalk's dim, not the theme's.
         emit(&format!(
             "\x1b[2mTo resume this session:\x1b[22m {command}\n"
@@ -5932,6 +5942,26 @@ mod tests {
         assert_eq!(
             external_editor_notice("vim"),
             "Launching external editor: vim\nyapi will resume when the editor exits.\n"
+        );
+    }
+
+    /// pi's resume hint names a session directory other than the default
+    /// one, quoted for the shell when needed.
+    #[test]
+    fn resume_hint_dirs() {
+        let default = Path::new("/agent/sessions/--work--");
+        let hint = |file: &str| resume_command(Path::new(file), "abc", default);
+        assert_eq!(
+            hint("/agent/sessions/--work--/s.jsonl"),
+            "yapi --session abc"
+        );
+        assert_eq!(
+            hint("/tmp/plain/s.jsonl"),
+            "yapi --session-dir /tmp/plain --session abc"
+        );
+        assert_eq!(
+            hint("/tmp/it's here/s.jsonl"),
+            r"yapi --session-dir '/tmp/it'\''s here' --session abc"
         );
     }
 

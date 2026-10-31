@@ -615,34 +615,84 @@ fn split_terminal_input() {
 }
 
 /// SIGTERM ends a startup picker through its cleanup, which gives the
-/// terminal back, and the command fails.
+/// terminal back, and the command fails. It ends interactive mode without
+/// the resume hint that quitting shows, as in pi.
 #[cfg(unix)]
 #[test]
-fn picker_sigterm_cleanup() {
+fn sigterm_cleanup() {
     use std::time::Duration;
-    let root = common::scratch("picker-sigterm");
+    let root = common::scratch("sigterm");
     let agent = root.join("agent");
     std::fs::create_dir_all(&agent).unwrap();
     let env = [
         ("HOME", root.clone().into_os_string()),
         ("YAPI_CODING_AGENT_DIR", agent.into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
     ];
-    let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
-    let args = ["config".to_owned()];
-    let pty = yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap();
+    let spawn = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap()
+    };
     let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
+    let terminate = |pty: &yapi_mock::pty::Pty| {
+        let killed = Command::new("kill")
+            .args(["-TERM", &pty.pid().unwrap().to_string()])
+            .status()
+            .unwrap();
+        assert!(killed.success());
+    };
+
+    let pty = spawn(&["config"]);
     assert!(
         pty.wait_for(Duration::from_secs(20), shown("[x]"))
             .is_some()
     );
-    let killed = Command::new("kill")
-        .args(["-TERM", &pty.pid().unwrap().to_string()])
-        .status()
-        .unwrap();
-    assert!(killed.success());
+    terminate(&pty);
     let ended = pty.wait_for(Duration::from_secs(5), shown("Error: Terminated"));
     assert!(ended.is_some(), "{:#?}", pty.rows());
     assert!(!pty.cursor_hidden());
+    pty.finish().unwrap();
+
+    let session = root.join("sessions/s.jsonl");
+    std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+    let header = serde_json::json!({
+        "type": "session",
+        "version": 3,
+        "id": "019a0000-0000-7000-8000-00000000000a",
+        "timestamp": "2026-10-07T13:49:12.839Z",
+        "cwd": root,
+    });
+    std::fs::write(&session, format!("{header}\n")).unwrap();
+    let session = session.display().to_string();
+    let args = [
+        "--session",
+        &session,
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+    ];
+    let mut pty = spawn(&args);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x04").unwrap();
+    let hint = pty.wait_for(Duration::from_secs(10), shown("--session-dir"));
+    assert!(hint.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
+    let pty = spawn(&args);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    terminate(&pty);
+    pty.settle();
+    let rows = pty.rows();
+    assert!(
+        !rows.iter().any(|row| row.contains("To resume")),
+        "{rows:#?}"
+    );
     pty.finish().unwrap();
 }
 
