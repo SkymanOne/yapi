@@ -14,7 +14,7 @@ use base64::engine::general_purpose::STANDARD;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
-use yapi_ai::auth::lock::FileLock;
+use yapi_ai::auth::lock::{FileLock, LockError};
 
 /// Packages yapi provides to extensions itself; installing them is wasted work.
 const HOST_PACKAGES: [&str; 10] = [
@@ -760,13 +760,18 @@ fn write_manifest(root: &Path, manifest: Map<String, Value>) -> Result<(), NpmEr
 }
 
 /// Locks the npm root `root`, creating it, against the installs and removals
-/// of other processes until the lock is dropped.
+/// of other processes until the lock is dropped. Waits as long as a live
+/// holder keeps the lock, and takes over the lock of a holder that died.
 pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
     std::fs::create_dir_all(root).map_err(io(root))?;
     let manifest = root.join("package.json");
-    FileLock::acquire(&manifest, &CancellationToken::new())
-        .await
-        .map_err(|err| io(&manifest)(std::io::Error::other(err)))
+    loop {
+        match FileLock::acquire(&manifest, &CancellationToken::new()).await {
+            // A lock still held after the stale period is fresh: its holder is alive.
+            Err(LockError::Held) => continue,
+            result => return result.map_err(|err| io(&manifest)(std::io::Error::other(err))),
+        }
+    }
 }
 
 /// Installs `name` (at `range`, else the latest version) into the npm root

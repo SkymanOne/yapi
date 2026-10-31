@@ -53,11 +53,11 @@ pub fn read_piped_stdin() -> Option<String> {
     piped_text(&bytes)
 }
 
-/// Piped input as pi decodes it: invalid UTF-8 becomes U+FFFD, and blank
-/// input is no input.
+/// Piped input as pi decodes it: invalid UTF-8 becomes U+FFFD, JavaScript's
+/// `trim` also strips a byte order mark, and blank input is no input.
 fn piped_text(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
-    let trimmed = text.trim();
+    let trimmed = text.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
@@ -1398,6 +1398,9 @@ mod tests {
         // Piped input keeps text around invalid UTF-8.
         assert_eq!(piped_text(b" a\xffb\n").as_deref(), Some("a\u{fffd}b"));
         assert_eq!(piped_text(b" \n"), None);
+        // JavaScript's `trim` strips a byte order mark.
+        assert_eq!(piped_text(b"\xef\xbb\xbfa\n").as_deref(), Some("a"));
+        assert_eq!(piped_text(b"\xef\xbb\xbf"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -145,7 +145,7 @@ Module loading runs on the host, in `yapi-ext`:
 - The host enforces grants: WASI preopens for files; grant checks for exec, fetch and environment.
 - The host carries `pi.events` between instances, through a bounded queue per instance, so every extension hears every other's events, as in pi.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the host requests that still ignore them must check them: `tool.execute`, the extension event bus and session actions.
+- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the host requests that still ignore them must check them: `tool.execute`, `codemode.execute`, the extension event bus and session actions.
 
 ### Concurrency
 

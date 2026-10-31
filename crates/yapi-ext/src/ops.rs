@@ -2,6 +2,7 @@
 //! takes the JSON payload the Node shims send and returns their result shape.
 //! Operations of a running tool call run as jobs on the call's own task.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -184,49 +185,63 @@ pub(crate) async fn timer(payload: Value) -> Result<Value, String> {
     Ok(Value::Null)
 }
 
-/// Reads `pipe` to its end, or until it has sent more than `max` bytes,
-/// which `overflow` hears of; empty without a pipe.
+/// Reads `pipe` to its end, or until the pipes sharing `sent` have sent more
+/// than `max` bytes together, which `overflow` hears of. Keeps the bytes
+/// within `max`; empty without a pipe.
 async fn read_all(
     pipe: Option<impl tokio::io::AsyncRead + Unpin>,
     max: u64,
+    sent: &Cell<u64>,
     overflow: &tokio::sync::Notify,
 ) -> Vec<u8> {
     let mut buffer = Vec::new();
-    if let Some(pipe) = pipe {
-        let _ = pipe
-            .take(max.saturating_add(1))
-            .read_to_end(&mut buffer)
-            .await;
-    }
-    if buffer.len() as u64 > max {
-        overflow.notify_one();
+    let Some(mut pipe) = pipe else {
+        return buffer;
+    };
+    let mut chunk = vec![0; 64 * 1024];
+    loop {
+        let read = match pipe.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(read) => read,
+        };
+        let before = sent.get();
+        sent.set(before.saturating_add(read as u64));
+        let room = usize::try_from(max.saturating_sub(before)).unwrap_or(usize::MAX);
+        buffer.extend_from_slice(&chunk[..read.min(room)]);
+        if sent.get() > max {
+            overflow.notify_one();
+            break;
+        }
     }
     buffer
 }
 
 /// Runs a process to completion: `{stdout, stderr, code, signal, killed}`.
-/// More than `maxBuffer` bytes on either pipe stop the process, as Node's
-/// `spawnSync` does: its output is cut there, and `error` has Node's ENOBUFS
-/// message. A process that cannot start fails with Node's spawn error
-/// message.
+/// More than `maxBuffer` bytes on stdout and stderr together stop the
+/// process, as Node's `spawnSync` does: the output keeps the first
+/// `maxBuffer` bytes, and `error` has Node's ENOBUFS message. A process that
+/// cannot start fails with Node's spawnSync error message.
 pub(crate) async fn exec(payload: Value) -> Result<Value, String> {
     let spawn = Spawn::parse(&payload);
-    // Node does not limit the output for `Infinity`, which JSON makes `null`.
+    // Node does not limit the output for 0, a missing value, or `null` and
+    // `Infinity`, which JSON makes `null`.
     let max = payload["maxBuffer"]
         .as_f64()
-        .map_or(u64::MAX, |max| max.max(0.0) as u64);
+        .filter(|&max| max > 0.0)
+        .map_or(u64::MAX, |max| max as u64);
     let mut child = spawn
         .command()
         .spawn()
-        .map_err(|err| spawn_error(&spawn.command, &err))?;
+        .map_err(|err| spawn_error("spawnSync", &spawn.command, &err))?;
     if let (Some(input), Some(mut stdin)) = (spawn.input.clone(), child.stdin.take()) {
         tokio::spawn(async move {
             let _ = stdin.write_all(input.as_bytes()).await;
         });
     }
     let overflow = tokio::sync::Notify::new();
-    let read_out = read_all(child.stdout.take(), max, &overflow);
-    let read_err = read_all(child.stderr.take(), max, &overflow);
+    let sent = Cell::new(0);
+    let read_out = read_all(child.stdout.take(), max, &sent, &overflow);
+    let read_err = read_all(child.stderr.take(), max, &sent, &overflow);
     let mut killed = false;
     let wait = async {
         let limit = async {
@@ -244,12 +259,8 @@ pub(crate) async fn exec(payload: Value) -> Result<Value, String> {
             () = overflow.notified() => terminate(&mut child).await,
         }
     };
-    let (status, mut out, mut err) = tokio::join!(wait, read_out, read_err);
+    let (status, out, err) = tokio::join!(wait, read_out, read_err);
     let status = status.map_err(|err| err.to_string())?;
-    let overflowed = out.len() as u64 > max || err.len() as u64 > max;
-    let kept = usize::try_from(max).unwrap_or(usize::MAX);
-    out.truncate(kept);
-    err.truncate(kept);
     let mut result = json!({
         "stdout": String::from_utf8_lossy(&out),
         "stderr": String::from_utf8_lossy(&err),
@@ -257,7 +268,7 @@ pub(crate) async fn exec(payload: Value) -> Result<Value, String> {
         "signal": signal_name(&status),
         "killed": killed,
     });
-    if overflowed {
+    if sent.get() > max {
         result["error"] = json!(format!("spawnSync {} ENOBUFS", spawn.command));
     }
     Ok(result)
@@ -317,7 +328,7 @@ impl Streams {
         let mut child = spawn
             .command()
             .spawn()
-            .map_err(|err| spawn_error(&spawn.command, &err))?;
+            .map_err(|err| spawn_error("spawn", &spawn.command, &err))?;
         let pid = child.id();
         let (sender, events) = mpsc::channel(QUEUED_CHUNKS);
         let stdin = child.stdin.take().map(|mut pipe| {
@@ -684,9 +695,11 @@ pub fn reset_signal_dispositions() {
     }
 }
 
-fn spawn_error(command: &str, err: &std::io::Error) -> String {
+/// Node's error message for `command` that its `syscall`, `spawn` or
+/// `spawnSync`, could not start.
+fn spawn_error(syscall: &str, command: &str, err: &std::io::Error) -> String {
     let code = yapi_types::js::errno(err.kind()).map_or("EIO", |(code, _)| code);
-    format!("spawn {command} {code}")
+    format!("{syscall} {command} {code}")
 }
 
 /// The signals Node names, as its `signo_string` does; others have no name.
