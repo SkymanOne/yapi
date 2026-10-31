@@ -24,7 +24,7 @@ cargo run -p yapi --
 
 ## Checks
 
-Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only `docs/`, `skills/`, `.agents/`, `assets/`, `book.toml`, the license files, root Markdown files other than `CHANGELOG.md`, or workflows other than CI.
+Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only `docs/`, `.agents/`, `assets/`, `book.toml`, the license files, root Markdown files other than `CHANGELOG.md`, or workflows other than CI.
 
 ```sh
 cargo fmt --all

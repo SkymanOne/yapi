@@ -10,13 +10,14 @@ A scenario runs pi or yapi as a black box against a cassette, in a fresh working
 ## Run and record
 
 ```sh
+cargo build -p yapi                           # the binary cargo xtask e2e runs
 cargo test -p yapi --test scenarios           # yapi against every golden
 cargo xtask e2e --only <text>                 # scenarios whose name contains <text>
 cargo xtask e2e --differential                # live pi against live yapi
 cargo xtask e2e --record-pi --only <text>     # rewrite goldens from pi
 ```
 
-pi runs from the fixture generator's install. Run `npm ci` in `tests/fixtures/pi/generator` with Node 22.19 or newer. [tests/fixtures/pi/README.md](../../../tests/fixtures/pi/README.md) covers that install and pi's other goldens.
+`cargo xtask e2e` runs the existing `target/debug/yapi`, so build it first. Every `cargo xtask e2e` run needs the fixture generator's pi install: run `npm ci` in `tests/fixtures/pi/generator` with Node 22.19 or newer. [tests/fixtures/pi/README.md](../../../tests/fixtures/pi/README.md) covers that install and pi's other goldens.
 
 ## Requirements and timing
 
