@@ -2,7 +2,8 @@
 //! `proper-lockfile`, which pi uses for `auth.json`, `settings.json` and
 //! `trust.json`, and an atomic replacement of a file's contents. The lock is a
 //! `<file>.lock` directory, and one whose modification time is older than the
-//! stale period may be taken over.
+//! stale period may be taken over. A lock taken with [`FileLock::acquire`]
+//! keeps its modification time fresh while held, as `proper-lockfile` does.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -33,11 +34,13 @@ pub enum LockError {
 #[derive(Debug)]
 pub struct FileLock {
     dir: PathBuf,
+    /// The task that keeps the lock fresh.
+    refresh: Option<tokio::task::AbortHandle>,
 }
 
 impl FileLock {
     /// Locks `file`, retrying with jittered backoff until the stale period has
-    /// passed.
+    /// passed. While held, the lock is kept fresh.
     pub async fn acquire(file: &Path, cancel: &CancellationToken) -> Result<FileLock, LockError> {
         let dir = lock_dir(file);
         let deadline = Instant::now() + STALE;
@@ -46,7 +49,8 @@ impl FileLock {
             if cancel.is_cancelled() {
                 return Err(LockError::Cancelled);
             }
-            if let Some(lock) = try_lock(&dir)? {
+            if let Some(mut lock) = try_lock(&dir)? {
+                lock.refresh = Some(keep_fresh(dir));
                 return Ok(lock);
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -66,7 +70,7 @@ impl FileLock {
 
     /// Locks `file` from synchronous code, as pi's `lockSync` with its retries
     /// for `settings.json` and `trust.json`: ten attempts 20 ms apart, then
-    /// [`LockError::Held`].
+    /// [`LockError::Held`]. The lock is not kept fresh, so hold it only briefly.
     pub fn acquire_blocking(file: &Path) -> Result<FileLock, LockError> {
         let dir = lock_dir(file);
         for attempt in 1..=10 {
@@ -79,6 +83,19 @@ impl FileLock {
         }
         Err(LockError::Held)
     }
+}
+
+/// Touches the lock directory every half stale period, as `proper-lockfile`'s
+/// `update` does, until aborted.
+fn keep_fresh(dir: PathBuf) -> tokio::task::AbortHandle {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(STALE / 2).await;
+            // A failed touch lets the lock go stale, as if its holder had died.
+            let _ = std::fs::File::open(&dir).and_then(|dir| dir.set_modified(SystemTime::now()));
+        }
+    })
+    .abort_handle()
 }
 
 fn lock_dir(file: &Path) -> PathBuf {
@@ -94,6 +111,7 @@ fn try_lock(dir: &Path) -> std::io::Result<Option<FileLock>> {
             Ok(()) => {
                 return Ok(Some(FileLock {
                     dir: dir.to_path_buf(),
+                    refresh: None,
                 }));
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -159,6 +177,9 @@ fn write_temp(
 
 impl Drop for FileLock {
     fn drop(&mut self) {
+        if let Some(refresh) = &self.refresh {
+            refresh.abort();
+        }
         let _ = std::fs::remove_dir(&self.dir);
     }
 }
@@ -203,20 +224,28 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn stale_lock_taken_over() {
         let dir = std::env::temp_dir().join(format!("yapi-lock-stale-{}", std::process::id()));
         let lock = dir.join("auth.json.lock");
         std::fs::create_dir_all(&lock).unwrap();
-        let old = SystemTime::now() - STALE - Duration::from_secs(1);
-        std::fs::File::open(&lock)
-            .unwrap()
-            .set_modified(old)
-            .unwrap();
+        let age = || {
+            let old = SystemTime::now() - STALE - Duration::from_secs(1);
+            std::fs::File::open(&lock)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        };
+        age();
         let (file, cancel) = (dir.join("auth.json"), CancellationToken::new());
         let acquire = FileLock::acquire(&file, &cancel);
         let held = tokio::time::timeout(Duration::from_secs(1), acquire).await;
         assert!(matches!(held, Ok(Ok(_))));
+        // The new holder keeps its lock fresh.
+        age();
+        assert!(is_stale(&lock));
+        tokio::time::sleep(STALE / 2 + Duration::from_millis(1)).await;
+        assert!(!is_stale(&lock));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
