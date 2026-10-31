@@ -876,8 +876,9 @@
 		env: options.env,
 		timeout: options.timeout,
 		input: typeof options.input === "string" ? options.input : undefined,
-		// The sync functions' limit on each pipe, as in Node.
-		maxBuffer: options.maxBuffer ?? 1024 * 1024,
+		// The sync functions' limit on stdout and stderr together, as in Node:
+		// the default only when the key is absent, so `undefined` and `null` mean none.
+		maxBuffer: "maxBuffer" in options ? options.maxBuffer : 1024 * 1024,
 	});
 	const shell = (command) => ({ command: "/bin/sh", args: ["-c", command] });
 	/** Emits `child`'s output and exit as they arrive, then `close`. */

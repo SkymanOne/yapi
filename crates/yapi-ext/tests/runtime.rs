@@ -133,9 +133,16 @@ async fn runs_node_and_commonjs() {
     let main = r#"
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import lib from "cjs-lib";
 import { twice } from "cjs-lib";
+const run = (f) => {
+	try {
+		return f();
+	} catch (error) {
+		return error.message;
+	}
+};
 export default function (pi) {
 	pi.registerCommand("probe", {
 		description: [
@@ -150,6 +157,11 @@ export default function (pi) {
 					return error.code;
 				}
 			})(),
+			// Node's limit: none for 0 or null, stdout and stderr together.
+			run(() => execSync("echo hi", { maxBuffer: 0, encoding: "utf8" }).trim()),
+			run(() => execSync("head -c 2000000 /dev/zero", { maxBuffer: null }).length),
+			run(() => execSync("head -c 600000 /dev/zero; head -c 600000 /dev/zero >&2").length),
+			run(() => execFileSync("yapi-missing-command")),
 			typeof setTimeout,
 		].join(","),
 		handler: async () => {},
@@ -175,7 +187,8 @@ export default function (pi) {
     assert_eq!(extension.get("error"), None, "{extension}");
     assert_eq!(
         extension["commands"][0]["description"],
-        "from disk,4,6,hi,ENOBUFS,function"
+        "from disk,4,6,hi,ENOBUFS,hi,2000000,spawnSync /bin/sh ENOBUFS,\
+         spawnSync yapi-missing-command ENOENT,function"
     );
 }
 
