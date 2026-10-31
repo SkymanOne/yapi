@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-20bd17a2.js";
+            window.path_to_searchindex_js = "searchindex-0f5eb8cd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -198,7 +198,7 @@ cd yapi
 cargo run -p yapi --
 </code></pre>
 <h2 id="checks"><a class="header" href="#checks">Checks</a></h2>
-<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only <code>docs/</code>, <code>skills/</code>, <code>.agents/</code>, <code>assets/</code>, <code>book.toml</code>, the license files, root Markdown files other than <code>CHANGELOG.md</code>, or workflows other than CI.</p>
+<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only <code>docs/</code>, <code>.agents/</code>, <code>assets/</code>, <code>book.toml</code>, the license files, root Markdown files other than <code>CHANGELOG.md</code>, or workflows other than CI.</p>
 <pre><code class="language-sh">cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
