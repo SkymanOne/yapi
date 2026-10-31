@@ -615,8 +615,9 @@ fn split_terminal_input() {
 }
 
 /// SIGTERM ends a startup picker through its cleanup, which gives the
-/// terminal back, and the command fails. It ends interactive mode without
-/// the resume hint that quitting shows, as in pi.
+/// terminal back, and the command fails. Between the picker and interactive
+/// mode it ends yapi with its code. It ends interactive mode without the
+/// resume hint that quitting shows, as in pi.
 #[cfg(unix)]
 #[test]
 fn sigterm_cleanup() {
@@ -630,10 +631,10 @@ fn sigterm_cleanup() {
         ("PI_OFFLINE", "1".into()),
         ("ANTHROPIC_API_KEY", "mock".into()),
     ];
-    let spawn = |args: &[&str]| {
+    let spawn = |cwd: &std::path::Path, args: &[&str]| {
         let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
         let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
-        yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap()
+        yapi_mock::pty::Pty::spawn(path, &args, cwd, &env, (100, 30), true).unwrap()
     };
     let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
     let terminate = |pty: &yapi_mock::pty::Pty| {
@@ -644,7 +645,7 @@ fn sigterm_cleanup() {
         assert!(killed.success());
     };
 
-    let pty = spawn(&["config"]);
+    let pty = spawn(&root, &["config"]);
     assert!(
         pty.wait_for(Duration::from_secs(20), shown("[x]"))
             .is_some()
@@ -654,6 +655,45 @@ fn sigterm_cleanup() {
     assert!(ended.is_some(), "{:#?}", pty.rows());
     assert!(!pty.cursor_hidden());
     pty.finish().unwrap();
+
+    // Past the trust prompt, nothing would restore the terminal or end the
+    // session, so SIGTERM ends yapi at once: while a project extension
+    // loads, and while `yapi install` waits for a registry that never
+    // answers.
+    let trust_then_terminate = |mut pty: yapi_mock::pty::Pty| {
+        let prompt = shown("Trust project folder?");
+        assert!(pty.wait_for(Duration::from_secs(20), prompt).is_some());
+        pty.write("\r").unwrap();
+        let answered = pty.wait_for(Duration::from_secs(5), |rows| !prompt(rows));
+        assert!(answered.is_some(), "{:#?}", pty.rows());
+        terminate(&pty);
+        pty.settle();
+        assert_eq!(pty.finish().unwrap(), 143);
+    };
+    let project = root.join("project");
+    std::fs::create_dir_all(project.join(".yapi/extensions")).unwrap();
+    std::fs::write(
+        project.join(".yapi/extensions/slow.ts"),
+        "export default function () {\n\tconst end = Date.now() + 5000;\n\twhile (Date.now() < end) {}\n}\n",
+    )
+    .unwrap();
+    let model = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"];
+    trust_then_terminate(spawn(&project, &model));
+    let installing = root.join("installing");
+    std::fs::create_dir_all(installing.join(".yapi/prompts")).unwrap();
+    std::fs::write(installing.join(".yapi/prompts/hello.md"), "hello\n").unwrap();
+    let registry = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut install_env: Vec<_> = env
+        .iter()
+        .filter(|(name, _)| *name != "PI_OFFLINE")
+        .cloned()
+        .collect();
+    let url = format!("http://{}/", registry.local_addr().unwrap());
+    install_env.push(("npm_config_registry", url.into()));
+    let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let args = ["install", "npm:never-served"].map(str::to_owned);
+    let pty = yapi_mock::pty::Pty::spawn(path, &args, &installing, &install_env, (100, 30), true);
+    trust_then_terminate(pty.unwrap());
 
     let session = root.join("sessions/s.jsonl");
     std::fs::create_dir_all(session.parent().unwrap()).unwrap();
@@ -672,7 +712,7 @@ fn sigterm_cleanup() {
         "--model",
         "anthropic/claude-sonnet-4-5",
     ];
-    let mut pty = spawn(&args);
+    let mut pty = spawn(&root, &args);
     assert!(
         pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
             .is_some()
@@ -681,7 +721,7 @@ fn sigterm_cleanup() {
     let hint = pty.wait_for(Duration::from_secs(10), shown("--session-dir"));
     assert!(hint.is_some(), "{:#?}", pty.rows());
     pty.finish().unwrap();
-    let pty = spawn(&args);
+    let pty = spawn(&root, &args);
     assert!(
         pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
             .is_some()

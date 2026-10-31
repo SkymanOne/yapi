@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use futures_util::FutureExt;
 use yapi_tui::keys::Keys;
 use yapi_tui::screen::MainScreen;
 use yapi_tui::terminal::{ColorQuery, KeyboardProtocol};
@@ -100,25 +101,9 @@ fn run_selector(
     mut selector: Selector,
     clear: bool,
 ) -> std::io::Result<Option<Action>> {
-    // The signals are caught from here on and awaited on a thread of its
-    // own, since the selector holds the runtime's thread. The thread ends
-    // early, with `true`, only on a signal.
-    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .build()?;
-    let terminated = {
-        let _context = runtime.enter();
-        crate::modes::rpc::termination()
-    };
-    let watcher = std::thread::spawn(move || {
-        runtime.block_on(async {
-            tokio::select! {
-                _ = terminated => true,
-                _ = stopped => false,
-            }
-        })
-    });
+    // Caught from here on; polled without the runtime, which this holds.
+    let mut terminated = Box::pin(crate::modes::rpc::termination());
+    let mut signalled = false;
     #[cfg(unix)]
     let raw = yapi_tui::terminal::RawMode::enable()?;
     let mut protocol = KeyboardProtocol::default();
@@ -159,7 +144,8 @@ fn run_selector(
     let mut screen = MainScreen::new();
     let mut chosen = None;
     'outer: loop {
-        if watcher.is_finished() {
+        if terminated.as_mut().now_or_never().is_some() {
+            signalled = true;
             break;
         }
         let ui = Ui {
@@ -196,8 +182,7 @@ fn run_selector(
     emit(&out);
     #[cfg(unix)]
     raw.restore();
-    drop(stop);
-    if watcher.join().unwrap_or(false) {
+    if signalled || terminated.now_or_never().is_some() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Interrupted,
             "Terminated",
