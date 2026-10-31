@@ -28,7 +28,7 @@ User packages:
     /home/you/extensions/shout.wasm
 ```
 
-`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
+`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. It installs a configured git package that is missing, and fails on a git package folder that is not a checkout of its own, so git never touches an enclosing repository. The `npm` and `git` folders each hold a `.gitignore` that keeps installed packages out of a project's repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
 
 ## Try a package
 

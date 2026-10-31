@@ -368,7 +368,9 @@ impl PackageManager {
                 repo, reference, ..
             } => {
                 let dir = self.install_path(&parsed, scope);
-                self.install_git(repo, reference.as_deref(), &dir).await?;
+                let git_root = self.base(scope).join("git");
+                self.install_git(repo, reference.as_deref(), &dir, Some(&git_root))
+                    .await?;
             }
             Source::Local { path } => {
                 let resolved = source::local_path(path, &self.cwd);
@@ -426,16 +428,21 @@ impl PackageManager {
     }
 
     /// pi's `installGit`: clones `repo` into `dir` at `reference` and installs
-    /// its dependencies, removing the clone when any step fails. An existing
-    /// checkout is updated in place instead and kept when that fails.
+    /// its dependencies, removing the clone when any step fails. A new clone
+    /// first gets a `.gitignore` in `git_root`, the scope's `git` folder. An
+    /// existing checkout is updated in place instead and kept when that fails.
     async fn install_git(
         &mut self,
         repo: &str,
         reference: Option<&str>,
         dir: &Path,
+        git_root: Option<&Path>,
     ) -> Result<(), PackageError> {
         if dir.exists() {
             return self.update_git(dir, reference).await;
+        }
+        if let Some(git_root) = git_root {
+            npm::ensure_git_ignore(git_root)?;
         }
         if let Some(parent) = dir.parent() {
             std::fs::create_dir_all(parent)
@@ -457,12 +464,22 @@ impl PackageManager {
     }
 
     /// Moves the checkout in `dir` to the latest commit of `reference`, else
-    /// of its upstream branch, and installs its dependencies.
+    /// of its upstream branch, and installs its dependencies. Fails unless
+    /// `dir` is the top of its own checkout, so git never acts on an enclosing
+    /// repository.
     async fn update_git(
         &mut self,
         dir: &Path,
         reference: Option<&str>,
     ) -> Result<(), PackageError> {
+        let top = run_git(&["rev-parse", "--show-toplevel"], Some(dir)).await?;
+        let top = Path::new(top.trim()).canonicalize().ok();
+        if top.is_none() || top != dir.canonicalize().ok() {
+            return Err(PackageError::Message(format!(
+                "Refusing to update {}: it is not a git checkout of its own",
+                dir.display()
+            )));
+        }
         match reference {
             Some(reference) => {
                 run_git(&["fetch", "origin", reference], Some(dir)).await?;
@@ -654,7 +671,9 @@ impl PackageManager {
                     pinned: false,
                 } => npm_targets.push((configured, scope, name, version)),
                 // pi also reconciles checkouts pinned to a ref.
-                Source::Git { reference, .. } => git_targets.push((configured, scope, reference)),
+                Source::Git {
+                    repo, reference, ..
+                } => git_targets.push((configured, scope, repo, reference)),
                 _ => {}
             }
         }
@@ -694,10 +713,13 @@ impl PackageManager {
                     .await?;
             }
         }
-        for (configured, scope, reference) in git_targets {
+        for (configured, scope, repo, reference) in git_targets {
             (self.progress)(&format!("Updating {configured}..."));
             let dir = self.install_path(&parse(&configured), scope);
-            self.update_git(&dir, reference.as_deref()).await?;
+            // pi's `updateGit`: a missing checkout is installed.
+            let git_root = self.base(scope).join("git");
+            self.install_git(&repo, reference.as_deref(), &dir, Some(&git_root))
+                .await?;
         }
         Ok(())
     }
@@ -810,7 +832,8 @@ impl PackageManager {
                     if offline {
                         return Ok(None);
                     }
-                    self.install_git(&repo, reference.as_deref(), &dir).await?;
+                    self.install_git(&repo, reference.as_deref(), &dir, None)
+                        .await?;
                 } else if reference.is_none() && !offline {
                     let _ = self.update_git(&dir, None).await;
                 }
@@ -884,7 +907,11 @@ impl PackageManager {
                 _ if root.exists() => Ok(()),
                 Source::Git {
                     repo, reference, ..
-                } => self.install_git(repo, reference.as_deref(), &root).await,
+                } => {
+                    let git_root = self.base(named_scope(in_scope)).join("git");
+                    self.install_git(repo, reference.as_deref(), &root, Some(&git_root))
+                        .await
+                }
                 Source::Local { .. } => Ok(()),
             };
             if let Err(err) = installed {
@@ -992,15 +1019,18 @@ mod tests {
         commit(&origin, "v1").await;
         let checkout = dir.join("agent/git/github.com/user/repo");
         let repo = origin.to_str().unwrap();
-        manager.install_git(repo, None, &checkout).await.unwrap();
+        manager
+            .install_git(repo, None, &checkout, None)
+            .await
+            .unwrap();
         commit(&origin, "v2").await;
 
         manager
-            .install_git(repo, Some("v2"), &checkout)
+            .install_git(repo, Some("v2"), &checkout, None)
             .await
             .unwrap();
         assert_eq!(head(&checkout, "HEAD"), head(&origin, "v2"));
-        let missing = manager.install_git(repo, Some("v3"), &checkout).await;
+        let missing = manager.install_git(repo, Some("v3"), &checkout, None).await;
         assert!(missing.is_err());
         assert_eq!(head(&checkout, "HEAD"), head(&origin, "v2"));
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1019,7 +1049,7 @@ mod tests {
         commit(&origin, "v1").await;
         let checkout = dir.join("agent/git/github.com/user/repo");
         let installed = manager
-            .install_git(origin.to_str().unwrap(), None, &checkout)
+            .install_git(origin.to_str().unwrap(), None, &checkout, None)
             .await;
         assert!(installed.is_err());
         assert!(!checkout.exists());
@@ -1048,7 +1078,7 @@ mod tests {
             commit(&origin, "v1").await;
             let checkout = dir.join("agent/git/github.com/user/repo");
             let error = manager
-                .install_git(origin.to_str().unwrap(), None, &checkout)
+                .install_git(origin.to_str().unwrap(), None, &checkout, None)
                 .await
                 .unwrap_err();
             assert!(

@@ -694,13 +694,20 @@ impl Installer<'_> {
     }
 }
 
-/// The `package.json` of an npm root, created as pi creates it.
-fn root_manifest(root: &Path) -> Result<Map<String, Value>, NpmError> {
-    std::fs::create_dir_all(root).map_err(io(root))?;
-    let ignore = root.join(".gitignore");
+/// pi's `ensureGitIgnore`: creates `dir` with a `.gitignore` that keeps
+/// everything else in it out of git.
+pub(crate) fn ensure_git_ignore(dir: &Path) -> Result<(), NpmError> {
+    std::fs::create_dir_all(dir).map_err(io(dir))?;
+    let ignore = dir.join(".gitignore");
     if !ignore.exists() {
         std::fs::write(&ignore, "*\n!.gitignore\n").map_err(io(&ignore))?;
     }
+    Ok(())
+}
+
+/// The `package.json` of an npm root, created as pi creates it.
+fn root_manifest(root: &Path) -> Result<Map<String, Value>, NpmError> {
+    ensure_git_ignore(root)?;
     let manifest = read_manifest(root)
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_else(|| {

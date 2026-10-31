@@ -484,6 +484,46 @@ async fn git_remote_updates() {
     git(&work, &["commit", "--allow-empty", "-m", "second"]);
     git(&work, &["push", "origin", "main"]);
     assert_eq!(packages.available_updates().await, ["github.com/user/repo"]);
+
+    // `update` moves the checkouts and, as pi's `updateGit`, installs a
+    // missing one into the git folder, which gets pi's `.gitignore` first.
+    configure(
+        &dir,
+        json!([
+            "git:github.com/user/repo",
+            "git:github.com/user/pinned@main",
+            "git:http://127.0.0.1:9/user/missing"
+        ]),
+    );
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let error = packages.update(None).await.unwrap_err().to_string();
+    assert!(error.starts_with("git clone failed"), "{error}");
+    assert!(packages.available_updates().await.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("agent/git/.gitignore")).unwrap(),
+        "*\n!.gitignore\n"
+    );
+
+    // A package folder that is no checkout of its own, as a clone of a project
+    // that committed it leaves, is refused rather than resetting the project.
+    let project = dir.join("project");
+    git(&dir, &["clone", origin.to_str().unwrap(), "project"]);
+    std::fs::write(project.join("notes.txt"), "committed").unwrap();
+    git(&project, &["add", "notes.txt"]);
+    git(&project, &["commit", "-m", "notes"]);
+    git(&project, &["push", "origin", "main"]);
+    std::fs::write(project.join("notes.txt"), "uncommitted").unwrap();
+    std::fs::create_dir_all(project.join(".yapi/git/github.com/user/repo")).unwrap();
+    let settings = json!({"packages": ["git:github.com/user/repo"]});
+    std::fs::write(project.join(".yapi/settings.json"), settings.to_string()).unwrap();
+    configure(&dir, json!([]));
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let error = packages.update(None).await.unwrap_err().to_string();
+    assert!(error.starts_with("Refusing to update "), "{error}");
+    assert_eq!(
+        std::fs::read_to_string(project.join("notes.txt")).unwrap(),
+        "uncommitted"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
