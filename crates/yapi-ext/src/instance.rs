@@ -197,9 +197,11 @@ pub(crate) struct State {
     host: Arc<Host>,
     started: Vec<(u64, String, String)>,
     call_started: Instant,
-    /// When the guest last called the host, and the time the guest spent
-    /// in such calls since the export began.
+    /// When the guest's outermost open host call began, how many host calls
+    /// are open, and the time the guest spent in closed ones since the
+    /// export began.
     host_called: Instant,
+    host_depth: u32,
     host_time: Duration,
     /// Set when the instance is dropped: the running export traps at the next
     /// epoch tick.
@@ -552,6 +554,7 @@ impl Actor {
     fn start_call(&mut self) {
         let state = self.store.data_mut();
         state.call_started = Instant::now();
+        state.host_depth = 0;
         state.host_time = Duration::ZERO;
         self.store.set_epoch_deadline(1);
     }
@@ -723,17 +726,29 @@ fn instantiate(
         started: Vec::new(),
         call_started: Instant::now(),
         host_called: Instant::now(),
+        host_depth: 0,
         host_time: Duration::ZERO,
         interrupt: interrupt.clone(),
     };
     let mut store = Store::new(&engine.engine, state);
     store.limiter(|state| &mut state.limits);
     // Host calls, WASI's included, do not count toward the call limit.
+    // Lowering a result reenters the guest, whose epoch check calls in again.
     store.call_hook(|mut context, hook| {
         let state = context.data_mut();
         match hook {
-            CallHook::CallingHost => state.host_called = Instant::now(),
-            CallHook::ReturningFromHost => state.host_time += state.host_called.elapsed(),
+            CallHook::CallingHost => {
+                if state.host_depth == 0 {
+                    state.host_called = Instant::now();
+                }
+                state.host_depth += 1;
+            }
+            CallHook::ReturningFromHost => {
+                state.host_depth = state.host_depth.saturating_sub(1);
+                if state.host_depth == 0 {
+                    state.host_time += state.host_called.elapsed();
+                }
+            }
             CallHook::CallingWasm | CallHook::ReturningFromWasm => {}
         }
         Ok(())
@@ -743,7 +758,15 @@ fn instantiate(
         if state.interrupt.load(Ordering::Relaxed) {
             return Err(wasmtime::Error::msg("the instance was stopped"));
         }
-        let busy = state.call_started.elapsed().saturating_sub(state.host_time);
+        let open = if state.host_depth > 0 {
+            state.host_called.elapsed()
+        } else {
+            Duration::ZERO
+        };
+        let busy = state
+            .call_started
+            .elapsed()
+            .saturating_sub(state.host_time + open);
         if busy > CALL_LIMIT {
             Err(wasmtime::Error::msg(format!(
                 "an extension computed for more than {} seconds without yielding",
@@ -789,6 +812,34 @@ mod tests {
             std::thread::sleep(CALL_LIMIT * 2);
             std::fs::write(fifo, "x")
         });
+        let extensions = serde_json::json!([{"id": 1, "path": main}]);
+        let loaded = instance
+            .call(
+                "load",
+                &serde_json::json!({"cwd": dir, "extensions": extensions}),
+            )
+            .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(loaded.unwrap()["extensions"][0].get("error"), None);
+    }
+
+    /// A blocking request whose result the host lowers into guest memory
+    /// does not count toward the call limit either.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn host_result_not_counted() {
+        let dir = std::env::temp_dir().join(format!("yapi-host-result-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.js");
+        let source = format!(
+            "import {{ execSync }} from \"node:child_process\";\nexport default function () {{ execSync(\"sleep {}\"); }}\n",
+            (CALL_LIMIT * 2).as_secs()
+        );
+        std::fs::write(&main, source).unwrap();
+        let engine = Engine::new(None).unwrap();
+        let instance = Instance::start(&engine, Options::new(dir.clone()), Arc::new(NoBridge))
+            .await
+            .unwrap();
         let extensions = serde_json::json!([{"id": 1, "path": main}]);
         let loaded = instance
             .call(
