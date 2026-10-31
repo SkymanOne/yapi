@@ -71,8 +71,17 @@ fn contexts_match_pi() {
 fn migrates_v1_files() {
     let scratch = Scratch::new("migrate");
     let copy = scratch.0.join("old.jsonl");
-    std::fs::copy(fixtures().join("legacy/large-session.v1.jsonl"), &copy).unwrap();
+    let source = fixtures().join("legacy/large-session.v1.jsonl");
+    std::fs::copy(&source, &copy).unwrap();
+    // Migration renames a new file into place, so a crash never leaves it half
+    // written: a hard link to the old file keeps the old bytes.
+    let link = scratch.0.join("link.jsonl");
+    std::fs::hard_link(&copy, &link).unwrap();
     let session = SessionManager::open(&copy, None, None).unwrap();
+    assert_eq!(
+        std::fs::read(&link).unwrap(),
+        std::fs::read(&source).unwrap()
+    );
     let text = std::fs::read_to_string(&copy).unwrap();
     let header: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
     assert_eq!(header["version"], 3);
