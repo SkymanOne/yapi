@@ -14,6 +14,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+use yapi_ai::auth::lock::FileLock;
 use yapi_core::packages::PackageManager;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::MockServer;
@@ -970,6 +971,21 @@ async fn installs_missing_or_outdated() {
     );
     assert!(!installed.join(".yapi-incomplete").exists());
     assert_eq!(server.finish().unwrap().len(), 2);
+
+    // One that another process installs while this one waits for the npm
+    // root's lock is kept, and no request reaches the registry.
+    std::fs::write(installed.join(".yapi-incomplete"), "").unwrap();
+    let root = dir.join("agent/npm/package.json");
+    let lock = FileLock::acquire(&root, &Default::default()).await.unwrap();
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let other = async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        std::fs::remove_file(installed.join(".yapi-incomplete")).unwrap();
+        drop(lock);
+    };
+    let install = packages.install_missing(|_, message| ControlFlow::Break(message));
+    let (outcome, ()) = tokio::join!(install, other);
+    assert_eq!(outcome, ControlFlow::Continue(()));
 }
 
 /// pi's `findAutoloadDeltaBase`: a project entry with `autoload: false` over
@@ -1062,6 +1078,13 @@ async fn remove_keeps_shared_dependency() {
     std::fs::write(dir.join("agent/npm/package.json"), root.to_string()).unwrap();
     let mut packages = manager(&dir, "http://127.0.0.1:9");
 
+    // Removal waits for another process's hold on the npm root.
+    let root = dir.join("agent/npm/package.json");
+    let lock = FileLock::acquire(&root, &Default::default()).await.unwrap();
+    let remove = packages.remove("npm:pi-shared", false);
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(100), remove).await;
+    assert!(waited.is_err(), "{waited:?}");
+    drop(lock);
     assert!(packages.remove("npm:pi-shared", false).await.unwrap());
     assert!(shared.join("package.json").exists());
     assert!(packages.remove("npm:pi-a", false).await.unwrap());

@@ -361,7 +361,7 @@ impl PackageManager {
         let parsed = parse(source);
         match &parsed {
             Source::Npm { name, version, .. } => {
-                self.install_npm(&self.npm_root(scope), name, version.as_deref())
+                self.install_npm(&self.npm_root(scope), name, version.as_deref(), false)
                     .await?;
             }
             Source::Git {
@@ -385,13 +385,20 @@ impl PackageManager {
         self.add_to_settings(source, scope)
     }
 
-    /// Installs `name` (at `version`) into the npm root `root`.
+    /// Installs `name` (at `version`) into the npm root `root`, holding the
+    /// root's lock. With `stale_only`, a package that another process
+    /// installed meanwhile, so that it is no longer [`npm_stale`], is kept.
     async fn install_npm(
         &mut self,
         root: &Path,
         name: &str,
         version: Option<&str>,
+        stale_only: bool,
     ) -> Result<(), PackageError> {
+        let _lock = npm::lock_root(root).await?;
+        if stale_only && !npm_stale(&root.join("node_modules").join(name), version) {
+            return Ok(());
+        }
         if let Some(command) = self.settings.settings().npm_command.clone() {
             // pi's `npmCommand` runs a real package manager, scripts and all.
             let (program, args) = command.split_first().ok_or_else(|| {
@@ -401,7 +408,6 @@ impl PackageManager {
             })?;
             let spec =
                 version.map_or_else(|| name.to_owned(), |version| format!("{name}@{version}"));
-            std::fs::create_dir_all(root).map_err(|err| PackageError::Message(err.to_string()))?;
             // As pi when stdout carries JSON or RPC: npm's output goes to
             // stderr, and npm never reads the client's input.
             let status = tokio::process::Command::new(program)
@@ -519,7 +525,7 @@ impl PackageManager {
         (self.progress)(&format!("Removing {source}..."));
         let parsed = parse(source);
         match &parsed {
-            Source::Npm { name, .. } => npm::uninstall(&self.npm_root(scope), name)?,
+            Source::Npm { name, .. } => npm::uninstall(&self.npm_root(scope), name).await?,
             Source::Git { .. } => {
                 let dir = self.install_path(&parsed, scope);
                 if dir.exists() {
@@ -709,7 +715,7 @@ impl PackageManager {
                 }
             }
             for (_, _, name, version) in batch {
-                self.install_npm(&self.npm_root(scope), name, version.as_deref())
+                self.install_npm(&self.npm_root(scope), name, version.as_deref(), false)
                     .await?;
             }
         }
@@ -816,7 +822,8 @@ impl PackageManager {
                     if offline {
                         return Ok(None);
                     }
-                    self.install_npm(&root, &name, version.as_deref()).await?;
+                    self.install_npm(&root, &name, version.as_deref(), true)
+                        .await?;
                 }
                 Ok(Some(dir))
             }
@@ -899,7 +906,8 @@ impl PackageManager {
                 Source::Npm { name, version, .. } => {
                     if npm_stale(&root, version.as_deref()) {
                         let npm_root = self.npm_root(named_scope(in_scope));
-                        self.install_npm(&npm_root, name, version.as_deref()).await
+                        self.install_npm(&npm_root, name, version.as_deref(), true)
+                            .await
                     } else {
                         Ok(())
                     }

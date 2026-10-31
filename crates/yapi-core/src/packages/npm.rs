@@ -13,6 +13,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
+use tokio_util::sync::CancellationToken;
+use yapi_ai::auth::lock::FileLock;
 
 /// Packages yapi provides to extensions itself; installing them is wasted work.
 const HOST_PACKAGES: [&str; 10] = [
@@ -757,8 +759,19 @@ fn write_manifest(root: &Path, manifest: Map<String, Value>) -> Result<(), NpmEr
         .map_err(io(&path))
 }
 
+/// Locks the npm root `root`, creating it, against the installs and removals
+/// of other processes until the lock is dropped.
+pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
+    std::fs::create_dir_all(root).map_err(io(root))?;
+    let manifest = root.join("package.json");
+    FileLock::acquire(&manifest, &CancellationToken::new())
+        .await
+        .map_err(|err| io(&manifest)(std::io::Error::other(err)))
+}
+
 /// Installs `name` (at `range`, else the latest version) into the npm root
 /// `root`, and records it in the root's `package.json`. Returns the version.
+/// The caller holds the root's [`lock_root`].
 pub async fn install(
     npm: &mut Npm,
     root: &Path,
@@ -823,10 +836,11 @@ pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmEr
 
 /// Removes `name` from the npm root `root`, then the packages nothing
 /// depends on any more, `name` included unless another package needs it.
-pub fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
+pub async fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
     if !root.exists() {
         return Ok(());
     }
+    let _lock = lock_root(root).await?;
     let mut manifest = root_manifest(root)?;
     if let Some(dependencies) = manifest
         .get_mut("dependencies")
