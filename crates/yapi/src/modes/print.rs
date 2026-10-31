@@ -1,7 +1,6 @@
 //! Print mode: run the prompts, then print the final answer (text) or every event
 //! (JSON). Port of `modes/print-mode.ts` in pi `v1.0.0`.
 
-use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
@@ -11,14 +10,6 @@ use yapi_types::message::ContentBlock;
 
 use crate::runtime::{Bind, Runtime, SessionFactory, forward_newest};
 use crate::startup::Startup;
-
-/// Writes one line to stdout, ignoring a closed pipe.
-fn write_line(line: &str) {
-    let mut stdout = std::io::stdout().lock();
-    let _ = stdout.write_all(line.as_bytes());
-    let _ = stdout.write_all(b"\n");
-    let _ = stdout.flush();
-}
 
 /// Runs print mode; returns the process exit code. Extension commands
 /// replace the session through `factory`, and later prompts go to the
@@ -33,7 +24,7 @@ pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
     } = startup;
     let mode = if json { Mode::Json } else { Mode::Print };
     if json && let Some(header) = session.header_json() {
-        write_line(&header);
+        crate::out(&header);
     }
     // The current session's number; listeners of older ones stay silent.
     let epoch = Arc::new(AtomicU64::new(0));
@@ -47,7 +38,7 @@ pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
             if json {
                 forward_newest(&session, &epoch, |event| {
                     if let Ok(line) = yapi_types::json::to_string(event) {
-                        write_line(&line);
+                        crate::out(&line);
                     }
                 });
             }
@@ -120,7 +111,7 @@ pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
         }
         for block in &assistant.content {
             if let ContentBlock::Text(text) = block {
-                write_line(&text.text);
+                crate::out(&text.text);
             }
         }
     }

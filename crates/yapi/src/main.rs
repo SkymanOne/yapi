@@ -103,7 +103,7 @@ fn main() -> ExitCode {
         Some("auth") => return block_on(auth_command::run(&raw)),
         Some("install" | "remove" | "uninstall" | "update" | "list") => {
             apply_http_proxy();
-            return block_on(async { packages::run(&raw).await.unwrap_or(0) });
+            return block_on(packages::run(&raw));
         }
         _ => {}
     }
