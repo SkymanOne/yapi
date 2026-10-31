@@ -241,6 +241,15 @@ fn logging_flag() {
         text.contains(" ERROR yapi_ext::extensions: loaded extension="),
         "{text}"
     );
+    // An empty `HOME` is the home directory, as Node's `os.homedir()` has it.
+    let output = common::yapi(&home)
+        .env("HOME", "")
+        .env_remove("YAPI_CODING_AGENT_DIR")
+        .args(["--enable-logging", "--help", "-e", "ext.ts"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(home.join(".yapi/agent/yapi.log").exists(), "{output:?}");
 }
 
 /// pi's RPC mode starts without any model, reporting pi-agent-core's

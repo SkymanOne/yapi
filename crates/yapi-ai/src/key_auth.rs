@@ -56,7 +56,11 @@ fn process_env(name: &str) -> Option<String> {
 
 fn file_exists(path: &str) -> bool {
     let path = match path.strip_prefix('~') {
-        Some(rest) => match std::env::var_os("HOME") {
+        // Node's `os.homedir()`: `HOME`, even when empty, else the user database.
+        Some(rest) => match std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .or_else(std::env::home_dir)
+        {
             Some(home) => PathBuf::from(format!("{}{rest}", home.to_string_lossy())),
             None => return false,
         },

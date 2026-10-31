@@ -219,11 +219,14 @@ pub const AMBIENT_CREDENTIALS: &str = "<authenticated>";
 fn has_vertex_adc_credentials(env: Option<&ProviderEnv>) -> bool {
     match provider_env_value("GOOGLE_APPLICATION_CREDENTIALS", env) {
         Some(path) => std::path::Path::new(&path).exists(),
-        None => std::env::var_os("HOME").is_some_and(|home| {
-            std::path::Path::new(&home)
-                .join(".config/gcloud/application_default_credentials.json")
-                .exists()
-        }),
+        // Node's `os.homedir()`: `HOME`, even when empty, else the user database.
+        None => std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(std::env::home_dir)
+            .is_some_and(|home| {
+                home.join(".config/gcloud/application_default_credentials.json")
+                    .exists()
+            }),
     }
 }
 

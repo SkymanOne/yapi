@@ -622,11 +622,9 @@ async fn tmux_forwards_hyperlinks() -> bool {
     }
 }
 
+/// The home directory paths are shown relative to; `None` when empty.
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)
+    Some(yapi_core::tools::path::home_dir()).filter(|home| !home.as_os_str().is_empty())
 }
 
 fn tool_result_of(message: &yapi_types::message::ToolResultMessage) -> ToolResult {

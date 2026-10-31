@@ -12,11 +12,13 @@ fn is_unicode_space(c: char) -> bool {
     )
 }
 
-/// The user's home directory.
+/// The user's home directory, as Node's `os.homedir()` finds it: `HOME`, even
+/// when empty, else the user database. `/` when neither has one.
 pub fn home_dir() -> PathBuf {
+    // The standard library passes over an empty `HOME`, which Node keeps.
     std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
         .map(PathBuf::from)
+        .or_else(std::env::home_dir)
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
