@@ -1460,6 +1460,46 @@ export default function (pi) {
     assert_eq!(ui.0.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
 
+/// A restart lets go of the files the stopped runtime held or waited for in
+/// `withFileMutationQueue`, so yapi's edit and write tools take them again.
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_releases_files() {
+    let dir = scratch("restart-files");
+    let notes = dir.join("notes.md");
+    std::fs::write(&notes, "start\n").unwrap();
+    let host = load_extension(
+        &dir,
+        r#"import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+const overflow = () => overflow();
+export default function (pi) {
+	pi.registerCommand("hold", {
+		handler: async () => {
+			withFileMutationQueue("./notes.md", async () => {
+				withFileMutationQueue("./notes.md", async () => {});
+				setTimeout(overflow, 200);
+				await new Promise((resolve) => setTimeout(resolve, 5000));
+			});
+		},
+	});
+}"#,
+    )
+    .await;
+    let session = session(&Faux::new([]), &dir, host.for_session());
+    let ui = Arc::new(Restarts::default());
+    session
+        .bind_extensions(ui.clone(), Mode::Tui, None, None)
+        .await;
+    session.prompt("/hold", Vec::new()).await.unwrap();
+    common::eventually("the restart", || {
+        ui.0.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
+    let edit = yapi_core::tools::mutation::file_lock(&notes);
+    tokio::time::timeout(std::time::Duration::from_secs(3), edit)
+        .await
+        .expect("the stopped runtime still holds the file");
+}
+
 /// Loads extension `source` from a file in `dir`.
 async fn load_extension(dir: &Path, source: &str) -> Arc<ExtensionHost> {
     let path = dir.join("ext.ts");
