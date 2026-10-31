@@ -8,7 +8,7 @@ yapi import pi
 
 The command copies Pi's agent folder, `~/.pi/agent` or `PI_CODING_AGENT_DIR`, into yapi's: settings, API keys, models, key bindings, MCP servers, trust decisions, the global `AGENTS.md` or `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project's `.pi` folder into `.yapi`.
 
-Files yapi already has are kept, except a `settings.json` that holds only the version yapi recorded on first start. Pi's `lastChangelogVersion` is left out, because it holds Pi's version.
+Files yapi already has are kept, except a `settings.json` that holds only the version yapi recorded on first start. An installed package that yapi already has is kept whole, without any of Pi's files for it, so the two installs never mix. Pi's `lastChangelogVersion` is left out, because it holds Pi's version.
 
 Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with `/login`, or with `/mcp login` for MCP servers.
 

@@ -57,7 +57,8 @@ pub struct Imported {
     pub entry: String,
     /// Files copied.
     pub copied: usize,
-    /// Files yapi already had, left as they are.
+    /// Files not copied because yapi already had them, or the installed
+    /// package that holds them, which it keeps as they are.
     pub kept: usize,
     /// Sign-ins left out of a copied `auth.json` (providers) or
     /// `mcp-auth.json` (MCP servers). Servers may rotate refresh tokens, so
@@ -78,11 +79,41 @@ fn at(path: &Path, error: std::io::Error) -> std::io::Error {
     std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
 }
 
+/// Whether `dir` holds one installed package: a git checkout, or a package's
+/// folder in `node_modules`.
+fn is_package(dir: &Path) -> bool {
+    let name = |path: &Path| {
+        let name = path.file_name().unwrap_or_default();
+        name.to_string_lossy().into_owned()
+    };
+    let Some(parent) = dir.parent() else {
+        return false;
+    };
+    dir.join(".git").exists()
+        || (name(parent) == "node_modules" && !name(dir).starts_with('@'))
+        || (name(parent).starts_with('@')
+            && parent.parent().is_some_and(|up| name(up) == "node_modules"))
+}
+
+/// The files in `dir` and the folders under it, links counted as files.
+fn count_files(dir: &Path) -> usize {
+    let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
+    entries
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => count_files(&entry.path()),
+            _ => 1,
+        })
+        .sum()
+}
+
 /// Copies `from` to `to`, following symbolic links. Links that lead nowhere,
-/// loop, or lead back into a directory being copied are skipped.
+/// loop, or lead back into a directory being copied are skipped. With
+/// `packages`, a package `to` already has keeps its own files and gets none
+/// of `from`'s, whose files count as kept.
 fn copy_tree(
     from: &Path,
     to: &Path,
+    packages: bool,
     imported: &mut Imported,
     ancestors: &mut Vec<PathBuf>,
 ) -> std::io::Result<()> {
@@ -96,6 +127,10 @@ fn copy_tree(
         if ancestors.contains(&real) {
             return Ok(());
         }
+        if packages && to.exists() && is_package(from) {
+            imported.kept += count_files(from);
+            return Ok(());
+        }
         std::fs::create_dir_all(to).map_err(|error| at(to, error))?;
         let mut entries: Vec<_> = std::fs::read_dir(from)
             .map_err(|error| at(from, error))?
@@ -107,6 +142,7 @@ fn copy_tree(
             copy_tree(
                 &entry.path(),
                 &to.join(entry.file_name()),
+                packages,
                 imported,
                 ancestors,
             )?;
@@ -167,7 +203,8 @@ fn drop_sign_ins(path: &Path, file: ConfigFile) -> std::io::Result<Vec<String>> 
 }
 
 /// Copies `entries` of directory `from` into `to`, keeping files `to`
-/// already has. Entries `from` lacks are skipped. A `settings.json` that
+/// already has, and in `npm` and `git` the whole packages it already has, so
+/// two installs never mix. Entries `from` lacks are skipped. A `settings.json` that
 /// holds only the version yapi recorded on its first start is replaced, and
 /// pi's `lastChangelogVersion`, a pi version, is not copied. Nor are the
 /// sign-ins of a copied `auth.json` or `mcp-auth.json`; see
@@ -192,7 +229,8 @@ pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<I
         {
             std::fs::remove_file(&target).map_err(|error| at(&target, error))?;
         }
-        copy_tree(&source, &target, &mut imported, &mut Vec::new())?;
+        let packages = matches!(*entry, "npm" | "git");
+        copy_tree(&source, &target, packages, &mut imported, &mut Vec::new())?;
         if is_settings
             && imported.copied == 1
             && let Some(mut document) = settings(&target)
@@ -240,6 +278,20 @@ mod tests {
         write(&pi, "bin/fd", "binary");
         write(&pi, "pi-debug.log", "log");
         write(&yapi, "auth.json", "{\"mine\":true}\n");
+        // Packages yapi has keep their own files whole.
+        write(&pi, "npm/node_modules/foo/package.json", "2");
+        write(
+            &pi,
+            "npm/node_modules/foo/node_modules/bar/package.json",
+            "2",
+        );
+        write(&pi, "npm/node_modules/@s/baz/package.json", "1");
+        write(&pi, "npm/node_modules/@s/qux/package.json", "1");
+        write(&pi, "git/github.com/u/r/.git/HEAD", "pi");
+        write(&pi, "git/github.com/u/r/index.ts", "pi");
+        write(&yapi, "npm/node_modules/foo/package.json", "1");
+        write(&yapi, "npm/node_modules/@s/qux/package.json", "1");
+        write(&yapi, "git/github.com/u/r/.git/HEAD", "yapi");
 
         let imported = import(&pi, &yapi, AGENT_ENTRIES).unwrap();
 
@@ -253,9 +305,14 @@ mod tests {
                 ("settings.json", 1, 0),
                 ("auth.json", 0, 1),
                 ("mcp-auth.json", 1, 0),
-                ("sessions", 2, 0)
+                ("sessions", 2, 0),
+                ("npm", 1, 3),
+                ("git", 0, 2)
             ]
         );
+        assert!(!yapi.join("npm/node_modules/foo/node_modules").exists());
+        assert!(yapi.join("npm/node_modules/@s/baz/package.json").is_file());
+        assert!(!yapi.join("git/github.com/u/r/index.ts").exists());
         assert_eq!(
             std::fs::read_to_string(yapi.join("auth.json")).unwrap(),
             "{\"mine\":true}\n"
