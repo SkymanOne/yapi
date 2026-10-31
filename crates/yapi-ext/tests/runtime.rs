@@ -143,6 +143,13 @@ export default function (pi) {
 			String(lib.twice(2)),
 			String(twice(3)),
 			execSync("echo hi", { encoding: "utf8" }).trim(),
+			(() => {
+				try {
+					execSync("head -c 2000000 /dev/zero");
+				} catch (error) {
+					return error.code;
+				}
+			})(),
 			typeof setTimeout,
 		].join(","),
 		handler: async () => {},
@@ -168,7 +175,7 @@ export default function (pi) {
     assert_eq!(extension.get("error"), None, "{extension}");
     assert_eq!(
         extension["commands"][0]["description"],
-        "from disk,4,6,hi,function"
+        "from disk,4,6,hi,ENOBUFS,function"
     );
 }
 

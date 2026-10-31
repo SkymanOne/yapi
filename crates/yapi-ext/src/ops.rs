@@ -184,19 +184,37 @@ pub(crate) async fn timer(payload: Value) -> Result<Value, String> {
     Ok(Value::Null)
 }
 
-/// Reads `pipe` to its end; empty without a pipe.
-async fn read_all(pipe: Option<impl tokio::io::AsyncRead + Unpin>) -> Vec<u8> {
+/// Reads `pipe` to its end, or until it has sent more than `max` bytes,
+/// which `overflow` hears of; empty without a pipe.
+async fn read_all(
+    pipe: Option<impl tokio::io::AsyncRead + Unpin>,
+    max: u64,
+    overflow: &tokio::sync::Notify,
+) -> Vec<u8> {
     let mut buffer = Vec::new();
-    if let Some(mut pipe) = pipe {
-        let _ = pipe.read_to_end(&mut buffer).await;
+    if let Some(pipe) = pipe {
+        let _ = pipe
+            .take(max.saturating_add(1))
+            .read_to_end(&mut buffer)
+            .await;
+    }
+    if buffer.len() as u64 > max {
+        overflow.notify_one();
     }
     buffer
 }
 
 /// Runs a process to completion: `{stdout, stderr, code, signal, killed}`.
-/// A process that cannot start fails with Node's spawn error message.
+/// More than `maxBuffer` bytes on either pipe stop the process, as Node's
+/// `spawnSync` does: its output is cut there, and `error` has Node's ENOBUFS
+/// message. A process that cannot start fails with Node's spawn error
+/// message.
 pub(crate) async fn exec(payload: Value) -> Result<Value, String> {
     let spawn = Spawn::parse(&payload);
+    // Node does not limit the output for `Infinity`, which JSON makes `null`.
+    let max = payload["maxBuffer"]
+        .as_f64()
+        .map_or(u64::MAX, |max| max.max(0.0) as u64);
     let mut child = spawn
         .command()
         .spawn()
@@ -206,30 +224,43 @@ pub(crate) async fn exec(payload: Value) -> Result<Value, String> {
             let _ = stdin.write_all(input.as_bytes()).await;
         });
     }
-    let read_out = read_all(child.stdout.take());
-    let read_err = read_all(child.stderr.take());
+    let overflow = tokio::sync::Notify::new();
+    let read_out = read_all(child.stdout.take(), max, &overflow);
+    let read_err = read_all(child.stderr.take(), max, &overflow);
     let mut killed = false;
     let wait = async {
-        match spawn.timeout {
-            Some(limit) => match tokio::time::timeout(limit, child.wait()).await {
-                Ok(status) => status,
-                Err(_) => {
-                    killed = true;
-                    terminate(&mut child).await
-                }
-            },
-            None => child.wait().await,
+        let limit = async {
+            match spawn.timeout {
+                Some(limit) => tokio::time::sleep(limit).await,
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            status = child.wait() => status,
+            () = limit => {
+                killed = true;
+                terminate(&mut child).await
+            }
+            () = overflow.notified() => terminate(&mut child).await,
         }
     };
-    let (status, out, err) = tokio::join!(wait, read_out, read_err);
+    let (status, mut out, mut err) = tokio::join!(wait, read_out, read_err);
     let status = status.map_err(|err| err.to_string())?;
-    Ok(json!({
+    let overflowed = out.len() as u64 > max || err.len() as u64 > max;
+    let kept = usize::try_from(max).unwrap_or(usize::MAX);
+    out.truncate(kept);
+    err.truncate(kept);
+    let mut result = json!({
         "stdout": String::from_utf8_lossy(&out),
         "stderr": String::from_utf8_lossy(&err),
         "code": status.code(),
         "signal": signal_name(&status),
         "killed": killed,
-    }))
+    });
+    if overflowed {
+        result["error"] = json!(format!("spawnSync {} ENOBUFS", spawn.command));
+    }
+    Ok(result)
 }
 
 /// Runs a process and blocks until it exits: the result of [`exec`], or
@@ -749,6 +780,12 @@ mod tests {
         let result = run("head -c 200000 /dev/zero", 5000);
         assert_eq!(result["killed"], false);
         assert_eq!(result["stdout"].as_str().map(str::len), Some(200_000));
+        // Output past `maxBuffer` stops the process, as in Node.
+        let script = "head -c 2000000 /dev/zero";
+        let payload = json!({"command": "/bin/sh", "args": ["-c", script], "maxBuffer": 1 << 20});
+        let result = exec_sync(&payload).unwrap();
+        assert_eq!(result["error"], "spawnSync /bin/sh ENOBUFS");
+        assert_eq!(result["stdout"].as_str().map(str::len), Some(1 << 20));
         let result = run("sleep 10", 100);
         assert_eq!(result["killed"], true);
         assert_eq!(result["signal"], "SIGTERM");
