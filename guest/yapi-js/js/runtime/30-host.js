@@ -2135,17 +2135,20 @@
 		},
 	};
 
+	// The calls that load and configure the extensions run one after
+	// another, also when a restart replays them without waiting.
+	let lifecycle = Promise.resolve();
 	yapi.dispatch = (id, kind, payloadText) => {
 		const handler = kinds[kind];
-		Promise.resolve()
-			.then(() => {
-				if (!handler) throw new Error(`Unknown dispatch kind: ${kind}`);
-				return handler(JSON.parse(payloadText));
-			})
-			.then(
-				(value) => native.done(id, JSON.stringify(value ?? null) ?? "null"),
-				(error) => native.fail(id, errorMessage(error)),
-			);
+		const run = () => {
+			if (!handler) throw new Error(`Unknown dispatch kind: ${kind}`);
+			return handler(JSON.parse(payloadText));
+		};
+		const result = ["load", "reload", "bind", "flags"].includes(kind) ? (lifecycle = lifecycle.then(run, run)) : Promise.resolve().then(run);
+		result.then(
+			(value) => native.done(id, JSON.stringify(value ?? null) ?? "null"),
+			(error) => native.fail(id, errorMessage(error)),
+		);
 	};
 	yapi.extensions = extensions;
 })();

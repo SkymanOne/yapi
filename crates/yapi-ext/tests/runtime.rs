@@ -520,6 +520,62 @@ async fn restart_trap_not_retried() {
     instance.call("reload", &reload).await.unwrap();
 }
 
+/// A restart replays the load and the reload one after the other, though
+/// a factory waits for a timer: the factories after it run once for each,
+/// and their `pi.events` listeners hear an event once.
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_replays_in_order() {
+    let dir = scratch("restart-order");
+    let heard = dir.join("heard.txt");
+    let (slow, listener) = (dir.join("slow.ts"), dir.join("listener.ts"));
+    std::fs::write(
+        &slow,
+        "export default async function () { await new Promise((resolve) => setTimeout(resolve, 50)); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &listener,
+        format!(
+            r#"import {{ appendFileSync }} from "node:fs";
+const overflow = () => overflow();
+export default function (pi) {{
+	pi.events.on("ping", () => appendFileSync({heard:?}, "x"));
+	pi.registerCommand("crash", {{ handler: async () => overflow() }});
+}}
+"#,
+            heard = heard.display().to_string()
+        ),
+    )
+    .unwrap();
+    let instance = Instance::start(
+        &engine(),
+        Options::new(dir.clone()),
+        Arc::new(Log::default()),
+    )
+    .await
+    .unwrap();
+    let extensions = json!([{"id": 1, "path": slow}, {"id": 2, "path": listener}]);
+    let reload = json!({ "extensions": extensions });
+    instance
+        .call("load", &json!({"cwd": dir, "extensions": extensions}))
+        .await
+        .unwrap();
+    instance.call("reload", &reload).await.unwrap();
+    let crashed = instance
+        .call("command", &json!({"extension": 2, "name": "crash"}))
+        .await;
+    assert!(
+        matches!(crashed, Err(yapi_ext::Error::Crashed(_))),
+        "{crashed:?}"
+    );
+    instance.call("reload", &reload).await.unwrap();
+    instance
+        .call("events", &json!({"channel": "ping", "data": null}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&heard).unwrap(), "x");
+}
+
 /// Node modules yapi has no sockets for still load, with the parts that need
 /// none: address checks, agents, `node:sea` and the names of `node:sqlite`.
 #[tokio::test(flavor = "multi_thread")]
