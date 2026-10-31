@@ -659,8 +659,15 @@ impl Host {
                 })
             }
             "models.stream" => Box::pin(async { Err(denied("Network access")) }),
-            // Credentials are only good for requests, so they need the network grant.
-            "models.auth" | "models.requestAuth" if !self.options.grants.network => {
+            // Credentials are only good for requests, so they need the
+            // network grant, as do the session's classifiers and image models.
+            "models.auth"
+            | "models.requestAuth"
+            | "models.apiKey"
+            | "models.classify"
+            | "models.generateImages"
+                if !self.options.grants.network =>
+            {
                 Box::pin(async { Err(denied("Network access")) })
             }
             "ai.next" => {
@@ -719,10 +726,12 @@ impl Host {
     /// allow running it.
     fn builtin_tool(&self, payload: &Value, run: bool) -> Result<RegisteredTool, String> {
         let name = text(payload, "name");
-        let granted = if name == "bash" {
-            self.options.grants.process
-        } else {
-            self.options.grants.filesystem
+        let grants = &self.options.grants;
+        let granted = match name {
+            "bash" => grants.process,
+            // They run ripgrep and fd, which they download when missing.
+            "grep" | "find" => grants.filesystem && grants.process && grants.network,
+            _ => grants.filesystem,
         };
         if run && !granted {
             return Err(denied(&format!("The {name} tool")));

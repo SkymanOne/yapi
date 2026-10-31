@@ -631,7 +631,8 @@ export default function (pi) {
 
 /// `dns.lookup` resolves through the host, as SSRF guards such as
 /// pi-web-access's expect before they fetch, and needs the network grant,
-/// as `fetch` does.
+/// as `fetch` does. The grep and find tools, which run and may download
+/// ripgrep and fd, need more than the file grant.
 /// Only `localhost` and address literals resolve here, so the test needs no
 /// network.
 #[tokio::test(flavor = "multi_thread")]
@@ -680,17 +681,23 @@ export default async function (pi) {
 
     let denied = r#"
 import { lookup } from "node:dns/promises";
+import { createFindTool, createGrepTool, createLsTool } from "@earendil-works/pi-coding-agent";
 export default async function (pi) {
 	const looked = await lookup("localhost").then(() => "resolved", (error) => error.message);
 	const fetched = await fetch("http://127.0.0.1:9").then(() => "fetched", (error) => error.message);
-	pi.registerCommand("probe", { description: `${looked};${fetched}`, handler: async () => {} });
+	const run = (create, params) => create(process.cwd()).execute("t", params).then(() => "ran", (error) => error.message);
+	const tools = [await run(createGrepTool, { pattern: "x" }), await run(createFindTool, { pattern: "*" }), await run(createLsTool, {})];
+	pi.registerCommand("probe", { description: `${looked};${fetched};${tools.join(";")}`, handler: async () => {} });
 }
 "#;
     let dir = scratch("dns-denied");
     let path = dir.join("main.ts");
     std::fs::write(&path, denied).unwrap();
     let mut options = Options::new(dir.clone());
-    options.grants.network = false;
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
     let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
         .await
         .unwrap();
@@ -706,6 +713,12 @@ export default async function (pi) {
         .unwrap_or_default()
         .to_owned();
     assert_eq!(description.matches("Network access").count(), 2, "{loaded}");
+    assert!(
+        description.ends_with(
+            "The grep tool is not permitted for this extension;The find tool is not permitted for this extension;ran"
+        ),
+        "{loaded}"
+    );
 }
 
 /// Scripts without module syntax load as CommonJS, imports may carry a

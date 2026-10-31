@@ -1082,7 +1082,11 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const read = (id) => ctx.modelRegistry.getProviderAuth(id).then((auth) => (auth === undefined ? "undefined" : auth), (error) => error.message);
 			const request = (provider) => ctx.modelRegistry.getApiKeyAndHeaders({ provider, id: "m" });
+			const model = { provider: "fixture", id: "m" };
+			const failure = (promise) => promise.catch((error) => error.message);
 			pi.appendEntry("auth", {
+				apiKey: await failure(ctx.modelRegistry.getApiKey(model)),
+				classify: await failure(ctx.modelRegistry.classify(model, {})),
 				fixture: await read("fixture"),
 				broken: await read("broken"),
 				missing: await read("missing"),
@@ -1099,7 +1103,8 @@ export default function (pi: ExtensionAPI) {
 /// `getProviderAuth` resolves pi's `AuthResult` for a provider, without its
 /// models' headers, and nothing for an unknown provider or one without
 /// credentials. `getApiKeyAndHeaders` resolves what a request to a model
-/// sends. Both need the network grant.
+/// sends. These, `getApiKey` and the session's classifiers need the network
+/// grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_auth_needs_network() {
     let mut entries = Vec::new();
@@ -1137,6 +1142,8 @@ async fn provider_auth_needs_network() {
         entries,
         [
             json!({
+                "apiKey": "fixture-key",
+                "classify": "Unknown classifier model \"fixture/m\"",
                 "fixture": {"auth": {"apiKey": "fixture-key", "headers": {"X-Team": "yapi"}}, "source": "configured API key"},
                 "broken": broken,
                 "missing": "undefined",
@@ -1146,6 +1153,8 @@ async fn provider_auth_needs_network() {
                 "storedRequest": {"ok": true},
             }),
             json!({
+                "apiKey": denied,
+                "classify": denied,
                 "fixture": denied,
                 "broken": denied,
                 "missing": denied,
