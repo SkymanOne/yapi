@@ -16,7 +16,6 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use yapi_agent::UpdateSink;
 use yapi_core::agent_session::AgentSession;
-use yapi_core::extensions::ToolInfo;
 use yapi_core::extensions::tool_search;
 use yapi_core::tools::RegisteredTool;
 use yapi_types::event::ToolResult;
@@ -24,7 +23,7 @@ use yapi_types::message::{ContentBlock, Usage};
 use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
-use super::declarations::{Declaration, identifier, sample};
+use super::declarations::{identifier, sample};
 use super::models;
 use crate::ops::Job;
 use crate::{Bridge, Engine, Grants, Instance, Options};
@@ -197,7 +196,6 @@ struct Progress {
 /// A tool the script may call.
 struct Callable {
     registered: RegisteredTool,
-    declaration: Declaration,
     sample: String,
 }
 
@@ -317,13 +315,7 @@ impl ScriptBridge {
                         (None, _) => true,
                     })
                     .map(|tool| {
-                        let info = ToolInfo {
-                            name: tool.registered.name().to_owned(),
-                            description: tool.declaration.description.clone(),
-                            parameters: tool.declaration.input.clone(),
-                            exposure: tool.registered.exposure,
-                            namespace: tool.registered.namespace.clone(),
-                        };
+                        let info = tool.registered.info();
                         (info.name.clone(), tool_search::document(&info))
                     })
                     .collect();
@@ -786,14 +778,9 @@ impl Runner {
             .unwrap_or_default()
             .into_iter()
             .filter(|tool| tool.name() != super::NAME)
-            .map(|registered| {
-                let declaration = super::declaration(&registered);
-                let sample = sample(&declaration);
-                Callable {
-                    registered,
-                    declaration,
-                    sample,
-                }
+            .map(|registered| Callable {
+                sample: sample(&super::declaration(&registered)),
+                registered,
             })
             .collect();
         let tools_json: Vec<Value> = tools

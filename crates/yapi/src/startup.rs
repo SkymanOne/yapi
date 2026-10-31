@@ -797,6 +797,7 @@ fn build(
                     as Arc<dyn yapi_core::extensions::Extension>)
                 .chain(std::iter::once(
                     Arc::new(yapi_ext::codemode::CodemodeExtension::new(
+                        extensions.engine.clone(),
                         Some(codemode_cache),
                         Some(codemode_docs),
                     )) as Arc<dyn yapi_core::extensions::Extension>,

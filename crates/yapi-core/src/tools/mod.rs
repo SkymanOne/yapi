@@ -227,6 +227,18 @@ impl RegisteredTool {
     pub fn name(&self) -> &str {
         &self.tool.declaration().name
     }
+
+    /// The tool as extensions see it.
+    pub fn info(&self) -> crate::extensions::ToolInfo {
+        let declaration = self.tool.declaration();
+        crate::extensions::ToolInfo {
+            name: declaration.name.clone(),
+            description: declaration.description.clone(),
+            parameters: declaration.parameters.clone(),
+            exposure: self.exposure,
+            namespace: self.namespace.clone(),
+        }
+    }
 }
 
 /// Creates the named built-in tool.

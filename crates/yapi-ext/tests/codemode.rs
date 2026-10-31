@@ -23,6 +23,7 @@ use yapi_types::message::{ContentBlock, Message, ToolResultMessage};
 
 fn codemode() -> Arc<dyn Extension> {
     Arc::new(CodemodeExtension::new(
+        None,
         Some(Path::new(env!("CARGO_TARGET_TMPDIR")).join("wasm-cache")),
         None,
     ))

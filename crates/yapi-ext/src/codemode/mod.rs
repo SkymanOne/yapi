@@ -112,15 +112,6 @@ fn constrained_sampling() -> Value {
     json!({"type": "grammar", "variants": {"openai_lark": GRAMMAR}})
 }
 
-/// Whether `tool` is codemode: yapi's, or the facade's that a package
-/// registered in its place.
-fn is_codemode(tool: &RegisteredTool) -> bool {
-    let declaration = tool.tool.declaration();
-    declaration.name == NAME
-        && tool.exposure == Exposure::ModelOnly
-        && declaration.parameters == codemode::parameters()
-}
-
 /// pi's built-in codemode extension. Each session gets its own.
 pub struct CodemodeExtension {
     runner: Arc<run::Runner>,
@@ -130,15 +121,25 @@ pub struct CodemodeExtension {
 }
 
 impl CodemodeExtension {
-    /// The extension; compiled runtimes are cached in `cache_dir`. With
-    /// `docs`, where pi's `codemode.md` is, which the description points to,
-    /// scripts reach `models`, pi's classifiers and image models.
-    pub fn new(cache_dir: Option<PathBuf>, docs: Option<String>) -> CodemodeExtension {
+    /// The extension. Scripts run on `engine`, such as the one extensions
+    /// run on, or without one, on an engine compiled on first use, with
+    /// compiled runtimes cached in `cache_dir`. With `docs`, where pi's
+    /// `codemode.md` is, which the description points to, scripts reach
+    /// `models`, pi's classifiers and image models.
+    pub fn new(
+        engine: Option<crate::Engine>,
+        cache_dir: Option<PathBuf>,
+        docs: Option<String>,
+    ) -> CodemodeExtension {
         if let Some(docs) = &docs {
             DOCS.get_or_init(|| docs.clone());
         }
+        let runner = match engine {
+            Some(engine) => run::Runner::with_engine(engine, docs.clone()),
+            None => run::Runner::new(cache_dir, docs.clone()),
+        };
         CodemodeExtension {
-            runner: Arc::new(run::Runner::new(cache_dir, docs.clone())),
+            runner: Arc::new(runner),
             session: Arc::default(),
             docs,
         }
@@ -198,7 +199,7 @@ impl Extension for CodemodeExtension {
         let Some(own) = loadout.declared.iter().find(|tool| tool.name() == NAME) else {
             return changes;
         };
-        if !is_codemode(own) {
+        if !codemode::is_codemode_tool(&own.info()) {
             return changes;
         }
         let settings = lock(&self.session)
