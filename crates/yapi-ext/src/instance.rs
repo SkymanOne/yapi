@@ -19,7 +19,7 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use wasmtime::component::{Component, ResourceTable};
-use wasmtime::{Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
+use wasmtime::{CallHook, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxView, WasiView};
 use yapi_agent::tool::UpdateSink;
 
@@ -29,8 +29,8 @@ use crate::loader::Loader;
 use crate::requests::{AiStreams, Host};
 
 /// How long one guest export may compute, not counting time spent in host
-/// requests, before the instance is stopped.
-const CALL_LIMIT: Duration = Duration::from_secs(60);
+/// calls, before the instance is stopped.
+const CALL_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 60 });
 
 /// What an instance may reach. The default grants everything, as pi does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,6 +197,9 @@ pub(crate) struct State {
     host: Arc<Host>,
     started: Vec<(u64, String, String)>,
     call_started: Instant,
+    /// When the guest last called the host, and the time the guest spent
+    /// in such calls since the export began.
+    host_called: Instant,
     host_time: Duration,
     /// Set when the instance is dropped: the running export traps at the next
     /// epoch tick.
@@ -220,14 +223,10 @@ impl wit::extension::host::Host for State {
     }
 
     fn request(&mut self, kind: String, payload: String) -> Result<String, String> {
-        let begun = Instant::now();
         let payload: Value = serde_json::from_str(&payload).unwrap_or(Value::Null);
-        let result = self
-            .host
+        self.host
             .request(&kind, &payload)
-            .map(|value| yapi_types::json::stringify(&value));
-        self.host_time += begun.elapsed();
-        result
+            .map(|value| yapi_types::json::stringify(&value))
     }
 }
 
@@ -723,11 +722,22 @@ fn instantiate(
         host: host.clone(),
         started: Vec::new(),
         call_started: Instant::now(),
+        host_called: Instant::now(),
         host_time: Duration::ZERO,
         interrupt: interrupt.clone(),
     };
     let mut store = Store::new(&engine.engine, state);
     store.limiter(|state| &mut state.limits);
+    // Host calls, WASI's included, do not count toward the call limit.
+    store.call_hook(|mut context, hook| {
+        let state = context.data_mut();
+        match hook {
+            CallHook::CallingHost => state.host_called = Instant::now(),
+            CallHook::ReturningFromHost => state.host_time += state.host_called.elapsed(),
+            CallHook::CallingWasm | CallHook::ReturningFromWasm => {}
+        }
+        Ok(())
+    });
     store.epoch_deadline_callback(|context| {
         let state = context.data();
         if state.interrupt.load(Ordering::Relaxed) {
@@ -750,7 +760,45 @@ fn instantiate(
 
 #[cfg(test)]
 mod tests {
-    use super::record;
+    use super::*;
+
+    /// Time the guest spends blocked in WASI, here opening a FIFO that no
+    /// one writes yet, does not count toward the call limit. WASI cannot
+    /// read the FIFO, but the open waits for the writer.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn host_time_not_counted() {
+        let dir = std::env::temp_dir().join(format!("yapi-host-time-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (fifo, main) = (dir.join("fifo"), dir.join("main.js"));
+        let made = std::process::Command::new("mkfifo").arg(&fifo).status();
+        assert!(made.unwrap().success());
+        let read = format!(
+            "try {{ readFileSync({:?}); }} catch {{}}",
+            fifo.display().to_string()
+        );
+        let source = format!(
+            "import {{ readFileSync }} from \"node:fs\";\nexport default function () {{ {read} }}\n"
+        );
+        std::fs::write(&main, source).unwrap();
+        let engine = Engine::new(None).unwrap();
+        let instance = Instance::start(&engine, Options::new(dir.clone()), Arc::new(NoBridge))
+            .await
+            .unwrap();
+        std::thread::spawn(move || {
+            std::thread::sleep(CALL_LIMIT * 2);
+            std::fs::write(fifo, "x")
+        });
+        let extensions = serde_json::json!([{"id": 1, "path": main}]);
+        let loaded = instance
+            .call(
+                "load",
+                &serde_json::json!({"cwd": dir, "extensions": extensions}),
+            )
+            .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(loaded.unwrap()["extensions"][0].get("error"), None);
+    }
 
     /// A long process reloads and binds once per session; a restart replays
     /// the load, the flags, and the latest reload and binding only.
