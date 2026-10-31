@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use yapi_core::session::{SessionManager, list};
+use yapi_core::session::{SessionError, SessionManager, list};
 use yapi_types::message::{Content, Message, UserMessage};
 
 fn fixtures() -> PathBuf {
@@ -65,6 +65,14 @@ fn contexts_match_pi() {
             "{name} changed on open"
         );
     }
+    // A file that is not a session is refused, never overwritten.
+    let garbage = scratch.0.join("garbage.jsonl");
+    std::fs::write(&garbage, "garbage\n").unwrap();
+    assert!(matches!(
+        SessionManager::open(&garbage, None, None),
+        Err(SessionError::Invalid(_))
+    ));
+    assert_eq!(std::fs::read(&garbage).unwrap(), b"garbage\n");
 }
 
 #[test]

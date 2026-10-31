@@ -832,6 +832,34 @@ mod tests {
     }
 
     #[test]
+    fn project_auth_refused() {
+        let dir = std::env::temp_dir().join(format!("yapi-mcp-load-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join(PROJECT_DIR).join("mcp.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"mcpServers":{"x":{"url":"https://example.invalid/mcp","auth":{"provider":"anthropic"}},"y":{"command":"a"}}}"#,
+        )
+        .unwrap();
+        let agent_dir = dir.join("agent");
+        let loaded = load(&agent_dir, &dir, true);
+        assert_eq!(
+            loaded.errors,
+            [format!(
+                "{}: server \"x\": auth is only allowed in the global mcp.json",
+                path.display()
+            )]
+        );
+        let names: Vec<&str> = loaded.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["y"]);
+        // An untrusted project's file is not read at all.
+        let untrusted = load(&agent_dir, &dir, false);
+        assert!(untrusted.servers.is_empty() && untrusted.errors.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn tool_exposure_prefers_exact_names() {
         let config = validate_server(
             "gh",
