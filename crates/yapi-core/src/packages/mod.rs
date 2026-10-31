@@ -147,20 +147,25 @@ impl std::fmt::Debug for PackageManager {
     }
 }
 
-fn run_git(args: &[&str], dir: Option<&Path>) -> Result<(), PackageError> {
-    let mut command = std::process::Command::new("git");
+/// The standard output of `git` with `args`, run in `dir` (else the process
+/// directory) without a terminal prompt.
+async fn run_git(args: &[&str], dir: Option<&Path>) -> Result<String, PackageError> {
+    let mut command = tokio::process::Command::new("git");
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .envs(crate::config::child_env());
+        .envs(crate::config::child_env())
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
     if let Some(dir) = dir {
         command.current_dir(dir);
     }
     let output = command
         .output()
+        .await
         .map_err(|err| PackageError::Message(format!("git {}: {err}", args[0])))?;
     if output.status.success() {
-        return Ok(());
+        return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
     }
     Err(PackageError::Message(format!(
         "git {} failed with code {}: {}",
@@ -203,14 +208,13 @@ async fn command_output(mut command: tokio::process::Command) -> Option<String> 
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// The output of `git` with `args` in `dir`, as [`command_output`].
+/// The output of `git` with `args` in `dir`, given up after pi's network
+/// timeout. `None` when it fails.
 async fn git_output(args: &[&str], dir: &Path) -> Option<String> {
-    let mut command = tokio::process::Command::new("git");
-    command
-        .args(args)
-        .current_dir(dir)
-        .env("GIT_TERMINAL_PROMPT", "0");
-    command_output(command).await
+    tokio::time::timeout(NETWORK_TIMEOUT, run_git(args, Some(dir)))
+        .await
+        .ok()?
+        .ok()
 }
 
 /// pi's `getLatestNpmVersion` for npm package `name` from `version`: what
@@ -398,7 +402,7 @@ impl PackageManager {
             std::fs::create_dir_all(root).map_err(|err| PackageError::Message(err.to_string()))?;
             // As pi when stdout carries JSON or RPC: npm's output goes to
             // stderr, and npm never reads the client's input.
-            let status = std::process::Command::new(program)
+            let status = tokio::process::Command::new(program)
                 .envs(crate::config::child_env())
                 .args(args)
                 .args(["install", &spec, "--prefix"])
@@ -407,6 +411,7 @@ impl PackageManager {
                 .stdin(std::process::Stdio::null())
                 .stdout(std::io::stderr())
                 .status()
+                .await
                 .map_err(|err| PackageError::Message(format!("{program}: {err}")))?;
             if !status.success() {
                 return Err(PackageError::Message(format!(
@@ -438,9 +443,9 @@ impl PackageManager {
         }
         let target = dir.to_string_lossy().into_owned();
         let installed: Result<(), PackageError> = async {
-            run_git(&["clone", "--", repo, &target], None)?;
+            run_git(&["clone", "--", repo, &target], None).await?;
             if let Some(reference) = reference {
-                run_git(&["checkout", reference], Some(dir))?;
+                run_git(&["checkout", reference], Some(dir)).await?;
             }
             Ok(npm::install_dependencies(&mut self.npm, dir).await?)
         }
@@ -460,12 +465,12 @@ impl PackageManager {
     ) -> Result<(), PackageError> {
         match reference {
             Some(reference) => {
-                run_git(&["fetch", "origin", reference], Some(dir))?;
-                run_git(&["checkout", "FETCH_HEAD"], Some(dir))?;
+                run_git(&["fetch", "origin", reference], Some(dir)).await?;
+                run_git(&["checkout", "FETCH_HEAD"], Some(dir)).await?;
             }
             None => {
-                run_git(&["fetch", "--prune", "origin"], Some(dir))?;
-                run_git(&["reset", "--hard", "@{upstream}"], Some(dir))?;
+                run_git(&["fetch", "--prune", "origin"], Some(dir)).await?;
+                run_git(&["reset", "--hard", "@{upstream}"], Some(dir)).await?;
             }
         }
         npm::install_dependencies(&mut self.npm, dir).await?;
@@ -953,15 +958,17 @@ mod tests {
     }
 
     /// Commits everything in the repository `repo` and tags the commit.
-    fn commit(repo: &Path, tag: &str) {
-        let git = |args: &[&str]| {
-            let config = ["-c", "user.name=yapi", "-c", "user.email=yapi@example.com"];
-            let signing = ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"];
-            run_git(&[&config[..], &signing[..], args].concat(), Some(repo)).unwrap();
-        };
-        git(&["add", "-A"]);
-        git(&["commit", "--allow-empty", "-m", tag]);
-        git(&["tag", tag]);
+    async fn commit(repo: &Path, tag: &str) {
+        let config = ["-c", "user.name=yapi", "-c", "user.email=yapi@example.com"];
+        let signing = ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"];
+        for args in [
+            &["add", "-A"][..],
+            &["commit", "--allow-empty", "-m", tag],
+            &["tag", tag],
+        ] {
+            let args = [&config[..], &signing[..], args].concat();
+            run_git(&args, Some(repo)).await.unwrap();
+        }
     }
 
     fn head(repo: &Path, reference: &str) -> String {
@@ -979,12 +986,14 @@ mod tests {
     async fn new_ref_updates_checkout() {
         let (dir, mut manager) = git_scratch("existing");
         let origin = dir.join("origin");
-        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
-        commit(&origin, "v1");
+        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None)
+            .await
+            .unwrap();
+        commit(&origin, "v1").await;
         let checkout = dir.join("agent/git/github.com/user/repo");
         let repo = origin.to_str().unwrap();
         manager.install_git(repo, None, &checkout).await.unwrap();
-        commit(&origin, "v2");
+        commit(&origin, "v2").await;
 
         manager
             .install_git(repo, Some("v2"), &checkout)
@@ -1002,10 +1011,12 @@ mod tests {
     async fn failed_clone_removed() {
         let (dir, mut manager) = git_scratch("dependencies");
         let origin = dir.join("origin");
-        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
+        run_git(&["init", "-b", "main", origin.to_str().unwrap()], None)
+            .await
+            .unwrap();
         let manifest = r#"{"name": "repo", "dependencies": {"left-pad": "^1.0.0"}}"#;
         std::fs::write(origin.join("package.json"), manifest).unwrap();
-        commit(&origin, "v1");
+        commit(&origin, "v1").await;
         let checkout = dir.join("agent/git/github.com/user/repo");
         let installed = manager
             .install_git(origin.to_str().unwrap(), None, &checkout)
@@ -1026,13 +1037,15 @@ mod tests {
             let outside = dir.join("outside");
             std::fs::create_dir_all(&outside).unwrap();
             let origin = dir.join("origin");
-            run_git(&["init", "-b", "main", origin.to_str().unwrap()], None).unwrap();
+            run_git(&["init", "-b", "main", origin.to_str().unwrap()], None)
+                .await
+                .unwrap();
             let manifest = r#"{"name": "repo", "dependencies": {"@scope/dep": "^1.0.0"}}"#;
             std::fs::write(origin.join("package.json"), manifest).unwrap();
             let link = origin.join(link);
             std::fs::create_dir_all(link.parent().unwrap()).unwrap();
             std::os::unix::fs::symlink(&outside, &link).unwrap();
-            commit(&origin, "v1");
+            commit(&origin, "v1").await;
             let checkout = dir.join("agent/git/github.com/user/repo");
             let error = manager
                 .install_git(origin.to_str().unwrap(), None, &checkout)

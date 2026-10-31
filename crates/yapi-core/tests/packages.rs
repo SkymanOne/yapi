@@ -409,7 +409,8 @@ async fn npm_command_updates() {
     let script = dir.join("npm.sh");
     std::fs::write(
         &script,
-        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n",
+        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n\
+         [ \"$1\" != install ] || sleep 1\n",
     )
     .unwrap();
     installed(&dir, "behind", "1.0.0");
@@ -423,8 +424,13 @@ async fn npm_command_updates() {
         .to_string(),
     )
     .unwrap();
-    let packages = manager(&dir, "http://127.0.0.1:9");
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
     assert_eq!(packages.available_updates().await, ["behind"]);
+    // The install waits on the command without blocking the runtime, so a
+    // timeout ends it.
+    let install = packages.install("npm:behind@^1.0.0", false);
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(100), install).await;
+    assert!(waited.is_err(), "{waited:?}");
 }
 
 fn git(dir: &Path, args: &[&str]) {
