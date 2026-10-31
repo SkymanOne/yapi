@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use aws_lc_rs::digest::{Context, SHA256};
+use aws_lc_rs::digest::{Context, SHA256, digest};
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, EngineWeak};
 
@@ -74,16 +74,18 @@ impl Engine {
         })
     }
 
-    /// Compiles the native extension component in file `path`.
+    /// Compiles the native extension component in file `path`. Its cache
+    /// entry replaces the one compiled from the file's earlier contents.
     pub(crate) fn native(&self, path: &Path) -> Result<Component, Error> {
         let bytes = std::fs::read(path)
             .map_err(|err| Error::Compile(format!("{}: {err}", path.display())))?;
+        let source = digest(&SHA256, path.as_os_str().as_encoded_bytes());
         compile(
             &self.engine,
             &bytes,
             &|| Ok(bytes.clone()),
             self.cache_dir.as_deref(),
-            "native",
+            &format!("native-{}", yapi_types::time::hex(&source.as_ref()[..8])),
         )
         .map_err(|err| Error::Compile(format!("{}: {err}", path.display())))
     }
@@ -111,8 +113,8 @@ fn inflate_runtime() -> Result<Vec<u8>, Error> {
 
 /// Compiles the component that `wasm` produces, through a cache in
 /// `cache_dir` named after `name` and keyed by `key`, which identifies the
-/// component. `wasm` runs only when the cache has no entry. Compiling the
-/// runtime under a new key removes its older entries.
+/// component. `wasm` runs only when the cache has no entry. Compiling it
+/// under a new key removes the older entries of `name`.
 fn compile(
     engine: &wasmtime::Engine,
     key: &[u8],
@@ -138,8 +140,8 @@ fn compile(
         .precompile_component(&wasm()?)
         .map_err(Error::compile)?;
     // A missing cache only costs the next start a compile.
-    if write_cache(&path, &compiled) && name == "yapi-js" {
-        remove_stale(dir, &path);
+    if write_cache(&path, &compiled) {
+        remove_stale(dir, &path, name);
     }
     // SAFETY: `compiled` was produced by `precompile_component` on this engine
     // just above.
@@ -157,16 +159,17 @@ pub(crate) fn write_cache(path: &Path, contents: impl AsRef<[u8]>) -> bool {
         && std::fs::rename(&partial, path).is_ok()
 }
 
-/// Removes runtimes compiled from other versions of `YAPI_JS` or by other
-/// engine configurations.
-fn remove_stale(dir: &Path, current: &Path) {
+/// Removes the entries of `name` other than `current`: those compiled from
+/// other wasm or by other engine configurations.
+fn remove_stale(dir: &Path, current: &Path, name: &str) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
+    let prefix = format!("{name}-");
     for entry in entries.flatten() {
         let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if path != current && name.starts_with("yapi-js-") && name.ends_with(".cwasm") {
+        let file = entry.file_name().to_string_lossy().into_owned();
+        if path != current && file.starts_with(&prefix) && file.ends_with(".cwasm") {
             let _ = std::fs::remove_file(path);
         }
     }
@@ -185,4 +188,35 @@ fn start_ticker(engine: EngineWeak) {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A native extension compiled again from new bytes at its path replaces
+    /// its cache entry.
+    #[test]
+    fn native_entry_replaced() {
+        let dir = std::env::temp_dir().join(format!("yapi-native-cache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = dir.join("cache");
+        let engine = Engine::new(Some(&cache)).unwrap();
+        let path = dir.join("extension.wasm");
+        let builds: [&[u8]; 2] = [
+            include_bytes!("../tests/fixtures/hello.wasm"),
+            include_bytes!("../tests/fixtures/todo.wasm"),
+        ];
+        for build in builds {
+            std::fs::write(&path, build).unwrap();
+            engine.native(&path).unwrap();
+        }
+        let natives = std::fs::read_dir(&cache)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("native-"))
+            .count();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(natives, 1);
+    }
 }

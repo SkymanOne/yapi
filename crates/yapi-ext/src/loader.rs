@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use aws_lc_rs::digest::{Context, SHA256};
+use aws_lc_rs::digest::{SHA256, digest};
 use oxc::allocator::Allocator;
 use oxc::codegen::Codegen;
 use oxc::parser::Parser;
@@ -18,9 +18,6 @@ use oxc::span::SourceType;
 use oxc::transformer::{TransformOptions, Transformer};
 use oxc_resolver::{ResolveOptions, Resolver};
 use serde_json::{Value, json};
-
-/// Bumped when the output of [`Loader::transpile`] changes for the same input.
-const TRANSPILE_VERSION: &str = "4";
 
 /// How a file runs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -181,19 +178,22 @@ impl Loader {
         Ok(found)
     }
 
+    /// [`transpile`] through the cache of this yapi version, whose output
+    /// may differ from other versions': one entry per file, which holds the
+    /// hash of the text it was made from. Writing an entry removes the
+    /// entries of other versions.
     fn transpile_cached(&self, path: &Path, text: &str) -> Result<Prepared, String> {
         let Some(dir) = &self.cache_dir else {
             return transpile(path, text);
         };
-        let mut digest = Context::new(&SHA256);
-        for part in [TRANSPILE_VERSION, &path.to_string_lossy(), text] {
-            digest.update(part.as_bytes());
-            digest.update(&[0]);
-        }
-        let hex = yapi_types::time::hex(&digest.finish().as_ref()[..16]);
-        let cached = dir.join(format!("{hex}.js"));
+        let hash = |bytes: &[u8]| yapi_types::time::hex(&digest(&SHA256, bytes).as_ref()[..16]);
+        let version = dir.join(env!("CARGO_PKG_VERSION"));
+        let cached = version.join(format!("{}.js", hash(path.as_os_str().as_encoded_bytes())));
+        let key = hash(text.as_bytes());
         if let Ok(source) = std::fs::read_to_string(&cached)
             && let Some((tag, source)) = source.split_once('\n')
+            && let Some((tag, made_from)) = tag.split_once(' ')
+            && made_from == key
         {
             let format = if tag == "//cjs" {
                 Format::CommonJs
@@ -212,7 +212,14 @@ impl Loader {
             "//esm"
         };
         // A missing cache only costs the next load a transpile.
-        crate::engine::write_cache(&cached, format!("{tag}\n{}", prepared.source));
+        if crate::engine::write_cache(&cached, format!("{tag} {key}\n{}", prepared.source)) {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path != version {
+                    let _ = std::fs::remove_dir_all(&path).or_else(|_| std::fs::remove_file(&path));
+                }
+            }
+        }
         Ok(prepared)
     }
 }
@@ -431,18 +438,25 @@ mod tests {
         );
     }
 
+    /// The cache keeps one entry per file, of this version only.
     #[test]
     fn caches_transpiled_sources() {
         let dir = scratch("cache");
         let cache = dir.join("cache");
+        write(&cache, "0.0.1/old.js", "//esm 0\n");
+        write(&cache, "legacy.js", "//esm\n");
         let path = write(&dir, "a.ts", "export const a: number = 1;\n");
-        let first = Loader::new(dir.clone(), Some(cache.clone()))
-            .load(path.to_str().unwrap())
-            .unwrap();
-        assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 1);
-        let second = Loader::new(dir.clone(), Some(cache))
-            .load(path.to_str().unwrap())
-            .unwrap();
-        assert_eq!(first, second);
+        let load = || {
+            Loader::new(dir.clone(), Some(cache.clone()))
+                .load(path.to_str().unwrap())
+                .unwrap()
+        };
+        let first = load();
+        assert_eq!(first, load());
+        write(&dir, "a.ts", "export const a: number = 2;\n");
+        assert_ne!(first, load());
+        let entries = |dir: &Path| std::fs::read_dir(dir).unwrap().count();
+        assert_eq!(entries(&cache), 1);
+        assert_eq!(entries(&cache.join(env!("CARGO_PKG_VERSION"))), 1);
     }
 }

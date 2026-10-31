@@ -159,7 +159,8 @@ pub struct Options {
     pub filesystem_roots: Vec<PathBuf>,
     /// The most linear memory the instance may use, in bytes.
     pub memory_limit: usize,
-    /// Where transpiled modules are cached; `None` disables the cache.
+    /// A directory of its own where transpiled modules are cached: other
+    /// files in it are removed. `None` disables the cache.
     pub cache_dir: Option<PathBuf>,
     /// The environment variables extensions see when the environment is
     /// granted: these alone, or with `None`, the process's own.
