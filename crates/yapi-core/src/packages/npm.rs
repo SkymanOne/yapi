@@ -589,6 +589,18 @@ pub(crate) fn installed_version(dir: &Path) -> Option<String> {
     manifest_version(dir)
 }
 
+/// The `node_modules` folders in which Node looks for a dependency of the
+/// package in `dependent`, nearest first, up to `root_modules`.
+fn lookup_path<'a>(
+    dependent: &'a Path,
+    root_modules: &'a Path,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    let ancestors = dependent.ancestors().filter(move |dir| {
+        dir.file_name() == Some("node_modules".as_ref()) && dir.starts_with(root_modules)
+    });
+    std::iter::once(dependent.join("node_modules")).chain(ancestors.map(Path::to_path_buf))
+}
+
 /// Installs into `root/node_modules`, hoisting dependencies there when Node's
 /// resolution allows and nesting them otherwise.
 struct Installer<'a> {
@@ -690,26 +702,14 @@ impl Installer<'_> {
                 }
                 None => (name.to_owned(), range.to_owned()),
             };
-            // Node resolves `name` from the first `node_modules` up from
-            // `dependent` that holds it.
-            let resolved = std::iter::once(dependent.join("node_modules"))
-                .chain(
-                    dependent
-                        .ancestors()
-                        .filter(|dir| {
-                            dir.file_name() == Some("node_modules".as_ref())
-                                && dir.starts_with(&self.root_modules)
-                        })
-                        .map(Path::to_path_buf),
-                )
-                .find_map(|modules| {
-                    let dir = modules.join(name);
-                    if self.installing.contains(&dir) {
-                        manifest_version(&dir)
-                    } else {
-                        installed_version(&dir)
-                    }
-                });
+            let resolved = lookup_path(dependent, &self.root_modules).find_map(|modules| {
+                let dir = modules.join(name);
+                if self.installing.contains(&dir) {
+                    manifest_version(&dir)
+                } else {
+                    installed_version(&dir)
+                }
+            });
             let target = match resolved {
                 Some(version) if satisfies(&version, &range) => return Ok(()),
                 // Nested, it shadows the other version for `dependent` alone.
@@ -876,12 +876,10 @@ fn prune(modules: &Path, roots: &[String]) {
                 .flatten()
                 .map(|(name, _)| name)
             {
-                let nested = dir.join("node_modules").join(name);
-                queue.push(if nested.exists() {
-                    nested
-                } else {
-                    modules.join(name)
-                });
+                let resolved = lookup_path(&dir, modules)
+                    .map(|modules| modules.join(name))
+                    .find(|path| path.exists());
+                queue.extend(resolved);
             }
         }
     }

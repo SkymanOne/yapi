@@ -1090,6 +1090,34 @@ async fn remove_keeps_shared_dependency() {
     assert!(packages.remove("npm:pi-a", false).await.unwrap());
     assert!(!a.exists());
     assert!(!shared.exists());
+
+    // Dependencies resolve through every `node_modules` up from their
+    // dependent, as in trees npm makes: b reaches a's c@2, whose d is hoisted.
+    let modules = dir.join("agent/npm/node_modules");
+    for (path, version, dependencies) in [
+        ("a", "1.0.0", json!({"b": "^1"})),
+        ("a/node_modules/b", "1.0.0", json!({"c": "^2"})),
+        ("a/node_modules/c", "2.0.0", json!({"d": "^1"})),
+        ("c", "1.0.0", json!({})),
+        ("d", "1.0.0", json!({})),
+        ("x", "1.0.0", json!({})),
+    ] {
+        let name = path.rsplit('/').next().unwrap();
+        let manifest = json!({"name": name, "version": version, "dependencies": dependencies});
+        std::fs::create_dir_all(modules.join(path)).unwrap();
+        std::fs::write(
+            modules.join(path).join("package.json"),
+            manifest.to_string(),
+        )
+        .unwrap();
+    }
+    configure(&dir, json!(["npm:a", "npm:c", "npm:x"]));
+    let root = json!({"dependencies": {"a": "^1", "c": "^1", "x": "^1"}});
+    std::fs::write(dir.join("agent/npm/package.json"), root.to_string()).unwrap();
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    assert!(packages.remove("npm:x", false).await.unwrap());
+    assert!(!modules.join("x").exists());
+    assert!(modules.join("d").exists());
 }
 
 /// An update whose new version's dependency fails leaves the working
