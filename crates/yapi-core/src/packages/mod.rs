@@ -922,8 +922,9 @@ impl PackageManager {
     }
 }
 
-/// Whether the npm package at `dir` must be installed: it is missing, or
-/// `range` is a version range its installed version does not satisfy. A
+/// Whether the npm package at `dir` must be installed: it is missing or its
+/// install never finished, or `range` is a version range its installed
+/// version does not satisfy. A
 /// dist-tag such as `latest` is no range, so it never reinstalls.
 fn npm_stale(dir: &Path, range: Option<&str>) -> bool {
     npm::installed_version(dir).is_none_or(|installed| {

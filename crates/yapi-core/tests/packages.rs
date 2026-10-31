@@ -947,6 +947,29 @@ async fn installs_missing_or_outdated() {
         "2.0.0"
     );
     assert_eq!(server.finish().unwrap().len(), 2);
+
+    // An install that never finished, its dependencies missing, is redone.
+    std::fs::write(installed.join(".yapi-incomplete"), "").unwrap();
+    std::fs::write(installed.join("index.ts"), "partial").unwrap();
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+    assert!(!installed.join(".yapi-incomplete").exists());
+    assert_eq!(server.finish().unwrap().len(), 2);
 }
 
 /// pi's `findAutoloadDeltaBase`: a project entry with `autoload: false` over

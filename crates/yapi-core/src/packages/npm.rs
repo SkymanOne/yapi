@@ -570,9 +570,21 @@ fn read_manifest(dir: &Path) -> Option<Value> {
     yapi_types::json::parse(&std::fs::read_to_string(dir.join("package.json")).ok()?).ok()
 }
 
-/// The version of the package installed at `dir`, if any.
-pub(crate) fn installed_version(dir: &Path) -> Option<String> {
+/// The file in a package's folder while its install has not finished.
+const INCOMPLETE: &str = ".yapi-incomplete";
+
+/// The version in the `package.json` at `dir`.
+fn manifest_version(dir: &Path) -> Option<String> {
     read_manifest(dir)?["version"].as_str().map(str::to_owned)
+}
+
+/// The version of the package installed at `dir`, if any. A package whose
+/// install never finished, as when the process was stopped, is not installed.
+pub(crate) fn installed_version(dir: &Path) -> Option<String> {
+    if dir.join(INCOMPLETE).exists() {
+        return None;
+    }
+    manifest_version(dir)
 }
 
 /// Installs into `root/node_modules`, hoisting dependencies there when Node's
@@ -580,6 +592,9 @@ pub(crate) fn installed_version(dir: &Path) -> Option<String> {
 struct Installer<'a> {
     npm: &'a mut Npm,
     root_modules: PathBuf,
+    /// The packages whose dependencies are being installed, which count as
+    /// installed so that cycles end.
+    installing: Vec<PathBuf>,
 }
 
 impl Installer<'_> {
@@ -604,8 +619,16 @@ impl Installer<'_> {
             }
             let installed = async {
                 std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+                // Marks the package until its dependencies are in, so an
+                // install that never returns is redone.
+                let marker = dir.join(INCOMPLETE);
+                std::fs::write(&marker, "").map_err(io(&marker))?;
                 unpack(&bytes, &dir)?;
-                self.dependencies(&dir, &manifest).await
+                self.installing.push(dir.clone());
+                let dependencies = self.dependencies(&dir, &manifest).await;
+                self.installing.pop();
+                dependencies?;
+                std::fs::remove_file(&marker).map_err(io(&marker))
             }
             .await;
             if installed.is_ok() {
@@ -677,7 +700,14 @@ impl Installer<'_> {
                         })
                         .map(Path::to_path_buf),
                 )
-                .find_map(|modules| installed_version(&modules.join(name)));
+                .find_map(|modules| {
+                    let dir = modules.join(name);
+                    if self.installing.contains(&dir) {
+                        manifest_version(&dir)
+                    } else {
+                        installed_version(&dir)
+                    }
+                });
             let target = match resolved {
                 Some(version) if satisfies(&version, &range) => return Ok(()),
                 // Nested, it shadows the other version for `dependent` alone.
@@ -743,6 +773,7 @@ pub async fn install(
     let mut installer = Installer {
         npm,
         root_modules: modules.clone(),
+        installing: Vec::new(),
     };
     installer
         .unpack_package(modules.join(name), manifest)
@@ -785,6 +816,7 @@ pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmEr
     let mut installer = Installer {
         npm,
         root_modules: modules,
+        installing: Vec::new(),
     };
     installer.dependencies(dir, &manifest).await
 }
