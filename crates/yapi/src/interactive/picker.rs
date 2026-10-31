@@ -93,12 +93,32 @@ pub fn configure(
 
 /// Runs `selector` on the main screen until it finishes; its action, or
 /// `None` when cancelled. With `clear`, its rows are erased afterwards.
+/// SIGTERM or SIGHUP ends it with an error once the terminal is restored.
 fn run_selector(
     agent_dir: &Path,
     theme_setting: Option<&str>,
     mut selector: Selector,
     clear: bool,
 ) -> std::io::Result<Option<Action>> {
+    // The signals are caught from here on and awaited on a thread of its
+    // own, since the selector holds the runtime's thread. The thread ends
+    // early, with `true`, only on a signal.
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()?;
+    let terminated = {
+        let _context = runtime.enter();
+        crate::modes::rpc::termination()
+    };
+    let watcher = std::thread::spawn(move || {
+        runtime.block_on(async {
+            tokio::select! {
+                _ = terminated => true,
+                _ = stopped => false,
+            }
+        })
+    });
     #[cfg(unix)]
     let raw = yapi_tui::terminal::RawMode::enable()?;
     let mut protocol = KeyboardProtocol::default();
@@ -139,6 +159,9 @@ fn run_selector(
     let mut screen = MainScreen::new();
     let mut chosen = None;
     'outer: loop {
+        if watcher.is_finished() {
+            break;
+        }
         let ui = Ui {
             theme: &theme,
             keys: &keys,
@@ -173,5 +196,12 @@ fn run_selector(
     emit(&out);
     #[cfg(unix)]
     raw.restore();
+    drop(stop);
+    if watcher.join().unwrap_or(false) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "Terminated",
+        ));
+    }
     Ok(chosen)
 }

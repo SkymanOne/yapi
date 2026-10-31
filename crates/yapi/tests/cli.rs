@@ -614,6 +614,38 @@ fn split_terminal_input() {
     pty.finish().unwrap();
 }
 
+/// SIGTERM ends a startup picker through its cleanup, which gives the
+/// terminal back, and the command fails.
+#[cfg(unix)]
+#[test]
+fn picker_sigterm_cleanup() {
+    use std::time::Duration;
+    let root = common::scratch("picker-sigterm");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let env = [
+        ("HOME", root.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", agent.into_os_string()),
+    ];
+    let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let args = ["config".to_owned()];
+    let pty = yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap();
+    let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("[x]"))
+            .is_some()
+    );
+    let killed = Command::new("kill")
+        .args(["-TERM", &pty.pid().unwrap().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    let ended = pty.wait_for(Duration::from_secs(5), shown("Error: Terminated"));
+    assert!(ended.is_some(), "{:#?}", pty.rows());
+    assert!(!pty.cursor_hidden());
+    pty.finish().unwrap();
+}
+
 /// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset,
 /// and `/reload` applies the setting once it is set, as pi's
 /// `applyRuntimeSettings` does.

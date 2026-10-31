@@ -4254,6 +4254,10 @@ fn quote(value: &str) -> String {
 
 /// Runs interactive mode until the user quits. Returns the exit code.
 pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options) -> u8 {
+    // SIGTERM, or SIGHUP when the terminal goes away, caught before the
+    // terminal changes; it ends the loop, which restores the terminal.
+    let terminated = crate::modes::rpc::termination();
+    tokio::pin!(terminated);
     #[cfg(unix)]
     let raw = match yapi_tui::terminal::RawMode::enable() {
         Ok(raw) => raw,
@@ -4403,9 +4407,6 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     #[cfg(unix)]
     let mut resize =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change()).ok();
-    // SIGTERM, or SIGHUP when the terminal goes away; it ends the loop.
-    let terminated = crate::modes::rpc::termination();
-    tokio::pin!(terminated);
     let mut last_draw = Instant::now();
     let mut dirty = false;
     while !app.quit {
