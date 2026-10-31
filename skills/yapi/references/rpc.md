@@ -75,8 +75,6 @@ Every command is an object with `type` and an optional `id`, which the response 
 | `export_html` | optional `outputPath` | |
 | `get_commands` | | Slash commands from extensions, prompt templates and skills |
 
-Invalid arguments get an error response that names the problem, where Pi would coerce them.
-
 ## Extension dialogs
 
 Extensions that open dialogs send `extension_ui_request` lines. Answer each with an `extension_ui_response` carrying its `id`, as Pi's [extension UI protocol](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc-extension-ui.md) describes, or start yapi with `-ne` when no extensions are needed.

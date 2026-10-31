@@ -1,11 +1,11 @@
 # Where Pi extensions behave differently in yapi
 
-yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in Node.js. Most extensions behave as in Pi. These are the differences an extension author meets. The full list is [Differences from Pi](https://skymanone.github.io/yapi/compat.html).
+yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in Node.js. Most extensions behave as in Pi. This page lists what changes how an extension is written. [Differences from Pi](https://skymanone.github.io/yapi/compat.html) lists every difference with its reason. An installed yapi keeps a copy at `~/.yapi/agent/docs/compat.md`.
 
 ## Runtime
 
 - Each call into the extension may compute for 60 seconds, and the runtime may use 1 GiB of memory. A trapped runtime restarts and its extensions load again.
-- Node's built-in modules are shims. These import but throw when called: `http` requests, `net` sockets and servers, `tls`, `worker_threads` workers, `node:sqlite`, `zlib` compression, `vm`, `v8`, `dns`, `http2`, `dgram`, `cluster`, `inspector`, `child_process.fork`, `util.parseArgs`, `stream.pipeline`, `stream.finished`, `events.on` and `process.chdir`. `fetch` and `child_process` work.
+- Node's built-in modules are shims. `fs`, `path`, `os`, `child_process`, `fetch` and `dns.lookup` work. These import but throw when called: `http` requests, `net` sockets and servers, `dns` queries other than `lookup`, `tls`, `worker_threads` workers, `node:sqlite`, `zlib` compression, `vm`, `v8`, `http2`, `dgram`, `cluster`, `inspector`, `child_process.fork`, `util.parseArgs`, `stream.pipeline`, `stream.finished`, `events.on` and `process.chdir`.
 - `require()` of an ES module fails. Use `import`.
 - Native addons are installed unbuilt and fail when loaded. Load them lazily, so the rest of the extension still works.
 - `Intl` covers Unicode segmentation and number and plural formatting in `en-US`. `Intl.DateTimeFormat` and `Date` locale formatting honor `timeZone` but no other option.
@@ -14,8 +14,9 @@ yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in 
 
 ## API
 
-- Pi's internal classes, such as `SettingsManager`, `ModelRuntime` and `ExtensionRunner`, import but throw when called. Built-in tool factories run yapi's tools and reject custom `operations`.
-- `createAgentSession` and the rest of Pi's SDK throw, by design: yapi does not run agent sessions inside an extension's sandbox. Run a subagent as another yapi instead. Pi's `RpcClient` starts yapi in RPC mode and can prompt, steer, follow up and abort it. Pi's `subagent` example runs `child_process.spawn(process.execPath, ["--mode", "json", "-p", "--no-session", task])` and reads its events as they arrive.
+- Pi's internal classes, such as `SettingsManager`, `ModelRuntime` and `ExtensionRunner`, import but throw when called.
+- Built-in tool factories return yapi's tools, or Pi's own when given custom `operations`, a `spawnHook` or a `commandPrefix`. The `grep` and `find` factories refuse those options.
+- `createAgentSession` and the rest of Pi's SDK throw, by design. Run a subagent as another yapi instead. Pi's `RpcClient` starts yapi in RPC mode and can prompt, steer, follow up and abort it. Pi's `subagent` example runs `child_process.spawn(process.execPath, ["--mode", "json", "-p", "--no-session", task])` and reads its events as they arrive.
 - `newSession`'s `setup` writes to the new session only with `appendMessage`, `appendCustomEntry` and `appendSessionInfo`. Other `SessionManager` writes throw.
 - `pi.events` listeners in the emitter's runtime instance run during `emit`, as in Pi. Native extensions and other instances hear the event right after `emit` returns, with a JSON copy of the data.
 - `onTerminalInput` handlers run while yapi keeps drawing, so keys that arrive together pass through them before yapi handles the first.

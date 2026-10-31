@@ -1,6 +1,6 @@
 # Roadmap
 
-yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The [issue tracker](https://github.com/SkymanOne/yapi/issues) tracks individual work.
+yapi implements Pi's coding agent. This page lists the work planned beyond it. The items have no dates and may change. The [issue tracker](https://github.com/SkymanOne/yapi/issues) tracks individual work.
 
 ## Capability-based sandboxing
 
@@ -9,7 +9,7 @@ For now, every package receives Pi's default grants: file, process, network and 
 - A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
 - File grants can be limited to paths and to read-only access, and network grants to hosts.
 - The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it.
-- Host features that do not check grants today, such as running other tools, reading API keys, the event bus and session actions, will check them.
+- Host features that do not check grants today, such as running other tools, the event bus and session actions, will check them.
 
 [Security model and sandboxing](security.md) describes the current model.
 

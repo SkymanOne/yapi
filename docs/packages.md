@@ -63,7 +63,3 @@ The client reads registries and credentials from `npm_config_*` environment vari
 ```
 
 Pi's `npmCommand` setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.
-
-## Planned features
-
-Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the [Roadmap](roadmap.md).
