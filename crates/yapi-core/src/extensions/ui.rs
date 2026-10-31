@@ -397,6 +397,13 @@ pub trait ExtensionUi: Send + Sync {
         Value::Null
     }
 
+    /// pi's `getAllThemes`: the themes [`ExtensionUi::set_theme`] can switch
+    /// to, as `[{"name", "path"}]` with no `path` for a theme without a file.
+    /// Empty without a UI that switches themes, as in pi's RPC mode.
+    fn all_themes(&self) -> Value {
+        Value::Array(Vec::new())
+    }
+
     /// Switches to `theme`: a theme name, which is saved as `/settings`
     /// saves it, or a theme document `{"name", "appearance", "colors"}`,
     /// which is not saved. The error says why it could not.

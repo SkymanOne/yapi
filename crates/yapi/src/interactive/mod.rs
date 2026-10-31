@@ -4812,13 +4812,26 @@ impl App {
     fn share_themes(&self) {
         let (files, agent_dir) = (self.theme_files.clone(), self.agent_dir.clone());
         let (colors, mode) = (self.colors.clone(), self.color_mode);
-        yapi_types::sync::lock(&self.ext.shared).load_theme =
-            Some(Arc::new(move |theme: &Value| match theme.as_str() {
-                Some(name) => theme_named(name, &files, &agent_dir, &colors, mode),
-                // pi's in-memory themes, which nothing saves.
-                None => Theme::from_json("<in-memory>", &yapi_types::json::stringify(theme), mode)
-                    .map_err(|error| error.to_string()),
-            }));
+        let mut shared = yapi_types::sync::lock(&self.ext.shared);
+        let listed = (files.clone(), agent_dir.clone());
+        shared.all_themes = Some(Arc::new(move || {
+            let themes = settings_selector::available_themes(&listed.1, &listed.0);
+            Value::Array(
+                themes
+                    .into_iter()
+                    .map(|(name, path)| match path {
+                        Some(path) => json!({"name": name, "path": path}),
+                        None => json!({"name": name}),
+                    })
+                    .collect(),
+            )
+        }));
+        shared.load_theme = Some(Arc::new(move |theme: &Value| match theme.as_str() {
+            Some(name) => theme_named(name, &files, &agent_dir, &colors, mode),
+            // pi's in-memory themes, which nothing saves.
+            None => Theme::from_json("<in-memory>", &yapi_types::json::stringify(theme), mode)
+                .map_err(|error| error.to_string()),
+        }));
     }
 
     /// Carries out an extension command's session change as pi's
@@ -5213,6 +5226,17 @@ mod tests {
         };
         let light = ui.get_theme("light");
         assert_eq!(ui.get_theme("missing"), Value::Null);
+        let themes = ui.all_themes();
+        assert_eq!(
+            themes[0],
+            json!({"name": yapi_tui::theme::SYSTEM_THEME_NAME})
+        );
+        assert!(
+            themes
+                .as_array()
+                .unwrap()
+                .contains(&json!({"name": "light"}))
+        );
         let theme = json!({"name": "mine", "colors": light["colors"]});
         assert_eq!(ui.set_theme(&theme), Ok(()));
         app.on_event(events.try_recv().unwrap());

@@ -2305,14 +2305,14 @@ impl SessionBridge {
             "ui.setToolsExpanded" => ui.set_tools_expanded(payload["expanded"] == true),
             "ui.theme" => return ui.theme(),
             "ui.getTheme" => return ui.get_theme(&text(&payload["name"])),
+            "ui.getAllThemes" => return ui.all_themes(),
             "ui.footerData" => return ui.footer_data(),
             "ui.terminalSize" => {
                 if let Some(state) = ui.terminal() {
                     return terminal_json(&state.borrow());
                 }
             }
-
-            // The working indicator's visibility and frames are not shown.
+            // Kinds with no effect in yapi.
             _ => {}
         }
         Value::Null

@@ -1148,6 +1148,10 @@ impl ExtensionUi for Screen {
         json!({"bindings": {"tui.editor.cursorLeft": ["left"]}})
     }
 
+    fn all_themes(&self) -> Value {
+        json!([{"name": "dark"}])
+    }
+
     fn set_editor(&self, editor: Option<RemoteComponent>, _embeds_status: bool) {
         *self.editor.lock().unwrap() = editor;
     }
@@ -1188,6 +1192,7 @@ import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings));
+		pi.appendEntry("themes", { all: ctx.ui.getAllThemes() });
 	});
 }
 "#,
@@ -1201,6 +1206,10 @@ export default function (pi: ExtensionAPI) {
     session
         .bind_extensions(screen.clone(), Mode::Tui, None, None)
         .await;
+    assert_eq!(
+        custom_entries(&session, "themes"),
+        [json!({"all": [{"name": "dark"}]})]
+    );
     let editor = screen.editor.lock().unwrap().clone().unwrap();
     // The text and rows once the editor has taken the insertion.
     let insert = async |text: &str, apart: bool| {
