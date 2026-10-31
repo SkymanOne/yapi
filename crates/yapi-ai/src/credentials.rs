@@ -182,6 +182,7 @@ async fn run_command(command: &str, cache: bool) -> Option<String> {
             .arg(command)
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
             .output(),
     )
     .await;
@@ -301,5 +302,17 @@ mod tests {
             env_api_key("amazon-bedrock", Some(&aws)).map(|(_, key)| key),
             Some(AMBIENT_CREDENTIALS.to_owned())
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(start_paused = true)]
+    async fn command_killed_on_timeout() {
+        let marker = std::env::temp_dir().join(format!("yapi-command-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        // The paused clock reaches the timeout while the command sleeps.
+        let command = format!("!sleep 1; touch '{}'", marker.display());
+        assert_eq!(resolve(&command, None, false).await, None);
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        assert!(!marker.exists());
     }
 }
