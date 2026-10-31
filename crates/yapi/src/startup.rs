@@ -48,8 +48,15 @@ pub fn read_piped_stdin() -> Option<String> {
     if std::io::stdin().is_terminal() {
         return None;
     }
-    let mut text = String::new();
-    std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).ok()?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::stdin(), &mut bytes).ok()?;
+    piped_text(&bytes)
+}
+
+/// Piped input as pi decodes it: invalid UTF-8 becomes U+FFFD, and blank
+/// input is no input.
+fn piped_text(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
     let trimmed = text.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
@@ -1366,8 +1373,8 @@ mod tests {
         SettingsManager::load(dir, dir, false)
     }
 
-    /// The session directory, the tools and the appended system prompt
-    /// read from settings and flags as pi reads them.
+    /// The session directory, the tools, the appended system prompt and
+    /// piped input read from settings, flags and stdin as pi reads them.
     #[test]
     fn startup_inputs() {
         let dir = std::env::temp_dir().join(format!("yapi-startup-inputs-{}", std::process::id()));
@@ -1387,6 +1394,9 @@ mod tests {
         let flags = ["literal".to_owned(), String::new()];
         assert_eq!(append_prompts(&flags, discovered), ["literal"]);
         assert!(append_prompts(&[String::new()], discovered).is_empty());
+        // Piped input keeps text around invalid UTF-8.
+        assert_eq!(piped_text(b" a\xffb\n").as_deref(), Some("a\u{fffd}b"));
+        assert_eq!(piped_text(b" \n"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
