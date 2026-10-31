@@ -12,7 +12,7 @@ use super::edit_diff::{
     restore_line_endings, unified_patch,
 };
 use super::mutation::with_file_lock;
-use super::{ToolEnv, check_abort, declaration, error_code, text_result};
+use super::{ToolEnv, check_abort, declaration, error_code, string_arg, text_result};
 
 /// The `edit` tool.
 pub struct Edit {
@@ -90,22 +90,24 @@ impl Tool for Edit {
         _updates: UpdateSink,
     ) -> BoxFuture<'_, Result<ToolResult, String>> {
         Box::pin(async move {
-            let path = args["path"].as_str().unwrap_or_default().to_owned();
-            let edits: Vec<Replacement> = args["edits"]
+            let edits = args["edits"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|edit| Replacement {
-                    old_text: edit["oldText"].as_str().unwrap_or_default().to_owned(),
-                    new_text: edit["newText"].as_str().unwrap_or_default().to_owned(),
+                .map(|edit| {
+                    Ok(Replacement {
+                        old_text: string_arg(edit, "oldText")?.to_owned(),
+                        new_text: string_arg(edit, "newText")?.to_owned(),
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, String>>()?;
             if edits.is_empty() {
                 return Err(
                     "Edit tool input is invalid. edits must contain at least one replacement."
                         .into(),
                 );
             }
+            let path = string_arg(&args, "path")?.to_owned();
             let absolute = super::path::resolve_to_cwd(&path, &self.env.cwd);
             with_file_lock(&absolute, async {
                 check_abort(&cancel)?;

@@ -317,6 +317,15 @@ pub(crate) async fn sleep_until_opt(deadline: Option<std::time::Instant>) {
     }
 }
 
+/// `args[name]` as a string, or an error in the style of Node's
+/// `ERR_INVALID_ARG_TYPE`: pi's file tools throw, touching nothing, when an
+/// extension's `tool_call` handler replaced a validated argument.
+fn string_arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
+    args[name]
+        .as_str()
+        .ok_or_else(|| format!("The \"{name}\" argument must be of type string."))
+}
+
 fn text_result(content: impl Into<String>, details: Option<Value>) -> ToolResult {
     ToolResult {
         content: vec![ContentBlock::text(content)],

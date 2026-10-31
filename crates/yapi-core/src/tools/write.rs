@@ -8,7 +8,7 @@ use yapi_types::event::ToolResult;
 use yapi_types::message::ToolDeclaration;
 
 use super::mutation::with_file_lock;
-use super::{ToolEnv, check_abort, declaration, node_error, text_result};
+use super::{ToolEnv, check_abort, declaration, node_error, string_arg, text_result};
 
 /// The `write` tool.
 pub struct Write {
@@ -45,8 +45,8 @@ impl Tool for Write {
         _updates: UpdateSink,
     ) -> BoxFuture<'_, Result<ToolResult, String>> {
         Box::pin(async move {
-            let path = args["path"].as_str().unwrap_or_default().to_owned();
-            let content = args["content"].as_str().unwrap_or_default().to_owned();
+            let path = string_arg(&args, "path")?.to_owned();
+            let content = string_arg(&args, "content")?.to_owned();
             let absolute = super::path::resolve_to_cwd(&path, &self.env.cwd);
             with_file_lock(&absolute, async {
                 check_abort(&cancel)?;

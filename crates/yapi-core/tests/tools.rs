@@ -208,6 +208,27 @@ async fn bom_and_crlf_preserved() {
             dir.0.join("adir").display()
         )
     );
+
+    // A `tool_call` handler can drop a validated argument; the file is left alone.
+    for (name, args, field) in [
+        ("write", json!({"path": "sub/f.txt"}), "content"),
+        ("write", json!({"content": "x"}), "path"),
+        (
+            "edit",
+            json!({"path": "sub/f.txt", "edits": [{"oldText": "one"}]}),
+            "newText",
+        ),
+    ] {
+        let err = call(&dir.0, name, args).await.unwrap_err();
+        assert_eq!(
+            err,
+            format!("The \"{field}\" argument must be of type string.")
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(dir.0.join("sub/f.txt")).unwrap(),
+        "\u{feff}one\r\n2\r\n"
+    );
 }
 
 #[tokio::test]
