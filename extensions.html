@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -218,7 +218,7 @@
 <ul>
 <li>the extension does heavy computation, which compiled code runs much faster than an interpreter</li>
 <li>it should be isolated from other extensions. A native extension’s crash does not reload the others, and its instance is the unit that <a href="roadmap.html#capability-based-sandboxing">per-package grants</a> will apply to.</li>
-<li>memory matters. Native extensions do not load the JavaScript runtime. In the <a href="performance.html#results">benchmark</a>, ten small Pi extensions raise idle memory on Linux from 18.8 MB to 40.0 MB.</li>
+<li>memory matters. Native extensions do not load the JavaScript runtime. The <a href="performance.html#results">benchmark</a> measures the memory that Pi extensions add.</li>
 <li>the code base is in Rust, or should use Rust crates</li>
 </ul>
 <p>Weigh these limits as well:</p>

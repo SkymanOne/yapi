@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -181,7 +181,7 @@
                     <main>
                         <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <h2 id="network"><a class="header" href="#network">Network</a></h2>
-<p>yapi honors <code>HTTPS_PROXY</code>, <code>HTTP_PROXY</code>, <code>ALL_PROXY</code> and <code>NO_PROXY</code>, and the <code>httpProxy</code> setting. Certificates are checked against the operating system’s trust store.</p>
+<p>yapi honors <code>HTTPS_PROXY</code>, <code>HTTP_PROXY</code>, <code>ALL_PROXY</code> and <code>NO_PROXY</code>, and the <code>httpProxy</code> setting. Requests to AWS container and instance metadata never use a proxy, as in the AWS SDK. Certificates are checked against the operating system’s trust store.</p>
 <p><code>--offline</code>, or <code>PI_OFFLINE=1</code>, skips startup network work such as downloading <code>fd</code> and <code>rg</code>.</p>
 <h2 id="macos-blocks-a-downloaded-binary"><a class="header" href="#macos-blocks-a-downloaded-binary">macOS blocks a downloaded binary</a></h2>
 <p>macOS marks an archive downloaded in a browser as quarantined, and Gatekeeper then refuses to open the <code>yapi</code> binary inside it, which Apple has not notarized. The install script, <code>curl</code> and Cargo do not set the mark. Remove it from the unpacked binary:</p>

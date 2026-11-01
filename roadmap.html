@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -180,14 +180,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
-<p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
+<p>yapi implements Pi’s coding agent. This page lists the work planned beyond it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>For now, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
 <li>A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.</li>
 <li>File grants can be limited to paths and to read-only access, and network grants to hosts.</li>
 <li>The <code>pi.events</code> bus stays within packages of the same grants unless your settings allow more. A package’s own manifest cannot widen it.</li>
-<li>Host features that do not check grants today, such as running other tools, reading API keys, the event bus and session actions, will check them.</li>
+<li>Host features that do not check grants today, such as running other tools, the event bus and session actions, will check them.</li>
 </ul>
 <p><a href="security.html">Security model and sandboxing</a> describes the current model.</p>
 <h2 id="project-manifests"><a class="header" href="#project-manifests">Project manifests</a></h2>

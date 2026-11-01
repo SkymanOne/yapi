@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -350,7 +350,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <pre><code class="language-sh">yapi import pi
 </code></pre>
 <p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, API keys, models, key bindings, MCP servers, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
-<p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
+<p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. An installed package that yapi already has is kept whole, without any of Pi’s files for it, so the two installs never mix. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
 <p>Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
@@ -458,7 +458,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 </table>
 </div>
 <p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
-<p><code>/bug</code> writes <code>yapi-bug-report-&lt;id&gt;.zip</code> to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. It holds the session transcript only when you include it. When the GitHub CLI is signed in, <code>/bug</code> then offers to post a public issue with your description, the summary and <code>report.json</code> without your settings’ values, never the transcript. See <a href="#reporting-a-problem">Reporting a problem</a>.</p>
+<p><a href="#reporting-a-problem">Reporting a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status
@@ -505,7 +505,7 @@ tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
 <h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
 <p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
-<li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region.</li>
+<li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region. As in the AWS SDK, <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> must use HTTPS unless it names a loopback address or the ECS or EKS container host.</li>
 <li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
 <li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
@@ -603,7 +603,7 @@ yapi --no-session            # do not save this run
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
 <p>The host checks every file, process, network and environment access against the extension’s grants. Without the file grant, an extension cannot import modules from files either. For now, every package receives Pi’s default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the <a href="#capability-based-sandboxing">Roadmap</a> describes.</p>
 <p>A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
-<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code> or <code>streamSimple</code>, only with the network grant.</p>
+<p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code>, <code>getApiKey</code>, <code>getApiKeyForProvider</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code>, <code>streamSimple</code>, <code>classify</code> or <code>generateImages</code>, only with the network grant. It runs the built-in <code>grep</code> and <code>find</code> tools only with the file, process and network grants, because they run ripgrep and fd and download them when they are missing.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
 <p>Pi’s exports that read <code>auth.json</code>, write <code>trust.json</code> or <code>settings.json</code>, or write session files directly throw in extensions, so extensions reach credentials, project trust, settings and sessions through the host. Until file grants can be limited to paths, an extension with the file grant can still open these files itself, as in Pi.</p>
@@ -730,7 +730,7 @@ yapi list
 yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 </code></pre>
-<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range or whose install was interrupted.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code class="language-text">User packages:
@@ -739,7 +739,7 @@ yapi remove npm:@scope/some-pi-package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. It installs a configured git package that is missing, and fails on a git package folder that is not a checkout of its own, so git never touches an enclosing repository. The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
 <pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
@@ -753,13 +753,11 @@ yapi -e git:github.com/user/repo
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
 <h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
 <p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
-<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names.</p>
+<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names. A request that takes longer than <code>fetch-timeout</code> milliseconds, five minutes by default, fails the install. <code>0</code> sets no limit.</p>
 <pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
 //npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
 </code></pre>
 <p>Pi’s <code>npmCommand</code> setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.</p>
-<h2 id="planned-features"><a class="header" href="#planned-features">Planned features</a></h2>
-<p>Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the <a href="#roadmap">Roadmap</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="connect-mcp-servers"><a class="header" href="#connect-mcp-servers">Connect MCP servers</a></h1>
 <p>yapi connects to <a href="https://modelcontextprotocol.io">Model Context Protocol</a> servers over stdio and streamable HTTP. Describe them in <code>~/.yapi/agent/mcp.json</code>, or in <code>.yapi/mcp.json</code> for one project:</p>
@@ -837,7 +835,7 @@ yapi mcp remove docs
 <ul>
 <li>the extension does heavy computation, which compiled code runs much faster than an interpreter</li>
 <li>it should be isolated from other extensions. A native extension’s crash does not reload the others, and its instance is the unit that <a href="#capability-based-sandboxing">per-package grants</a> will apply to.</li>
-<li>memory matters. Native extensions do not load the JavaScript runtime. In the <a href="#results">benchmark</a>, ten small Pi extensions raise idle memory on Linux from 18.8 MB to 40.0 MB.</li>
+<li>memory matters. Native extensions do not load the JavaScript runtime. The <a href="#results">benchmark</a> measures the memory that Pi extensions add.</li>
 <li>the code base is in Rust, or should use Rust crates</li>
 </ul>
 <p>Weigh these limits as well:</p>
@@ -1218,7 +1216,7 @@ yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 <li><code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style. <code>widgets::keybindings</code> gives the key bindings that <code>handle_input</code> takes.</li>
 <li>The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</li>
 </ul>
-<p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
+<p>A built extension without the feature is about 210 KB. The six examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does.</p>
 <ul>
@@ -1299,7 +1297,7 @@ loop {
 Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <span class="boring">}</span></code></pre>
 <h2 id="limits"><a class="header" href="#limits">Limits</a></h2>
-<p>Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.</p>
+<p>Each native extension runs in an instance of its own, under the limits that <a href="#instances-and-limits">Instances and limits</a> describes.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="native-extension-examples"><a class="header" href="#native-extension-examples">Native extension examples</a></h1>
 <p>The repository has nineteen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Twelve are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
@@ -1661,7 +1659,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td><code>pi-ai</code> exports</td><td>Pi’s <code>pi-ai</code></td><td>Pi’s own <code>pi-ai</code> code, with yapi’s providers behind its wire APIs and its OpenRouter image generation. These make their requests in yapi, so they do not use a <code>fetch</code> option. Some exports throw when called, by design. <code>createModels</code>, <code>builtinModels</code>, <code>builtinProviders</code>, the built-in provider factories such as <code>anthropicProvider</code>, <code>cloudflareAIGatewayAuth</code>, <code>cloudflareWorkersAIAuth</code>, <code>defaultProviderAuthContext</code> and <code>findEnvKeys</code> would resolve provider credentials inside the runtime that every JavaScript extension shares, outside the host’s checked credential requests. <code>setBedrockProviderModule</code> and <code>registerImagesApiProvider</code> would let one extension replace code that receives other extensions’ credentials.</td></tr>
 <tr><td>Agent sessions in an extension</td><td><code>createAgentSession</code> and Pi’s SDK</td><td>Not supported, by design. <code>AgentSession</code>, <code>AgentSessionRuntime</code>, <code>createAgentSession</code>, <code>createAgentSessionFromServices</code>, <code>createAgentSessionRuntime</code>, <code>createAgentSessionServices</code>, <code>ModelRegistry</code>, <code>ModelRuntime</code>, <code>DefaultResourceLoader</code>, <code>DefaultPackageManager</code>, <code>ExtensionRunner</code>, <code>createExtensionRuntime</code>, <code>discoverAndLoadExtensions</code>, <code>main</code>, <code>runPrintMode</code>, <code>runRpcMode</code> and <code>InteractiveMode</code> throw when called. They run a second Pi agent inside the extension, with its own model runtime and credentials, extensions loaded by jiti, which needs Node, and packages installed by npm. Pi’s modes would also take over the terminal and the output that yapi owns. <code>createMcpExtension</code> throws too, as yapi’s MCP client is built in. Run a subagent as another yapi, with Pi’s <code>RpcClient</code> or as Pi’s <code>subagent</code> example does. <code>pi-agent-core</code>’s <code>Agent</code> and agent loop work, over the stream function and tools the extension gives them.</td></tr>
 <tr><td>Pi internals that bypass the host</td><td>Every export of Pi’s packages</td><td>Not supported, by design. An extension reaches credentials, project trust, settings and sessions only through the host, which checks its grants, so these throw when called. <code>readStoredCredential</code> would hand it the raw keys and refresh tokens in <code>auth.json</code>. <code>ProjectTrustStore</code> would let it trust a project without you, so the project’s extensions and settings load at the next start. <code>SettingsManager</code> would let it rewrite <code>settings.json</code>, such as the shell, the npm command, packages, extension paths and the default project trust. <code>SessionManager</code> would let it write and rewrite session files, and <code>SessionSelectorComponent</code> deletes them. The <code>grep</code> and <code>find</code> tool factories refuse custom <code>operations</code>, because Pi’s tools then download ripgrep and fd into the agent directory’s <code>bin</code>, which yapi adds to every command’s <code>PATH</code>.</td></tr>
-<tr><td>Extension UI</td><td>Components detect links, images and theme changes</td><td>Links and images fall back to text. Theme changes reach extensions at their next session.</td></tr>
+<tr><td>Extension UI</td><td>Components detect links, images and theme changes</td><td>Links and images fall back to text. Theme changes reach extensions at their next session. <code>getAllThemes</code> gives the built-in themes no path, as they are built into yapi.</td></tr>
 <tr><td><code>pi.events</code></td><td>Every listener runs during <code>emit</code>, in the order of subscription</td><td>Listeners in the emitter’s runtime instance run during <code>emit</code>. Native extensions and other instances get the event after <code>emit</code> returns, as a JSON copy, and data JSON cannot carry stays in the emitter’s instance. An instance that is busy holds at most 64 events from others and drops later ones until it catches up.</td></tr>
 <tr><td>Terminal input listeners</td><td>Pi handles each key before the next one reaches them</td><td>They run while yapi keeps drawing, so keys that arrive together pass through them together.</td></tr>
 <tr><td>Focused component</td><td><code>tui.focusedComponent</code> is the component that has the keyboard</td><td>The extension’s own editor when it replaced yapi’s. Otherwise a stand-in, as yapi’s editor, selectors and dialogs are not objects in the runtime: an <code>Editor</code> with no state while the prompt editor has the keyboard, and an empty object while a selector, a dialog or a component has it.</td></tr>
@@ -1690,7 +1688,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Git sources</td><td>A host or ref may start with <code>-</code></td><td>A host or ref that starts with <code>-</code> is refused, because git would read it as an option. Clones run as <code>git clone -- &lt;repo&gt;</code>.</td></tr>
 <tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source does not stop the others.</td></tr>
-<tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries and credentials from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
+<tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries, credentials and <code>fetch-timeout</code> from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. Other settings, such as <code>cafile</code>, are ignored.</td></tr>
 <tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="#logs">Logs</a>.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>A <code>yapi</code> key of the same shape takes precedence, so one package can ship a native build for yapi.</td></tr>
@@ -1728,6 +1726,8 @@ api.on("session_start", |_event, ctx| async move {
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
+<tr><td>Deeply nested tool arguments</td><td>Tool-call arguments parse at any depth</td><td>Arguments nested more than 512 levels deep read as <code>{}</code>, so a model’s output cannot crash yapi with a stack overflow.</td></tr>
+<tr><td><code>write</code> and <code>edit</code> arguments that are not strings</td><td>A <code>tool_call</code> handler can change the arguments after validation. The tool then fails with whatever Node error comes up, such as <code>Cannot read properties of undefined (reading 'replace')</code>, after <code>write</code> creates the parent folders. <code>edit</code> of a missing file reports the missing file first.</td><td>The tool fails with <code>The "&lt;name&gt;" argument must be of type string.</code> before it touches the path or the file, so the message is clear and nothing is created or changed.</td></tr>
 <tr><td>Sorting names</td><td>ICU’s <code>localeCompare</code> sorts every script</td><td>Latin letters, accents and marks sort as ICU’s root collation does. Letters of other scripts sort by code point, to keep ICU’s data out of the binary.</td></tr>
 <tr><td><code>edit</code> on a file that is not UTF-8</td><td>Reads it as UTF-8 and writes every invalid byte back as U+FFFD</td><td>Refuses the edit with “File is not valid UTF-8.”, so bytes outside the edit never change.</td></tr>
 <tr><td>Line endings after <code>edit</code></td><td>The whole file takes the line ending of its first line break</td><td>Lines the edit leaves unchanged keep their own line endings. Changed lines take the ending of the first line break.</td></tr>
@@ -1739,14 +1739,14 @@ api.on("session_start", |_event, ctx| async move {
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
-<p>yapi 0.1 implements the coding agent of Pi 1.0. This page lists the work planned after it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
+<p>yapi implements Pi’s coding agent. This page lists the work planned beyond it. The items have no dates and may change. The <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a> tracks individual work.</p>
 <h2 id="capability-based-sandboxing"><a class="header" href="#capability-based-sandboxing">Capability-based sandboxing</a></h2>
 <p>For now, every package receives Pi’s default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:</p>
 <ul>
 <li>A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.</li>
 <li>File grants can be limited to paths and to read-only access, and network grants to hosts.</li>
 <li>The <code>pi.events</code> bus stays within packages of the same grants unless your settings allow more. A package’s own manifest cannot widen it.</li>
-<li>Host features that do not check grants today, such as running other tools, reading API keys, the event bus and session actions, will check them.</li>
+<li>Host features that do not check grants today, such as running other tools, the event bus and session actions, will check them.</li>
 </ul>
 <p><a href="#security-model-and-sandboxing">Security model and sandboxing</a> describes the current model.</p>
 <h2 id="project-manifests"><a class="header" href="#project-manifests">Project manifests</a></h2>
@@ -1835,7 +1835,7 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <h2 id="network"><a class="header" href="#network">Network</a></h2>
-<p>yapi honors <code>HTTPS_PROXY</code>, <code>HTTP_PROXY</code>, <code>ALL_PROXY</code> and <code>NO_PROXY</code>, and the <code>httpProxy</code> setting. Certificates are checked against the operating system’s trust store.</p>
+<p>yapi honors <code>HTTPS_PROXY</code>, <code>HTTP_PROXY</code>, <code>ALL_PROXY</code> and <code>NO_PROXY</code>, and the <code>httpProxy</code> setting. Requests to AWS container and instance metadata never use a proxy, as in the AWS SDK. Certificates are checked against the operating system’s trust store.</p>
 <p><code>--offline</code>, or <code>PI_OFFLINE=1</code>, skips startup network work such as downloading <code>fd</code> and <code>rg</code>.</p>
 <h2 id="macos-blocks-a-downloaded-binary"><a class="header" href="#macos-blocks-a-downloaded-binary">macOS blocks a downloaded binary</a></h2>
 <p>macOS marks an archive downloaded in a browser as quarantined, and Gatekeeper then refuses to open the <code>yapi</code> binary inside it, which Apple has not notarized. The install script, <code>curl</code> and Cargo do not set the mark. Remove it from the unpacked binary:</p>
@@ -1877,14 +1877,14 @@ cd yapi
 cargo run -p yapi --
 </code></pre>
 <h2 id="checks"><a class="header" href="#checks">Checks</a></h2>
-<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, skills or other workflows.</p>
+<p>Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only <code>docs/</code>, <code>.agents/</code>, <code>assets/</code>, <code>book.toml</code>, the license files, root Markdown files other than <code>CHANGELOG.md</code>, or workflows other than CI.</p>
 <pre><code class="language-sh">cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo deny check
 </code></pre>
 <p><code>cargo test</code> includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.</p>
-<p><code>prek install</code> sets up git hooks that run <code>cargo fmt</code> and Clippy on every commit, along with checks of whitespace, TOML, shell scripts, Markdown, the commit message and the branch name. <code>prek run --all-files</code> runs them on the whole repository. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> gives the rules for commit messages and branch names.</p>
+<p><code>prek install</code> sets up the git hooks in <code>.pre-commit-config.yaml</code>. On commit they run <code>cargo fmt</code> and Clippy, check whitespace, line endings, TOML, YAML, JSON, shell scripts and Markdown, and check the commit message and the branch name. On push they check the branch name. <code>prek run --all-files</code> runs them on the whole repository. <a href="https://github.com/SkymanOne/yapi/blob/main/AGENTS.md">AGENTS.md</a> gives the rules for commit messages and branch names.</p>
 <h2 id="common-changes"><a class="header" href="#common-changes">Common changes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1915,7 +1915,7 @@ cargo xtask bench --pi &lt;path-to-pi&gt;    # time and memory against Pi
 <li>Update the versions that the <code>yapi new</code> template, the README and these docs pin. <code>git grep</code> for the old version lists them, such as <code>git grep -n '0\.1\.0'</code>.</li>
 <li>Run <code>cargo metadata --format-version 1 &gt;/dev/null</code> in <code>guest</code> to update <code>guest/Cargo.lock</code>, then <code>cargo xtask js-runtime</code> with a WASI SDK. The lock file is an input of <code>yapi-js.wasm</code>.</li>
 <li>In <code>CHANGELOG.md</code>, move the lines under <code>## [Unreleased]</code> into a section for the release, with its date and link.</li>
-<li>Merge, then push the tag <code>v&lt;version&gt;</code>. The Release workflow builds and publishes the binaries and the documentation archive, then publishes <code>yapi-types</code>, <code>yapi-tui</code> and <code>yapi-extension-api</code> to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository <code>SkymanOne/yapi</code>, workflow <code>release.yml</code> and no environment.</li>
+<li>Merge, then wait for CI on <code>main</code> to pass for the merge commit itself, which <code>gh run list --branch main</code> shows. The pull request’s green run does not prove main’s. A flaky test is a bug to fix, not a run to repeat. Then push the tag <code>v&lt;version&gt;</code>. The Release workflow builds and publishes the binaries and the documentation archive, then publishes <code>yapi-types</code>, <code>yapi-tui</code> and <code>yapi-extension-api</code> to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository <code>SkymanOne/yapi</code>, workflow <code>release.yml</code> and no environment.</li>
 </ol>
 <h2 id="documentation"><a class="header" href="#documentation">Documentation</a></h2>
 <p>This site lives in <code>docs/</code>, is configured in <code>book.toml</code> and builds with <a href="https://rust-lang.github.io/mdBook/">mdBook</a>:</p>

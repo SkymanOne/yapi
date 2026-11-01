@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -469,7 +469,7 @@ yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 <li><code>widgets::style</code> and <code>widgets::bg_style</code> give a theme token’s style. <code>widgets::keybindings</code> gives the key bindings that <code>handle_input</code> takes.</li>
 <li>The module also has <code>Text</code>, a component with pi-tui’s <code>Text</code> layout, and pi-tui’s <code>visible_width</code>, <code>truncate_to_width</code> and <code>wrap_text_with_ansi</code> for text with escape sequences.</li>
 </ul>
-<p>A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.</p>
+<p>A built extension without the feature is about 210 KB. The six examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does.</p>
 <ul>
@@ -550,7 +550,7 @@ loop {
 Ok(ToolResult::text(String::from_utf8_lossy(&amp;output)))
 <span class="boring">}</span></code></pre>
 <h2 id="limits"><a class="header" href="#limits">Limits</a></h2>
-<p>Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.</p>
+<p>Each native extension runs in an instance of its own, under the limits that <a href="security.html#instances-and-limits">Instances and limits</a> describes.</p>
 
                     </main>
 

@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2595db77.js";
+            window.path_to_searchindex_js = "searchindex-afb35467.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -208,7 +208,7 @@
 <h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
 <p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
-<li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region.</li>
+<li>Amazon Bedrock reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or AWS credentials from the environment, <code>~/.aws</code> profiles (including SSO and assumed roles), container credentials or instance metadata, with <code>AWS_REGION</code> or the profile’s region. As in the AWS SDK, <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> must use HTTPS unless it names a loopback address or the ECS or EKS container host.</li>
 <li>Google Vertex AI reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
 <li>Cloudflare Workers AI and AI Gateway read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
