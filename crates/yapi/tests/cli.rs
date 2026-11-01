@@ -241,6 +241,15 @@ fn logging_flag() {
         text.contains(" ERROR yapi_ext::extensions: loaded extension="),
         "{text}"
     );
+    // An empty `HOME` is the home directory, as Node's `os.homedir()` has it.
+    let output = common::yapi(&home)
+        .env("HOME", "")
+        .env_remove("YAPI_CODING_AGENT_DIR")
+        .args(["--enable-logging", "--help", "-e", "ext.ts"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(home.join(".yapi/agent/yapi.log").exists(), "{output:?}");
 }
 
 /// pi's RPC mode starts without any model, reporting pi-agent-core's
@@ -603,6 +612,185 @@ fn split_terminal_input() {
     let rows = pty.rows();
     assert!(!rows.iter().any(|row| row.contains("22c")), "{rows:#?}");
     pty.finish().unwrap();
+}
+
+/// SIGTERM ends a startup picker through its cleanup, which gives the
+/// terminal back, and the command fails. Between the picker and interactive
+/// mode it ends yapi with its code. It ends interactive mode without the
+/// resume hint that quitting shows, as in pi.
+#[cfg(unix)]
+#[test]
+fn sigterm_cleanup() {
+    use std::time::Duration;
+    let root = common::scratch("sigterm");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let env = [
+        ("HOME", root.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", agent.into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
+    ];
+    let spawn = |cwd: &std::path::Path, args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        yapi_mock::pty::Pty::spawn(path, &args, cwd, &env, (100, 30), true).unwrap()
+    };
+    let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
+    let terminate = |pty: &yapi_mock::pty::Pty| {
+        let killed = Command::new("kill")
+            .args(["-TERM", &pty.pid().unwrap().to_string()])
+            .status()
+            .unwrap();
+        assert!(killed.success());
+    };
+
+    let pty = spawn(&root, &["config"]);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("[x]"))
+            .is_some()
+    );
+    terminate(&pty);
+    let ended = pty.wait_for(Duration::from_secs(5), shown("Error: Terminated"));
+    assert!(ended.is_some(), "{:#?}", pty.rows());
+    assert!(!pty.cursor_hidden());
+    pty.finish().unwrap();
+
+    // Past the trust prompt, nothing would restore the terminal or end the
+    // session, so SIGTERM ends yapi at once: while a project extension
+    // loads, and while `yapi install` waits for a registry that never
+    // answers.
+    let trust_then_terminate = |mut pty: yapi_mock::pty::Pty| {
+        let prompt = shown("Trust project folder?");
+        assert!(pty.wait_for(Duration::from_secs(20), prompt).is_some());
+        pty.write("\r").unwrap();
+        let answered = pty.wait_for(Duration::from_secs(5), |rows| !prompt(rows));
+        assert!(answered.is_some(), "{:#?}", pty.rows());
+        terminate(&pty);
+        pty.settle();
+        assert_eq!(pty.finish().unwrap(), 143);
+    };
+    let project = root.join("project");
+    std::fs::create_dir_all(project.join(".yapi/extensions")).unwrap();
+    std::fs::write(
+        project.join(".yapi/extensions/slow.ts"),
+        "export default function () {\n\tconst end = Date.now() + 5000;\n\twhile (Date.now() < end) {}\n}\n",
+    )
+    .unwrap();
+    let model = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"];
+    trust_then_terminate(spawn(&project, &model));
+    let installing = root.join("installing");
+    std::fs::create_dir_all(installing.join(".yapi/prompts")).unwrap();
+    std::fs::write(installing.join(".yapi/prompts/hello.md"), "hello\n").unwrap();
+    let registry = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut install_env: Vec<_> = env
+        .iter()
+        .filter(|(name, _)| *name != "PI_OFFLINE")
+        .cloned()
+        .collect();
+    let url = format!("http://{}/", registry.local_addr().unwrap());
+    install_env.push(("npm_config_registry", url.into()));
+    let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let args = ["install", "npm:never-served"].map(str::to_owned);
+    let pty = yapi_mock::pty::Pty::spawn(path, &args, &installing, &install_env, (100, 30), true);
+    trust_then_terminate(pty.unwrap());
+
+    let session = root.join("sessions/s.jsonl");
+    std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+    let header = serde_json::json!({
+        "type": "session",
+        "version": 3,
+        "id": "019a0000-0000-7000-8000-00000000000a",
+        "timestamp": "2026-10-07T13:49:12.839Z",
+        "cwd": root,
+    });
+    std::fs::write(&session, format!("{header}\n")).unwrap();
+    let session = session.display().to_string();
+    let args = [
+        "--session",
+        &session,
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+    ];
+    let mut pty = spawn(&root, &args);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x04").unwrap();
+    let hint = pty.wait_for(Duration::from_secs(10), shown("--session-dir"));
+    assert!(hint.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
+    let pty = spawn(&root, &args);
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    terminate(&pty);
+    pty.settle();
+    let rows = pty.rows();
+    assert!(
+        !rows.iter().any(|row| row.contains("To resume")),
+        "{rows:#?}"
+    );
+    pty.finish().unwrap();
+}
+
+/// The external editor runs beside the event loop, as pi's does: its text
+/// comes back to the prompt, and SIGTERM ends yapi while it is open.
+#[cfg(unix)]
+#[test]
+fn editor_beside_loop() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+    let root = common::scratch("external-editor");
+    let agent = root.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    let script = |name: &str, body: &str| {
+        let path = root.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.into_os_string()
+    };
+    let spawn = |editor: std::ffi::OsString| {
+        let env = [
+            ("HOME", root.clone().into_os_string()),
+            ("YAPI_CODING_AGENT_DIR", agent.clone().into_os_string()),
+            ("PI_OFFLINE", "1".into()),
+            ("ANTHROPIC_API_KEY", "mock".into()),
+            ("VISUAL", editor),
+        ];
+        let args = ["--model", "anthropic/claude-sonnet-4-5", "--no-session"].map(str::to_owned);
+        let path = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        yapi_mock::pty::Pty::spawn(path, &args, &root, &env, (100, 30), true).unwrap()
+    };
+    let shown = |text: &'static str| move |rows: &[String]| rows.iter().any(|r| r.contains(text));
+
+    let mut pty = spawn(script("quick.sh", r#"printf 'from the editor' > "$1""#));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x07").unwrap();
+    let edited = pty.wait_for(Duration::from_secs(10), shown("from the editor"));
+    assert!(edited.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
+
+    let mut pty = spawn(script("slow.sh", "/bin/sleep 30"));
+    assert!(
+        pty.wait_for(Duration::from_secs(20), shown("sonnet-4-5"))
+            .is_some()
+    );
+    pty.write("\x07").unwrap();
+    let opened = pty.wait_for(Duration::from_secs(10), shown("Launching external editor"));
+    assert!(opened.is_some(), "{:#?}", pty.rows());
+    let killed = Command::new("kill")
+        .args(["-TERM", &pty.pid().unwrap().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    pty.settle();
+    assert_eq!(pty.finish().unwrap(), 0, "yapi waited for the editor");
 }
 
 /// `PI_HARDWARE_CURSOR=1` shows the terminal cursor when the setting is unset,

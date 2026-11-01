@@ -964,28 +964,100 @@ pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
 }
 
 /// Resolves to pi's exit code for SIGTERM (143) or SIGHUP (129). The
-/// signals are caught from the call on, before the future is polled.
+/// signals are caught from the call on, before the future is polled, and
+/// for the rest of the process, as pi's handlers are. While no such future
+/// exists, a signal ends yapi with its code, as the default action would.
 pub(crate) fn termination() -> impl std::future::Future<Output = u8> {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{SignalKind, signal};
-        let signals = (
-            signal(SignalKind::terminate()),
-            signal(SignalKind::hangup()),
-        );
+        let waiter = signals().map(Waiter::new);
         async move {
-            let (Ok(mut term), Ok(mut hup)) = signals else {
-                return std::future::pending().await;
-            };
-            tokio::select! {
-                _ = term.recv() => 143,
-                _ = hup.recv() => 129,
+            if let Some(mut waiter) = waiter
+                && let Ok(code) = waiter.1.wait_for(Option::is_some).await
+                && let Some(code) = *code
+            {
+                return code;
             }
+            std::future::pending().await
         }
     }
     #[cfg(not(unix))]
     {
         std::future::pending()
+    }
+}
+
+/// The process's SIGTERM and SIGHUP: the code of one that arrived, and how
+/// many [`termination`] futures wait for it.
+#[cfg(unix)]
+struct Signals {
+    code: tokio::sync::watch::Sender<Option<u8>>,
+    waiting: std::sync::atomic::AtomicUsize,
+}
+
+/// Catches the signals from the first call on, on a thread of its own, as a
+/// synchronous selector can hold the runtime's thread. `None` when they
+/// cannot be caught.
+#[cfg(unix)]
+fn signals() -> Option<&'static Signals> {
+    use tokio::signal::unix::{SignalKind, signal};
+    static SIGNALS: std::sync::OnceLock<Option<Signals>> = std::sync::OnceLock::new();
+    SIGNALS
+        .get_or_init(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_io()
+                .build()
+                .ok()?;
+            let (mut term, mut hup) = {
+                let _context = runtime.enter();
+                (
+                    signal(SignalKind::terminate()).ok()?,
+                    signal(SignalKind::hangup()).ok()?,
+                )
+            };
+            std::thread::spawn(move || {
+                runtime.block_on(async {
+                    loop {
+                        let code: u8 = tokio::select! {
+                            _ = term.recv() => 143,
+                            _ = hup.recv() => 129,
+                        };
+                        let Some(signals) = SIGNALS.wait() else {
+                            return;
+                        };
+                        // Nothing would restore the terminal or end the session.
+                        if signals.waiting.load(Ordering::SeqCst) == 0 {
+                            std::process::exit(code.into());
+                        }
+                        signals.code.send_replace(Some(code));
+                    }
+                });
+            });
+            Some(Signals {
+                code: tokio::sync::watch::channel(None).0,
+                waiting: std::sync::atomic::AtomicUsize::new(0),
+            })
+        })
+        .as_ref()
+}
+
+/// A [`termination`] future's hold on the signals: while one exists, a
+/// signal resolves it rather than ending yapi.
+#[cfg(unix)]
+struct Waiter(&'static Signals, tokio::sync::watch::Receiver<Option<u8>>);
+
+#[cfg(unix)]
+impl Waiter {
+    fn new(signals: &'static Signals) -> Waiter {
+        signals.waiting.fetch_add(1, Ordering::SeqCst);
+        Waiter(signals, signals.code.subscribe())
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        self.0.waiting.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

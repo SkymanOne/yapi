@@ -876,6 +876,9 @@
 		env: options.env,
 		timeout: options.timeout,
 		input: typeof options.input === "string" ? options.input : undefined,
+		// The sync functions' limit on stdout and stderr together, as in Node:
+		// the default only when the key is absent, so `undefined` and `null` mean none.
+		maxBuffer: "maxBuffer" in options ? options.maxBuffer : 1024 * 1024,
 	});
 	const shell = (command) => ({ command: "/bin/sh", args: ["-c", command] });
 	/** Emits `child`'s output and exit as they arrive, then `close`. */
@@ -961,7 +964,7 @@
 			const target = options.shell ? shell([command, ...args].join(" ")) : { command, args };
 			const result = yapi.request("exec.sync", execPayload(target, options));
 			const encode = (text) => (options.encoding && options.encoding !== "buffer" ? text : Buffer.from(text));
-			return { pid: 0, status: result.code, signal: result.signal ?? null, stdout: encode(result.stdout), stderr: encode(result.stderr), output: [null, encode(result.stdout), encode(result.stderr)], error: result.error ? new Error(result.error) : undefined };
+			return { pid: 0, status: result.code, signal: result.signal ?? null, stdout: encode(result.stdout), stderr: encode(result.stderr), output: [null, encode(result.stdout), encode(result.stderr)], error: syncError(result) };
 		},
 		fork: notSupported("child_process.fork"),
 	};
@@ -984,10 +987,13 @@
 			}
 		});
 	}
+	/** Node's error of a sync process that could not run or overran `maxBuffer`, with its code. */
+	const syncError = (result) => result.error && Object.assign(new Error(result.error), { code: result.error.split(" ").pop() });
 	function syncResult(result, options, command) {
 		if (result.error || result.code !== 0) {
-			const error = new Error(`Command failed: ${command}\n${result.stderr ?? ""}`);
+			const error = syncError(result) || new Error(`Command failed: ${command}\n${result.stderr ?? ""}`);
 			error.status = result.code;
+			error.signal = result.signal ?? null;
 			error.stdout = result.stdout;
 			error.stderr = result.stderr;
 			throw error;

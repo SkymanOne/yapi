@@ -2,7 +2,7 @@
 
 ## Network
 
-yapi honors `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, and the `httpProxy` setting. Certificates are checked against the operating system's trust store.
+yapi honors `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, and the `httpProxy` setting. Requests to AWS container and instance metadata never use a proxy, as in the AWS SDK. Certificates are checked against the operating system's trust store.
 
 `--offline`, or `PI_OFFLINE=1`, skips startup network work such as downloading `fd` and `rg`.
 

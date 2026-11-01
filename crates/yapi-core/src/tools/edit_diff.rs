@@ -102,13 +102,13 @@ fn fuzzy_find(content: &str, old: &str) -> Option<(usize, usize, bool)> {
 }
 
 fn count_occurrences(content: &str, old: &str) -> usize {
+    let fuzzy_content = normalize_for_fuzzy_match(content);
     let fuzzy_old = normalize_for_fuzzy_match(old);
     if fuzzy_old.is_empty() {
-        return 0;
+        // pi's `split("")` yields one piece per UTF-16 unit.
+        return fuzzy_content.encode_utf16().count().saturating_sub(1);
     }
-    normalize_for_fuzzy_match(content)
-        .matches(&fuzzy_old)
-        .count()
+    fuzzy_content.matches(&fuzzy_old).count()
 }
 
 /// Applies `edits` to LF-normalized `content`. Every `oldText` is matched against
@@ -459,6 +459,15 @@ mod tests {
             apply_edits("abc", &[edit("zz", "x")], "f")
                 .unwrap_err()
                 .starts_with("Could not find the exact text in f.")
+        );
+        // Whitespace-only oldText normalizes to "", which pi counts once per UTF-16 unit.
+        assert_eq!(
+            apply_edits("a\tb\tc", &[edit("\t", "-")], "f").unwrap_err(),
+            "Found 4 occurrences of the text in f. The text must be unique. Please provide more context to make it unique."
+        );
+        assert_eq!(
+            apply_edits("abc", &[edit("\t", "-")], "f").unwrap_err(),
+            "Found 2 occurrences of the text in f. The text must be unique. Please provide more context to make it unique."
         );
     }
 

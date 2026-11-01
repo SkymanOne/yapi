@@ -5,15 +5,12 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use std::time::{Duration, Instant};
 
 use regex_lite::Regex;
 use tokio_util::sync::CancellationToken;
 
-use crate::tools::bash::{Pipes, create_log, exit_code_of, kill_tree, shell_command, shell_with};
+use crate::tools::bash::{Event, create_log, exit_code_of, run_child, shell_command, shell_with};
 use crate::tools::truncate::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncate_tail};
-
-const EXIT_STDIO_GRACE: Duration = Duration::from_millis(100);
 
 pub use yapi_types::rpc::BashResult;
 
@@ -132,47 +129,21 @@ pub async fn execute(
             cwd.display()
         ));
     }
-    let mut child = shell_command(shell, command, cwd, bin_dir)
+    let child = shell_command(shell, command, cwd, bin_dir)
         .spawn()
         .map_err(|err| err.to_string())?;
-    let pid = child.id();
-    let _tracked = crate::tools::bash::TrackedChild::new(pid);
-    let mut pipes = Pipes::take(&mut child);
     let mut output = Output::default();
-    let mut cancelled = false;
-    let mut exit_code: Option<i32> = None;
-    // Descendants may hold the pipes open: stop reading shortly after the
-    // shell exits once output goes quiet.
-    let mut exited_at: Option<Instant> = None;
-    loop {
-        if exited_at.is_some() && !pipes.is_open() {
-            break;
+    let (status, stop) = run_child(child, &cancel, None, |event| {
+        if let Event::Output(bytes) = event {
+            output.push(bytes, &mut on_chunk);
         }
-        let grace = exited_at.map(|at| at + EXIT_STDIO_GRACE);
-        tokio::select! {
-            biased;
-            bytes = pipes.read(), if pipes.is_open() => {
-                if !bytes.is_empty() {
-                    output.push(bytes, &mut on_chunk);
-                    if let Some(at) = &mut exited_at { *at = Instant::now(); }
-                }
-            }
-            status = child.wait(), if exited_at.is_none() => {
-                exited_at = Some(Instant::now());
-                exit_code = status.ok().map(|status| exit_code_of(status).unwrap_or(1));
-            }
-            () = crate::tools::sleep_until_opt(grace) => {
-                break;
-            }
-            () = cancel.cancelled(), if !cancelled => {
-                cancelled = true;
-                kill_tree(pid);
-            }
-        }
-    }
+        None
+    })
+    .await;
+    let exit_code = status.map(|status| exit_code_of(status).unwrap_or(1));
     // pi never flushes its decoder, so an incomplete UTF-8 sequence at the
     // end of the output is dropped.
-    Ok(output.finish(exit_code, cancelled))
+    Ok(output.finish(exit_code, stop.is_some()))
 }
 
 /// pi's `executeBashWithOperations`: runs a command through `exec`, which

@@ -30,7 +30,7 @@ yapi reads the same environment variables as Pi:
 
 Amazon Bedrock, Google Vertex AI and Cloudflare use their platform's credentials:
 
-- Amazon Bedrock reads `AWS_BEARER_TOKEN_BEDROCK`, or AWS credentials from the environment, `~/.aws` profiles (including SSO and assumed roles), container credentials or instance metadata, with `AWS_REGION` or the profile's region.
+- Amazon Bedrock reads `AWS_BEARER_TOKEN_BEDROCK`, or AWS credentials from the environment, `~/.aws` profiles (including SSO and assumed roles), container credentials or instance metadata, with `AWS_REGION` or the profile's region. As in the AWS SDK, `AWS_CONTAINER_CREDENTIALS_FULL_URI` must use HTTPS unless it names a loopback address or the ECS or EKS container host.
 - Google Vertex AI reads `GOOGLE_CLOUD_API_KEY`, or Application Default Credentials with `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`.
 - Cloudflare Workers AI and AI Gateway read `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_GATEWAY_ID` for the gateway.
 

@@ -59,7 +59,8 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `wit/` | Versioned WIT packages shared by host and guests. | None |
 | `install.sh`, `scripts/` | The release installer, the packaging, notices and install checks the Release workflow runs, and the branch name check the git hooks run. | None |
 | `skills/` | Agent Skills for using yapi and writing its extensions. The repository installs as a package that provides them. | None |
-| `xtask/` | Developer commands: mock server, end-to-end scenarios, benchmarks, model catalog codegen, JS vendoring, `yapi-js.wasm` build. | Build scripts |
+| `.agents/skills/` | Contributor skills with task-specific procedures for working on yapi. Not shipped. `.claude/skills` links to them. | None |
+| `xtask/` | Developer commands: mock server, end-to-end scenarios, benchmarks, model catalog codegen, JS vendoring, `yapi-js.wasm` build, `package-registrations` comparison of popular pi packages. | Build scripts |
 
 Dependency direction:
 
@@ -100,7 +101,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Wasm host | `wasmtime` with the component model |
 | Guest JS engine | `rquickjs` (QuickJS-NG) |
 | TypeScript and resolution | `oxc_transformer`, `oxc_resolver` |
-| Logging, errors | `tracing`, which `--enable-logging` writes to a file through a subscriber in `crates/yapi`; `thiserror`, `anyhow` |
+| Logging, errors | `tracing`; `thiserror`, `anyhow` |
 | Tests | pi goldens, `yapi-mock` (on `hyper`), `portable-pty` and `vt100` for terminal scenarios |
 
 ## Extension system
@@ -144,11 +145,7 @@ Module loading runs on the host, in `yapi-ext`:
 - The host enforces grants: WASI preopens for files; grant checks for exec, fetch and environment.
 - The host carries `pi.events` between instances, through a bounded queue per instance, so every extension hears every other's events, as in pi.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- Planned, alongside a package registry and project manifests:
-  - packages declare the grants they need in their own manifest, the user approves them, and each trust domain gets its own instance;
-  - a project's `yapi.toml` lists its packages, extensions and skills, so a checkout installs the same set, as `Cargo.toml` does;
-  - before grants can be restricted, the host requests that ignore them must check them: `tool.execute`, `models.apiKey`, `models.auth`, `models.requestAuth`, the extension event bus and session actions. The event bus then stays within a trust domain unless the user's settings allow crossing, never a package's manifest;
-  - filesystem grants scoped to paths and read-only access, and network grants scoped to hosts.
+- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the host requests that still ignore them must check them: `tool.execute`, `codemode.execute`, the extension event bus and session actions.
 
 ### Concurrency
 
@@ -194,12 +191,11 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `cargo deny check`
-- `prek install` installs the git hooks in `.pre-commit-config.yaml`. On commit they run `cargo fmt`, Clippy and checks of whitespace, TOML, YAML, JSON, shell scripts and Markdown, and check the message and the branch name. On push they check the branch name.
-- CI runs the same checks on Linux and macOS. It skips them when a change touches only docs, skills, root Markdown files other than `CHANGELOG.md`, or other workflows.
+- [docs/contributing.md](docs/contributing.md#checks) describes the git hooks that `prek install` sets up and when CI skips its checks.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
 - Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
-- `cargo xtask mock-sse --cassette <file>` serves a cassette to pi or another out-of-process client and reports unmatched requests on exit. `--record <upstream-url> --out <file>` records a new cassette through a proxy to a real provider, without credentials.
 - `cargo xtask bench` measures yapi against pi on the same machine. Reports state results as measured, with no targets. [docs/performance.md](docs/performance.md) defines the measures and the method.
+- Releases follow [docs/contributing.md](docs/contributing.md#releasing). Tag only after CI on `main` passed for the merge commit itself. A flaky test is a bug to fix, not a run to repeat.
 
 ### Code
 
@@ -211,7 +207,7 @@ Module loading runs on the host, in `yapi-ext`:
   - `thiserror` in libraries; `anyhow` only in `yapi` and `xtask`.
   - No `unwrap` or `expect` outside tests unless the invariant is stated at the call site.
 - `#![forbid(unsafe_code)]` in every crate except `yapi-ext` and `guest/*`.
-- Log through `tracing`. `--enable-logging` appends the events to `yapi.log` in the agent directory. Stdout belongs to print, JSON and RPC output.
+- Log through `tracing`. `--enable-logging` appends the events to `yapi.log` in the agent directory, through a subscriber in `crates/yapi`. Stdout belongs to print, JSON and RPC output.
 - Async on tokio:
   - no lock held across `.await`;
   - no blocking calls on async threads;
@@ -230,19 +226,17 @@ Module loading runs on the host, in `yapi-ext`:
 
 - No network access and no real providers in tests. Use the faux provider, or `yapi-mock` with cassettes.
 - Prefer goldens recorded from pi over hand-written expectations. Components with pi counterparts are tested against pi-tui's output. `tests/fixtures/pi/README.md` explains how to regenerate the goldens.
-- Scenarios run in a fresh directory with a cleared environment:
-  - `cargo test` compares yapi's normalized output and requests with the goldens; `cargo xtask e2e --record-pi` rewrites them;
-  - the suite needs `rg` and `fd` on `PATH` for the search tool scenarios, and `python3` for the MCP test server in `tests/fixtures/mcp`;
-  - TUI scenarios type into the program in a pseudo-terminal and compare the final screen text, without each product's startup header; `YAPI_SETTLE_MS` lengthens the quiet time that ends each step on slow machines;
-  - RPC scenarios send each command once the previous one's response or awaited event has arrived, and, for a step that sets `requests`, once the mock has received that many requests, so an abort lands while a request is in flight;
-  - client scenarios run a Node script from the fixture generator, such as pi's `RpcClient` example, against the program; `cargo test` skips them when the generator's packages are not installed;
-  - goldens are recorded on Linux; a scenario whose screen shows text pi chooses by platform, such as macOS's Option key name, sets `"os": "linux"` and runs only there.
-- Every bug fix includes a regression test.
+- The `yapi-scenarios` skill in `.agents/skills/` covers end-to-end scenarios and recording cassettes.
+- Every bug fix includes a regression test. Fold it into an existing test as an extra case, input or assertion, or into one table-driven test. Add a new test only when nothing fits.
+- Test names are 2 to 4 words in snake_case, without articles.
+- The `validate-live` skill covers trying a branch against a real model before merging.
 
 ### Compatibility
 
-- Record every intentional deviation in [docs/compat.md](docs/compat.md) with its reason.
-- For an upstream bump, diff pi's extension `types.ts` and docs between tags. Update `yapi-types`, the JS facade and the pin in one change.
+- Record every intentional deviation in [docs/compat.md](docs/compat.md) with its reason. It lists only deliberate differences.
+- pi behavior that yapi lacks, or implements differently by accident, is a bug: open an issue labelled `bug` and `pi-compat`, and fix it before the release.
+- The exception: pi exports and behaviors that would let extension code reach credentials, trust decisions, security-relevant settings, processes or the network outside grant-checked host requests stay stubbed, with the security reason in docs/compat.md.
+- The `pi-upgrade` skill in `.agents/skills/` covers moving to a new pi release.
 
 ### Docs and git
 
@@ -251,7 +245,11 @@ Module loading runs on the host, in `yapi-ext`:
 - Planned work is in [docs/roadmap.md](docs/roadmap.md).
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.
-- A meaningful feature or bug fix adds one line under `## [Unreleased]` in `CHANGELOG.md`, in the same pull request: a feature under `### Additions`, a fix or security update under `### Fixes`. The line starts with an action word such as Add, Fix, Change or Refactor, says what users notice and ends with links to its pull requests. A stack of pull requests gets one line. Internal, test-only and docs-only changes, and fixes to features not yet released, get none. A release turns the Unreleased lines into its own section.
+- `CHANGELOG.md` changes in the same pull request, under `## [Unreleased]`:
+  - a meaningful feature adds one line under `### Additions`, which starts with an action word such as Add or Change, says what users notice and ends with links to its pull requests;
+  - a bug fix or security update appends its pull request's link to the single `- Various bug fixes ([#N](...), ...).` line under `### Fixes`;
+  - a stack of pull requests gets one line; internal, test-only and docs-only changes, and fixes to features not yet released, get none;
+  - a release turns the Unreleased lines into its own section.
 - Commit messages use `type(scope): summary`. Type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`; scope is the crate name.
 - Branch names follow [Conventional Branch](https://conventional-branch.github.io/): `main`, or `<type>/<description>`. Type is one of `feature` (or `feat`), `bugfix` (or `fix`), `hotfix`, `release`, `chore`; the description is lowercase letters and digits, with single hyphens or dots between them, such as `release/v1.2.0`.
 - Pull request descriptions state the key changes, behavior changes and decisions. They do not paraphrase commits or report line counts.

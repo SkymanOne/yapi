@@ -640,6 +640,35 @@ async fn sso(
 /// Metadata services answer quickly or not at all.
 const METADATA_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// A client for metadata services. As in the SDK, it never uses a proxy, which
+/// would see the plain-HTTP tokens and credentials.
+fn metadata_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .no_proxy()
+        .user_agent(crate::http::user_agent())
+        .build()
+        .map_err(|err| err.to_string())
+}
+
+/// Whether the SDK's `checkUrl` accepts a container credentials endpoint:
+/// HTTPS, or HTTP to a loopback address or the ECS or EKS container host.
+fn container_url_accepted(url: &url::Url) -> bool {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    url.scheme() == "https"
+        || match url.host() {
+            Some(url::Host::Domain(host)) => host == "localhost",
+            Some(url::Host::Ipv4(ip)) => {
+                ip.is_loopback()
+                    || ip == Ipv4Addr::new(169, 254, 170, 2)
+                    || ip == Ipv4Addr::new(169, 254, 170, 23)
+            }
+            Some(url::Host::Ipv6(ip)) => {
+                ip.is_loopback() || ip == Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x23)
+            }
+            None => false,
+        }
+}
+
 /// Container credentials, else instance metadata unless disabled. Failures
 /// leave the chain's final error.
 async fn remote(env: &AwsEnv, cancel: &CancellationToken) -> Chained {
@@ -689,7 +718,17 @@ async fn container(env: &AwsEnv, cancel: &CancellationToken) -> Result<Credentia
             return Err("No container credentials endpoint is configured".into());
         }
     };
-    let mut request = crate::http::client().get(&url).timeout(METADATA_TIMEOUT);
+    let url = url::Url::parse(&url).map_err(|err| err.to_string())?;
+    if !container_url_accepted(&url) {
+        return Err(
+            "URL not accepted. It must either be HTTPS or match one of the following:
+  - loopback CIDR 127.0.0.0/8 or [::1/128]
+  - ECS container host 169.254.170.2
+  - EKS container host 169.254.170.23 or [fd00:ec2::23]"
+                .into(),
+        );
+    }
+    let mut request = metadata_client()?.get(url).timeout(METADATA_TIMEOUT);
     let token = match env.get("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE") {
         Some(file) => tokio::fs::read_to_string(file)
             .await
@@ -718,8 +757,9 @@ async fn instance_metadata(
         .trim_end_matches('/')
         .to_owned();
     let failed = |_| "Could not load credentials from the instance metadata service".to_owned();
+    let client = metadata_client()?;
     let token = send(
-        crate::http::client()
+        client
             .put(format!("{base}/latest/api/token"))
             .header("x-aws-ec2-metadata-token-ttl-seconds", "21600")
             .timeout(METADATA_TIMEOUT),
@@ -731,7 +771,7 @@ async fn instance_metadata(
     .await
     .unwrap_or_default();
     let get = |path: String| {
-        crate::http::client()
+        client
             .get(format!("{base}{path}"))
             .header("x-aws-ec2-metadata-token", token.clone())
             .timeout(METADATA_TIMEOUT)
@@ -863,6 +903,31 @@ mod tests {
             .await
             .err();
         assert_eq!(error, Some(format!("Command failed: {command}\noops\n")));
+    }
+
+    #[tokio::test]
+    async fn container_urls_checked() {
+        let remote = AwsEnv::from_vars([(
+            "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+            "http://example.com/credentials",
+        )]);
+        let error = container(&remote, &CancellationToken::new()).await;
+        assert!(error.unwrap_err().starts_with("URL not accepted."));
+        for (url, accepted) in [
+            ("https://example.com/", true),
+            ("http://localhost:8080/", true),
+            ("http://127.1.2.3/", true),
+            ("http://[::1]/", true),
+            ("http://169.254.170.2/", true),
+            ("http://169.254.170.23/", true),
+            ("http://[fd00:ec2::23]/", true),
+            ("http://example.com/", false),
+            ("http://169.254.169.254/", false),
+            ("http://[::ffff:127.0.0.1]/", false),
+        ] {
+            let url = url::Url::parse(url).unwrap();
+            assert_eq!(container_url_accepted(&url), accepted, "{url}");
+        }
     }
 
     #[test]

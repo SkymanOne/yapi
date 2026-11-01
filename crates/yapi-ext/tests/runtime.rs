@@ -133,9 +133,16 @@ async fn runs_node_and_commonjs() {
     let main = r#"
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import lib from "cjs-lib";
 import { twice } from "cjs-lib";
+const run = (f) => {
+	try {
+		return f();
+	} catch (error) {
+		return error.message;
+	}
+};
 export default function (pi) {
 	pi.registerCommand("probe", {
 		description: [
@@ -143,6 +150,18 @@ export default function (pi) {
 			String(lib.twice(2)),
 			String(twice(3)),
 			execSync("echo hi", { encoding: "utf8" }).trim(),
+			(() => {
+				try {
+					execSync("head -c 2000000 /dev/zero");
+				} catch (error) {
+					return error.code;
+				}
+			})(),
+			// Node's limit: none for 0 or null, stdout and stderr together.
+			run(() => execSync("echo hi", { maxBuffer: 0, encoding: "utf8" }).trim()),
+			run(() => execSync("head -c 2000000 /dev/zero", { maxBuffer: null }).length),
+			run(() => execSync("head -c 600000 /dev/zero; head -c 600000 /dev/zero >&2").length),
+			run(() => execFileSync("yapi-missing-command")),
 			typeof setTimeout,
 		].join(","),
 		handler: async () => {},
@@ -168,7 +187,8 @@ export default function (pi) {
     assert_eq!(extension.get("error"), None, "{extension}");
     assert_eq!(
         extension["commands"][0]["description"],
-        "from disk,4,6,hi,function"
+        "from disk,4,6,hi,ENOBUFS,hi,2000000,spawnSync /bin/sh ENOBUFS,\
+         spawnSync yapi-missing-command ENOENT,function"
     );
 }
 
@@ -520,6 +540,62 @@ async fn restart_trap_not_retried() {
     instance.call("reload", &reload).await.unwrap();
 }
 
+/// A restart replays the load and the reload one after the other, though
+/// a factory waits for a timer: the factories after it run once for each,
+/// and their `pi.events` listeners hear an event once.
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_replays_in_order() {
+    let dir = scratch("restart-order");
+    let heard = dir.join("heard.txt");
+    let (slow, listener) = (dir.join("slow.ts"), dir.join("listener.ts"));
+    std::fs::write(
+        &slow,
+        "export default async function () { await new Promise((resolve) => setTimeout(resolve, 50)); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &listener,
+        format!(
+            r#"import {{ appendFileSync }} from "node:fs";
+const overflow = () => overflow();
+export default function (pi) {{
+	pi.events.on("ping", () => appendFileSync({heard:?}, "x"));
+	pi.registerCommand("crash", {{ handler: async () => overflow() }});
+}}
+"#,
+            heard = heard.display().to_string()
+        ),
+    )
+    .unwrap();
+    let instance = Instance::start(
+        &engine(),
+        Options::new(dir.clone()),
+        Arc::new(Log::default()),
+    )
+    .await
+    .unwrap();
+    let extensions = json!([{"id": 1, "path": slow}, {"id": 2, "path": listener}]);
+    let reload = json!({ "extensions": extensions });
+    instance
+        .call("load", &json!({"cwd": dir, "extensions": extensions}))
+        .await
+        .unwrap();
+    instance.call("reload", &reload).await.unwrap();
+    let crashed = instance
+        .call("command", &json!({"extension": 2, "name": "crash"}))
+        .await;
+    assert!(
+        matches!(crashed, Err(yapi_ext::Error::Crashed(_))),
+        "{crashed:?}"
+    );
+    instance.call("reload", &reload).await.unwrap();
+    instance
+        .call("events", &json!({"channel": "ping", "data": null}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&heard).unwrap(), "x");
+}
+
 /// Node modules yapi has no sockets for still load, with the parts that need
 /// none: address checks, agents, `node:sea` and the names of `node:sqlite`.
 #[tokio::test(flavor = "multi_thread")]
@@ -568,7 +644,8 @@ export default function (pi) {
 
 /// `dns.lookup` resolves through the host, as SSRF guards such as
 /// pi-web-access's expect before they fetch, and needs the network grant,
-/// as `fetch` does.
+/// as `fetch` does. The grep and find tools, which run and may download
+/// ripgrep and fd, need more than the file grant.
 /// Only `localhost` and address literals resolve here, so the test needs no
 /// network.
 #[tokio::test(flavor = "multi_thread")]
@@ -617,17 +694,23 @@ export default async function (pi) {
 
     let denied = r#"
 import { lookup } from "node:dns/promises";
+import { createFindTool, createGrepTool, createLsTool } from "@earendil-works/pi-coding-agent";
 export default async function (pi) {
 	const looked = await lookup("localhost").then(() => "resolved", (error) => error.message);
 	const fetched = await fetch("http://127.0.0.1:9").then(() => "fetched", (error) => error.message);
-	pi.registerCommand("probe", { description: `${looked};${fetched}`, handler: async () => {} });
+	const run = (create, params) => create(process.cwd()).execute("t", params).then(() => "ran", (error) => error.message);
+	const tools = [await run(createGrepTool, { pattern: "x" }), await run(createFindTool, { pattern: "*" }), await run(createLsTool, {})];
+	pi.registerCommand("probe", { description: `${looked};${fetched};${tools.join(";")}`, handler: async () => {} });
 }
 "#;
     let dir = scratch("dns-denied");
     let path = dir.join("main.ts");
     std::fs::write(&path, denied).unwrap();
     let mut options = Options::new(dir.clone());
-    options.grants.network = false;
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
     let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
         .await
         .unwrap();
@@ -643,6 +726,12 @@ export default async function (pi) {
         .unwrap_or_default()
         .to_owned();
     assert_eq!(description.matches("Network access").count(), 2, "{loaded}");
+    assert!(
+        description.ends_with(
+            "The grep tool is not permitted for this extension;The find tool is not permitted for this extension;ran"
+        ),
+        "{loaded}"
+    );
 }
 
 /// Scripts without module syntax load as CommonJS, imports may carry a

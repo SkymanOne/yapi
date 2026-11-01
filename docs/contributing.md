@@ -24,7 +24,7 @@ cargo run -p yapi --
 
 ## Checks
 
-Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only documentation, skills or other workflows.
+Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only `docs/`, `.agents/`, `assets/`, `book.toml`, the license files, root Markdown files other than `CHANGELOG.md`, or workflows other than CI.
 
 ```sh
 cargo fmt --all
@@ -35,7 +35,7 @@ cargo deny check
 
 `cargo test` includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.
 
-`prek install` sets up git hooks that run `cargo fmt` and Clippy on every commit, along with checks of whitespace, TOML, shell scripts, Markdown, the commit message and the branch name. `prek run --all-files` runs them on the whole repository. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) gives the rules for commit messages and branch names.
+`prek install` sets up the git hooks in `.pre-commit-config.yaml`. On commit they run `cargo fmt` and Clippy, check whitespace, line endings, TOML, YAML, JSON, shell scripts and Markdown, and check the commit message and the branch name. On push they check the branch name. `prek run --all-files` runs them on the whole repository. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) gives the rules for commit messages and branch names.
 
 ## Common changes
 
@@ -67,7 +67,7 @@ Pi installs from `tests/fixtures/pi/generator` with `npm ci`, which needs Node.j
 3. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`.
 4. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
 5. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
-6. Merge, then push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
+6. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run does not prove main's. A flaky test is a bug to fix, not a run to repeat. Then push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
 
 ## Documentation
 

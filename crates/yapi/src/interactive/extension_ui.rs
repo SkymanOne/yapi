@@ -102,6 +102,8 @@ pub(super) struct Shared {
     pub keys: yapi_tui::keys::Keys,
     /// See [`LoadTheme`].
     pub load_theme: Option<LoadTheme>,
+    /// Answers [`ExtensionUi::all_themes`].
+    pub all_themes: Option<Arc<dyn Fn() -> Value + Send + Sync>>,
     /// See [`ExtensionUi::terminal`].
     pub terminal: tokio::sync::watch::Sender<TerminalState>,
 }
@@ -373,6 +375,11 @@ impl ExtensionUi for InteractiveUi {
         let load = lock(&self.shared).load_theme.clone();
         load.and_then(|load| load(&Value::from(name)).ok())
             .map_or(Value::Null, |theme| theme_json(&theme))
+    }
+
+    fn all_themes(&self) -> Value {
+        let list = lock(&self.shared).all_themes.clone();
+        list.map_or_else(|| Value::Array(Vec::new()), |list| list())
     }
 
     /// pi's `setTheme`. A name applies and is saved, or the system theme

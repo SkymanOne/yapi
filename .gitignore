@@ -2,3 +2,4 @@
 /guest/target
 node_modules/
 __pycache__/
+/.claude/worktrees/

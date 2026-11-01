@@ -100,20 +100,7 @@ impl Tools {
 
     /// pi's `getAllTools`.
     pub fn all(&self) -> Vec<ToolInfo> {
-        self.lock()
-            .all()
-            .into_iter()
-            .map(|tool| {
-                let declaration = tool.tool.declaration();
-                ToolInfo {
-                    name: declaration.name.clone(),
-                    description: declaration.description.clone(),
-                    parameters: declaration.parameters.clone(),
-                    exposure: tool.exposure,
-                    namespace: tool.namespace,
-                }
-            })
-            .collect()
+        self.lock().all().iter().map(RegisteredTool::info).collect()
     }
 }
 

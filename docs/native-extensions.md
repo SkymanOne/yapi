@@ -354,7 +354,7 @@ yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 - `widgets::style` and `widgets::bg_style` give a theme token's style. `widgets::keybindings` gives the key bindings that `handle_input` takes.
 - The module also has `Text`, a component with pi-tui's `Text` layout, and pi-tui's `visible_width`, `truncate_to_width` and `wrap_text_with_ansi` for text with escape sequences.
 
-A built extension without the feature is about 210 KB. The five examples that use widgets are 280 to 490 KB.
+A built extension without the feature is about 210 KB. The six examples that use widgets are 280 to 490 KB.
 
 ### Terminal input and completion
 
@@ -443,4 +443,4 @@ Ok(ToolResult::text(String::from_utf8_lossy(&output)))
 
 ## Limits
 
-Each call into an extension may compute for 60 seconds, not counting time spent waiting on yapi, and each extension may use 1 GiB of memory. The limits apply to each native extension separately.
+Each native extension runs in an instance of its own, under the limits that [Instances and limits](security.md#instances-and-limits) describes.

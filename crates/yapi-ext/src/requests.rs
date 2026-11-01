@@ -175,6 +175,9 @@ impl Callbacks {
 pub(crate) struct AiStreams {
     running: Arc<Mutex<HashMap<u64, Running>>>,
     next_id: Arc<AtomicU64>,
+    /// How often [`AiStreams::clear`] ran: a request started before it ends
+    /// instead of being kept.
+    clears: Arc<AtomicU64>,
 }
 
 impl AiStreams {
@@ -183,8 +186,15 @@ impl AiStreams {
     /// as pi-ai's `streamSimple` does without one, and returns the stream's
     /// id. A request without a key takes the provider's key variable when
     /// `env_keys` allows it. `hooks` observe the request, except where the
-    /// extension's own `callbacks` do.
-    fn start(&self, payload: &Value, env_keys: bool, hooks: RequestHooks) -> Result<Value, String> {
+    /// extension's own `callbacks` do. `clears` is [`AiStreams::clears`]
+    /// when the guest asked for it.
+    fn start(
+        &self,
+        clears: u64,
+        payload: &Value,
+        env_keys: bool,
+        hooks: RequestHooks,
+    ) -> Result<Value, String> {
         let model: Model = serde_json::from_value(payload["model"].clone())
             .map_err(|err| format!("Invalid model: {err}"))?;
         let messages: Vec<Message> = serde_json::from_value(payload["context"]["messages"].clone())
@@ -217,13 +227,14 @@ impl AiStreams {
             }
             None => Apis::default().stream(request),
         };
-        Ok(self.insert(Some(events), calls, cancel, callbacks))
+        self.insert(clears, Some(events), calls, cancel, callbacks)
     }
 
     /// Starts generating images for `{ model, context, options, callbacks }`
     /// as pi-ai's `generateImages` of `api/openrouter-images` does, and
-    /// returns the request's id. `ai.next` reads its result.
-    fn start_images(&self, payload: Value) -> Result<Value, String> {
+    /// returns the request's id. `ai.next` reads its result. `clears` is
+    /// [`AiStreams::clears`] when the guest asked for it.
+    fn start_images(&self, clears: u64, payload: Value) -> Result<Value, String> {
         fn parse<T: serde::de::DeserializeOwned>(payload: &Value, key: &str) -> Option<T> {
             serde_json::from_value(payload["options"][key].clone()).ok()
         }
@@ -248,20 +259,34 @@ impl AiStreams {
             let result = serde_json::to_value(result).unwrap_or_default();
             let _ = results.send(json!({"type": "result", "result": result}));
         });
-        Ok(self.insert(None, calls, cancel, callbacks))
+        self.insert(clears, None, calls, cancel, callbacks)
     }
 
-    /// Keeps a request, which `cancel` aborts, for `ai.next`; its id.
+    /// The count of [`AiStreams::clear`] calls, to pass to
+    /// [`AiStreams::insert`].
+    pub(crate) fn clears(&self) -> u64 {
+        self.clears.load(Ordering::Relaxed)
+    }
+
+    /// Keeps a request, which `cancel` aborts, for `ai.next`; its id. A
+    /// request started before the set was cleared, when it counted
+    /// `clears`, is cancelled instead: the runtime that asked for it is gone.
     fn insert(
         &self,
+        clears: u64,
         events: Option<EventStream>,
         calls: mpsc::UnboundedReceiver<Value>,
         cancel: CancellationToken,
         callbacks: Arc<Callbacks>,
-    ) -> Value {
+    ) -> Result<Value, String> {
+        let mut running = lock(&self.running);
+        if self.clears() != clears {
+            cancel.cancel();
+            return Err("The extension runtime restarted".into());
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let reading = Some(Reading { events, calls });
-        lock(&self.running).insert(
+        running.insert(
             id,
             Running {
                 reading,
@@ -269,7 +294,7 @@ impl AiStreams {
                 callbacks,
             },
         );
-        json!(id)
+        Ok(json!(id))
     }
 
     /// What request `id` sent that has arrived, waiting for at least one
@@ -322,9 +347,11 @@ impl AiStreams {
         }
     }
 
-    /// Cancels every request and forgets them.
+    /// Cancels every request and forgets them, and those still starting.
     pub(crate) fn clear(&self) {
-        for (_, running) in lock(&self.running).drain() {
+        let mut running = lock(&self.running);
+        self.clears.fetch_add(1, Ordering::Relaxed);
+        for (_, running) in running.drain() {
             running.cancel.cancel();
         }
     }
@@ -600,6 +627,7 @@ impl Host {
             "dns.lookup" => Box::pin(async { Err(denied("Network access")) }),
             "ai.stream" if self.options.grants.network => {
                 let streams = self.ai_streams.clone();
+                let clears = streams.clears();
                 let env_keys = self.reads_process_env();
                 // A stream that passes on the hooks of the extension stream it
                 // serves reports to that stream's session.
@@ -608,29 +636,38 @@ impl Host {
                     .map(|id| self.bridge.stream_hooks(id))
                     .unwrap_or_default();
                 // The stream starts on the runtime.
-                Box::pin(async move { streams.start(&payload, env_keys, hooks) })
+                Box::pin(async move { streams.start(clears, &payload, env_keys, hooks) })
             }
             "ai.stream" => Box::pin(async { Err(denied("Network access")) }),
             "ai.images" if self.options.grants.network => {
                 let streams = self.ai_streams.clone();
-                Box::pin(async move { streams.start_images(payload) })
+                let clears = streams.clears();
+                Box::pin(async move { streams.start_images(clears, payload) })
             }
             "ai.images" => Box::pin(async { Err(denied("Network access")) }),
             // The session's requests, which `ai.next` reads as it reads `ai.stream`'s.
             "models.stream" if self.options.grants.network => {
                 let streams = self.ai_streams.clone();
+                let clears = streams.clears();
                 let cancel = CancellationToken::new();
                 let (callbacks, calls) = Callbacks::new(cancel.clone());
                 let hooks = callbacks.hooks(&payload["callbacks"], RequestHooks::default());
                 let started = self.bridge.stream_model(payload, cancel.clone(), hooks);
                 Box::pin(async move {
                     let events = started.await?;
-                    Ok(streams.insert(Some(events), calls, cancel, callbacks))
+                    streams.insert(clears, Some(events), calls, cancel, callbacks)
                 })
             }
             "models.stream" => Box::pin(async { Err(denied("Network access")) }),
-            // Credentials are only good for requests, so they need the network grant.
-            "models.auth" | "models.requestAuth" if !self.options.grants.network => {
+            // Credentials are only good for requests, so they need the
+            // network grant, as do the session's classifiers and image models.
+            "models.auth"
+            | "models.requestAuth"
+            | "models.apiKey"
+            | "models.classify"
+            | "models.generateImages"
+                if !self.options.grants.network =>
+            {
                 Box::pin(async { Err(denied("Network access")) })
             }
             "ai.next" => {
@@ -689,10 +726,12 @@ impl Host {
     /// allow running it.
     fn builtin_tool(&self, payload: &Value, run: bool) -> Result<RegisteredTool, String> {
         let name = text(payload, "name");
-        let granted = if name == "bash" {
-            self.options.grants.process
-        } else {
-            self.options.grants.filesystem
+        let grants = &self.options.grants;
+        let granted = match name {
+            "bash" => grants.process,
+            // They run ripgrep and fd, which they download when missing.
+            "grep" | "find" => grants.filesystem && grants.process && grants.network,
+            _ => grants.filesystem,
         };
         if run && !granted {
             return Err(denied(&format!("The {name} tool")));
@@ -737,14 +776,26 @@ fn hash(algorithm: &str, data: &str) -> Result<Value, String> {
 mod tests {
     use super::*;
 
+    /// Clearing cancels the requests, and those that were still starting
+    /// as it ran.
     #[test]
     fn clear_cancels_streams() {
         let streams = AiStreams::default();
-        let cancel = CancellationToken::new();
-        let (callbacks, calls) = Callbacks::new(cancel.clone());
-        streams.insert(None, calls, cancel.clone(), callbacks);
+        let request = || {
+            let cancel = CancellationToken::new();
+            let (callbacks, calls) = Callbacks::new(cancel.clone());
+            (cancel, calls, callbacks)
+        };
+        let ((kept, calls, callbacks), (starting, late_calls, late_callbacks)) =
+            (request(), request());
+        let clears = streams.clears();
+        streams
+            .insert(clears, None, calls, kept.clone(), callbacks)
+            .unwrap();
         streams.clear();
-        assert!(cancel.is_cancelled());
+        assert!(kept.is_cancelled());
+        let late = streams.insert(clears, None, late_calls, starting.clone(), late_callbacks);
+        assert!(late.is_err() && starting.is_cancelled());
         assert!(lock(&streams.running).is_empty());
     }
 

@@ -1388,7 +1388,7 @@ fn parse_note_anchor(rest: &str, seq: &mut Sequence) -> Option<(NoteAnchor, Stri
         Right,
     }
     let lower = rest.to_ascii_lowercase();
-    // Prefixes are ASCII and `ascii_lower` preserves byte lengths.
+    // Prefixes are ASCII and `to_ascii_lowercase` preserves byte lengths.
     let (kind, ids_and_text) = if lower.starts_with("over ") {
         (Kind::Over, &rest["over ".len()..])
     } else if lower.starts_with("left of ") {

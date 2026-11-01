@@ -14,7 +14,7 @@ yapi update --extensions
 yapi remove npm:@scope/some-pi-package
 ```
 
-yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied. At startup and on `/reload`, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range.
+yapi records installed packages in `settings.json`. `-l` installs into the project's `.yapi` folder and records the package in `.yapi/settings.json`, which loads only in a [trusted project](security.md#project-trust). Local folders and files load in place and are not copied. At startup and on `/reload`, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range or whose install was interrupted.
 
 Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.
 
@@ -28,7 +28,7 @@ User packages:
     /home/you/extensions/shout.wasm
 ```
 
-`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
+`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. It installs a configured git package that is missing, and fails on a git package folder that is not a checkout of its own, so git never touches an enclosing repository. The `npm` and `git` folders each hold a `.gitignore` that keeps installed packages out of a project's repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
 
 ## Try a package
 
@@ -55,7 +55,7 @@ Pi's [package documentation](https://github.com/earendil-works/pi/blob/v1.0.0/pa
 
 yapi has a built-in npm client. It resolves versions with npm's range syntax, verifies integrity hashes and lays out `node_modules` as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.
 
-The client reads registries and credentials from `npm_config_*` environment variables and from `~/.npmrc`, or the file `npm_config_userconfig` names. It reads `registry`, `@scope:registry` and each registry's `_authToken`, `_auth`, or `username` and `_password`, and expands `${VAR}` references. Credentials go only to the registry their key names.
+The client reads registries and credentials from `npm_config_*` environment variables and from `~/.npmrc`, or the file `npm_config_userconfig` names. It reads `registry`, `@scope:registry` and each registry's `_authToken`, `_auth`, or `username` and `_password`, and expands `${VAR}` references. Credentials go only to the registry their key names. A request that takes longer than `fetch-timeout` milliseconds, five minutes by default, fails the install. `0` sets no limit.
 
 ```ini
 @acme:registry=https://npm.acme.dev/
@@ -63,7 +63,3 @@ The client reads registries and credentials from `npm_config_*` environment vari
 ```
 
 Pi's `npmCommand` setting replaces the built-in client for installing and updating npm sources. Removals and the dependencies of git packages always use the built-in client.
-
-## Planned features
-
-Packages that declare and receive only the grants they need, project manifests and a package registry are planned. See the [Roadmap](roadmap.md).

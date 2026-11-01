@@ -85,18 +85,6 @@ impl CredentialStore {
         store
     }
 
-    /// A store that lives in memory only.
-    pub fn in_memory(document: Map<String, Value>) -> CredentialStore {
-        CredentialStore {
-            path: None,
-            state: Mutex::new(State {
-                document,
-                revision: None,
-                error: None,
-            }),
-        }
-    }
-
     /// The file behind the store, if any.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()

@@ -1902,6 +1902,9 @@ struct SessionBridge {
     cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
     /// The files `withFileMutationQueue` holds, by the host's id.
     file_locks: Arc<Mutex<HashMap<u64, tokio::sync::OwnedMutexGuard<()>>>>,
+    /// How often the runtime restarted: a file lock that a stopped runtime
+    /// waited for is not kept.
+    restarts: Arc<AtomicU64>,
 }
 
 fn not_bound() -> String {
@@ -1934,6 +1937,7 @@ impl SessionBridge {
             run_signal: Mutex::default(),
             cancels: Arc::default(),
             file_locks: Arc::default(),
+            restarts: Arc::default(),
         })
     }
 
@@ -2301,14 +2305,14 @@ impl SessionBridge {
             "ui.setToolsExpanded" => ui.set_tools_expanded(payload["expanded"] == true),
             "ui.theme" => return ui.theme(),
             "ui.getTheme" => return ui.get_theme(&text(&payload["name"])),
+            "ui.getAllThemes" => return ui.all_themes(),
             "ui.footerData" => return ui.footer_data(),
             "ui.terminalSize" => {
                 if let Some(state) = ui.terminal() {
                     return terminal_json(&state.borrow());
                 }
             }
-
-            // The working indicator's visibility and frames are not shown.
+            // Kinds with no effect in yapi.
             _ => {}
         }
         Value::Null
@@ -2839,8 +2843,16 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
-        // The stopped runtime's queued file mutations are over.
-        lock(&self.file_locks).clear();
+        // The stopped runtime's queued file mutations and cancellable
+        // operations are over.
+        {
+            let mut locks = lock(&self.file_locks);
+            self.restarts.fetch_add(1, Ordering::Relaxed);
+            locks.clear();
+        }
+        for (_, cancel) in lock(&self.cancels).drain() {
+            cancel.cancel();
+        }
         let Some(session) = self.session() else {
             return;
         };
@@ -2986,10 +2998,17 @@ impl Bridge for SessionBridge {
                 self.file_locks.clone(),
                 self.next_id.fetch_add(1, Ordering::Relaxed),
             );
+            let (restarts, started) =
+                (self.restarts.clone(), self.restarts.load(Ordering::Relaxed));
             let path = PathBuf::from(text(&payload["path"]));
             return Box::pin(async move {
                 let guard = yapi_core::tools::mutation::file_lock(&path).await;
-                lock(&locks).insert(id, guard);
+                let mut locks = lock(&locks);
+                // No one would unlock it for a runtime that restarted.
+                if restarts.load(Ordering::Relaxed) != started {
+                    return Err("The extension runtime restarted".into());
+                }
+                locks.insert(id, guard);
                 Ok(json!(id))
             });
         }
@@ -3306,11 +3325,15 @@ impl Bridge for SessionBridge {
             }
         });
         let operation: BoxFuture<'static, Result<Value, String>> = match signal {
-            Some((id, _)) => {
+            Some((id, cancel)) => {
                 let cancels = self.cancels.clone();
                 Box::pin(async move {
                     let result = operation.await;
-                    lock(&cancels).remove(&id);
+                    // A restarted runtime numbers its signals anew.
+                    let mut cancels = lock(&cancels);
+                    if cancels.get(&id) == Some(&cancel) {
+                        cancels.remove(&id);
+                    }
                     result
                 })
             }

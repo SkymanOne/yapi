@@ -196,6 +196,10 @@ fn hex_channel(channel: &str) -> Option<f64> {
 fn osc_color(value: &str) -> Option<[f64; 3]> {
     let value = value.trim();
     if let Some(hex) = value.strip_prefix('#') {
+        // The channels are sliced by byte offsets.
+        if !hex.is_ascii() {
+            return None;
+        }
         let channels: Vec<&str> = match hex.len() {
             6 => vec![&hex[0..2], &hex[2..4], &hex[4..6]],
             12 => vec![&hex[0..4], &hex[4..8], &hex[8..12]],
@@ -477,6 +481,7 @@ mod tests {
         assert_eq!(colors.foreground, Some([205.0, 214.0, 244.0]));
         assert_eq!(colors.palette.map(|p| p.len()), Some(16));
         let mut silent = ColorQuery::new();
+        assert!(silent.consume("\x1b]11;#a\u{e9}123\x07"));
         assert!(silent.consume("\x1b[?62;22c"));
         assert!(silent.is_done());
         assert_eq!(silent.colors(), TerminalColors::default());

@@ -212,20 +212,21 @@ fn update_target(options: &Options) -> (Update, Option<&'static str>) {
     (target, conflict)
 }
 
-/// Runs a package command when `args` starts with one; its exit code.
-pub async fn run(args: &[String]) -> Option<u8> {
-    let command = match args.first()?.as_str() {
-        "install" => Command::Install,
-        "remove" | "uninstall" => Command::Remove,
-        "update" => Command::Update,
-        "list" => Command::List,
-        _ => return None,
+/// Runs the package command `args` starts with; its exit code, 1 for an
+/// unknown command.
+pub async fn run(args: &[String]) -> u8 {
+    let command = match args.first().map(String::as_str) {
+        Some("install") => Command::Install,
+        Some("remove" | "uninstall") => Command::Remove,
+        Some("update") => Command::Update,
+        Some("list") => Command::List,
+        _ => return 1,
     };
     let options = parse(command, &args[1..]);
     if options.help {
         // pi's console.log adds a newline after the text's own.
         let _ = writeln!(std::io::stdout(), "{}", command.help());
-        return Some(0);
+        return 0;
     }
     let usage = command.usage();
     if let Some(option) = &options.invalid_option {
@@ -234,34 +235,34 @@ pub async fn run(args: &[String]) -> Option<u8> {
             command.name()
         ));
         err(&format!("Use \"yapi --help\" or \"{usage}\"."));
-        return Some(1);
+        return 1;
     }
     if let Some(option) = &options.missing_value {
         err(&format!("Missing value for {option}."));
         err(&format!("Usage: {usage}"));
-        return Some(1);
+        return 1;
     }
     if let Some(argument) = &options.invalid_argument {
         err(&format!("Unexpected argument {argument}."));
         err(&format!("Usage: {usage}"));
-        return Some(1);
+        return 1;
     }
     if let Some(conflict) = &options.conflict {
         err(conflict);
         err(&format!("Usage: {usage}"));
-        return Some(1);
+        return 1;
     }
     if matches!(command, Command::Install | Command::Remove)
         && options.source.as_deref().is_none_or(str::is_empty)
     {
         err(&format!("Missing {} source.", command.name()));
         err(&format!("Usage: {usage}"));
-        return Some(1);
+        return 1;
     }
     if command == Command::Update && options.target == Update::Models {
-        return Some(refresh_models().await);
+        return refresh_models().await;
     }
-    Some(execute(command, options).await)
+    execute(command, options).await
 }
 
 /// `yapi update --models`: pi's `refreshModelCatalogs`, which fetches every

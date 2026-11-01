@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use futures_util::FutureExt;
 use yapi_tui::keys::Keys;
 use yapi_tui::screen::MainScreen;
 use yapi_tui::terminal::{ColorQuery, KeyboardProtocol};
@@ -93,12 +94,16 @@ pub fn configure(
 
 /// Runs `selector` on the main screen until it finishes; its action, or
 /// `None` when cancelled. With `clear`, its rows are erased afterwards.
+/// SIGTERM or SIGHUP ends it with an error once the terminal is restored.
 fn run_selector(
     agent_dir: &Path,
     theme_setting: Option<&str>,
     mut selector: Selector,
     clear: bool,
 ) -> std::io::Result<Option<Action>> {
+    // Caught from here on; polled without the runtime, which this holds.
+    let mut terminated = Box::pin(crate::modes::rpc::termination());
+    let mut signalled = false;
     #[cfg(unix)]
     let raw = yapi_tui::terminal::RawMode::enable()?;
     let mut protocol = KeyboardProtocol::default();
@@ -139,6 +144,10 @@ fn run_selector(
     let mut screen = MainScreen::new();
     let mut chosen = None;
     'outer: loop {
+        if terminated.as_mut().now_or_never().is_some() {
+            signalled = true;
+            break;
+        }
         let ui = Ui {
             theme: &theme,
             keys: &keys,
@@ -173,5 +182,11 @@ fn run_selector(
     emit(&out);
     #[cfg(unix)]
     raw.restore();
+    if signalled || terminated.now_or_never().is_some() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "Terminated",
+        ));
+    }
     Ok(chosen)
 }

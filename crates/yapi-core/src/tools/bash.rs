@@ -480,6 +480,69 @@ impl Pipes {
     }
 }
 
+/// What [`run_child`] reports while a command runs.
+pub(crate) enum Event<'a> {
+    /// Bytes from stdout or stderr.
+    Output(&'a [u8]),
+    /// The time the last event asked for has come.
+    Tick,
+}
+
+/// Why a command's process tree was killed.
+pub(crate) enum Stop {
+    Aborted,
+    TimedOut,
+}
+
+/// Runs `child`, tracked, until it exits and its pipes close or go quiet:
+/// descendants may hold them open. Passes each event to `on`, which returns
+/// when it next wants an [`Event::Tick`]. Kills the process tree when
+/// `cancel` fires or `deadline` passes; output that never pauses holds off
+/// neither, and stays ahead of the exit so none is lost. Returns the shell's
+/// exit status and why its tree was killed.
+pub(crate) async fn run_child(
+    mut child: tokio::process::Child,
+    cancel: &CancellationToken,
+    deadline: Option<Instant>,
+    mut on: impl FnMut(Event<'_>) -> Option<Instant>,
+) -> (Option<std::process::ExitStatus>, Option<Stop>) {
+    let pid = child.id();
+    let _tracked = TrackedChild::new(pid);
+    let mut pipes = Pipes::take(&mut child);
+    let (mut status, mut stop, mut tick) = (None, None, None);
+    let mut exited_at: Option<Instant> = None;
+    loop {
+        if exited_at.is_some() && !pipes.is_open() {
+            break;
+        }
+        let grace = exited_at.map(|at| at + EXIT_STDIO_GRACE);
+        tokio::select! {
+            biased;
+            () = cancel.cancelled(), if stop.is_none() => {
+                stop = Some(Stop::Aborted);
+                kill_tree(pid);
+            }
+            () = sleep_until_opt(deadline), if stop.is_none() => {
+                stop = Some(Stop::TimedOut);
+                kill_tree(pid);
+            }
+            () = sleep_until_opt(tick) => tick = on(Event::Tick),
+            bytes = pipes.read(), if pipes.is_open() => {
+                if !bytes.is_empty() {
+                    tick = on(Event::Output(bytes));
+                    if let Some(at) = &mut exited_at { *at = Instant::now(); }
+                }
+            }
+            result = child.wait(), if exited_at.is_none() => {
+                status = result.ok();
+                exited_at = Some(Instant::now());
+            }
+            () = sleep_until_opt(grace) => break,
+        }
+    }
+    (status, stop)
+}
+
 /// A finished child's exit code; a signal's death is 128 plus the signal.
 pub(crate) fn exit_code_of(status: std::process::ExitStatus) -> Option<i32> {
     #[cfg(unix)]
@@ -500,12 +563,6 @@ pub(crate) fn exit_code_of(status: std::process::ExitStatus) -> Option<i32> {
 pub(crate) fn create_log() -> Option<(PathBuf, std::fs::File)> {
     let path = std::env::temp_dir().join(format!("yapi-bash-{}.log", crate::time::random_hex(8)));
     std::fs::File::create(&path).ok().map(|file| (path, file))
-}
-
-enum Ending {
-    Exited(Option<i32>),
-    Aborted,
-    TimedOut,
 }
 
 impl Tool for Bash {
@@ -567,10 +624,7 @@ impl Tool for Bash {
             if let Some(level) = runtime.thinking_level {
                 process.env("PI_REASONING_LEVEL", level.as_str());
             }
-            let mut child = process.spawn().map_err(|err| err.to_string())?;
-            let pid = child.id();
-            let _tracked = TrackedChild::new(pid);
-            let mut pipes = Pipes::take(&mut child);
+            let child = process.spawn().map_err(|err| err.to_string())?;
 
             updates(ToolResult::default());
             let started = Instant::now();
@@ -578,64 +632,34 @@ impl Tool for Bash {
             let mut last_update = Instant::now() - UPDATE_THROTTLE;
             let mut dirty = false;
             let deadline = timeout.map(|seconds| started + Duration::from_secs_f64(seconds));
-            let mut ending: Option<Ending> = None;
-            let mut exited_at: Option<Instant> = None;
-            let mut exit_code = None;
-
-            loop {
-                if !pipes.is_open() && exited_at.is_some() {
-                    break;
+            let (status, stop) = run_child(child, &cancel, deadline, |event| match event {
+                Event::Output(bytes) => {
+                    output.append(bytes);
+                    dirty = true;
+                    Some(last_update + UPDATE_THROTTLE)
                 }
-                let grace = exited_at.map(|at| at + EXIT_STDIO_GRACE);
-                let next_update = dirty.then(|| last_update + UPDATE_THROTTLE);
-                // Output that never pauses must not hold off the abort, the
-                // timeout or updates; output stays ahead of the exit so none is lost.
-                tokio::select! {
-                    biased;
-                    () = cancel.cancelled(), if ending.is_none() => {
-                        ending = Some(Ending::Aborted);
-                        kill_tree(pid);
-                    }
-                    () = sleep_until_opt(deadline), if ending.is_none() => {
-                        ending = Some(Ending::TimedOut);
-                        kill_tree(pid);
-                    }
-                    () = sleep_until_opt(next_update) => {
-                        dirty = false;
-                        last_update = Instant::now();
-                        let (truncation, path) = output.snapshot(true);
-                        updates(progress(&truncation, path.as_deref()));
-                    }
-                    bytes = pipes.read(), if pipes.is_open() => {
-                        if !bytes.is_empty() {
-                            output.append(bytes);
-                            dirty = true;
-                            if let Some(at) = &mut exited_at { *at = Instant::now(); }
-                        }
-                    }
-                    status = child.wait(), if exited_at.is_none() => {
-                        exit_code = status.ok().and_then(exit_code_of);
-                        exited_at = Some(Instant::now());
-                    }
-                    () = sleep_until_opt(grace) => {
-                        break;
-                    }
+                Event::Tick => {
+                    dirty = false;
+                    last_update = Instant::now();
+                    let (truncation, path) = output.snapshot(true);
+                    updates(progress(&truncation, path.as_deref()));
+                    None
                 }
-            }
+            })
+            .await;
             output.finish();
             let (truncation, path) = output.snapshot(true);
             // pi's finishOutput sends output still waiting for the throttle.
             if dirty {
                 updates(progress(&truncation, path.as_deref()));
             }
-            let ending = ending.unwrap_or(Ending::Exited(exit_code));
-            match ending {
-                Ending::Aborted => {
+            match stop {
+                Some(Stop::Aborted) => {
                     let (text, _) =
                         format_output(&truncation, &path, output.current_line_bytes, "");
                     Err(with_status(&text, "Command aborted"))
                 }
-                Ending::TimedOut => {
+                Some(Stop::TimedOut) => {
                     let (text, _) =
                         format_output(&truncation, &path, output.current_line_bytes, "");
                     let seconds = yapi_types::json::to_string(&timeout.unwrap_or_default())
@@ -645,10 +669,10 @@ impl Tool for Bash {
                         &format!("Command timed out after {seconds} seconds"),
                     ))
                 }
-                Ending::Exited(code) => {
+                None => {
                     let (text, details) =
                         format_output(&truncation, &path, output.current_line_bytes, "(no output)");
-                    let Some(code) = code else {
+                    let Some(code) = status.and_then(exit_code_of) else {
                         return Err(with_status(
                             &text,
                             "Command terminated without an exit code",

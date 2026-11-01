@@ -208,6 +208,27 @@ async fn bom_and_crlf_preserved() {
             dir.0.join("adir").display()
         )
     );
+
+    // A `tool_call` handler can drop a validated argument; the file is left alone.
+    for (name, args, field) in [
+        ("write", json!({"path": "sub/f.txt"}), "content"),
+        ("write", json!({"content": "x"}), "path"),
+        (
+            "edit",
+            json!({"path": "sub/f.txt", "edits": [{"oldText": "one"}]}),
+            "newText",
+        ),
+    ] {
+        let err = call(&dir.0, name, args).await.unwrap_err();
+        assert_eq!(
+            err,
+            format!("The \"{field}\" argument must be of type string.")
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(dir.0.join("sub/f.txt")).unwrap(),
+        "\u{feff}one\r\n2\r\n"
+    );
 }
 
 #[tokio::test]
@@ -295,16 +316,39 @@ async fn bash_abort_and_updates() {
     let err = tool
         .execute(
             "id".into(),
-            json!({"command": "echo partial; sleep 10"}),
+            json!({"command": "echo partial; sleep 30 & echo $! > pid; wait"}),
             cancel,
             updates,
         )
         .await
         .unwrap_err();
     assert_eq!(err, "partial\n\n\nCommand aborted");
-    let seen = seen.lock().unwrap();
-    assert!(seen.len() >= 2, "expected an initial and an output update");
-    assert_eq!(text(&seen[1]), "partial\n");
+    {
+        let seen = seen.lock().unwrap();
+        assert!(seen.len() >= 2, "expected an initial and an output update");
+        assert_eq!(text(&seen[1]), "partial\n");
+    }
+    // The abort kills the shell's whole process group, background jobs included.
+    #[cfg(unix)]
+    {
+        let pid = std::fs::read_to_string(dir.0.join("pid")).unwrap();
+        let alive = || {
+            std::process::Command::new("kill")
+                .args(["-0", pid.trim()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while alive() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "background job outlived the abort"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
 }
 
 #[tokio::test]

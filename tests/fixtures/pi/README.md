@@ -1,6 +1,6 @@
 # pi golden fixtures
 
-Files written by pi `v1.0.0` (commit `a13d35a`). `crates/yapi-types/tests/golden.rs` checks that yapi reads and writes them back byte-identically, `crates/yapi-core/tests/session.rs` that yapi builds the same model context from each session, `crates/yapi-core/tests/mcp.rs` that yapi's MCP sign-in stores the same state, `crates/yapi-tui/tests/keys.rs` that yapi decodes terminal input as pi does, `crates/yapi-tui/tests/editor.rs` that yapi's editor behaves as pi's, `crates/yapi-tui/tests/theme.rs` that yapi's themes produce pi's colors, `crates/yapi-tui/tests/text.rs` that yapi lays out text and markdown as pi does, `crates/yapi-tui/tests/image.rs` that yapi sizes, draws and crops inline images as pi does, `crates/yapi-tui/tests/selection.rs` that yapi handles the mouse in fullscreen mode as pi does, `crates/yapi-ext/tests/runtime.rs` that pi-ai's exports give pi's results in extensions, and the interactive mode's tests that clicks on chat items expand them as in pi. Do not edit them by hand; regenerate instead.
+Files written by pi `v1.0.0` (commit `a13d35a`). `crates/yapi-types/tests/golden.rs` checks that yapi reads and writes them back byte-identically, `crates/yapi-core/tests/session.rs` that yapi builds the same model context from each session, `crates/yapi-core/tests/mcp.rs` that yapi's MCP sign-in stores the same state, `crates/yapi-tui/tests/keys.rs` that yapi decodes terminal input as pi does, `crates/yapi-tui/tests/editor.rs` that yapi's editor behaves as pi's, `crates/yapi-tui/tests/theme.rs` that yapi's themes produce pi's colors, `crates/yapi-tui/tests/text.rs` that yapi lays out text and markdown as pi does, `crates/yapi-tui/tests/image.rs` that yapi sizes, draws and crops inline images as pi does, `crates/yapi-tui/tests/selection.rs` that yapi handles the mouse in fullscreen mode as pi does, `crates/yapi-ext/tests/runtime.rs` that pi-ai's exports give pi's results in extensions, `crates/yapi-ext/tests/examples.rs` that pi's example extensions register the same things in yapi, `crates/yapi-core/tests/resolve.rs` that yapi's resource resolver finds what pi's does, `cargo xtask package-registrations` that popular pi packages register the same things in yapi, and the interactive mode's tests that clicks on chat items expand them as in pi. Do not edit them by hand; regenerate instead.
 
 ## Regenerate
 
@@ -23,11 +23,15 @@ node models-api.mjs
 node pi-ai.mjs
 node settings-migration.mjs
 node mcp-auth.mjs       # needs python3 on PATH
+node extensions.mjs > ../extensions/registrations.json
+node resolve.mjs > ../resolve/cases.json
+node top-packages.mjs 500 > ../packages/ranked.json   # reads npm's registry
+node packages.mjs > ../packages/registrations.json     # installs from npm's registry
 ```
 
 The generator's packages also serve the end-to-end scenarios: `cargo xtask e2e` runs this pi install, and `rpc-client.mjs`, pi's `RpcClient` example, drives the program under test in client scenarios.
 
-The script runs pi offline in `/tmp/yapi-pi-fixtures` with faux providers. Ids and timestamps change on every run. To cut `legacy/` again from pi's own test sessions, set `PI_SOURCE` to a pi `v1.0.0` checkout.
+The script runs pi offline in `/tmp/yapi-pi-fixtures` with faux providers. `top-packages.mjs` and `packages.mjs` are the exceptions: they need npm's registry, and `packages.mjs` installs each package without its lifecycle scripts and loads it under Node's permission model. `node packages.mjs <name>...` measures only the named packages again. Ids and timestamps change on every run. To cut `legacy/` again from pi's own test sessions, set `PI_SOURCE` to a pi `v1.0.0` checkout.
 
 ## Contents
 
@@ -59,6 +63,10 @@ The script runs pi offline in `/tmp/yapi-pi-fixtures` with faux providers. Ids a
 | `selection/selection.json` | pi-tui `TuiAltScreen` in pi's chat viewport layout, fed SGR mouse reports and keys | The screen, the copied text, the opened links and what a docked list reports after every report: drags, word and line clicks, the dock, auto-scroll at the transcript's edge, wheel scrolling, graphemes, focus loss, flashes, `copyOnSelect` off, link clicks, the jump label, scrollbar drags and hover, clicks and the wheel on a docked `Editor` and its slash command completion, `SelectList`, searchable `SettingsList` and `Input`, and the presses and clicks, with click counts, that a component taking clicks gets |
 | `selection/expand.json` | pi's message components in the chat viewport, clicked on their rows | The chat after clicks that expand or collapse a skill, a thinking run, `read` output and compaction and branch summaries, and after clicks on padding, a pending call and plain text |
 | `selection/wheel.json` | pi-tui `WheelScrollAccelerator` fed timed wheel events | The rows each event scrolls: fixed counts, `auto` acceleration, bursts, carried fractions, direction changes and pauses |
+| `extensions/registrations.json` | pi's `discoverAndLoadExtensions` on each of pi's example extensions | The tools, commands, flags, shortcuts and event handlers each example registers, and its load errors |
+| `resolve/cases.json` | pi's `DefaultPackageManager.resolve` over generated resource trees | Every extension, skill, prompt and theme found, with its metadata and whether it is enabled, in trusted and untrusted projects |
+| `packages/ranked.json` | npm's search for the `pi-package` keyword | The most-downloaded pi packages, each with its latest version and monthly downloads |
+| `packages/registrations.json` | pi loading each package in `packages/ranked.json` | What each package's extensions register, or why it failed to install or load |
 | `autocomplete/cases.json` | pi-tui `CombinedAutocompleteProvider` over a generated tree | Slash commands and arguments, skill names, path and quoted completion, `@` search through `fd`, applying the first item |
 
 The excerpts in `legacy/` come from pi, Copyright (c) 2025 Mario Zechner, MIT License.

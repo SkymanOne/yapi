@@ -40,7 +40,7 @@ The host checks every file, process, network and environment access against the 
 
 A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
-An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider's credentials with `ctx.modelRegistry.getProviderAuth` or `getApiKeyAndHeaders`, and calls a model with `complete`, `stream` or `streamSimple`, only with the network grant.
+An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider's credentials with `ctx.modelRegistry.getProviderAuth`, `getApiKey`, `getApiKeyForProvider` or `getApiKeyAndHeaders`, and calls a model with `complete`, `stream`, `streamSimple`, `classify` or `generateImages`, only with the network grant. It runs the built-in `grep` and `find` tools only with the file, process and network grants, because they run ripgrep and fd and download them when they are missing.
 
 ### Agent sessions and events
 

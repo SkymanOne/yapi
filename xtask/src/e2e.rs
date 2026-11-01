@@ -34,7 +34,7 @@ pub struct Args {
         default_value = "tests/fixtures/pi/generator/node_modules/.bin/pi"
     )]
     pi: PathBuf,
-    /// The yapi executable; built with `cargo build -p yapi` when absent.
+    /// The yapi executable, which `cargo build -p yapi` makes.
     #[arg(long, default_value = "target/debug/yapi")]
     yapi: PathBuf,
 }

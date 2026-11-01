@@ -1148,6 +1148,10 @@ impl ExtensionUi for Screen {
         json!({"bindings": {"tui.editor.cursorLeft": ["left"]}})
     }
 
+    fn all_themes(&self) -> Value {
+        json!([{"name": "dark"}])
+    }
+
     fn set_editor(&self, editor: Option<RemoteComponent>, _embeds_status: bool) {
         *self.editor.lock().unwrap() = editor;
     }
@@ -1188,6 +1192,7 @@ import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => new CustomEditor(tui, theme, keybindings));
+		pi.appendEntry("themes", { all: ctx.ui.getAllThemes() });
 	});
 }
 "#,
@@ -1201,6 +1206,10 @@ export default function (pi: ExtensionAPI) {
     session
         .bind_extensions(screen.clone(), Mode::Tui, None, None)
         .await;
+    assert_eq!(
+        custom_entries(&session, "themes"),
+        [json!({"all": [{"name": "dark"}]})]
+    );
     let editor = screen.editor.lock().unwrap().clone().unwrap();
     // The text and rows once the editor has taken the insertion.
     let insert = async |text: &str, apart: bool| {
@@ -1458,6 +1467,46 @@ export default function (pi) {
         Some("FINE")
     );
     assert_eq!(ui.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+/// A restart lets go of the files the stopped runtime held or waited for in
+/// `withFileMutationQueue`, so yapi's edit and write tools take them again.
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_releases_files() {
+    let dir = scratch("restart-files");
+    let notes = dir.join("notes.md");
+    std::fs::write(&notes, "start\n").unwrap();
+    let host = load_extension(
+        &dir,
+        r#"import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+const overflow = () => overflow();
+export default function (pi) {
+	pi.registerCommand("hold", {
+		handler: async () => {
+			withFileMutationQueue("./notes.md", async () => {
+				withFileMutationQueue("./notes.md", async () => {});
+				setTimeout(overflow, 200);
+				await new Promise((resolve) => setTimeout(resolve, 5000));
+			});
+		},
+	});
+}"#,
+    )
+    .await;
+    let session = session(&Faux::new([]), &dir, host.for_session());
+    let ui = Arc::new(Restarts::default());
+    session
+        .bind_extensions(ui.clone(), Mode::Tui, None, None)
+        .await;
+    session.prompt("/hold", Vec::new()).await.unwrap();
+    common::eventually("the restart", || {
+        ui.0.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
+    let edit = yapi_core::tools::mutation::file_lock(&notes);
+    tokio::time::timeout(std::time::Duration::from_secs(3), edit)
+        .await
+        .expect("the stopped runtime still holds the file");
 }
 
 /// Loads extension `source` from a file in `dir`.

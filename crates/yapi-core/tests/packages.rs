@@ -14,6 +14,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+use yapi_ai::auth::lock::FileLock;
 use yapi_core::packages::PackageManager;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::MockServer;
@@ -409,7 +410,8 @@ async fn npm_command_updates() {
     let script = dir.join("npm.sh");
     std::fs::write(
         &script,
-        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n",
+        "[ \"$1 $3 $4\" = 'view version --json' ] && echo '[\"1.0.0\", \"1.5.0\", \"2.0.0\"]'\n\
+         [ \"$1\" != install ] || sleep 1\n",
     )
     .unwrap();
     installed(&dir, "behind", "1.0.0");
@@ -423,8 +425,13 @@ async fn npm_command_updates() {
         .to_string(),
     )
     .unwrap();
-    let packages = manager(&dir, "http://127.0.0.1:9");
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
     assert_eq!(packages.available_updates().await, ["behind"]);
+    // The install waits on the command without blocking the runtime, so a
+    // timeout ends it.
+    let install = packages.install("npm:behind@^1.0.0", false);
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(100), install).await;
+    assert!(waited.is_err(), "{waited:?}");
 }
 
 fn git(dir: &Path, args: &[&str]) {
@@ -478,6 +485,46 @@ async fn git_remote_updates() {
     git(&work, &["commit", "--allow-empty", "-m", "second"]);
     git(&work, &["push", "origin", "main"]);
     assert_eq!(packages.available_updates().await, ["github.com/user/repo"]);
+
+    // `update` moves the checkouts and, as pi's `updateGit`, installs a
+    // missing one into the git folder, which gets pi's `.gitignore` first.
+    configure(
+        &dir,
+        json!([
+            "git:github.com/user/repo",
+            "git:github.com/user/pinned@main",
+            "git:http://127.0.0.1:9/user/missing"
+        ]),
+    );
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let error = packages.update(None).await.unwrap_err().to_string();
+    assert!(error.starts_with("git clone failed"), "{error}");
+    assert!(packages.available_updates().await.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("agent/git/.gitignore")).unwrap(),
+        "*\n!.gitignore\n"
+    );
+
+    // A package folder that is no checkout of its own, as a clone of a project
+    // that committed it leaves, is refused rather than resetting the project.
+    let project = dir.join("project");
+    git(&dir, &["clone", origin.to_str().unwrap(), "project"]);
+    std::fs::write(project.join("notes.txt"), "committed").unwrap();
+    git(&project, &["add", "notes.txt"]);
+    git(&project, &["commit", "-m", "notes"]);
+    git(&project, &["push", "origin", "main"]);
+    std::fs::write(project.join("notes.txt"), "uncommitted").unwrap();
+    std::fs::create_dir_all(project.join(".yapi/git/github.com/user/repo")).unwrap();
+    let settings = json!({"packages": ["git:github.com/user/repo"]});
+    std::fs::write(project.join(".yapi/settings.json"), settings.to_string()).unwrap();
+    configure(&dir, json!([]));
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let error = packages.update(None).await.unwrap_err().to_string();
+    assert!(error.starts_with("Refusing to update "), "{error}");
+    assert_eq!(
+        std::fs::read_to_string(project.join("notes.txt")).unwrap(),
+        "uncommitted"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -901,6 +948,44 @@ async fn installs_missing_or_outdated() {
         "2.0.0"
     );
     assert_eq!(server.finish().unwrap().len(), 2);
+
+    // An install that never finished, its dependencies missing, is redone.
+    std::fs::write(installed.join(".yapi-incomplete"), "").unwrap();
+    std::fs::write(installed.join("index.ts"), "partial").unwrap();
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), version("2.0.0"))],
+            "2.0.0",
+        )
+    })
+    .await;
+    let outcome = manager(&dir, &server.url())
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert_eq!(
+        std::fs::read_to_string(installed.join("index.ts")).unwrap(),
+        "2.0.0"
+    );
+    assert!(!installed.join(".yapi-incomplete").exists());
+    assert_eq!(server.finish().unwrap().len(), 2);
+
+    // One that another process installs while this one waits for the npm
+    // root's lock is kept, and no request reaches the registry.
+    std::fs::write(installed.join(".yapi-incomplete"), "").unwrap();
+    let root = dir.join("agent/npm/package.json");
+    let lock = FileLock::acquire(&root, &Default::default()).await.unwrap();
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    let other = async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        std::fs::remove_file(installed.join(".yapi-incomplete")).unwrap();
+        drop(lock);
+    };
+    let install = packages.install_missing(|_, message| ControlFlow::Break(message));
+    let (outcome, ()) = tokio::join!(install, other);
+    assert_eq!(outcome, ControlFlow::Continue(()));
 }
 
 /// pi's `findAutoloadDeltaBase`: a project entry with `autoload: false` over
@@ -993,11 +1078,46 @@ async fn remove_keeps_shared_dependency() {
     std::fs::write(dir.join("agent/npm/package.json"), root.to_string()).unwrap();
     let mut packages = manager(&dir, "http://127.0.0.1:9");
 
+    // Removal waits for another process's hold on the npm root.
+    let root = dir.join("agent/npm/package.json");
+    let lock = FileLock::acquire(&root, &Default::default()).await.unwrap();
+    let remove = packages.remove("npm:pi-shared", false);
+    let waited = tokio::time::timeout(std::time::Duration::from_millis(100), remove).await;
+    assert!(waited.is_err(), "{waited:?}");
+    drop(lock);
     assert!(packages.remove("npm:pi-shared", false).await.unwrap());
     assert!(shared.join("package.json").exists());
     assert!(packages.remove("npm:pi-a", false).await.unwrap());
     assert!(!a.exists());
     assert!(!shared.exists());
+
+    // Dependencies resolve through every `node_modules` up from their
+    // dependent, as in trees npm makes: b reaches a's c@2, whose d is hoisted.
+    let modules = dir.join("agent/npm/node_modules");
+    for (path, version, dependencies) in [
+        ("a", "1.0.0", json!({"b": "^1"})),
+        ("a/node_modules/b", "1.0.0", json!({"c": "^2"})),
+        ("a/node_modules/c", "2.0.0", json!({"d": "^1"})),
+        ("c", "1.0.0", json!({})),
+        ("d", "1.0.0", json!({})),
+        ("x", "1.0.0", json!({})),
+    ] {
+        let name = path.rsplit('/').next().unwrap();
+        let manifest = json!({"name": name, "version": version, "dependencies": dependencies});
+        std::fs::create_dir_all(modules.join(path)).unwrap();
+        std::fs::write(
+            modules.join(path).join("package.json"),
+            manifest.to_string(),
+        )
+        .unwrap();
+    }
+    configure(&dir, json!(["npm:a", "npm:c", "npm:x"]));
+    let root = json!({"dependencies": {"a": "^1", "c": "^1", "x": "^1"}});
+    std::fs::write(dir.join("agent/npm/package.json"), root.to_string()).unwrap();
+    let mut packages = manager(&dir, "http://127.0.0.1:9");
+    assert!(packages.remove("npm:x", false).await.unwrap());
+    assert!(!modules.join("x").exists());
+    assert!(modules.join("d").exists());
 }
 
 /// An update whose new version's dependency fails leaves the working

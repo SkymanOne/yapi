@@ -35,7 +35,7 @@ Native extensions are the better choice when:
 
 - the extension does heavy computation, which compiled code runs much faster than an interpreter
 - it should be isolated from other extensions. A native extension's crash does not reload the others, and its instance is the unit that [per-package grants](roadmap.md#capability-based-sandboxing) will apply to.
-- memory matters. Native extensions do not load the JavaScript runtime. In the [benchmark](performance.md#results), ten small Pi extensions raise idle memory on Linux from 18.8 MB to 40.0 MB.
+- memory matters. Native extensions do not load the JavaScript runtime. The [benchmark](performance.md#results) measures the memory that Pi extensions add.
 - the code base is in Rust, or should use Rust crates
 
 Weigh these limits as well:

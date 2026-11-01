@@ -1343,11 +1343,17 @@ impl SettingsSelector {
     }
 }
 
-/// pi's `getAvailableThemes`: the system theme first, then the built-in,
-/// agent directory and registered themes by name.
-fn available_themes(agent_dir: &std::path::Path, files: &super::themes::ThemeFiles) -> Vec<String> {
+/// pi's `getAvailableThemesWithPaths`: the system theme first, then the
+/// built-in, agent directory and registered themes by name, with their
+/// files. yapi's built-in themes have none.
+pub(super) fn available_themes(
+    agent_dir: &std::path::Path,
+    files: &super::themes::ThemeFiles,
+) -> Vec<(String, Option<std::path::PathBuf>)> {
     let system = yapi_tui::theme::SYSTEM_THEME_NAME;
-    let mut names: Vec<String> = vec![system.to_owned(), "dark".to_owned(), "light".to_owned()];
+    let mut names: Vec<(String, Option<std::path::PathBuf>)> = [system, "dark", "light"]
+        .map(|name| (name.to_owned(), None))
+        .into();
     if let Ok(entries) = std::fs::read_dir(agent_dir.join("themes")) {
         let mut paths: Vec<std::path::PathBuf> = entries
             .flatten()
@@ -1360,13 +1366,18 @@ fn available_themes(agent_dir: &std::path::Path, files: &super::themes::ThemeFil
                 .ok()
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
                 .and_then(|json| json["name"].as_str().map(str::to_owned));
-            names.extend(name);
+            names.extend(name.map(|name| (name, Some(path))));
         }
     }
-    names.extend(files.names().map(str::to_owned));
+    names.extend(files.names().map(|name| {
+        (
+            name.to_owned(),
+            files.path(name).map(std::path::Path::to_path_buf),
+        )
+    }));
     let mut seen = std::collections::HashSet::new();
-    names.retain(|name| seen.insert(name.clone()));
-    names.sort_by(|a, b| {
+    names.retain(|(name, _)| seen.insert(name.clone()));
+    names.sort_by(|(a, _), (b, _)| {
         (a != system)
             .cmp(&(b != system))
             .then_with(|| a.to_lowercase().cmp(&b.to_lowercase()))
@@ -1410,7 +1421,10 @@ impl super::App {
                 .or_else(|| settings.theme.clone())
                 .filter(|theme| !theme.is_empty())
                 .unwrap_or_else(|| yapi_tui::theme::SYSTEM_THEME_NAME.to_owned()),
-            themes: available_themes(&self.agent_dir, &self.theme_files),
+            themes: available_themes(&self.agent_dir, &self.theme_files)
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect(),
             light_terminal: appearance == yapi_tui::theme::Appearance::Light,
             settings,
         };

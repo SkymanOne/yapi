@@ -203,6 +203,8 @@ enum Event {
     EditorAction(u64, String),
     /// Keys that passed the extensions' `onTerminalInput` listeners.
     TerminalInput(Vec<String>),
+    /// The external editor exited, with the edited text when it succeeded.
+    EditorClosed(Option<String>),
     /// Lines of the extension component with this key, rendered at a width.
     Rendered(u64, (u64, u32), usize, Vec<String>),
     /// The extensions of the session with this epoch started, after a
@@ -622,11 +624,9 @@ async fn tmux_forwards_hyperlinks() -> bool {
     }
 }
 
+/// The home directory paths are shown relative to; `None` when empty.
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)
+    Some(yapi_core::tools::path::home_dir()).filter(|home| !home.as_os_str().is_empty())
 }
 
 fn tool_result_of(message: &yapi_types::message::ToolResultMessage) -> ToolResult {
@@ -645,6 +645,13 @@ struct Terminal {
     raw: yapi_tui::terminal::RawMode,
     protocol: KeyboardProtocol,
     stdin_paused: Arc<AtomicBool>,
+}
+
+impl Terminal {
+    /// Whether another program has the terminal.
+    fn released(&self) -> bool {
+        self.stdin_paused.load(Ordering::SeqCst)
+    }
 }
 
 /// An item's rows for a width and transcript generation, and where a click
@@ -3987,8 +3994,8 @@ impl App {
         self.invalidate_all();
     }
 
-    /// Gives the terminal to another program and takes it back.
-    fn with_terminal_released(&mut self, terminal: &mut Terminal, run: impl FnOnce()) {
+    /// Gives the terminal to another program until [`App::take_terminal`].
+    fn release_terminal(&mut self, terminal: &mut Terminal) {
         terminal.stdin_paused.store(true, Ordering::SeqCst);
         let mut out = String::from(self.stop_progress());
         if self.fullscreen {
@@ -4000,7 +4007,10 @@ impl App {
         emit(&out);
         #[cfg(unix)]
         terminal.raw.restore();
-        run();
+    }
+
+    /// Takes the terminal back from another program.
+    fn take_terminal(&mut self, terminal: &mut Terminal) {
         #[cfg(unix)]
         let _ = terminal.raw.reenable();
         let mut out = String::from(BRACKETED_PASTE_ENABLE);
@@ -4025,13 +4035,21 @@ impl App {
             self.status("Suspend to background is not supported on Windows");
             return;
         }
-        self.with_terminal_released(terminal, || {
-            #[cfg(unix)]
-            yapi_tui::terminal::suspend();
-        });
+        if terminal.released() {
+            return;
+        }
+        self.release_terminal(terminal);
+        #[cfg(unix)]
+        yapi_tui::terminal::suspend();
+        self.take_terminal(terminal);
     }
 
+    /// pi's external editor: it runs beside the loop, which draws nothing
+    /// until [`Event::EditorClosed`] brings its text back.
     fn external_editor(&mut self, terminal: &mut Terminal) {
+        if terminal.released() {
+            return;
+        }
         let configured = self
             .session
             .settings()
@@ -4051,15 +4069,18 @@ impl App {
             self.error("Failed to open external editor");
             return;
         }
-        let mut edited: Option<String> = None;
-        self.with_terminal_released(terminal, || {
-            emit(&external_editor_notice(&command));
+        self.release_terminal(terminal);
+        emit(&external_editor_notice(&command));
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let mut edited = None;
             let mut parts = command.split(' ').filter(|part| !part.is_empty());
             if let Some(program) = parts.next() {
-                let status = std::process::Command::new(program)
+                let status = tokio::process::Command::new(program)
                     .args(parts)
                     .arg(&file)
-                    .status();
+                    .status()
+                    .await;
                 if status.is_ok_and(|status| status.success())
                     && let Ok(text) = std::fs::read_to_string(&file)
                 {
@@ -4067,11 +4088,9 @@ impl App {
                     edited = Some(text.strip_suffix('\n').unwrap_or(text).to_owned());
                 }
             }
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = tx.send(Event::EditorClosed(edited));
         });
-        let _ = std::fs::remove_dir_all(&dir);
-        if let Some(text) = edited {
-            self.set_editor_text(&text);
-        }
     }
 }
 
@@ -4254,8 +4273,24 @@ fn quote(value: &str) -> String {
     }
 }
 
+/// pi's `formatResumeCommand` for the session `id` stored in `file`: the
+/// session directory is named when it is not `default_dir`.
+fn resume_command(file: &Path, id: &str, default_dir: &Path) -> String {
+    match file.parent() {
+        Some(dir) if dir != default_dir => format!(
+            "yapi --session-dir {} --session {id}",
+            quote(&dir.display().to_string())
+        ),
+        _ => format!("yapi --session {id}"),
+    }
+}
+
 /// Runs interactive mode until the user quits. Returns the exit code.
 pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options) -> u8 {
+    // SIGTERM, or SIGHUP when the terminal goes away, caught before the
+    // terminal changes; it ends the loop, which restores the terminal.
+    let terminated = crate::modes::rpc::termination();
+    tokio::pin!(terminated);
     #[cfg(unix)]
     let raw = match yapi_tui::terminal::RawMode::enable() {
         Ok(raw) => raw,
@@ -4405,11 +4440,10 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     #[cfg(unix)]
     let mut resize =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change()).ok();
-    // SIGTERM, or SIGHUP when the terminal goes away; it ends the loop.
-    let terminated = crate::modes::rpc::termination();
-    tokio::pin!(terminated);
     let mut last_draw = Instant::now();
     let mut dirty = false;
+    // pi's shutdown on a signal shows no resume hint.
+    let mut signalled = false;
     while !app.quit {
         let mut tick = if app.animating() {
             app.animation_interval()
@@ -4468,6 +4502,12 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                         app.handle_keys(keys, &mut terminal);
                         app.pump_input(&mut terminal);
                     }
+                    Event::EditorClosed(edited) => {
+                        app.take_terminal(&mut terminal);
+                        if let Some(text) = edited {
+                            app.set_editor_text(&text);
+                        }
+                    }
                     event => app.on_event(event),
                 }
                 dirty |= redraw;
@@ -4486,11 +4526,18 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                 app.invalidate_all();
                 dirty = true;
             }
-            _ = &mut terminated => app.quit = true,
+            _ = &mut terminated => {
+                app.quit = true;
+                signalled = true;
+            }
             _ = tokio::time::sleep(flush_wait), if dirty => {}
         }
         app.start_binding();
-        if dirty && last_draw.elapsed() >= FRAME_INTERVAL {
+        // Nothing is drawn while another program has the terminal; taking it
+        // back redraws everything.
+        if terminal.released() {
+            dirty = false;
+        } else if dirty && last_draw.elapsed() >= FRAME_INTERVAL {
             app.draw();
             last_draw = Instant::now();
             dirty = false;
@@ -4542,20 +4589,13 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
         .session
         .with_session(|session| session.header().map(|header| header.id.clone()));
     if app.exit_code == 0
+        && !signalled
         && std::io::stdout().is_terminal()
         && let (Some(file), Some(id)) = (file, id)
         && file.exists()
     {
         let default_dir = yapi_core::config::default_session_dir(&agent_dir, &app.cwd);
-        let command = match file.parent() {
-            Some(dir) if dir != default_dir => {
-                format!(
-                    "yapi --session-dir {} --session {id}",
-                    quote(&dir.display().to_string())
-                )
-            }
-            _ => format!("yapi --session {id}"),
-        };
+        let command = resume_command(&file, &id, &default_dir);
         // chalk's dim, not the theme's.
         emit(&format!(
             "\x1b[2mTo resume this session:\x1b[22m {command}\n"
@@ -4772,13 +4812,26 @@ impl App {
     fn share_themes(&self) {
         let (files, agent_dir) = (self.theme_files.clone(), self.agent_dir.clone());
         let (colors, mode) = (self.colors.clone(), self.color_mode);
-        yapi_types::sync::lock(&self.ext.shared).load_theme =
-            Some(Arc::new(move |theme: &Value| match theme.as_str() {
-                Some(name) => theme_named(name, &files, &agent_dir, &colors, mode),
-                // pi's in-memory themes, which nothing saves.
-                None => Theme::from_json("<in-memory>", &yapi_types::json::stringify(theme), mode)
-                    .map_err(|error| error.to_string()),
-            }));
+        let mut shared = yapi_types::sync::lock(&self.ext.shared);
+        let listed = (files.clone(), agent_dir.clone());
+        shared.all_themes = Some(Arc::new(move || {
+            let themes = settings_selector::available_themes(&listed.1, &listed.0);
+            Value::Array(
+                themes
+                    .into_iter()
+                    .map(|(name, path)| match path {
+                        Some(path) => json!({"name": name, "path": path}),
+                        None => json!({"name": name}),
+                    })
+                    .collect(),
+            )
+        }));
+        shared.load_theme = Some(Arc::new(move |theme: &Value| match theme.as_str() {
+            Some(name) => theme_named(name, &files, &agent_dir, &colors, mode),
+            // pi's in-memory themes, which nothing saves.
+            None => Theme::from_json("<in-memory>", &yapi_types::json::stringify(theme), mode)
+                .map_err(|error| error.to_string()),
+        }));
     }
 
     /// Carries out an extension command's session change as pi's
@@ -5173,6 +5226,17 @@ mod tests {
         };
         let light = ui.get_theme("light");
         assert_eq!(ui.get_theme("missing"), Value::Null);
+        let themes = ui.all_themes();
+        assert_eq!(
+            themes[0],
+            json!({"name": yapi_tui::theme::SYSTEM_THEME_NAME})
+        );
+        assert!(
+            themes
+                .as_array()
+                .unwrap()
+                .contains(&json!({"name": "light"}))
+        );
         let theme = json!({"name": "mine", "colors": light["colors"]});
         assert_eq!(ui.set_theme(&theme), Ok(()));
         app.on_event(events.try_recv().unwrap());
@@ -5933,6 +5997,26 @@ mod tests {
         assert_eq!(
             external_editor_notice("vim"),
             "Launching external editor: vim\nyapi will resume when the editor exits.\n"
+        );
+    }
+
+    /// pi's resume hint names a session directory other than the default
+    /// one, quoted for the shell when needed.
+    #[test]
+    fn resume_hint_dirs() {
+        let default = Path::new("/agent/sessions/--work--");
+        let hint = |file: &str| resume_command(Path::new(file), "abc", default);
+        assert_eq!(
+            hint("/agent/sessions/--work--/s.jsonl"),
+            "yapi --session abc"
+        );
+        assert_eq!(
+            hint("/tmp/plain/s.jsonl"),
+            "yapi --session-dir /tmp/plain --session abc"
+        );
+        assert_eq!(
+            hint("/tmp/it's here/s.jsonl"),
+            r"yapi --session-dir '/tmp/it'\''s here' --session abc"
         );
     }
 

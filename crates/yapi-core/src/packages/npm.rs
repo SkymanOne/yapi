@@ -13,6 +13,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
+use tokio_util::sync::CancellationToken;
+use yapi_ai::auth::lock::{FileLock, LockError};
 
 /// Packages yapi provides to extensions itself; installing them is wasted work.
 const HOST_PACKAGES: [&str; 10] = [
@@ -309,6 +311,9 @@ pub(crate) fn viewed_version(output: &str, range: Option<&str>) -> Option<String
 const PACKUMENT_ACCEPT: &str =
     "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
+/// npm's default `fetch-timeout`.
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 /// A registry client with a per-run packument cache.
 #[derive(Clone)]
 pub struct Npm {
@@ -391,10 +396,14 @@ impl Npm {
             value.set_sensitive(true);
             request = request.header(reqwest::header::AUTHORIZATION, value);
         }
+        // A request that never ends would hold the install, and the root's lock, for good.
+        if let Some(timeout) = self.timeout() {
+            request = request.timeout(timeout);
+        }
         let response = request
             .send()
             .await
-            .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
+            .map_err(|err| request_error(url, &err))?;
         if !response.status().is_success() {
             return Err(NpmError::Registry(format!(
                 "GET {url}: {}",
@@ -413,7 +422,7 @@ impl Npm {
                 .await?
                 .bytes()
                 .await
-                .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
+                .map_err(|err| request_error(&url, &err))?;
             let packument: Value = serde_json::from_slice(&body)
                 .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
             self.packuments.insert(name.to_owned(), packument);
@@ -471,6 +480,17 @@ impl Npm {
             })
     }
 
+    /// npm's `fetch-timeout`: how long a request may take, `None` (`0`) for
+    /// no limit.
+    fn timeout(&self) -> Option<std::time::Duration> {
+        let millis = self.config.get("fetch-timeout");
+        match millis.and_then(|millis| millis.trim().parse::<u64>().ok()) {
+            Some(0) => None,
+            Some(millis) => Some(std::time::Duration::from_millis(millis)),
+            None => Some(FETCH_TIMEOUT),
+        }
+    }
+
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
         let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
         let url = manifest["dist"]["tarball"].as_str().unwrap_or_default();
@@ -480,7 +500,7 @@ impl Npm {
             .await?
             .bytes()
             .await
-            .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?
+            .map_err(|err| request_error(url, &err))?
             .to_vec();
         if verify(&bytes, &manifest["dist"]) {
             Ok(bytes)
@@ -492,6 +512,16 @@ impl Npm {
 
 fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
+}
+
+/// A failed request for `url`. A timeout is worded as npm words it, since
+/// reqwest's message does not say so.
+fn request_error(url: &str, err: &reqwest::Error) -> NpmError {
+    if err.is_timeout() {
+        NpmError::Registry(format!("network timeout at: {url}"))
+    } else {
+        NpmError::Registry(format!("GET {url}: {err}"))
+    }
 }
 
 /// Checks `bytes` against the strongest algorithm of the registry's
@@ -570,9 +600,33 @@ fn read_manifest(dir: &Path) -> Option<Value> {
     yapi_types::json::parse(&std::fs::read_to_string(dir.join("package.json")).ok()?).ok()
 }
 
-/// The version of the package installed at `dir`, if any.
-pub(crate) fn installed_version(dir: &Path) -> Option<String> {
+/// The file in a package's folder while its install has not finished.
+const INCOMPLETE: &str = ".yapi-incomplete";
+
+/// The version in the `package.json` at `dir`.
+fn manifest_version(dir: &Path) -> Option<String> {
     read_manifest(dir)?["version"].as_str().map(str::to_owned)
+}
+
+/// The version of the package installed at `dir`, if any. A package whose
+/// install never finished, as when the process was stopped, is not installed.
+pub(crate) fn installed_version(dir: &Path) -> Option<String> {
+    if dir.join(INCOMPLETE).exists() {
+        return None;
+    }
+    manifest_version(dir)
+}
+
+/// The `node_modules` folders in which Node looks for a dependency of the
+/// package in `dependent`, nearest first, up to `root_modules`.
+fn lookup_path<'a>(
+    dependent: &'a Path,
+    root_modules: &'a Path,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    let ancestors = dependent.ancestors().filter(move |dir| {
+        dir.file_name() == Some("node_modules".as_ref()) && dir.starts_with(root_modules)
+    });
+    std::iter::once(dependent.join("node_modules")).chain(ancestors.map(Path::to_path_buf))
 }
 
 /// Installs into `root/node_modules`, hoisting dependencies there when Node's
@@ -580,6 +634,9 @@ pub(crate) fn installed_version(dir: &Path) -> Option<String> {
 struct Installer<'a> {
     npm: &'a mut Npm,
     root_modules: PathBuf,
+    /// The packages whose dependencies are being installed, which count as
+    /// installed so that cycles end.
+    installing: Vec<PathBuf>,
 }
 
 impl Installer<'_> {
@@ -604,8 +661,16 @@ impl Installer<'_> {
             }
             let installed = async {
                 std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+                // Marks the package until its dependencies are in, so an
+                // install that never returns is redone.
+                let marker = dir.join(INCOMPLETE);
+                std::fs::write(&marker, "").map_err(io(&marker))?;
                 unpack(&bytes, &dir)?;
-                self.dependencies(&dir, &manifest).await
+                self.installing.push(dir.clone());
+                let dependencies = self.dependencies(&dir, &manifest).await;
+                self.installing.pop();
+                dependencies?;
+                std::fs::remove_file(&marker).map_err(io(&marker))
             }
             .await;
             if installed.is_ok() {
@@ -665,19 +730,14 @@ impl Installer<'_> {
                 }
                 None => (name.to_owned(), range.to_owned()),
             };
-            // Node resolves `name` from the first `node_modules` up from
-            // `dependent` that holds it.
-            let resolved = std::iter::once(dependent.join("node_modules"))
-                .chain(
-                    dependent
-                        .ancestors()
-                        .filter(|dir| {
-                            dir.file_name() == Some("node_modules".as_ref())
-                                && dir.starts_with(&self.root_modules)
-                        })
-                        .map(Path::to_path_buf),
-                )
-                .find_map(|modules| installed_version(&modules.join(name)));
+            let resolved = lookup_path(dependent, &self.root_modules).find_map(|modules| {
+                let dir = modules.join(name);
+                if self.installing.contains(&dir) {
+                    manifest_version(&dir)
+                } else {
+                    installed_version(&dir)
+                }
+            });
             let target = match resolved {
                 Some(version) if satisfies(&version, &range) => return Ok(()),
                 // Nested, it shadows the other version for `dependent` alone.
@@ -694,13 +754,20 @@ impl Installer<'_> {
     }
 }
 
-/// The `package.json` of an npm root, created as pi creates it.
-fn root_manifest(root: &Path) -> Result<Map<String, Value>, NpmError> {
-    std::fs::create_dir_all(root).map_err(io(root))?;
-    let ignore = root.join(".gitignore");
+/// pi's `ensureGitIgnore`: creates `dir` with a `.gitignore` that keeps
+/// everything else in it out of git.
+pub(crate) fn ensure_git_ignore(dir: &Path) -> Result<(), NpmError> {
+    std::fs::create_dir_all(dir).map_err(io(dir))?;
+    let ignore = dir.join(".gitignore");
     if !ignore.exists() {
         std::fs::write(&ignore, "*\n!.gitignore\n").map_err(io(&ignore))?;
     }
+    Ok(())
+}
+
+/// The `package.json` of an npm root, created as pi creates it.
+fn root_manifest(root: &Path) -> Result<Map<String, Value>, NpmError> {
+    ensure_git_ignore(root)?;
     let manifest = read_manifest(root)
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_else(|| {
@@ -720,8 +787,24 @@ fn write_manifest(root: &Path, manifest: Map<String, Value>) -> Result<(), NpmEr
         .map_err(io(&path))
 }
 
+/// Locks the npm root `root`, creating it, against the installs and removals
+/// of other processes until the lock is dropped. Waits as long as a live
+/// holder keeps the lock, and takes over the lock of a holder that died.
+pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
+    std::fs::create_dir_all(root).map_err(io(root))?;
+    let manifest = root.join("package.json");
+    loop {
+        match FileLock::acquire(&manifest, &CancellationToken::new()).await {
+            // A lock still held after the stale period is fresh: its holder is alive.
+            Err(LockError::Held) => continue,
+            result => return result.map_err(|err| io(&manifest)(std::io::Error::other(err))),
+        }
+    }
+}
+
 /// Installs `name` (at `range`, else the latest version) into the npm root
 /// `root`, and records it in the root's `package.json`. Returns the version.
+/// The caller holds the root's [`lock_root`].
 pub async fn install(
     npm: &mut Npm,
     root: &Path,
@@ -736,6 +819,7 @@ pub async fn install(
     let mut installer = Installer {
         npm,
         root_modules: modules.clone(),
+        installing: Vec::new(),
     };
     installer
         .unpack_package(modules.join(name), manifest)
@@ -778,16 +862,18 @@ pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmEr
     let mut installer = Installer {
         npm,
         root_modules: modules,
+        installing: Vec::new(),
     };
     installer.dependencies(dir, &manifest).await
 }
 
 /// Removes `name` from the npm root `root`, then the packages nothing
 /// depends on any more, `name` included unless another package needs it.
-pub fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
+pub async fn uninstall(root: &Path, name: &str) -> Result<(), NpmError> {
     if !root.exists() {
         return Ok(());
     }
+    let _lock = lock_root(root).await?;
     let mut manifest = root_manifest(root)?;
     if let Some(dependencies) = manifest
         .get_mut("dependencies")
@@ -823,12 +909,10 @@ fn prune(modules: &Path, roots: &[String]) {
                 .flatten()
                 .map(|(name, _)| name)
             {
-                let nested = dir.join("node_modules").join(name);
-                queue.push(if nested.exists() {
-                    nested
-                } else {
-                    modules.join(name)
-                });
+                let resolved = lookup_path(&dir, modules)
+                    .map(|modules| modules.join(name))
+                    .find(|path| path.exists());
+                queue.extend(resolved);
             }
         }
     }
@@ -1004,6 +1088,29 @@ mod tests {
                 "https://registry.npmjs.org/"
             ),
             None
+        );
+    }
+
+    #[tokio::test]
+    async fn registry_timeout() {
+        assert_eq!(Npm::new(HashMap::new()).timeout(), Some(FETCH_TIMEOUT));
+        let unlimited = HashMap::from([("fetch-timeout".to_owned(), "0".to_owned())]);
+        assert_eq!(Npm::new(unlimited).timeout(), None);
+        // A registry that takes the connection and never answers.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let registry = format!("http://{}/", listener.local_addr().unwrap());
+        let mut npm = Npm::new(HashMap::from([
+            ("registry".to_owned(), registry.clone()),
+            ("fetch-timeout".to_owned(), "200".to_owned()),
+        ]));
+        let pick = npm.pick("pkg", "latest");
+        let error = tokio::time::timeout(std::time::Duration::from_secs(10), pick)
+            .await
+            .expect("the request never timed out")
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("network timeout at: {registry}pkg")
         );
     }
 

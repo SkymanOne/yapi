@@ -16,8 +16,8 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use yapi_ext::{Engine, Instance, NoBridge, Options};
 
-/// The share of examples that must match. AGENTS.md's M5 exit criterion asks
-/// for 90%, and the documentation states that every example matches.
+/// The share of examples that must match. The documentation states that
+/// every example matches.
 const REQUIRED: f64 = 1.0;
 
 fn workspace() -> PathBuf {

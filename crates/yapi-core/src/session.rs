@@ -470,7 +470,8 @@ impl SessionManager {
             return Ok(());
         };
         let text: String = self.entries.iter().map(|entry| line(&entry.doc)).collect();
-        fs::write(file, text).map_err(io(file))
+        // A crash or full disk mid-write must not empty the history.
+        yapi_ai::auth::lock::write_atomic(file, text.as_bytes(), 0o666).map_err(io(file))
     }
 
     fn has_conversation(&self) -> bool {
