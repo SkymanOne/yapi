@@ -311,6 +311,9 @@ pub(crate) fn viewed_version(output: &str, range: Option<&str>) -> Option<String
 const PACKUMENT_ACCEPT: &str =
     "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
+/// npm's default `fetch-timeout`.
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 /// A registry client with a per-run packument cache.
 #[derive(Clone)]
 pub struct Npm {
@@ -393,10 +396,14 @@ impl Npm {
             value.set_sensitive(true);
             request = request.header(reqwest::header::AUTHORIZATION, value);
         }
+        // A request that never ends would hold the install, and the root's lock, for good.
+        if let Some(timeout) = self.timeout() {
+            request = request.timeout(timeout);
+        }
         let response = request
             .send()
             .await
-            .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
+            .map_err(|err| request_error(url, &err))?;
         if !response.status().is_success() {
             return Err(NpmError::Registry(format!(
                 "GET {url}: {}",
@@ -415,7 +422,7 @@ impl Npm {
                 .await?
                 .bytes()
                 .await
-                .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
+                .map_err(|err| request_error(&url, &err))?;
             let packument: Value = serde_json::from_slice(&body)
                 .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
             self.packuments.insert(name.to_owned(), packument);
@@ -473,6 +480,17 @@ impl Npm {
             })
     }
 
+    /// npm's `fetch-timeout`: how long a request may take, `None` (`0`) for
+    /// no limit.
+    fn timeout(&self) -> Option<std::time::Duration> {
+        let millis = self.config.get("fetch-timeout");
+        match millis.and_then(|millis| millis.trim().parse::<u64>().ok()) {
+            Some(0) => None,
+            Some(millis) => Some(std::time::Duration::from_millis(millis)),
+            None => Some(FETCH_TIMEOUT),
+        }
+    }
+
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
         let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
         let url = manifest["dist"]["tarball"].as_str().unwrap_or_default();
@@ -482,7 +500,7 @@ impl Npm {
             .await?
             .bytes()
             .await
-            .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?
+            .map_err(|err| request_error(url, &err))?
             .to_vec();
         if verify(&bytes, &manifest["dist"]) {
             Ok(bytes)
@@ -494,6 +512,16 @@ impl Npm {
 
 fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
+}
+
+/// A failed request for `url`. A timeout is worded as npm words it, since
+/// reqwest's message does not say so.
+fn request_error(url: &str, err: &reqwest::Error) -> NpmError {
+    if err.is_timeout() {
+        NpmError::Registry(format!("network timeout at: {url}"))
+    } else {
+        NpmError::Registry(format!("GET {url}: {err}"))
+    }
 }
 
 /// Checks `bytes` against the strongest algorithm of the registry's
@@ -1060,6 +1088,29 @@ mod tests {
                 "https://registry.npmjs.org/"
             ),
             None
+        );
+    }
+
+    #[tokio::test]
+    async fn registry_timeout() {
+        assert_eq!(Npm::new(HashMap::new()).timeout(), Some(FETCH_TIMEOUT));
+        let unlimited = HashMap::from([("fetch-timeout".to_owned(), "0".to_owned())]);
+        assert_eq!(Npm::new(unlimited).timeout(), None);
+        // A registry that takes the connection and never answers.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let registry = format!("http://{}/", listener.local_addr().unwrap());
+        let mut npm = Npm::new(HashMap::from([
+            ("registry".to_owned(), registry.clone()),
+            ("fetch-timeout".to_owned(), "200".to_owned()),
+        ]));
+        let pick = npm.pick("pkg", "latest");
+        let error = tokio::time::timeout(std::time::Duration::from_secs(10), pick)
+            .await
+            .expect("the request never timed out")
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("network timeout at: {registry}pkg")
         );
     }
 
