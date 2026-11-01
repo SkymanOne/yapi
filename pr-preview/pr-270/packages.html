@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ffe3439a.js";
+            window.path_to_searchindex_js = "searchindex-c7357d0d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -213,7 +213,7 @@ yapi -e git:github.com/user/repo
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
 <h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
 <p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
-<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names.</p>
+<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names. A request that takes longer than <code>fetch-timeout</code> milliseconds, five minutes by default, fails the install. <code>0</code> sets no limit.</p>
 <pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
 //npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
 </code></pre>
