@@ -55,7 +55,7 @@ Pi's [package documentation](https://github.com/earendil-works/pi/blob/v1.0.0/pa
 
 yapi has a built-in npm client. It resolves versions with npm's range syntax, verifies integrity hashes and lays out `node_modules` as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.
 
-The client reads registries and credentials from `npm_config_*` environment variables and from `~/.npmrc`, or the file `npm_config_userconfig` names. It reads `registry`, `@scope:registry` and each registry's `_authToken`, `_auth`, or `username` and `_password`, and expands `${VAR}` references. Credentials go only to the registry their key names.
+The client reads registries and credentials from `npm_config_*` environment variables and from `~/.npmrc`, or the file `npm_config_userconfig` names. It reads `registry`, `@scope:registry` and each registry's `_authToken`, `_auth`, or `username` and `_password`, and expands `${VAR}` references. Credentials go only to the registry their key names. A request that takes longer than `fetch-timeout` milliseconds, five minutes by default, fails the install. `0` sets no limit.
 
 ```ini
 @acme:registry=https://npm.acme.dev/
