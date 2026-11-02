@@ -933,9 +933,11 @@ pub async fn load_extensions(
         eprintln!("Warning: {message}");
         ControlFlow::Continue(())
     };
-    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, warn, None)
-        .await
-        .map_err(fail)?;
+    let policies = Policies::default();
+    let (extensions, flag_errors) =
+        start_extensions(args, &run, terminal_size, warn, None, &policies)
+            .await
+            .map_err(fail)?;
     let mut messages: Vec<String> = extensions
         .failures()
         .into_iter()
@@ -983,25 +985,133 @@ async fn session_extensions(
         uninstalled.push((source.to_owned(), message));
         ControlFlow::Continue(())
     };
-    let (mut extensions, _) = start_extensions(args, &run, terminal_size, install_failed, previous)
-        .await
-        .map_err(anyhow::Error::msg)?;
+    let policies = Policies::default();
+    let (mut extensions, _) = start_extensions(
+        args,
+        &run,
+        terminal_size,
+        install_failed,
+        previous,
+        &policies,
+    )
+    .await
+    .map_err(anyhow::Error::msg)?;
     extensions.issues.splice(0..0, uninstalled);
     Ok((extensions, run))
 }
 
+/// What an extension source runs with: its grants, its `pi.events` policy,
+/// and the package folder it loads modules from without file access.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Policy {
+    grants: yapi_ext::Grants,
+    events: yapi_core::extensions::EventPolicy,
+    root: Option<PathBuf>,
+}
+
+/// The policies of extension sources, by scope and source. A source without
+/// an entry keeps every grant and the shared event policy, as packages from
+/// `yapi install` keep pi's grants. Whoever fills it builds the sources and
+/// their policies in one place, so the keys match.
+type Policies = std::collections::HashMap<(String, String), Policy>;
+
+/// The sources one host runs, with what it runs them with.
+#[derive(Clone, Debug, PartialEq)]
+struct Group {
+    native: bool,
+    grants: yapi_ext::Grants,
+    events: yapi_core::extensions::EventPolicy,
+    /// The module roots: the union of its sources' package folders.
+    roots: Vec<PathBuf>,
+    sources: Vec<SourceInfo>,
+}
+
+/// The hosts that run `sources`: one JS runtime for each grant set and event
+/// policy, in the order each first appears, since one JS realm cannot keep
+/// extensions apart, then one for each native extension.
+fn group_sources(sources: Vec<SourceInfo>, policies: &Policies) -> Vec<Group> {
+    let mut groups: Vec<Group> = Vec::new();
+    let mut natives = Vec::new();
+    for source in sources {
+        let key = (source.scope.clone(), source.source.clone());
+        let policy = policies.get(&key).cloned().unwrap_or_default();
+        if is_native(Path::new(&source.path)) {
+            natives.push(Group {
+                native: true,
+                grants: policy.grants,
+                events: policy.events,
+                roots: policy.root.into_iter().collect(),
+                sources: vec![source],
+            });
+            continue;
+        }
+        let same = |group: &Group| group.grants == policy.grants && group.events == policy.events;
+        let index = match groups.iter().position(same) {
+            Some(index) => index,
+            None => {
+                groups.push(Group {
+                    native: false,
+                    grants: policy.grants,
+                    events: policy.events.clone(),
+                    roots: Vec::new(),
+                    sources: Vec::new(),
+                });
+                groups.len() - 1
+            }
+        };
+        let group = &mut groups[index];
+        if let Some(root) = policy.root
+            && !group.roots.contains(&root)
+        {
+            group.roots.push(root);
+        }
+        group.sources.push(source);
+    }
+    groups.extend(natives);
+    groups
+}
+
+/// The group `host` runs.
+fn host_group(host: &ExtensionHost) -> Group {
+    let sources = host.sources();
+    Group {
+        native: sources
+            .first()
+            .is_some_and(|first| is_native(Path::new(&first.path))),
+        grants: host.grants(),
+        events: host.events().clone(),
+        roots: host.module_roots().to_vec(),
+        sources,
+    }
+}
+
+/// Whether a host that ran `previous`, with the canonical module roots it
+/// started with, may serve `next` after a reload: its grants and event
+/// policy are the same, `next`'s roots are the same once canonical now, and
+/// a native extension's file is the same. A root that moved or appeared
+/// since starts a new host.
+fn serves(previous: &Group, next: &Group) -> bool {
+    let first = |group: &Group| group.sources.first().map(|source| source.path.clone());
+    previous.native == next.native
+        && previous.grants == next.grants
+        && previous.events == next.events
+        && previous.roots == yapi_ext::canonical_roots(&next.roots)
+        && (!next.native || first(previous) == first(next))
+}
+
 /// Installs missing packages, reporting failures to `install_failed` with
 /// their sources, and starts the extensions found in `run`'s directory with
-/// the command line's flag values. The hosts of `previous` that still have
-/// extensions run their factories again instead, keeping the modules they
-/// imported. Returns the problems with the flags too; an error means no
-/// extension could start.
+/// the command line's flag values, each with its entry in `policies`. The
+/// hosts of `previous` that serve the same group run their factories again
+/// instead, keeping the modules they imported. Returns the problems with the
+/// flags too; an error means no extension could start.
 async fn start_extensions(
     args: &Args,
     run: &RunSettings,
     terminal_size: Option<(usize, usize)>,
     install_failed: impl FnMut(&str, String) -> ControlFlow<()> + Send,
     previous: Option<&Extensions>,
+    policies: &Policies,
 ) -> Result<(Extensions, Vec<String>), String> {
     let cwd = run.cwd.clone();
     // pi resolves `-e` paths against the directory yapi started in.
@@ -1081,16 +1191,6 @@ async fn start_extensions(
     }
     let mut seen = std::collections::HashSet::new();
     sources.retain(|source| seen.insert(source.path.clone()));
-    // pi extensions share one JS runtime; each native extension has its own.
-    // A host of `previous` is known by the path of its first extension.
-    let previous_host = |native: bool, path: Option<&str>| {
-        previous?.hosts.iter().find(|host| {
-            host.sources().first().is_some_and(|first| {
-                is_native(Path::new(&first.path)) == native
-                    && path.is_none_or(|path| first.path == path)
-            })
-        })
-    };
     let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
     // The hosts started here, which need the flags.
@@ -1108,38 +1208,42 @@ async fn start_extensions(
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;
-        let (native, js): (Vec<SourceInfo>, Vec<SourceInfo>) = sources
-            .into_iter()
-            .partition(|source| is_native(Path::new(&source.path)));
-        if !js.is_empty() {
-            let host = match previous_host(false, None) {
-                Some(host) => {
-                    host.reload(&js).await;
-                    Arc::clone(host)
-                }
-                None => {
-                    let host = ExtensionHost::load(&engine, options.clone(), &js)
-                        .await
-                        .map_err(|err| err.to_string())?;
-                    started.push(Arc::clone(&host));
-                    host
-                }
-            };
-            hosts.push(host);
-        }
-        for source in &native {
-            if let Some(host) = previous_host(true, Some(&source.path)) {
-                host.reload(std::slice::from_ref(source)).await;
+        for group in group_sources(sources, policies) {
+            // A host of `previous` serves the same group again, keeping the
+            // modules it imported.
+            let reused = previous.and_then(|previous| {
+                previous
+                    .hosts
+                    .iter()
+                    .find(|host| serves(&host_group(host), &group))
+            });
+            if let Some(host) = reused {
+                host.reload(&group.sources).await;
                 hosts.push(Arc::clone(host));
                 continue;
             }
-            match ExtensionHost::load_native(&engine, options.clone(), source).await {
-                Ok(host) => {
-                    started.push(Arc::clone(&host));
-                    hosts.push(host);
+            let mut options = options.clone();
+            options.grants = group.grants;
+            options.events = group.events.clone();
+            options.module_roots = group.roots.clone();
+            let host = if group.native {
+                let Some(source) = group.sources.first() else {
+                    continue;
+                };
+                match ExtensionHost::load_native(&engine, options, source).await {
+                    Ok(host) => host,
+                    Err(err) => {
+                        issues.push((source.path.clone(), err.to_string()));
+                        continue;
+                    }
                 }
-                Err(err) => issues.push((source.path.clone(), err.to_string())),
-            }
+            } else {
+                ExtensionHost::load(&engine, options, &group.sources)
+                    .await
+                    .map_err(|err| err.to_string())?
+            };
+            started.push(Arc::clone(&host));
+            hosts.push(host);
         }
     }
     issues.append(&mut missing);
@@ -1402,5 +1506,133 @@ mod tests {
         assert_eq!(piped_text(b"\xef\xbb\xbfa\n").as_deref(), Some("a"));
         assert_eq!(piped_text(b"\xef\xbb\xbf"), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// JS sources share a host per grant set and event policy, in the order
+    /// each first appears, with the union of their package folders as module
+    /// roots. Native extensions each get a host, after the JS ones.
+    #[test]
+    fn sources_grouped_by_policy() {
+        let source = |path: &str, origin: &str| SourceInfo {
+            path: path.into(),
+            source: origin.into(),
+            scope: "project".into(),
+            origin: "package".into(),
+            base_dir: None,
+        };
+        let fs = yapi_ext::Grants {
+            filesystem: true,
+            ..yapi_ext::Grants::none()
+        };
+        let narrow = |root: &str| Policy {
+            grants: fs,
+            events: yapi_core::extensions::EventPolicy::isolated(),
+            root: Some(PathBuf::from(root)),
+        };
+        let policies: Policies = [
+            (("project".into(), "a".into()), narrow("/a")),
+            (("project".into(), "b".into()), narrow("/b")),
+            (("project".into(), "native".into()), narrow("/n")),
+        ]
+        .into();
+        let sources = vec![
+            source("/a/one.ts", "a"),
+            source("/x/two.ts", "settings"),
+            source("/n/ext.wasm", "native"),
+            source("/b/three.ts", "b"),
+            source("/a/four.ts", "a"),
+        ];
+        let groups = group_sources(sources.clone(), &policies);
+        let summary: Vec<(bool, Vec<&str>, Vec<&str>)> = groups
+            .iter()
+            .map(|group| {
+                let paths = group
+                    .sources
+                    .iter()
+                    .map(|source| source.path.as_str())
+                    .collect();
+                let roots = group
+                    .roots
+                    .iter()
+                    .filter_map(|root| root.to_str())
+                    .collect();
+                (group.native, paths, roots)
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (
+                    false,
+                    vec!["/a/one.ts", "/b/three.ts", "/a/four.ts"],
+                    vec!["/a", "/b"]
+                ),
+                (false, vec!["/x/two.ts"], vec![]),
+                (true, vec!["/n/ext.wasm"], vec!["/n"]),
+            ]
+        );
+        assert_eq!(
+            (groups[0].grants, groups[1].grants),
+            (fs, yapi_ext::Grants::default())
+        );
+
+        // A host serves a reload only with the same grants, events and
+        // canonical roots, and for a native extension the same file. A root
+        // that a link points elsewhere, or that appears, starts a new host.
+        let dir = std::env::temp_dir().join(format!("yapi-serves-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (a, b, later, link) = (
+            dir.join("a"),
+            dir.join("b"),
+            dir.join("later"),
+            dir.join("link"),
+        );
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&a, &link).unwrap();
+        // What a host started for `group` reports: its roots, canonical then.
+        let started = |group: &Group| Group {
+            roots: yapi_ext::canonical_roots(&group.roots),
+            ..group.clone()
+        };
+        let js = Group {
+            roots: vec![link.clone(), later.clone()],
+            ..groups[0].clone()
+        };
+        let host = started(&js);
+        assert!(serves(&host, &js));
+        let mut roots = js.clone();
+        roots.roots.push(b.clone());
+        let mut grants = js.clone();
+        grants.grants = yapi_ext::Grants::default();
+        let mut events = js.clone();
+        events.events = yapi_core::extensions::EventPolicy::shared();
+        for changed in [roots, grants, events] {
+            assert!(!serves(&host, &changed), "{changed:?}");
+        }
+        std::fs::create_dir_all(&later).unwrap();
+        assert!(!serves(&host, &js), "a root appeared");
+        #[cfg(unix)]
+        {
+            let host = started(&js);
+            std::fs::remove_file(&link).unwrap();
+            std::os::unix::fs::symlink(&b, &link).unwrap();
+            assert!(!serves(&host, &js), "a root moved");
+        }
+        let native = Group {
+            roots: vec![a.clone()],
+            ..groups[2].clone()
+        };
+        let host = started(&native);
+        let mut moved = native.clone();
+        moved.sources = vec![source("/n/other.wasm", "native")];
+        let mut rerooted = native.clone();
+        rerooted.roots = vec![b.clone()];
+        assert!(serves(&host, &native));
+        assert!(!serves(&host, &rerooted));
+        assert!(!serves(&host, &moved));
+        assert!(!serves(&host, &js));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

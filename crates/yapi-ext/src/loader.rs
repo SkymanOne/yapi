@@ -226,7 +226,7 @@ impl Loader {
 
 /// The file module `path` names, without the query or fragment an import
 /// such as `./a.js?v=1` adds and the module keeps in its name.
-fn file_of(path: &Path) -> &Path {
+pub(crate) fn file_of(path: &Path) -> &Path {
     if path.exists() {
         return path;
     }

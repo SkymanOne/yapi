@@ -414,6 +414,24 @@ impl ExtensionHost {
         }
     }
 
+    /// What the extensions may reach.
+    pub fn grants(&self) -> Grants {
+        self.bridge.grants
+    }
+
+    /// The `pi.events` channels the extensions may send to, and hear from,
+    /// extensions whose grants differ.
+    pub fn events(&self) -> &EventPolicy {
+        &self.bridge.events
+    }
+
+    /// The canonical folders the extensions load modules from without file
+    /// access, as they were when the host started: a root missing then is
+    /// not among them.
+    pub fn module_roots(&self) -> &[PathBuf] {
+        &self.bridge.module_roots
+    }
+
     /// What each loaded extension registered, as the runtime describes it:
     /// `tools`, `commands`, `flags`, `shortcuts`, `events` and more.
     pub fn registrations(&self) -> Vec<Value> {
@@ -2047,6 +2065,9 @@ struct SessionBridge {
     /// The `pi.events` channels the runtime may send to, and hear from,
     /// runtimes whose grants differ.
     events: EventPolicy,
+    /// The canonical folders the runtime loads modules from without file
+    /// access, as they were when it started.
+    module_roots: Vec<PathBuf>,
     /// The `pi.events` channels the runtime's extensions listen on, as the
     /// guest reports them, up to [`LISTENED_CHANNELS`].
     listening: Mutex<std::collections::HashSet<String>>,
@@ -2103,6 +2124,7 @@ impl SessionBridge {
             project_dir: options.project_dir.clone(),
             grants: options.grants,
             events: options.events.clone(),
+            module_roots: crate::canonical_roots(&options.module_roots),
             listening: Mutex::default(),
             missed: Mutex::default(),
             run_signal: Mutex::default(),

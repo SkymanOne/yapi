@@ -716,6 +716,22 @@ async fn session_actions_need_grant() {
     for (kind, payload) in &all {
         without_network.push((json!(["request", kind, payload]), denied(kind)));
     }
+    // Without file access, an extension loads from its module root, and
+    // opens no session file outside the session directory.
+    let outside = dir.parent().unwrap().join("session-grant-outside.jsonl");
+    std::fs::write(&outside, "").unwrap();
+    let outside_file =
+        "Opening a session file outside the session directory is not permitted for this extension";
+    let without_files = vec![
+        (
+            json!(["op", "session.switch", {"sessionPath": outside}]),
+            outside_file.to_owned(),
+        ),
+        (
+            json!(["op", "session.new", {"parentSession": outside}]),
+            outside_file.to_owned(),
+        ),
+    ];
     for (grants, probes) in [
         (
             Grants {
@@ -731,9 +747,17 @@ async fn session_actions_need_grant() {
             },
             without_network,
         ),
+        (
+            Grants {
+                filesystem: false,
+                ..Grants::default()
+            },
+            without_files,
+        ),
     ] {
         let mut options = options(&dir);
         options.grants = grants;
+        options.module_roots = vec![dir.clone()];
         let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
             .await
             .unwrap();

@@ -33,6 +33,15 @@ use crate::requests::{AiStreams, Host};
 /// calls, before the instance is stopped.
 const CALL_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 60 });
 
+/// The canonical paths of `roots` that exist: a symlink inside a root that
+/// leads out then lies outside it, and a root moved elsewhere changes.
+pub fn canonical_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .collect()
+}
+
 /// The session side of an instance: requests and operations the runtime does
 /// not answer itself, and console output.
 pub trait Bridge: Send + Sync {
@@ -125,6 +134,10 @@ pub struct Options {
     pub events: EventPolicy,
     /// The directories file access reaches, when granted.
     pub filesystem_roots: Vec<PathBuf>,
+    /// The directories the extensions load modules from without file
+    /// access: each package's install root, which holds the package and its
+    /// own `node_modules`.
+    pub module_roots: Vec<PathBuf>,
     /// The most linear memory the instance may use, in bytes.
     pub memory_limit: usize,
     /// A directory of its own where transpiled modules are cached: other
@@ -151,6 +164,7 @@ impl Options {
             grants: Grants::default(),
             events: EventPolicy::shared(),
             filesystem_roots: vec![PathBuf::from("/")],
+            module_roots: Vec::new(),
             memory_limit: 1 << 30,
             cache_dir: None,
             environment: None,
@@ -264,6 +278,7 @@ impl Instance {
         let host = Arc::new(Host {
             loader: Loader::new(options.cwd.clone(), options.cache_dir.clone()),
             bridge,
+            module_roots: canonical_roots(&options.module_roots),
             options,
             ai_streams: AiStreams::default(),
             streams: crate::ops::Streams::new(runtime.clone()),

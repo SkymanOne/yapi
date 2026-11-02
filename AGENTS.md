@@ -138,7 +138,7 @@ Module loading runs on the host, in `yapi-ext`:
 ### Trust and capabilities
 
 - One wasm instance per trust domain:
-  - all JS packages share one `yapi-js` instance;
+  - JS packages with the same grants and event policy share one `yapi-js` instance, so each such set is its own instance;
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
 - Every package gets every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant.

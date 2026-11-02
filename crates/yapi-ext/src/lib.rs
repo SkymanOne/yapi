@@ -19,7 +19,7 @@ pub use engine::Engine;
 pub use extensions::{
     ExtensionHost, Flag, LoadError, RegisteredProvider, capture_output, extension_output,
 };
-pub use instance::{Bridge, Instance, NoBridge, Options, join_stopped};
+pub use instance::{Bridge, Instance, NoBridge, Options, canonical_roots, join_stopped};
 pub use ops::reset_signal_dispositions;
 pub use yapi_core::extensions::Grants;
 

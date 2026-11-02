@@ -30,13 +30,13 @@ Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from
 
 ### Instances and limits
 
-An instance is a trust domain. All Pi extensions share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.
+An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Pi extensions whose grants or event policy differ run in separate instances, and each extra instance costs a thread and its own memory limit of 1 GiB. For now every package has every grant and the shared policy, so all Pi extensions share one instance. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.
 
 Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.
 
 ### Grants
 
-The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. A path that leads out of a package through a symlink is refused, and so is a path with `.` or `..` in it. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
 A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 

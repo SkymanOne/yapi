@@ -34,6 +34,8 @@ pub(crate) struct Host {
     pub(crate) loader: Loader,
     pub(crate) bridge: Arc<dyn Bridge>,
     pub(crate) options: Options,
+    /// The canonical module roots of `options`.
+    pub(crate) module_roots: Vec<PathBuf>,
     pub(crate) ai_streams: AiStreams,
     pub(crate) streams: ops::Streams,
 }
@@ -358,6 +360,22 @@ impl AiStreams {
     }
 }
 
+/// The canonical path of module file `path` when it lies under one of the
+/// canonical `roots`: only an absolute path without `.` or `..`, checked
+/// before canonicalizing, which would show which folders exist.
+fn under_roots(roots: &[PathBuf], path: &str) -> Option<String> {
+    let file = crate::loader::file_of(std::path::Path::new(path));
+    let plain = file.is_absolute()
+        && file
+            .to_str()
+            .is_some_and(|text| !text.split('/').any(|part| part == "." || part == ".."));
+    plain
+        .then(|| file.canonicalize().ok())
+        .flatten()
+        .filter(|file| roots.iter().any(|root| file.starts_with(root)))
+        .map(|file| file.to_string_lossy().into_owned())
+}
+
 pub(crate) fn denied(what: &str) -> String {
     format!("{what} is not permitted for this extension")
 }
@@ -394,25 +412,39 @@ impl Host {
         self.options.grants.environment && self.options.environment.is_none()
     }
 
+    /// The module file `path` names, when the instance may load it: any file
+    /// with the file grant, otherwise only one [`under_roots`] allows, by the
+    /// canonical path it checked, which the loader then reads.
+    fn loadable(&self, path: String) -> Result<String, String> {
+        if self.options.grants.filesystem {
+            return Ok(path);
+        }
+        under_roots(&self.module_roots, &path).ok_or_else(|| denied("Loading modules"))
+    }
+
     /// Answers request `kind` at once.
     pub(crate) fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {
         match kind {
-            // Modules are files, so the loader reads them only with the grant.
-            "module.resolve" | "module.load" | "module.source"
-                if !self.options.grants.filesystem =>
-            {
-                Err(denied("Loading modules"))
-            }
-            "module.resolve" => self
-                .loader
-                .resolve(
+            "module.resolve" => {
+                let resolved = self.loader.resolve(
                     text(payload, "specifier"),
                     text(payload, "referrer"),
                     payload["kind"] == "require",
-                )
-                .map(Value::String),
-            "module.load" => self.loader.load(text(payload, "path")),
-            "module.source" => self.loader.source(text(payload, "path")),
+                );
+                match resolved {
+                    Ok(path) => self.loadable(path).map(Value::String),
+                    // Without file access, a missing module answers as one
+                    // outside the roots, so resolving reveals no file.
+                    Err(_) if !self.options.grants.filesystem => Err(denied("Loading modules")),
+                    Err(error) => Err(error),
+                }
+            }
+            "module.load" => self
+                .loadable(text(payload, "path").to_owned())
+                .and_then(|path| self.loader.load(&path)),
+            "module.source" => self
+                .loadable(text(payload, "path").to_owned())
+                .and_then(|path| self.loader.source(&path)),
             "log" => {
                 self.bridge
                     .log(text(payload, "level"), text(payload, "message"));
@@ -803,5 +835,32 @@ mod tests {
         let unknown = json!({ "zone": "Foo/Bar", "time": summer });
         assert_eq!(zone_offset("timezone.offset", &unknown), Value::Null);
         assert!(zone_offset("timezone.offset", &json!(summer)).is_i64());
+    }
+
+    /// Without the file grant, a module path counts only when it is
+    /// absolute, has no `.` or `..`, and lies under a root once canonical.
+    /// The crate's own folder, the test's working directory, serves as root.
+    #[test]
+    fn module_paths_need_roots() {
+        let cwd = std::env::current_dir().unwrap();
+        let roots = crate::canonical_roots(std::slice::from_ref(&cwd));
+        let manifest = cwd.join("Cargo.toml").canonicalize().unwrap();
+        let path = |path: &std::path::Path| path.display().to_string();
+        assert_eq!(
+            under_roots(&roots, &path(&cwd.join("Cargo.toml"))),
+            Some(path(&manifest))
+        );
+        // Each would resolve inside the root.
+        for refused in [
+            "Cargo.toml".to_owned(),
+            format!("{}/src/../Cargo.toml", cwd.display()),
+            format!("{}/./Cargo.toml", cwd.display()),
+        ] {
+            assert_eq!(under_roots(&roots, &refused), None, "{refused}");
+        }
+        // The workspace's manifest, beside the root.
+        let outside = cwd.ancestors().nth(2).unwrap().join("Cargo.toml");
+        assert!(outside.exists());
+        assert_eq!(under_roots(&roots, &path(&outside)), None);
     }
 }
