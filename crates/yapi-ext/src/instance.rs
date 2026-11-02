@@ -22,7 +22,7 @@ use wasmtime::component::{Component, ResourceTable};
 use wasmtime::{CallHook, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxView, WasiView};
 use yapi_agent::tool::UpdateSink;
-use yapi_core::extensions::Grants;
+use yapi_core::extensions::{EventPolicy, Grants};
 
 use crate::Error;
 use crate::engine::{Engine, Extension, yapi as wit};
@@ -120,6 +120,9 @@ pub struct Options {
     pub temp_dir: PathBuf,
     /// What the instance may reach.
     pub grants: Grants,
+    /// The `pi.events` channels its extensions may send to, and hear from,
+    /// extensions whose grants differ.
+    pub events: EventPolicy,
     /// The directories file access reaches, when granted.
     pub filesystem_roots: Vec<PathBuf>,
     /// The most linear memory the instance may use, in bytes.
@@ -146,6 +149,7 @@ impl Options {
             home_dir: yapi_core::tools::path::home_dir(),
             temp_dir: std::env::temp_dir(),
             grants: Grants::default(),
+            events: EventPolicy::shared(),
             filesystem_roots: vec![PathBuf::from("/")],
             memory_limit: 1 << 30,
             cache_dir: None,

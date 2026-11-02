@@ -258,6 +258,8 @@ fn init(api: &mut Api) {
 
 A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.
 
+Events cross between extensions according to their grants and event policies, as [Security](security.md#agent-sessions-and-events) describes. `on` tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one. An extension built with an older SDK gets no such warnings, and its events are routed the same way.
+
 ## Interface components
 
 A component implements the `Component` trait. `render` returns the lines to show at a width, as text with ANSI escape sequences. The optional `handle_input` receives raw terminal input while the component has focus, and `handle_mouse` receives mouse events in fullscreen mode and returns whether it took them.

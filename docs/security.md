@@ -36,7 +36,7 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 ### Grants
 
-The host checks an extension's file, process, network, environment and session access against its grants. Only the `pi.events` bus does not check grants yet. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
 A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
@@ -91,7 +91,11 @@ yapi never runs an agent session inside an extension's instance, because that se
 
 Pi's exports that read `auth.json`, write `trust.json` or `settings.json`, or write session files directly throw in extensions, so extensions reach credentials, project trust, settings and sessions through the host. Until file grants can be limited to paths, an extension with the file grant can still open these files itself, as in Pi.
 
-Extensions share Pi's `pi.events` bus, so every extension receives the events of every other extension.
+Extensions share Pi's `pi.events` bus. Between extensions with different grants, sharing leaks access both ways: an extension that acts on events lets the sender borrow its grants, and an extension that listens learns what the sender emits.
+
+yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender's policy lets it send the channel and the receiver's policy lets it hear it. A policy lists channels as exact names, prefixes ending in `*`, or `*` for every channel. For now, every package gets the shared policy, `*` both ways, so every extension hears every other's events, as in Pi.
+
+When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output once per channel and session. It starts with the policy lists that would let the event across, then names both runtimes by their first extension, with their grants. After 8 such warnings between two runtimes, yapi logs that it suppresses the rest.
 
 ## Project trust
 

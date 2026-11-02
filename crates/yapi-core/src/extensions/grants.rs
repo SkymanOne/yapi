@@ -29,6 +29,30 @@ impl Default for Grants {
     }
 }
 
+/// The manifest capabilities the grants amount to: `all`, `none`, or the
+/// granted ones, such as `fs, net`.
+impl std::fmt::Display for Grants {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if *self == Grants::default() {
+            return formatter.write_str("all");
+        }
+        let names: Vec<&str> = [
+            (self.filesystem, "fs"),
+            (self.network, "net"),
+            (self.environment, "env"),
+            (self.session, "session"),
+            (self.process, "process"),
+        ]
+        .into_iter()
+        .filter_map(|(granted, name)| granted.then_some(name))
+        .collect();
+        if names.is_empty() {
+            return formatter.write_str("none");
+        }
+        formatter.write_str(&names.join(", "))
+    }
+}
+
 impl Grants {
     /// Nothing outside the instance.
     pub fn none() -> Grants {
@@ -138,6 +162,15 @@ mod tests {
             let values: Vec<String> = values.iter().map(|value| (*value).to_owned()).collect();
             let expected = expected.map_err(str::to_owned);
             assert_eq!(Grants::parse(&values), expected, "{values:?}");
+        }
+        // Grants name the capabilities they amount to.
+        for (grants, name) in [
+            (Grants::default(), "all"),
+            (Grants::none(), "none"),
+            (fs, "fs"),
+            (all_but_process, "fs, net, env, session"),
+        ] {
+            assert_eq!(grants.to_string(), name);
         }
         let net = Grants {
             network: true,

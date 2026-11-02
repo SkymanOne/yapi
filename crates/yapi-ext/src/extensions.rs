@@ -30,10 +30,10 @@ use yapi_ai::stream::{
 };
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
-    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
+    Command, ComponentHost, Context, CustomOptions, DialogOptions, EventPolicy, Extension, Loadout,
     LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
     Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
-    tool_granted,
+    delivers, tool_granted,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -53,6 +53,15 @@ use yapi_types::sync::lock;
 
 use crate::requests::denied;
 use crate::{Bridge, Engine, Error, Grants, Instance, Options};
+
+/// The most `pi.events` channels the host keeps for one runtime's listeners,
+/// and the longest channel name it keeps.
+const LISTENED_CHANNELS: usize = 1024;
+const CHANNEL_BYTES: usize = 256;
+
+/// The most missed-event warnings one runtime's events raise for another
+/// in a session, before one more says the rest are suppressed.
+const MISSED_WARNINGS: usize = 8;
 
 /// Requests and operations that start, steer or stop turns, or change the
 /// session, its files or the model's setup, which need the session grant.
@@ -220,7 +229,7 @@ impl ExtensionHost {
         sources: &[SourceInfo],
     ) -> Result<Arc<ExtensionHost>, Error> {
         let names: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
-        let bridge = SessionBridge::new(engine, names.join(", "), &options);
+        let bridge = SessionBridge::new(engine, &names, &options);
         let instance = Instance::start(engine, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, sources).await
     }
@@ -238,7 +247,7 @@ impl ExtensionHost {
         let component = tokio::task::spawn_blocking(move || compiler.native(&path))
             .await
             .map_err(|err| Error::Compile(err.to_string()))??;
-        let bridge = SessionBridge::new(engine, source.path.clone(), &options);
+        let bridge = SessionBridge::new(engine, &[source.path.as_str()], &options);
         let instance =
             Instance::start_component(engine, component, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, std::slice::from_ref(source)).await
@@ -384,6 +393,9 @@ impl ExtensionHost {
         // are checked against the runtimes that ran before this one.
         *lock(&self.bridge.session) = WeakSession::default();
         *lock(&self.bridge.held_mcp_servers) = None;
+        // The next session hears of missed events anew. The guest resets its
+        // listeners itself as it reloads.
+        lock(&self.bridge.missed).clear();
         self.runs.fetch_add(1, Ordering::SeqCst);
         *lock(&self.sources) = sources.to_vec();
         let payload = json!({"extensions": entries(sources)});
@@ -2032,6 +2044,18 @@ struct SessionBridge {
     project_dir: PathBuf,
     /// What the runtime's extensions may reach.
     grants: Grants,
+    /// The `pi.events` channels the runtime may send to, and hear from,
+    /// runtimes whose grants differ.
+    events: EventPolicy,
+    /// The `pi.events` channels the runtime's extensions listen on, as the
+    /// guest reports them, up to [`LISTENED_CHANNELS`].
+    listening: Mutex<std::collections::HashSet<String>>,
+    /// The channels each runtime, by number, missed of this runtime's
+    /// events and was warned of this session, up to [`MISSED_WARNINGS`].
+    missed: Mutex<HashMap<u64, Vec<String>>>,
+    /// The first file of the runtime's extensions, and how many more, for
+    /// short messages.
+    label: String,
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
@@ -2051,9 +2075,14 @@ fn not_bound() -> String {
 }
 
 impl SessionBridge {
-    fn new(engine: &Engine, name: String, options: &Options) -> Arc<SessionBridge> {
+    fn new(engine: &Engine, files: &[&str], options: &Options) -> Arc<SessionBridge> {
+        let label = match files {
+            [first, rest @ ..] if !rest.is_empty() => format!("{first} and {} more", rest.len()),
+            _ => files.join(", "),
+        };
         Arc::new(SessionBridge {
-            name,
+            name: files.join(", "),
+            label,
             codemode: Arc::new(crate::codemode::Runner::with_engine(
                 engine.clone(),
                 crate::codemode::docs(),
@@ -2073,6 +2102,9 @@ impl SessionBridge {
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
             grants: options.grants,
+            events: options.events.clone(),
+            listening: Mutex::default(),
+            missed: Mutex::default(),
             run_signal: Mutex::default(),
             cancels: Arc::default(),
             file_locks: Arc::default(),
@@ -2085,12 +2117,64 @@ impl SessionBridge {
     }
 
     /// Hands `event`, `{channel, data}` emitted with `pi.events` in this
-    /// runtime, to the listeners of every other runtime. This runtime's own
-    /// listeners have heard it already.
+    /// runtime, to the listeners of every other runtime that may hear it
+    /// from this one. This runtime's own listeners have heard it already. A
+    /// runtime that listens on the channel but may not hear it is warned of
+    /// once per session.
     fn publish(&self, event: &Value) {
+        let channel = event["channel"].as_str().unwrap_or_default();
+        let sender = (&self.grants, &self.events);
         for host in self.others() {
-            host.receive(event);
+            let receiver = &host.bridge;
+            if delivers(sender, (&receiver.grants, &receiver.events), channel) {
+                host.receive(event);
+            } else if lock(&receiver.listening).contains(channel) {
+                self.missed(receiver, channel);
+            }
         }
+    }
+
+    /// Why an event on `channel` from this runtime did not reach `receiver`,
+    /// and which policy lists would let it.
+    fn missed_event(&self, receiver: &SessionBridge, channel: &str) -> String {
+        let mut lists = Vec::new();
+        if !self.events.sends(channel) {
+            lists.push(format!("events.send of {}", self.label));
+        }
+        if !receiver.events.receives(channel) {
+            lists.push(format!("events.receive of {}", receiver.label));
+        }
+        // Both lists must allow the channel, so the advice names each that does not.
+        format!(
+            "add \"{channel}\" to {}: pi.events \"{channel}\" from {} ({}) did not reach {} ({})",
+            lists.join(" and "),
+            self.label,
+            self.grants,
+            receiver.label,
+            receiver.grants,
+        )
+    }
+
+    /// Warns that `receiver` missed this runtime's event on `channel`, once
+    /// per channel, and after [`MISSED_WARNINGS`] channels once more that
+    /// further warnings are suppressed.
+    fn missed(&self, receiver: &SessionBridge, channel: &str) {
+        let mut missed = lock(&self.missed);
+        let warned = missed.entry(receiver.runtime_id).or_default();
+        if warned.len() > MISSED_WARNINGS || warned.iter().any(|seen| seen == channel) {
+            return;
+        }
+        let message = if warned.len() == MISSED_WARNINGS {
+            format!(
+                "further pi.events warnings from {} to {} suppressed",
+                self.label, receiver.label
+            )
+        } else {
+            self.missed_event(receiver, channel)
+        };
+        warned.push(channel.to_owned());
+        drop(missed);
+        self.log("warn", &message);
     }
 
     /// The other runtimes on this one's bus, in the order they loaded.
@@ -2693,6 +2777,25 @@ impl Bridge for SessionBridge {
             self.publish(payload);
             return Ok(Value::Null);
         }
+        // The guest reports the first listener on a channel and the last to go.
+        // A guest past the caps, which bound host memory, goes unwarned.
+        if kind == "events.listen" || kind == "events.unlisten" || kind == "events.reset" {
+            let channel = text(&payload["channel"]);
+            let mut listening = lock(&self.listening);
+            match kind {
+                "events.listen"
+                    if channel.len() <= CHANNEL_BYTES && listening.len() < LISTENED_CHANNELS =>
+                {
+                    listening.insert(channel);
+                }
+                "events.unlisten" => {
+                    listening.remove(&channel);
+                }
+                "events.reset" => listening.clear(),
+                _ => {}
+            }
+            return Ok(Value::Null);
+        }
         if kind == "bash.data" {
             let sink = lock(&self.bash)
                 .get(&payload["id"].as_u64().unwrap_or_default())
@@ -2985,6 +3088,8 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
+        // The extensions load again and subscribe anew.
+        lock(&self.listening).clear();
         // The stopped runtime's queued file mutations and cancellable
         // operations are over.
         {

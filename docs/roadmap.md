@@ -7,9 +7,8 @@ yapi implements Pi's coding agent. This page lists the work planned beyond it. T
 For now, every package receives every grant: file, process, network, environment and session access. The plan is to run each package with only the access it needs:
 
 - A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
-- File grants can be limited to paths and to read-only access, and network grants to hosts.
-- The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it.
-- The `pi.events` bus, which does not check grants today, will check them.
+- File grants can be limited to paths and to read-only access, and network grants to hosts. Extensions then share `pi.events` without a channel list only when their paths and hosts match too.
+- The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it. yapi already routes the bus by grants and event policies, and every package gets the shared policy for now.
 
 [Security model and sandboxing](security.md) describes the current model.
 
