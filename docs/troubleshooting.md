@@ -22,6 +22,10 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 `yapi -ne` starts without extensions, including the built-in MCP and llama.cpp extensions. `yapi config` then turns the failing extension off.
 
+## A chest lock is stale
+
+chest warns that entries are not locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` does not pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`. `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. See [Lock and reproduce](chest.md#lock-and-reproduce).
+
 ## Reporting a problem
 
 Run `/bug`, or `/bug <description>`, to report a problem:

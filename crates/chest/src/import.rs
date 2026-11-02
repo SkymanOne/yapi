@@ -1,0 +1,241 @@
+//! `chest import`: entries from settings.json packages or from skills.sh's
+//! `skills-lock.json`. It writes the manifest and leaves the sources alone.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context as _, bail};
+use clap::Args;
+use serde_json::Value;
+use yapi_core::chest::manifest::{Entry, ManifestDocument, Section, valid_name};
+use yapi_core::packages::source::{self, Source};
+use yapi_core::settings::Scope;
+use yapi_core::tools::path::relative;
+use yapi_types::settings::PackageSource;
+
+use crate::{Target, out, say, write};
+
+/// `chest import` options.
+#[derive(Args)]
+#[group(required = true, multiple = false, id = "from")]
+pub struct ImportArgs {
+    /// Import the packages of settings.json: the project's `.yapi`, or the
+    /// agent folder's with `-g`.
+    #[arg(long, group = "from")]
+    settings: bool,
+    /// Import the skills of a skills.sh `skills-lock.json`.
+    #[arg(long, group = "from")]
+    skills_lock: bool,
+    /// The file to read instead of the default.
+    path: Option<PathBuf>,
+}
+
+/// Runs `chest import`.
+pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
+    let text = if target.path.exists() {
+        crate::read(target)?
+    } else {
+        String::new()
+    };
+    let mut document = ManifestDocument::parse(&text, target.scope)?;
+    let added = if args.settings {
+        let path = args.path.clone().unwrap_or_else(|| match target.scope {
+            Scope::Project => target.base().join(".yapi/settings.json"),
+            Scope::Global => yapi_core::config::agent_dir().join("settings.json"),
+        });
+        settings(target, &path, &mut document)?
+    } else {
+        let path = args
+            .path
+            .clone()
+            .unwrap_or_else(|| target.base().join("skills-lock.json"));
+        skills_lock(&path, &mut document)?
+    };
+    if let Some(parent) = target.path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    write(target, &document.to_string())?;
+    say(&format!(
+        "Added {added} entries to {}. Run `chest install` to install them.",
+        target.name()
+    ));
+    Ok(())
+}
+
+fn json(path: &Path) -> anyhow::Result<Value> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    yapi_types::json::parse(&text).with_context(|| format!("parsing {}", path.display()))
+}
+
+/// Adds `entry` as `name` in `section`, unless an entry has the name.
+fn add(
+    document: &mut ManifestDocument,
+    section: Section,
+    name: &str,
+    entry: &Entry,
+) -> anyhow::Result<bool> {
+    let manifest = document.manifest();
+    let taken = Section::ALL
+        .into_iter()
+        .any(|section| manifest.section(section).contains_key(name));
+    if taken {
+        say(&format!(
+            "warning: skipped {name}, which the manifest already has"
+        ));
+        return Ok(false);
+    }
+    document.set_entry(section, name, entry)?;
+    Ok(true)
+}
+
+/// The settings packages as extensions with every capability, as `yapi
+/// install` gives them, and their filters.
+fn settings(
+    target: &Target,
+    path: &Path,
+    document: &mut ManifestDocument,
+) -> anyhow::Result<usize> {
+    let settings = json(path)?;
+    let packages: Vec<PackageSource> = match settings.get("packages") {
+        Some(packages) => serde_json::from_value(packages.clone()).context("reading `packages`")?,
+        None => Vec::new(),
+    };
+    let folder = path.parent().map_or_else(PathBuf::new, Path::to_path_buf);
+    let mut added = 0;
+    for package in &packages {
+        let (spec, filtered) = match package {
+            PackageSource::Source(spec) => (spec.clone(), None),
+            PackageSource::Filtered(filtered) => (filtered.source.clone(), Some(filtered)),
+        };
+        let mut entry = Entry {
+            capabilities: Some(vec!["all".into()]),
+            ..Entry::default()
+        };
+        match source::parse(&spec) {
+            Source::Npm { name, version, .. } => {
+                entry.npm = Some(name);
+                entry.version = version;
+            }
+            Source::Git {
+                repo, reference, ..
+            } => {
+                entry.git = Some(repo);
+                entry.rev = reference;
+            }
+            Source::Local { path } => {
+                let absolute = folder.join(yapi_core::tools::path::expand_home(&path));
+                entry.path = Some(match target.scope {
+                    Scope::Project => relative(&target.base(), &absolute),
+                    Scope::Global => absolute.to_string_lossy().into_owned(),
+                });
+            }
+        }
+        if let Some(filtered) = filtered {
+            entry.skills = filtered.skills.clone();
+            entry.prompts = filtered.prompts.clone();
+            entry.themes = filtered.themes.clone();
+            if filtered.extensions.is_some() || filtered.autoload.is_some() {
+                say(&format!(
+                    "warning: {spec}: chest has no `extensions` or `autoload` filter, so those were left out"
+                ));
+            }
+        }
+        let name = name_of(&entry);
+        if !valid_name(&name) {
+            say(&format!(
+                "warning: skipped {spec}: `{name}` is not a valid entry name"
+            ));
+            continue;
+        }
+        if add(document, Section::Extensions, &name, &entry)? {
+            added += 1;
+            out(&format!(
+                "extensions.{name}  from {spec}. Once chest installs it, remove it from settings.json with `yapi remove{} {spec}`.",
+                if target.scope == Scope::Project {
+                    " -l"
+                } else {
+                    ""
+                }
+            ));
+        }
+    }
+    Ok(added)
+}
+
+/// The last part of an entry's source, lowercased, as its name.
+fn name_of(entry: &Entry) -> String {
+    let from = entry
+        .npm
+        .as_deref()
+        .or(entry.git.as_deref())
+        .or(entry.path.as_deref());
+    let last = from
+        .unwrap_or_default()
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    last.strip_suffix(".git")
+        .unwrap_or(last)
+        .to_ascii_lowercase()
+}
+
+/// The skills of a `skills-lock.json` (skills.sh's `LocalSkillLockFile`)
+/// as skill entries, without their hashes, which chest computes its own way.
+fn skills_lock(path: &Path, document: &mut ManifestDocument) -> anyhow::Result<usize> {
+    let lock = json(path)?;
+    if lock.get("version").and_then(Value::as_u64) != Some(1) {
+        bail!(
+            "{}: only version 1 of skills-lock.json is known",
+            path.display()
+        );
+    }
+    let Some(skills) = lock.get("skills").and_then(Value::as_object) else {
+        bail!("{}: no `skills` map", path.display());
+    };
+    let mut added = 0;
+    for (name, skill) in skills {
+        let text = |key: &str| skill.get(key).and_then(Value::as_str).map(str::to_owned);
+        let source = text("source").unwrap_or_default();
+        // `skillPath` names the SKILL.md; chest names its folder.
+        let folder = text("skillPath").map(|path| {
+            let parent = Path::new(&path)
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
+            parent.to_string_lossy().into_owned()
+        });
+        let mut entry = Entry::default();
+        match text("sourceType").as_deref() {
+            Some("node_modules") => {
+                entry.npm = Some(source.clone());
+                entry.version = text("version");
+                entry.path = folder;
+            }
+            Some("local") => entry.path = Some(source.clone()),
+            _ => {
+                let has_host = source.contains("://")
+                    || source
+                        .split('/')
+                        .next()
+                        .is_some_and(|first| first.contains('.'));
+                let repo = text("sourceUrl").unwrap_or_else(|| match has_host {
+                    true => source.clone(),
+                    false => format!("github.com/{source}"),
+                });
+                entry.git = Some(repo.strip_prefix("git:").unwrap_or(&repo).to_owned());
+                entry.rev = text("ref");
+                entry.path = folder.filter(|folder| !folder.is_empty());
+            }
+        }
+        if !valid_name(name) {
+            say(&format!("warning: skipped {name}: not a valid entry name"));
+            continue;
+        }
+        if add(document, Section::Skills, name, &entry)? {
+            added += 1;
+            out(&format!("skills.{name}  from {source}"));
+        }
+    }
+    Ok(added)
+}

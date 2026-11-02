@@ -107,6 +107,21 @@ yapi --skill ./my-skill                # load a skill for one run
 
 Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so code that needs native addons, sockets, worker threads or SQLite fails when it reaches them. To write an extension, use the `yapi-extension` skill.
 
+## Project packages with chest
+
+`chest` is a separate binary for a project's skills, subagents and extensions: one `chest.toml`, a `chest.lock` that pins commits, npm trees and content hashes, and capabilities granted per extension. Use it when a project needs reproducible installs or narrow grants, or skills shared with other agents. Use `yapi install` for personal packages that behave as in Pi.
+
+```sh
+chest init                                   # chest.toml with folders for the agents found
+chest add git:github.com/acme/skills --path skills/pdf
+chest add npm:@acme/ext --grant fs           # grant only what the extension needs
+chest install                                # install as chest.lock pins
+chest install --frozen                       # CI: fail on drift, write nothing
+chest verify                                 # check installed copies against the lock
+```
+
+`all` is the only capability that runs programs, and it is full access. See https://skymanone.github.io/yapi/chest.html.
+
 ## Troubleshooting
 
 1. Reproduce with a clean state: `YAPI_CODING_AGENT_DIR=$(mktemp -d) yapi -p --no-session "hi"` rules out settings and packages. `-ne` rules out extensions.

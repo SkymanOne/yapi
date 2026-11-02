@@ -14,6 +14,8 @@ Subscription sign-ins and MCP server sign-ins are not copied. Providers can repl
 
 After the import, yapi and Pi work side by side, and each opens the other's session files.
 
+To move a project's packages from `.yapi/settings.json` into a manifest with a lock, run `chest import --settings` in the project. It writes an extension entry for each package with `capabilities = ["all"]`, the access Pi gives packages, and prints the `yapi remove -l` command for each one. Narrow the capabilities, run `chest install`, then remove the packages from `settings.json`. See [Manage project packages with chest](chest.md#move-from-settingsjson-or-skillssh).
+
 ## Names that change
 
 | Pi | yapi |

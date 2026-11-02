@@ -312,6 +312,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chest-cli"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64",
+ "clap",
+ "flate2",
+ "indexmap",
+ "serde_json",
+ "tar",
+ "tokio",
+ "yapi-core",
+ "yapi-mock",
+ "yapi-types",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

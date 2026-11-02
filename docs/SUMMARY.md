@@ -20,6 +20,7 @@
 
 - [Configure yapi](configuration.md)
 - [Use packages](packages.md)
+- [Manage project packages with chest](chest.md)
 - [Connect MCP servers](mcp.md)
 
 # Build on yapi
@@ -32,6 +33,7 @@
 # Reference
 
 - [Differences from Pi](compat.md)
+- [chest.toml reference](chest-manifest.md)
 - [Roadmap](roadmap.md)
 - [Performance](performance.md)
 - [Troubleshooting](troubleshooting.md)

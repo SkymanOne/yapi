@@ -23,6 +23,14 @@ To use the skills without the rest of the repository, copy their folders into a 
 cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 ```
 
+With [chest](chest.md), add the skills to a project's `chest.toml`, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:
+
+```sh
+chest add git:github.com/SkymanOne/yapi@v0.3.1 --skill --name yapi-skills
+```
+
+`--path skills/yapi` picks one skill instead. Add `-g` to install them for every project.
+
 ## Use the skills
 
 The agent loads a skill when a task matches its description. To load one explicitly in yapi or Pi, run `/skill:yapi` or `/skill:yapi-extension` followed by the request:

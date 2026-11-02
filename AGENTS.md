@@ -53,6 +53,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner and grants, MCP. | `pi-coding-agent` core, `pi-mcp` |
 | `crates/yapi-ext` | wasmtime host, WIT bindings, grant enforcement, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
+| `crates/chest` | The `chest` binary, package `chest-cli`: a manifest and lock for a project's skills, subagents and extensions, on the engine in `yapi-core`. | None |
 | `crates/yapi-mock` | Mock provider server: replays cassettes and records requests. | None |
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored JS. | None |
 | `guest/yapi-extension-api` | Rust SDK for native extensions. | None |
@@ -68,6 +69,7 @@ Dependency direction:
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
 - `yapi-mock` is never a dependency of a shipped crate.
+- `chest` depends on `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
 - `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
@@ -180,6 +182,7 @@ Module loading runs on the host, in `yapi-ext`:
 | 13 | pi JSON files are order-preserving documents; `yapi-types` structs are views over them. | pi's key order depends on the code path and on user edits, so only the document round-trips byte-identically. |
 | 14 | The binary embeds `yapi-js.wasm` deflated, and the release profile optimizes Cranelift's code generator for size. | Both matter only when the component cache has no entry, once per runtime version, so the smaller binary costs one slower compile. |
 | 15 | The docs the model reads, yapi's book and pi's README, docs and examples, ship as the `yapi-docs.tar.gz` release asset, not in the repository or the binary. Installs unpack or download it into `~/.yapi/agent/docs`. Without a local copy, the prompt points to the published docs. | pi's prompt, header and sign-in help point to the docs installed with pi. Packing pi's files at release time keeps them out of the repository and the binary. |
+| 16 | chest is a separate binary with its own manifest and lock, beside `yapi install`. It replaces or removes only what its local record says it placed, or what is exactly what it would install. | Projects need reproducible installs, grants per extension and skills shared with other agents. Leaving `yapi install` as in Pi keeps pi packages compatible, and a committed lock never makes a user's files chest's. |
 
 ## Development guidelines
 
