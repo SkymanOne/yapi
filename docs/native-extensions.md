@@ -160,7 +160,7 @@ Share a native extension as a package that contains the built `.wasm` file. A pr
 yapi install git:github.com/you/shout
 ```
 
-To publish on npm, run `npm publish`. Others then install it with `yapi install npm:shout`. The template's `package.json` publishes only the `extensions` folder.
+To publish on npm, run `npm publish`. Others then install it with `yapi install npm:shout`. The template's `package.json` publishes the `extensions` folder and `chest.toml`, which carries the capabilities the extension asks for.
 
 A package needs no manifest, because yapi loads every `.wasm` file in its `extensions` folder. A manifest can name the files instead. yapi reads its `yapi` key before the `pi` key, so one package can ship a native build for yapi and a JavaScript build for Pi:
 
