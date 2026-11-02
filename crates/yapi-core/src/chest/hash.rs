@@ -9,8 +9,9 @@ use super::{ChestError, invalid, io};
 
 /// The content hash of the package tree at `root`, as `sha256-<hex>`.
 ///
-/// It covers every regular file below `root` except those in `.git` folders,
-/// at any depth, in the byte order of their `/`-separated relative paths.
+/// It covers every regular file below `root`, leaving out every entry named
+/// `.git` at any depth, a folder or the file a worktree or submodule has, in
+/// the byte order of their `/`-separated relative paths.
 /// Each file adds its path, a NUL, `x` when it is executable (any execute
 /// bit on Unix, never elsewhere) or `-`, then the SHA-256 of its contents.
 /// Fails on any symbolic link, `root` included, and on a path that is not
@@ -55,6 +56,10 @@ fn collect(dir: &Path, prefix: &str, files: &mut Vec<(String, PathBuf)>) -> Resu
             .file_name()
             .into_string()
             .map_err(|_| invalid(format!("{}: the name is not UTF-8", path.display())))?;
+        // Copies leave `.git` out whatever it is, so the hash does too.
+        if name == ".git" {
+            continue;
+        }
         let relative = if prefix.is_empty() {
             name.clone()
         } else {
@@ -63,9 +68,7 @@ fn collect(dir: &Path, prefix: &str, files: &mut Vec<(String, PathBuf)>) -> Resu
         if kind.is_symlink() {
             return Err(refused(&path));
         } else if kind.is_dir() {
-            if name != ".git" {
-                collect(&path, &relative, files)?;
-            }
+            collect(&path, &relative, files)?;
         } else if kind.is_file() {
             files.push((relative, path));
         }
@@ -123,9 +126,11 @@ mod tests {
         let vector = "sha256-8ec032806587aaad014b497c7476c1dd2321f8c3acc4e7b03c45101290abc097";
         assert_eq!(tree_hash(&root).unwrap(), vector);
 
-        // `.git` folders at any depth are skipped.
+        // `.git` folders at any depth are skipped, and so is the `.git` file
+        // of a worktree or submodule.
         write(&root, ".git/HEAD", "ref: refs/heads/main\n");
         write(&root, "bin/.git/config", "[core]\n");
+        write(&root, "sub/.git", "gitdir: ../.git/modules/sub\n");
         assert_eq!(tree_hash(&root).unwrap(), vector);
         // The execute bit counts, any of the three.
         chmod(&root, "a.txt", 0o654);
