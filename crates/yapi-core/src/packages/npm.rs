@@ -2,9 +2,10 @@
 //! versions from the registry, verifies and unpacks tarballs into
 //! `node_modules` and installs dependencies, hoisting them where Node's
 //! resolution allows. It runs no lifecycle scripts, so native addons stay
-//! unbuilt; an extension that loads one fails then.
+//! unbuilt; an extension that loads one fails then. Installs return the tree
+//! they unpacked as pins, which [`replay`] reproduces without the registry.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 
@@ -69,9 +70,14 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> NpmError + '_ {
 
 /// Fails unless `name` has the shape of an npm package name, `name` or
 /// `@scope/name`, which keeps it inside the `node_modules` it is joined to.
+/// npm accepts only URL-safe names, so the name is ASCII and folding its
+/// case needs no Unicode rules.
 fn check_name(name: &str) -> Result<(), NpmError> {
-    let segment =
-        |part: &str| !matches!(part, "" | "." | "..") && !part.contains(['/', '\\', ':', '\0']);
+    let segment = |part: &str| {
+        !matches!(part, "" | "." | "..")
+            && part.is_ascii()
+            && !part.contains(['/', '\\', ':', '\0'])
+    };
     let valid = match name
         .strip_prefix('@')
         .and_then(|scoped| scoped.split_once('/'))
@@ -84,6 +90,144 @@ fn check_name(name: &str) -> Result<(), NpmError> {
     } else {
         Err(NpmError::Refused(format!("Invalid package name: {name}")))
     }
+}
+
+/// One package of an installed npm tree, as a lock pins it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Pinned {
+    /// The package's folder below the install root: `node_modules/<name>`,
+    /// repeated for each level of nesting, with `/` separators.
+    pub path: String,
+    /// The name in the package's own manifest, which for an alias differs
+    /// from its folder's.
+    pub name: String,
+    /// The installed version.
+    pub version: String,
+    /// The URL of its tarball.
+    pub tarball: String,
+    /// The `sha512-<base64>` digest of its tarball, as Subresource Integrity
+    /// writes it.
+    pub integrity: String,
+}
+
+impl Pinned {
+    /// The pin at `path` of the package `manifest` describes, whose tarball
+    /// is `bytes`. The digest is always sha512, whatever the registry sent.
+    fn new(path: String, manifest: &Value, bytes: &[u8]) -> Pinned {
+        Pinned {
+            path,
+            name: text(&manifest["name"]),
+            version: text(&manifest["version"]),
+            tarball: text(&manifest["dist"]["tarball"]),
+            integrity: format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes))),
+        }
+    }
+}
+
+/// The package names along a pin's `path`, outermost first, which must be
+/// `node_modules/<name>` repeated, each `<name>` a valid package name.
+fn pin_names(path: &str) -> Result<Vec<String>, NpmError> {
+    let refused = || NpmError::Refused(format!("Invalid package path: {path}"));
+    let mut names = Vec::new();
+    let mut parts = path.split('/');
+    while let Some(part) = parts.next() {
+        let name = match (part, parts.next()) {
+            ("node_modules", Some(scope)) if scope.starts_with('@') => {
+                format!("{scope}/{}", parts.next().ok_or_else(refused)?)
+            }
+            ("node_modules", Some(name)) => name.to_owned(),
+            _ => return Err(refused()),
+        };
+        check_name(&name).map_err(|_| refused())?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// The 64-byte digest of an integrity that is exactly one `sha512-` value.
+fn sha512_digest(integrity: &str) -> Option<Vec<u8>> {
+    let digest = STANDARD.decode(integrity.strip_prefix("sha512-")?).ok()?;
+    (digest.len() == 64).then_some(digest)
+}
+
+/// Removes the file, link or folder at `path`, never following a link.
+fn remove_path(path: &Path) -> std::io::Result<()> {
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(path),
+        Ok(_) => std::fs::remove_file(path),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn is_link(path: &Path) -> bool {
+    path.symlink_metadata()
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+}
+
+/// A new, empty folder beside `dir` in which to build its replacement.
+/// Refuses when `dir` is a link, which would put the result elsewhere.
+fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
+    if is_link(dir) {
+        return Err(NpmError::Refused(format!(
+            "Refusing to install through the link {}",
+            dir.display()
+        )));
+    }
+    let name = dir.file_name().unwrap_or_default().to_string_lossy();
+    let staging = dir.with_file_name(format!(".{name}-staging"));
+    let parent = dir.parent().unwrap_or(dir);
+    std::fs::create_dir_all(parent).map_err(io(parent))?;
+    // Left over by a stopped install; the root's lock keeps other installs out.
+    remove_path(&staging).map_err(io(&staging))?;
+    std::fs::create_dir(&staging).map_err(io(&staging))?;
+    Ok(staging)
+}
+
+/// Puts `staging`, built by `built`, in place of `dir`, so that `dir` holds
+/// either what it held or all of `staging`. A failed build only removes
+/// `staging`.
+fn swap(staging: &Path, dir: &Path, built: Result<(), NpmError>) -> Result<(), NpmError> {
+    swap_with(staging, dir, built, |from, to| std::fs::rename(from, to))
+}
+
+/// [`swap`], renaming with `rename`. The previous `dir` is deleted only
+/// once the new one is in place: when putting it back fails, it stays
+/// beside `dir`, and the error names where.
+fn swap_with(
+    staging: &Path,
+    dir: &Path,
+    built: Result<(), NpmError>,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<(), NpmError> {
+    let name = dir.file_name().unwrap_or_default().to_string_lossy();
+    let old = dir.with_file_name(format!(".{name}-old"));
+    let replacing = dir.symlink_metadata().is_ok();
+    let moved = built
+        .and_then(|()| remove_path(&old).map_err(io(&old)))
+        .and_then(|()| match replacing {
+            true => rename(dir, &old).map_err(io(dir)),
+            false => Ok(()),
+        });
+    if let Err(err) = moved {
+        let _ = remove_path(staging);
+        return Err(err);
+    }
+    if let Err(err) = rename(staging, dir) {
+        let _ = remove_path(staging);
+        if replacing && let Err(back) = rename(&old, dir) {
+            return Err(NpmError::Io {
+                path: dir.to_path_buf(),
+                source: std::io::Error::other(format!(
+                    "{err}, and restoring it failed ({back}): the previous version is at {}",
+                    old.display()
+                )),
+            });
+        }
+        return Err(io(dir)(err));
+    }
+    let _ = remove_path(&old);
+    Ok(())
 }
 
 /// npm's configuration as the `npm install` pi runs reads it: the user config
@@ -491,21 +635,71 @@ impl Npm {
         }
     }
 
-    async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
-        let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
-        let url = manifest["dist"]["tarball"].as_str().unwrap_or_default();
-        let registry = self.registry(&text(&manifest["name"]));
+    /// The tarball at `url` of package `name`, sent with the credentials of
+    /// its registry.
+    async fn download(&self, name: &str, url: &str) -> Result<Vec<u8>, NpmError> {
+        let registry = self.registry(name);
         let bytes = self
             .get(url, "*/*", &registry)
             .await?
             .bytes()
             .await
-            .map_err(|err| request_error(url, &err))?
-            .to_vec();
+            .map_err(|err| request_error(url, &err))?;
+        Ok(bytes.to_vec())
+    }
+
+    async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
+        let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
+        let url = manifest["dist"]["tarball"].as_str().unwrap_or_default();
+        let bytes = self.download(&text(&manifest["name"]), url).await?;
         if verify(&bytes, &manifest["dist"]) {
             Ok(bytes)
         } else {
             Err(NpmError::Integrity(id))
+        }
+    }
+
+    /// Fails unless `pin` is safe to download: a valid name, an integrity
+    /// that is exactly one sha512 digest, and an https tarball URL, or http
+    /// only on the host and port of the http registry configured for its
+    /// name, so that an edited lock never sends credentials in cleartext.
+    fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
+        check_name(&pin.name)?;
+        let id = format!("{}@{}", pin.name, pin.version);
+        if sha512_digest(&pin.integrity).is_none() {
+            return Err(NpmError::Refused(format!(
+                "Invalid integrity for {id}: expected one sha512 digest"
+            )));
+        }
+        // Credentials go by host, so plain http may reach only the host and
+        // port of an http registry the user configured for this name.
+        let registry = url::Url::parse(&self.registry(&pin.name));
+        let secure = match url::Url::parse(&pin.tarball) {
+            Ok(url) if url.scheme() == "https" => true,
+            Ok(url) if url.scheme() == "http" => registry.is_ok_and(|registry| {
+                registry.scheme() == "http"
+                    && registry.host_str() == url.host_str()
+                    && registry.port_or_known_default() == url.port_or_known_default()
+            }),
+            _ => false,
+        };
+        if !secure {
+            return Err(NpmError::Refused(format!(
+                "Refusing to download {id} from {}: tarballs need https, or the host and port of an http registry",
+                pin.tarball
+            )));
+        }
+        Ok(())
+    }
+
+    /// The tarball of `pin`, which [`Npm::check_pin`] passed, checked
+    /// against its sha512 digest alone.
+    async fn pinned_tarball(&self, pin: &Pinned) -> Result<Vec<u8>, NpmError> {
+        let bytes = self.download(&pin.name, &pin.tarball).await?;
+        if sha512_digest(&pin.integrity).as_deref() == Some(digest(&SHA512, &bytes).as_ref()) {
+            Ok(bytes)
+        } else {
+            Err(NpmError::Integrity(format!("{}@{}", pin.name, pin.version)))
         }
     }
 }
@@ -637,6 +831,8 @@ struct Installer<'a> {
     /// The packages whose dependencies are being installed, which count as
     /// installed so that cycles end.
     installing: Vec<PathBuf>,
+    /// A pin for each package installed so far.
+    tree: Vec<Pinned>,
 }
 
 impl Installer<'_> {
@@ -650,6 +846,13 @@ impl Installer<'_> {
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
             let bytes = self.npm.tarball(&manifest).await?;
+            // Every package folder is below `root_modules`: `install` and `place` put it there.
+            let relative = dir.strip_prefix(&self.root_modules).unwrap_or(&dir);
+            let path = format!(
+                "node_modules/{}",
+                relative.to_string_lossy().replace('\\', "/")
+            );
+            let pin = Pinned::new(path, &manifest, &bytes);
             // The old version waits beside `dir` while the new one installs in
             // place, where its dependencies find it and cycles end.
             let name = dir.file_name().unwrap_or_default().to_string_lossy();
@@ -675,7 +878,11 @@ impl Installer<'_> {
             .await;
             if installed.is_ok() {
                 let _ = std::fs::remove_dir_all(&old);
+                self.tree.push(pin);
             } else {
+                // The packages nested in `dir` go with it.
+                self.tree
+                    .retain(|nested| !Path::new(&nested.path).starts_with(&pin.path));
                 let _ = std::fs::remove_dir_all(&dir);
                 if replacing {
                     let _ = std::fs::rename(&old, &dir);
@@ -802,15 +1009,27 @@ pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
     }
 }
 
+/// What [`install`] installed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Installed {
+    /// The version of the requested package.
+    pub version: String,
+    /// A pin for each package the call unpacked, the requested one included,
+    /// in no particular order. Packages it found already installed are not
+    /// listed, so the tree is complete only when the root started empty: a
+    /// tree recorded over a non-empty root must not be locked.
+    pub tree: Vec<Pinned>,
+}
+
 /// Installs `name` (at `range`, else the latest version) into the npm root
-/// `root`, and records it in the root's `package.json`. Returns the version.
-/// The caller holds the root's [`lock_root`].
+/// `root`, and records it in the root's `package.json`. The caller holds the
+/// root's [`lock_root`].
 pub async fn install(
     npm: &mut Npm,
     root: &Path,
     name: &str,
     range: Option<&str>,
-) -> Result<String, NpmError> {
+) -> Result<Installed, NpmError> {
     check_name(name)?;
     let mut manifest_file = root_manifest(root)?;
     let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
@@ -820,10 +1039,12 @@ pub async fn install(
         npm,
         root_modules: modules.clone(),
         installing: Vec::new(),
+        tree: Vec::new(),
     };
     installer
         .unpack_package(modules.join(name), manifest)
         .await?;
+    let tree = installer.tree;
     let dependencies = manifest_file
         .entry("dependencies")
         .or_insert_with(|| Value::Object(Map::new()));
@@ -832,15 +1053,16 @@ pub async fn install(
         dependencies.insert(name.to_owned(), Value::String(spec));
     }
     write_manifest(root, manifest_file)?;
-    Ok(version)
+    Ok(Installed { version, tree })
 }
 
 /// Installs the dependencies of the package in `dir` (a git checkout) into
-/// its own `node_modules`. Fails when the checkout links `node_modules` or a
-/// scope folder in it elsewhere.
-pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmError> {
+/// its own `node_modules`, and returns a pin for each package it unpacked,
+/// with paths below `dir`, as [`Installed::tree`] lists them. Fails when the
+/// checkout links `node_modules` or a scope folder in it elsewhere.
+pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<Vec<Pinned>, NpmError> {
     let Some(manifest) = read_manifest(dir) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let modules = dir.join("node_modules");
     let scopes = std::fs::read_dir(&modules)
@@ -863,8 +1085,107 @@ pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmEr
         npm,
         root_modules: modules,
         installing: Vec::new(),
+        tree: Vec::new(),
     };
-    installer.dependencies(dir, &manifest).await
+    installer.dependencies(dir, &manifest).await?;
+    Ok(installer.tree)
+}
+
+/// Downloads `name` (at `range`, else the latest version), verifies its
+/// tarball and unpacks it in place of `dir`, without its dependencies.
+/// Returns its pin, whose `path` is empty: the package is `dir` itself.
+pub async fn fetch(
+    npm: &mut Npm,
+    name: &str,
+    range: Option<&str>,
+    dir: &Path,
+) -> Result<Pinned, NpmError> {
+    check_name(name)?;
+    let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
+    let bytes = npm.tarball(&manifest).await?;
+    let staging = stage(dir)?;
+    swap(&staging, dir, unpack(&bytes, &staging))?;
+    Ok(Pinned::new(String::new(), &manifest, &bytes))
+}
+
+/// Reinstalls the package `pin` records, as [`fetch`] returned it, in place
+/// of `dir`, under the download rules of [`replay`]. Its `path` is ignored.
+pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), NpmError> {
+    npm.check_pin(pin)?;
+    let bytes = npm.pinned_tarball(pin).await?;
+    let staging = stage(dir)?;
+    swap(&staging, dir, unpack(&bytes, &staging))
+}
+
+/// Replaces `root/node_modules` with exactly the tree `pins` records, as
+/// [`Installed::tree`] lists it, without packuments or range resolution.
+///
+/// Before any request, it refuses a pin whose path is not
+/// `node_modules/<name>` repeated, whose path collides with another's once
+/// case is folded, whose parent package is not pinned, whose integrity is
+/// not exactly one sha512 digest, or whose tarball URL is plain http while
+/// its registry is not. It also refuses a `root` or `root/node_modules`
+/// that is a link. Each tarball is downloaded with the credentials of its
+/// name's registry and checked against its digest. The tree is built beside
+/// `root/node_modules` and swapped in only once complete, so a failure
+/// leaves `root` as it was. The caller holds the root's [`lock_root`].
+pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
+    let mut pins = pins
+        .iter()
+        .map(|pin| {
+            npm.check_pin(pin)?;
+            let names = pin_names(&pin.path)?;
+            let parent = (names.len() > 1).then(|| {
+                let outer = &names[..names.len() - 1];
+                let parts: Vec<String> =
+                    outer.iter().map(|n| format!("node_modules/{n}")).collect();
+                parts.join("/")
+            });
+            Ok((pin.path.to_ascii_lowercase(), parent, pin))
+        })
+        .collect::<Result<Vec<_>, NpmError>>()?;
+    // Parents first, so that nested packages land in their parent's folder.
+    pins.sort_by(|a, b| a.0.cmp(&b.0));
+    if let Some(pair) = pins.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+        return Err(NpmError::Refused(format!(
+            "Package paths collide: {} and {}",
+            pair[0].2.path, pair[1].2.path
+        )));
+    }
+    let paths: HashSet<&str> = pins.iter().map(|(_, _, pin)| pin.path.as_str()).collect();
+    if let Some((_, Some(parent), pin)) = pins.iter().find(|(_, parent, _)| {
+        parent
+            .as_deref()
+            .is_some_and(|parent| !paths.contains(parent))
+    }) {
+        return Err(NpmError::Refused(format!(
+            "Package path {} has no pinned parent {parent}",
+            pin.path
+        )));
+    }
+    if is_link(root) {
+        return Err(NpmError::Refused(format!(
+            "Refusing to install through the link {}",
+            root.display()
+        )));
+    }
+    let modules = root.join("node_modules");
+    let staging = stage(&modules)?;
+    let built = async {
+        for (_, _, pin) in &pins {
+            let bytes = npm.pinned_tarball(pin).await?;
+            // `pin_names` checked that the path starts so; `staging` stands for it.
+            let relative = pin.path.strip_prefix("node_modules/").unwrap_or(&pin.path);
+            let dir = staging.join(relative);
+            // A bundled copy in the parent's tarball gives way to the pinned one.
+            remove_path(&dir).map_err(io(&dir))?;
+            std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+            unpack(&bytes, &dir)?;
+        }
+        Ok(())
+    }
+    .await;
+    swap(&staging, &modules, built)
 }
 
 /// Removes `name` from the npm root `root`, then the packages nothing
@@ -1167,6 +1488,49 @@ mod tests {
         // An absolute path loses its root with the first component.
         assert_eq!(names(&dir), ["abs", "index.js"]);
         assert_eq!(std::fs::read(dir.join("index.js")).unwrap(), b"ok");
+        std::fs::remove_dir_all(&parent).unwrap();
+    }
+
+    /// When the new tree cannot take its place and the old one cannot go
+    /// back, the old one stays where the error says.
+    #[test]
+    fn swap_keeps_old_tree() {
+        let parent = std::env::temp_dir().join(format!("yapi-npm-swap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let (dir, staging, old) = (
+            parent.join("node_modules"),
+            parent.join(".node_modules-staging"),
+            parent.join(".node_modules-old"),
+        );
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        std::fs::create_dir_all(staging.join("b")).unwrap();
+        let rename = |from: &Path, to: &Path| {
+            if from == staging || from == old {
+                Err(std::io::Error::other("refused"))
+            } else {
+                std::fs::rename(from, to)
+            }
+        };
+        let error = swap_with(&staging, &dir, Ok(()), rename).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .ends_with(&format!("the previous version is at {}", old.display())),
+            "{error}"
+        );
+        assert!(old.join("a").exists());
+        // A plain failure puts the old tree back.
+        std::fs::rename(&old, &dir).unwrap();
+        std::fs::create_dir_all(staging.join("b")).unwrap();
+        let fail_new = |from: &Path, to: &Path| {
+            if from == staging {
+                Err(std::io::Error::other("refused"))
+            } else {
+                std::fs::rename(from, to)
+            }
+        };
+        assert!(swap_with(&staging, &dir, Ok(()), fail_new).is_err());
+        assert!(dir.join("a").exists() && !old.exists() && !staging.exists());
         std::fs::remove_dir_all(&parent).unwrap();
     }
 

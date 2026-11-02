@@ -460,7 +460,8 @@ impl PackageManager {
             if let Some(reference) = reference {
                 run_git(&["checkout", reference], Some(dir)).await?;
             }
-            Ok(npm::install_dependencies(&mut self.npm, dir).await?)
+            npm::install_dependencies(&mut self.npm, dir).await?;
+            Ok(())
         }
         .await;
         if installed.is_err() {
