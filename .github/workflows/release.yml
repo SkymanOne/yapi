@@ -44,7 +44,7 @@ jobs:
           scripts/release-notes.sh "$version" >/dev/null
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
-  # THIRD-PARTY-NOTICES, which every archive carries next to the binary.
+  # THIRD-PARTY-NOTICES, which every archive carries next to the binaries.
   notices:
     runs-on: ubuntu-latest
     steps:
@@ -110,16 +110,16 @@ jobs:
       - name: Check the committed extension runtime
         run: cargo xtask js-runtime --check
       - name: Build
-        run: cargo build --release --locked -p yapi --target ${{ matrix.target }}
-      - name: Report the newest glibc the binary needs
+        run: cargo build --release --locked -p yapi -p chest-cli --target ${{ matrix.target }}
+      - name: Report the newest glibc the binaries need
         if: runner.os == 'Linux'
-        run: objdump -T target/${{ matrix.target }}/release/yapi | grep -o 'GLIBC_[0-9.]*' | sort -u -V | tail -n 1
+        run: objdump -T target/${{ matrix.target }}/release/yapi target/${{ matrix.target }}/release/chest | grep -o 'GLIBC_[0-9.]*' | sort -u -V | tail -n 1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: third-party-notices
           path: notices
       - name: Package
-        run: scripts/package-release.sh target/${{ matrix.target }}/release/yapi ${{ matrix.target }} dist notices/THIRD-PARTY-NOTICES
+        run: scripts/package-release.sh target/${{ matrix.target }}/release/yapi ${{ matrix.target }} dist notices/THIRD-PARTY-NOTICES target/${{ matrix.target }}/release/chest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: yapi-${{ matrix.target }}

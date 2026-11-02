@@ -1,6 +1,6 @@
 # Install yapi
 
-yapi is one executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build it from source. Linux and macOS are fully supported. Windows support is best effort.
+yapi is one executable. Releases ship it with [chest](chest.md), the package manager for skills, subagents and extensions, as a second executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build them from source. Linux and macOS are fully supported. Windows support is best effort.
 
 ## Install script
 
@@ -8,7 +8,7 @@ yapi is one executable. Releases include builds for Linux and macOS on x86_64 an
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 ```
 
-The script downloads the latest release for your system, verifies its SHA-256 checksum and installs it as `~/.local/bin/yapi`. It also installs the [documentation for the model](#documentation-for-the-model).
+The script downloads the latest release for your system, verifies its SHA-256 checksum and installs `yapi` and `chest` in `~/.local/bin`. It also installs the [documentation for the model](#documentation-for-the-model). Releases before chest shipped install `yapi` alone.
 
 | Option | Variable | Effect |
 |---|---|---|
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 
 ## cargo-binstall
 
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release binary into `~/.cargo/bin`:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release's `yapi` into `~/.cargo/bin`. It does not install `chest`:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
@@ -34,7 +34,7 @@ Keep `--git`, because the `yapi` crate on crates.io is an unrelated project. car
 
 ## Release archives
 
-Each [release](https://github.com/SkymanOne/yapi/releases) has a `yapi-<target>.tar.gz` archive per platform, with a `.sha256` checksum. The archive holds `yapi` and its license files.
+Each [release](https://github.com/SkymanOne/yapi/releases) has a `yapi-<target>.tar.gz` archive per platform, with a `.sha256` checksum. The archive holds `yapi`, `chest` and their license files.
 
 | Target | Systems |
 |---|---|
@@ -43,13 +43,13 @@ Each [release](https://github.com/SkymanOne/yapi/releases) has a `yapi-<target>.
 | `x86_64-apple-darwin` | macOS on Intel |
 | `aarch64-apple-darwin` | macOS on Apple silicon |
 
-Download an archive, verify it and unpack `yapi` into a directory on `PATH`:
+Download an archive, verify it and unpack `yapi` and `chest` into a directory on `PATH`:
 
 ```sh
 curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz
 curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
 sha256sum -c yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
-tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi
+tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi chest
 ```
 
 On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `latest/download` with `download/<tag>`. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see [Troubleshooting](troubleshooting.md#macos-blocks-a-downloaded-binary).
@@ -62,12 +62,13 @@ yapi builds with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.r
 cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.1 yapi
 ```
 
-Cargo installs `yapi` in `~/.cargo/bin`. Leave out `--tag` to build the latest commit on `main`. To build from a clone, run `cargo install --locked --path crates/yapi` in it. If Cargo reports that rustc is too old, run `rustup update`.
+Cargo installs `yapi` in `~/.cargo/bin`. Build `chest` the same way, with `chest-cli` in place of `yapi` at the end. Leave out `--tag` to build the latest commit on `main`. To build from a clone, run `cargo install --locked --path crates/yapi` in it. If Cargo reports that rustc is too old, run `rustup update`.
 
 ## Check the installation
 
 ```sh
 yapi --version
+chest --version
 ```
 
 ## Documentation for the model
@@ -90,10 +91,10 @@ yapi does not update itself. `yapi update` prints how to upgrade, `yapi update -
 
 | Installed with | Upgrade |
 |---|---|
-| Install script | Run the script again. |
+| Install script | Run the script again. It upgrades `chest` too. |
 | cargo-binstall | Run the same `cargo binstall` command again. |
-| Release archive | Unpack the new archive over the old binary. |
-| Cargo | Run `cargo install` again with the new release's tag. |
+| Release archive | Unpack the new archive over the old binaries. |
+| Cargo | Run `cargo install` again with the new release's tag, for `yapi` and for `chest-cli`. |
 
 Settings, credentials, sessions and packages are kept.
 
@@ -103,7 +104,7 @@ In the terminal, yapi checks at startup for a newer release and for package upda
 
 ## Uninstall
 
-- Install script or release archive: delete `~/.local/bin/yapi`, or the file in the directory you chose.
-- cargo-binstall or Cargo: run `cargo uninstall yapi`.
+- Install script or release archive: delete `~/.local/bin/yapi` and `~/.local/bin/chest`, or the files in the directory you chose.
+- cargo-binstall or Cargo: run `cargo uninstall yapi`, and `cargo uninstall chest-cli` if you built chest.
 
-To remove settings, credentials, sessions, packages and caches as well, delete `~/.yapi`, or `YAPI_CODING_AGENT_DIR` when set, and each project's `.yapi` folder.
+To remove settings, credentials, sessions, packages and caches as well, delete `~/.yapi`, or `YAPI_CODING_AGENT_DIR` when set, and each project's `.yapi` folder. chest keeps its global manifest, store and records in `~/.chest`.

@@ -1,9 +1,10 @@
 #!/bin/sh
-# Checks that every archive in <dist-dir> carries the licenses next to the
-# binary and that yapi-docs.tar.gz holds yapi's and pi's docs, then installs
-# this system's release archive as users would: with install.sh, as the
-# latest release and as release <tag>, and with cargo-binstall when it is on
-# PATH. Each must install yapi and nothing else, and install.sh the docs.
+# Checks that every archive in <dist-dir> carries yapi, chest and the
+# licenses, and that yapi-docs.tar.gz holds yapi's and pi's docs, then
+# installs this system's release archive as users would: with install.sh, as
+# the latest release and as release <tag>, and with cargo-binstall when it is
+# on PATH. install.sh must install yapi, chest and the docs, and
+# cargo-binstall yapi alone.
 # The archives are served over HTTPS from 127.0.0.1 in the layout of GitHub's
 # release downloads, with a throwaway certificate authority.
 #
@@ -29,12 +30,12 @@ trap cleanup EXIT
 for archive in "$dist"/yapi-*.tar.gz; do
     [ "$archive" != "$dist/yapi-docs.tar.gz" ] || continue
     files=$(tar -tzf "$archive" | LC_ALL=C sort | tr '\n' ' ')
-    if [ "$files" != "LICENSE-APACHE LICENSE-MIT THIRD-PARTY-NOTICES yapi " ]; then
+    if [ "$files" != "LICENSE-APACHE LICENSE-MIT THIRD-PARTY-NOTICES chest yapi " ]; then
         echo "$archive holds $files" >&2
         exit 1
     fi
 done
-echo "ok: every archive holds yapi and its licenses"
+echo "ok: every archive holds yapi, chest and their licenses"
 docs=$(tar -tzf "$dist/yapi-docs.tar.gz")
 for file in .version index.md compat.md pi/LICENSE pi/README.md pi/docs/extensions.md pi/examples/extensions/hello.ts; do
     if ! printf '%s\n' "$docs" | grep -qx "$file"; then
@@ -126,18 +127,31 @@ fi
 repo="https://127.0.0.1:$(cat port)/SkymanOne/yapi"
 version=${tag#v}
 
+# Checks that installer $2 put yapi $1 of this version, and only the files
+# named after it, in name order, into its directory.
 check() {
-    found=$("$1" --version)
+    binary=$1
+    installer=$2
+    shift 2
+    found=$("$binary" --version)
     if [ "$found" != "$version" ]; then
-        echo "$1 --version printed '$found', not '$version'" >&2
+        echo "$binary --version printed '$found', not '$version'" >&2
         exit 1
     fi
-    installed=$(ls -A "$(dirname "$1")")
-    if [ "$installed" != yapi ]; then
-        echo "$2 installed $installed" >&2
+    dir=$(dirname "$binary")
+    installed=$(ls -A "$dir")
+    if [ "$installed" != "$(printf '%s\n' "$@")" ]; then
+        echo "$installer installed $installed" >&2
         exit 1
     fi
-    echo "ok: $2 installed yapi $found"
+    if [ -e "$dir/chest" ]; then
+        found=$("$dir/chest" --version)
+        if [ "$found" != "chest $version" ]; then
+            echo "$dir/chest --version printed '$found', not 'chest $version'" >&2
+            exit 1
+        fi
+    fi
+    echo "ok: $installer installed $* $version"
 }
 
 # The docs install.sh unpacked into agent directory $1.
@@ -151,11 +165,11 @@ check_docs() {
 
 CURL_CA_BUNDLE="$work/ca.pem" YAPI_RELEASES_URL="$repo/releases" YAPI_CODING_AGENT_DIR="$work/latest/agent" \
     sh "$root/install.sh" --to "$work/latest/bin"
-check "$work/latest/bin/yapi" "install.sh, latest release,"
+check "$work/latest/bin/yapi" "install.sh, latest release," chest yapi
 check_docs "$work/latest/agent" "install.sh, latest release,"
 CURL_CA_BUNDLE="$work/ca.pem" YAPI_RELEASES_URL="$repo/releases" YAPI_CODING_AGENT_DIR="$work/tagged/agent" \
     sh "$root/install.sh" --version "$tag" --to "$work/tagged/bin"
-check "$work/tagged/bin/yapi" "install.sh, release $tag,"
+check "$work/tagged/bin/yapi" "install.sh, release $tag," chest yapi
 check_docs "$work/tagged/agent" "install.sh, release $tag,"
 
 if command -v cargo-binstall >/dev/null 2>&1; then
@@ -167,7 +181,7 @@ if command -v cargo-binstall >/dev/null 2>&1; then
     : >"$manifest/crates/yapi/src/main.rs"
     cargo-binstall --manifest-path "$manifest" yapi --no-confirm --disable-telemetry \
         --root "$work/binstall" --root-certificates "$work/ca.pem"
-    check "$work/binstall/bin/yapi" cargo-binstall
+    check "$work/binstall/bin/yapi" cargo-binstall yapi
 else
     echo "skipped: cargo-binstall is not on PATH"
 fi

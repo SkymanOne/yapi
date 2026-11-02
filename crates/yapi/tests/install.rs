@@ -27,13 +27,23 @@ fn scratch(name: &str) -> PathBuf {
     common::scratch(&format!("install-{name}"))
 }
 
-/// Packages a fake `yapi` that prints `version` for every target, with fake
-/// third-party notices, and a docs archive naming `version`, under
-/// `<site>/releases/download/v<version>/`.
+/// [`release_with`] a `chest` that prints `chest <version>`.
 fn release(site: &Path, version: &str) {
+    release_with(site, version, Some(&format!("echo chest {version}")));
+}
+
+/// Packages a fake `yapi` that prints `version` for every target, with a
+/// fake `chest` that runs the shell commands `chest`, or none as releases
+/// before chest had, fake third-party notices, and a docs archive naming
+/// `version`, under `<site>/releases/download/v<version>/`.
+fn release_with(site: &Path, version: &str, chest: Option<&str>) {
     std::fs::create_dir_all(site).unwrap();
     let binary = site.join(format!("yapi-{version}"));
     std::fs::write(&binary, format!("#!/bin/sh\necho {version}\n")).unwrap();
+    let chest_binary = site.join(format!("chest-{version}"));
+    if let Some(chest) = chest {
+        std::fs::write(&chest_binary, format!("#!/bin/sh\n{chest}\n")).unwrap();
+    }
     let notices = site.join("THIRD-PARTY-NOTICES");
     std::fs::write(&notices, "notices\n").unwrap();
     let out = site.join(format!("releases/download/v{version}"));
@@ -44,6 +54,7 @@ fn release(site: &Path, version: &str) {
             .arg(target)
             .arg(&out)
             .arg(&notices)
+            .args(chest.map(|_| &chest_binary))
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
@@ -224,7 +235,8 @@ fn skips_docs_failing_checksum() {
 fn installs_chosen_version() {
     let dir = scratch("pinned");
     let site = dir.join("site");
-    release(&site, "9.9.8");
+    // An archive from before chest shipped installs yapi alone.
+    release_with(&site, "9.9.8", None);
     release(&site, "9.9.9");
     let releases = serve(site, Some("9.9.9"));
     let to = dir.join("bin");
@@ -235,6 +247,7 @@ fn installs_chosen_version() {
     );
     assert!(output.status.success(), "{output:?}");
     assert_eq!(installed_version(&to.join("yapi")), "9.9.8");
+    assert_eq!(std::fs::read_dir(&to).unwrap().count(), 1, "only yapi");
 
     // The environment variables do the same, and a newer install replaces it.
     let output = Command::new("sh")
@@ -248,7 +261,42 @@ fn installs_chosen_version() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(installed_version(&to.join("yapi")), "9.9.9");
-    assert_eq!(std::fs::read_dir(&to).unwrap().count(), 1);
+    assert_eq!(installed_version(&to.join("chest")), "chest 9.9.9");
+    assert_eq!(std::fs::read_dir(&to).unwrap().count(), 2);
+}
+
+/// The install script installs chest next to yapi, and installs neither
+/// when the archive's chest does not run.
+#[test]
+fn installs_chest_too() {
+    let dir = scratch("chest");
+    let site = dir.join("site");
+    release(&site, "9.9.9");
+    release_with(&site, "9.9.8", Some("exit 1"));
+    let releases = serve(site, Some("9.9.9"));
+    let output = install(&releases, &dir, &[]);
+    assert!(output.status.success(), "{output:?}");
+    let chest = dir.join(".local/bin/chest");
+    assert_eq!(installed_version(&chest), "chest 9.9.9");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(&format!("Installed chest 9.9.9 to {}", chest.display())),
+        "{stdout}"
+    );
+
+    let to = dir.join("broken");
+    let output = install(
+        &releases,
+        &dir,
+        &["--version", "9.9.8", "--to", to.to_str().unwrap()],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("the downloaded chest does not run on this system"),
+        "{stderr}"
+    );
+    assert!(!to.exists());
 }
 
 #[test]
@@ -290,9 +338,9 @@ fn suggests_source_build() {
     );
 }
 
-/// Each archive holds the binary and its license files, and extracting
-/// `yapi` from it into a directory on PATH installs only the binary, as the
-/// install guide shows.
+/// Each archive holds the binaries and their license files, and extracting
+/// `yapi` and `chest` from it into a directory on PATH installs only the
+/// binaries, as the install guide shows.
 #[test]
 fn archives_hold_binary_licenses() {
     let dir = scratch("archive");
@@ -307,7 +355,7 @@ fn archives_hold_binary_licenses() {
             .unwrap();
         assert_eq!(
             String::from_utf8(listing.stdout).unwrap(),
-            "yapi\nLICENSE-MIT\nLICENSE-APACHE\nTHIRD-PARTY-NOTICES\n",
+            "yapi\nchest\nLICENSE-MIT\nLICENSE-APACHE\nTHIRD-PARTY-NOTICES\n",
             "{target}"
         );
     }
@@ -317,7 +365,7 @@ fn archives_hold_binary_licenses() {
     let output = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "curl -fsSL {releases}/latest/download/yapi-{}.tar.gz | tar xzf - -C {} yapi",
+            "curl -fsSL {releases}/latest/download/yapi-{}.tar.gz | tar xzf - -C {} yapi chest",
             TARGETS[0],
             bin.display()
         ))
@@ -325,5 +373,10 @@ fn archives_hold_binary_licenses() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(installed_version(&bin.join("yapi")), "9.9.9");
-    assert_eq!(std::fs::read_dir(&bin).unwrap().count(), 1, "only yapi");
+    assert_eq!(installed_version(&bin.join("chest")), "chest 9.9.9");
+    assert_eq!(
+        std::fs::read_dir(&bin).unwrap().count(),
+        2,
+        "only the binaries"
+    );
 }

@@ -21,7 +21,7 @@ yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](h
 
 ## Getting started
 
-Install the latest release on Linux or macOS:
+Install the latest release on Linux or macOS. The script installs `yapi` and `chest`, its package manager:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh

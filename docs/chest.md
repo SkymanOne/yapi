@@ -13,10 +13,16 @@ chest keeps a project's agent skills, subagents and yapi extensions in one manif
 
 ## Install
 
-chest is a separate binary, `chest`, built from the yapi repository:
+chest is a separate binary, `chest`, which yapi's [install script](install.md#install-script) and release archives install next to `yapi`:
 
 ```sh
-cargo install --git https://github.com/SkymanOne/yapi chest-cli
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+```
+
+To build it from source instead:
+
+```sh
+cargo install --locked --git https://github.com/SkymanOne/yapi chest-cli
 ```
 
 ## Quickstart
