@@ -26,6 +26,7 @@ use yapi_types::sync::lock;
 use super::declarations::{identifier, sample};
 use super::models;
 use crate::ops::Job;
+use crate::requests::tool_granted;
 use crate::{Bridge, Engine, Grants, Instance, Options};
 
 /// The custom entry type of `store()` writes.
@@ -203,6 +204,8 @@ struct Callable {
 struct ScriptBridge {
     session: Option<AgentSession>,
     call_id: String,
+    /// The caller's grants, which each call's tool must satisfy.
+    grants: Grants,
     tools: Vec<Callable>,
     progress: Mutex<Progress>,
     updates: UpdateSink,
@@ -407,7 +410,9 @@ impl ScriptBridge {
             .and_then(|args| serde_json::from_str(args).ok())
             .unwrap_or(Value::Null);
         let outcome = session
-            .execute_tool(&self.call_id, &name, args, cancel.clone(), None)
+            .execute_tool(&self.call_id, &name, args, cancel.clone(), None, |tool| {
+                tool_granted(&self.grants, tool)
+            })
             .await;
         let text = yapi_types::message::blocks_text(&outcome.result.content, "\n");
         let failure = outcome.is_error.then(|| {
@@ -760,11 +765,15 @@ impl Runner {
             .ok_or_else(|| "the engine was not loaded".to_owned())
     }
 
-    /// Runs script `args.code` for tool call `call_id`. `Err` for invalid
-    /// options, which pi reports without the result header.
+    /// Runs script `args.code` for tool call `call_id`, for a caller with
+    /// `grants`: the script sees only the tools they allow, reaches models
+    /// only with the network grant, and keeps its store only with the
+    /// session grant. `Err` for invalid options, which pi reports without
+    /// the result header.
     pub async fn execute(
         &self,
         session: Option<AgentSession>,
+        grants: Grants,
         call_id: String,
         args: Value,
         cancel: CancellationToken,
@@ -777,7 +786,7 @@ impl Runner {
             .map(AgentSession::callable_tools)
             .unwrap_or_default()
             .into_iter()
-            .filter(|tool| tool.name() != super::NAME)
+            .filter(|tool| tool.name() != super::NAME && tool_granted(&grants, tool))
             .map(|registered| Callable {
                 sample: sample(&super::declaration(&registered)),
                 registered,
@@ -791,7 +800,10 @@ impl Runner {
             .collect();
         let store = read_store(session.as_ref());
         // pi's models need the session's registry.
-        let docs = self.docs.clone().filter(|_| session.is_some());
+        let docs = self
+            .docs
+            .clone()
+            .filter(|_| session.is_some() && grants.network);
         let globals: Vec<Value> = ["searchTools", "describeTool", "describeNamespace"]
             .iter()
             .chain(models::GLOBALS.iter().filter(|_| docs.is_some()))
@@ -801,6 +813,7 @@ impl Runner {
         let bridge = Arc::new(ScriptBridge {
             session: session.clone(),
             call_id,
+            grants,
             tools,
             progress: Mutex::default(),
             updates,
@@ -844,8 +857,9 @@ impl Runner {
         let mut items = output;
         let ok = match &ending {
             Ending::Done { value, writes } => {
-                if let (Some(session), Some(data)) =
-                    (&session, writes.as_deref().and_then(store_entry))
+                if grants.session
+                    && let (Some(session), Some(data)) =
+                        (&session, writes.as_deref().and_then(store_entry))
                 {
                     let _ = session.append_custom_entry(STORE_ENTRY_TYPE, Some(data));
                 }

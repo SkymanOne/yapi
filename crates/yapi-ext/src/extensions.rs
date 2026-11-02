@@ -50,7 +50,80 @@ use yapi_types::rpc::{SourceInfo, StreamingBehavior};
 use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
-use crate::{Bridge, Engine, Error, Instance, Options};
+use crate::requests::{denied, tool_granted};
+use crate::{Bridge, Engine, Error, Grants, Instance, Options};
+
+/// Requests and operations that start, steer or stop turns, or change the
+/// session, its files or the model's setup, which need the session grant.
+const SESSION_ACTIONS: &[&str] = &[
+    "session.sendMessage",
+    "session.sendUserMessage",
+    "session.appendEntry",
+    "session.setName",
+    "session.setLabel",
+    "session.write",
+    "session.new",
+    "session.fork",
+    "session.navigateTree",
+    "session.switch",
+    "session.reload",
+    "session.replaced",
+    "agent.compact",
+    "agent.setSystemPromptOptions",
+    "agent.abort",
+    "agent.shutdown",
+    "model.set",
+    "thinking.set",
+    "tools.setActive",
+];
+
+/// Whether `grants` allow request or operation `kind` with `payload`: session
+/// actions need the session grant. Registering providers, editor input that
+/// runs shell or slash commands, and editor actions that reach outside the
+/// sandbox need every grant.
+fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
+    let all = *grants == Grants::default();
+    match kind {
+        _ if SESSION_ACTIONS.contains(&kind) => grants.session,
+        // A provider's replies drive the agent's tools, and its streams get credentials.
+        "providers.register" | "providers.unregister" => all,
+        // Interactive mode runs `!` and `/` input as shell and slash commands.
+        "ui.editorSubmit" => {
+            let input = payload["text"].as_str().unwrap_or_default().trim_start();
+            if input.starts_with(['!', '/']) {
+                all
+            } else {
+                grants.session
+            }
+        }
+        "ui.editorAction" => match payload["action"].as_str().unwrap_or_default() {
+            // `$EDITOR`, the system clipboard, and the editor's text submitted as input.
+            "app.editor.external" | "app.clipboard.pasteImage" | "app.message.followUp" => all,
+            "app.interrupt"
+            | "app.clear"
+            | "app.exit"
+            | "app.suspend"
+            | "app.thinking.cycle"
+            | "app.thinking.toggle"
+            | "app.model.cycleForward"
+            | "app.model.cycleBackward"
+            | "app.message.dequeue"
+            | "app.session.new" => grants.session,
+            _ => true,
+        },
+        _ => true,
+    }
+}
+
+/// Whether session file `path`, relative to the process's directory as
+/// session actions resolve it, lies inside session directory `dir`.
+fn in_session_dir(dir: &std::path::Path, path: &str) -> bool {
+    let path = std::env::current_dir().map_or_else(|_| PathBuf::from(path), |cwd| cwd.join(path));
+    match (path.canonicalize(), dir.canonicalize()) {
+        (Ok(path), Ok(dir)) => path.starts_with(dir),
+        _ => false,
+    }
+}
 
 /// An extension file that failed to load, with pi's message.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -302,7 +375,11 @@ impl ExtensionHost {
 
     /// The providers the loaded extensions registered with
     /// `pi.registerProvider`, in registration order.
+    /// Extensions without every grant provide none.
     pub fn providers(self: &Arc<Self>) -> Vec<RegisteredProvider> {
+        if !self.provides() {
+            return Vec::new();
+        }
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| list(&extension["providers"]))
@@ -372,13 +449,22 @@ impl ExtensionHost {
 
     /// The wire APIs extensions implement with pi-ai's `registerApiProvider`
     /// that yapi has no provider for, to stream the session's models of
-    /// those APIs.
+    /// those APIs. Extensions without every grant provide none.
     pub fn apis(self: &Arc<Self>) -> Vec<Arc<dyn Provider>> {
+        if !self.provides() {
+            return Vec::new();
+        }
         lock(&self.apis)
             .iter()
             .filter(|api| yapi_ai::api::builtin(api).is_none())
             .map(|api| self.js_stream(api))
             .collect()
+    }
+
+    /// Whether the extensions may provide models: a provider's replies drive
+    /// the agent's tools, and its streams get credentials.
+    fn provides(&self) -> bool {
+        self.bridge.grants == Grants::default()
     }
 
     fn js_stream(self: &Arc<Self>, api: &str) -> Arc<dyn Provider> {
@@ -1460,6 +1546,9 @@ impl Extension for JsExtension {
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
             let mut lists = Vec::new();
+            if !self.shared.provides() {
+                return lists;
+            }
             // Providers registered once the session started refresh too.
             let providers = self.latest(|latest| list(&latest["providers"]).to_vec());
             for provider in &providers {
@@ -1676,9 +1765,13 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         namespace,
         default_active: tool["defaultActive"] != false,
         annotations: Some(tool["annotations"].clone()).filter(Value::is_object),
-        source: usize::try_from(extension)
-            .ok()
-            .and_then(|id| lock(&shared.sources).get(id).cloned()),
+        // A tool of an unknown extension is still not a built-in one.
+        source: Some(
+            usize::try_from(extension)
+                .ok()
+                .and_then(|id| lock(&shared.sources).get(id).cloned())
+                .unwrap_or_default(),
+        ),
     }
 }
 
@@ -1894,6 +1987,8 @@ struct SessionBridge {
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
     /// The project directory of the sessions the factories run for.
     project_dir: PathBuf,
+    /// What the runtime's extensions may reach.
+    grants: Grants,
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
@@ -1934,6 +2029,7 @@ impl SessionBridge {
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
+            grants: options.grants,
             run_signal: Mutex::default(),
             cancels: Arc::default(),
             file_locks: Arc::default(),
@@ -2547,6 +2643,9 @@ impl Bridge for SessionBridge {
     }
 
     fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {
+        if !granted(&self.grants, kind, payload) {
+            return Err(denied(kind));
+        }
         if kind == "events.emit" {
             self.publish(payload);
             return Ok(Value::Null);
@@ -2944,6 +3043,10 @@ impl Bridge for SessionBridge {
     }
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
+        if !granted(&self.grants, kind, &payload) {
+            let message = denied(kind);
+            return Box::pin(async move { Err(message) });
+        }
         if matches!(
             kind,
             "provider.payload" | "provider.response" | "provider.streamEvent"
@@ -3040,6 +3143,7 @@ impl Bridge for SessionBridge {
             ),
         };
         let codemode = self.codemode.clone();
+        let grants = self.grants;
         let owner = self.owner.get().cloned().unwrap_or_default();
         // The guest's `signal` cancels the operation through `op.cancel`,
         // which may come as soon as this returns.
@@ -3069,6 +3173,7 @@ impl Bridge for SessionBridge {
                 "codemode.execute" => codemode
                     .execute(
                         Some(session),
+                        grants,
                         text(&payload["toolCallId"]),
                         payload["params"].clone(),
                         caller_cancel,
@@ -3077,13 +3182,26 @@ impl Bridge for SessionBridge {
                     .await
                     .map(to_json),
                 "tool.execute" => {
+                    let name = text(&payload["name"]);
+                    // An unknown name needs every grant, in case a tool takes it meanwhile.
+                    let granted = session
+                        .callable_tools()
+                        .iter()
+                        .find(|tool| tool.name() == name)
+                        .map_or(grants == Grants::default(), |tool| {
+                            tool_granted(&grants, tool)
+                        });
+                    if !granted {
+                        return Err(denied(&format!("The {name} tool")));
+                    }
                     let outcome = session
                         .execute_tool(
                             &text(&payload["toolCallId"]),
-                            &text(&payload["name"]),
+                            &name,
                             payload["args"].clone(),
                             signal_cancel.unwrap_or(caller_cancel),
                             nested_updates,
+                            |tool| tool_granted(&grants, tool),
                         )
                         .await;
                     Ok(
@@ -3125,9 +3243,10 @@ impl Bridge for SessionBridge {
                     });
                     let options = yapi_ai::model_catalog::RefreshOptions {
                         providers,
-                        allow_network: payload["allowNetwork"]
-                            .as_bool()
-                            .unwrap_or_else(|| !yapi_core::config::env_set("PI_OFFLINE")),
+                        allow_network: grants.network
+                            && payload["allowNetwork"]
+                                .as_bool()
+                                .unwrap_or_else(|| !yapi_core::config::env_set("PI_OFFLINE")),
                         force: payload["force"].as_bool().unwrap_or(false),
                         cancel: caller_cancel,
                         ..Default::default()
@@ -3292,6 +3411,21 @@ impl Bridge for SessionBridge {
                         "session.reload" => SessionAction::Reload,
                         _ => SessionAction::Replaced,
                     };
+                    // Without file access, only session files in the session directory open.
+                    if let SessionAction::New {
+                        parent: Some(path), ..
+                    }
+                    | SessionAction::Switch { path } = &action
+                        && !grants.filesystem
+                        && !in_session_dir(
+                            &session.with_session(|file| file.dir().to_path_buf()),
+                            path,
+                        )
+                    {
+                        return Err(denied(
+                            "Opening a session file outside the session directory",
+                        ));
+                    }
                     let cancelled = session.session_action(action).await?;
                     Ok(json!({ "cancelled": cancelled }))
                 }
@@ -3374,5 +3508,26 @@ mod tests {
             job.await;
         }
         assert_eq!(*lock(&ran), ["call"]);
+    }
+
+    /// Without file access, session actions open only session files inside
+    /// the session directory, however the path leaves it.
+    #[test]
+    fn session_paths_stay_inside() {
+        let root = std::env::temp_dir().join(format!("yapi-session-paths-{}", std::process::id()));
+        let dir = root.join("sessions");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.jsonl"), "").unwrap();
+        std::fs::write(root.join("secret.jsonl"), "").unwrap();
+        let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+        assert!(in_session_dir(&dir, &path("a.jsonl")));
+        assert!(!in_session_dir(&dir, &path("../secret.jsonl")));
+        assert!(!in_session_dir(&dir, &path("missing.jsonl")));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("secret.jsonl"), dir.join("link.jsonl")).unwrap();
+            assert!(!in_session_dir(&dir, &path("link.jsonl")));
+        }
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

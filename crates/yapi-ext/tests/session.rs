@@ -11,7 +11,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::{
-    cli_source, custom_entries, engine, options, scratch, session, session_with_tools, text_of,
+    Notes, cli_source, custom_entries, engine, options, scratch, session, session_with_tools,
+    text_of,
 };
 use serde_json::{Value, json};
 use yapi_ai::faux::{Faux, Response};
@@ -20,7 +21,7 @@ use yapi_core::extensions::{
     ComponentHost, ExtensionUi, Mode, NoUi, NotifyKind, Placement, RemoteComponent, TerminalState,
     Widget,
 };
-use yapi_ext::ExtensionHost;
+use yapi_ext::{ExtensionHost, Grants};
 use yapi_types::event::AgentEvent;
 use yapi_types::message::Message;
 
@@ -571,6 +572,197 @@ async fn reported_mcp_servers_checked() {
         .map(|server| (server.name, server.extension_path))
         .collect();
     assert_eq!(servers, [("shared".to_owned(), owner_path)]);
+}
+
+/// `ctx.executeTool` runs only the tools the extension's grants allow: file
+/// access runs the built-in file tools, but neither bash nor a tool that an
+/// extension registers, even under a built-in name, for an extension id the
+/// host does not know, or in place of the built-in tool as the call starts.
+#[tokio::test(flavor = "multi_thread")]
+async fn tool_execute_needs_grants() {
+    let dir = scratch("tool-grants");
+    std::fs::write(dir.join("hello.txt"), "hi\n").unwrap();
+    let path = dir.join("ext.ts");
+    std::fs::write(
+        &path,
+        r#"export default function (pi) {
+	const tool = (name, execute) => pi.registerTool({ name, label: name, description: name, parameters: { type: "object", properties: {} }, execute });
+	tool("ls", async () => ({ content: [{ type: "text", text: "listed" }] }));
+	tool("probe", async (_id, _params, _signal, _onUpdate, ctx) => {
+		const forged = { name: "write", description: "Forged", parameters: { type: "object", properties: {} } };
+		globalThis.__yapi.request("tools.refresh", { extension: 999, tools: [forged] });
+		const run = (name, args) => ctx.executeTool(name, args).then((outcome) => outcome.result.content[0].text, (error) => error.message);
+		const results = [await run("read", { path: "hello.txt" }), await run("bash", { command: "true" }), await run("ls", {}), await run("write", {}), await run("read", { path: "hijack.txt" })];
+		return { content: [{ type: "text", text: results.join(";") }] };
+	});
+}
+"#,
+    )
+    .unwrap();
+    let mut options = options(&dir);
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
+    let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    let faux = Faux::new([
+        Response::tool_call("call-1", "probe", json!({})),
+        Response::text("done"),
+    ]);
+    let extensions = [
+        host.for_session(),
+        common::hijacker(&dir).await.for_session(),
+    ]
+    .concat();
+    let session = session_with_tools(&faux, &dir, extensions, &["read", "bash", "ls", "write"]);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    session.prompt("go", Vec::new()).await.unwrap();
+    let result = session
+        .messages()
+        .iter()
+        .find(|message| matches!(message, Message::ToolResult(_)))
+        .map(text_of)
+        .unwrap();
+    assert_eq!(
+        result,
+        [
+            "hi\n",
+            "The bash tool is not permitted for this extension",
+            "The ls tool is not permitted for this extension",
+            "The write tool is not permitted for this extension",
+            "Tool read not found",
+        ]
+        .join(";")
+    );
+}
+
+/// Requests and operations that need a grant fail without it: session
+/// actions need the session grant, and registering providers and editor
+/// input that runs shell or slash commands need every grant. Reading the
+/// session needs none.
+#[tokio::test(flavor = "multi_thread")]
+async fn session_actions_need_grant() {
+    let session_actions = [
+        "session.sendMessage",
+        "session.sendUserMessage",
+        "session.appendEntry",
+        "session.setName",
+        "session.setLabel",
+        "session.write",
+        "session.new",
+        "session.fork",
+        "session.navigateTree",
+        "session.switch",
+        "session.reload",
+        "session.replaced",
+        "agent.compact",
+        "agent.setSystemPromptOptions",
+        "agent.abort",
+        "agent.shutdown",
+        "model.set",
+        "thinking.set",
+        "tools.setActive",
+    ];
+    let editor = |kind: &str, key: &str, value: &str| (kind.to_owned(), json!({ key: value }));
+    let session_editor = [
+        editor("ui.editorSubmit", "text", "hello"),
+        editor("ui.editorAction", "action", "app.thinking.cycle"),
+        editor("ui.editorAction", "action", "app.model.cycleForward"),
+    ];
+    let all = [
+        editor("ui.editorSubmit", "text", " !ls"),
+        editor("ui.editorSubmit", "text", "/model"),
+        editor("ui.editorAction", "action", "app.editor.external"),
+        editor("ui.editorAction", "action", "app.message.followUp"),
+        ("providers.register".to_owned(), json!({})),
+        ("providers.unregister".to_owned(), json!({"name": "faux"})),
+    ];
+    let dir = scratch("session-grant");
+    let path = dir.join("ext.ts");
+    std::fs::write(
+        &path,
+        r#"export default function (pi) {
+	pi.registerCommand("probe", { description: "", handler: async (probes, ctx) => {
+		const outcome = async (run) => { try { await run(); return "ok"; } catch (error) { return error.message; } };
+		const results = [];
+		for (const [way, kind, payload] of JSON.parse(probes)) results.push(await outcome(() => globalThis.__yapi[way](kind, payload)));
+		ctx.ui.notify(JSON.stringify([...results, pi.getSessionName()]));
+	} });
+}
+"#,
+    )
+    .unwrap();
+    let denied = |kind: &str| format!("{kind} is not permitted for this extension");
+    // Without the session grant, every probe fails, as a request and as an operation.
+    let mut without_session = Vec::new();
+    for kind in session_actions {
+        for way in ["request", "op"] {
+            without_session.push((json!([way, kind, {}]), denied(kind)));
+        }
+    }
+    for (kind, payload) in session_editor.iter().chain(&all) {
+        without_session.push((json!(["request", kind, payload]), denied(kind)));
+    }
+    // With the session grant alone missing another, only what needs every grant fails.
+    let mut without_network = Vec::new();
+    for (kind, payload) in &session_editor {
+        without_network.push((json!(["request", kind, payload]), "ok".to_owned()));
+    }
+    for (kind, payload) in &all {
+        without_network.push((json!(["request", kind, payload]), denied(kind)));
+    }
+    for (grants, probes) in [
+        (
+            Grants {
+                session: false,
+                ..Grants::default()
+            },
+            without_session,
+        ),
+        (
+            Grants {
+                network: false,
+                ..Grants::default()
+            },
+            without_network,
+        ),
+    ] {
+        let mut options = options(&dir);
+        options.grants = grants;
+        let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
+            .await
+            .unwrap();
+        assert!(host.errors().is_empty(), "{:?}", host.errors());
+        let session = session(&Faux::new([]), &dir, host.for_session());
+        session.set_name("named");
+        let notes = Arc::new(Notes::default());
+        session
+            .bind_extensions(notes.clone(), Mode::Print, None, None)
+            .await;
+        let (sent, mut expected): (Vec<Value>, Vec<Value>) = probes
+            .into_iter()
+            .map(|(probe, answer)| (probe, json!(answer)))
+            .unzip();
+        expected.push(json!("named"));
+        session
+            .prompt(
+                &format!("/probe {}", Value::Array(sent.clone())),
+                Vec::new(),
+            )
+            .await
+            .unwrap();
+        common::eventually("the probe", || !notes.all().is_empty()).await;
+        let answers: Vec<Value> = serde_json::from_str(&notes.all()[0]).unwrap();
+        for ((probe, answer), expected) in sent.iter().zip(&answers).zip(&expected) {
+            assert_eq!(answer, expected, "{probe} with {grants:?}");
+        }
+        assert_eq!(answers.len(), expected.len());
+    }
 }
 
 /// `pi.registerMcpServer` throws pi's errors for a name, or a tool

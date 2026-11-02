@@ -50,8 +50,8 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-ai` | Wire APIs, model catalog and registry, cost, credentials, OAuth. | `pi-ai` |
 | `crates/yapi-agent` | Agent loop, tool execution, queues, events. | `pi-agent-core` |
 | `crates/yapi-tui` | Widgets, editor, Markdown with LaTeX and Mermaid, inline images, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
-| `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner, MCP. | `pi-coding-agent` core, `pi-mcp` |
-| `crates/yapi-ext` | wasmtime host, WIT bindings, capability grants, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
+| `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner and grants, MCP. | `pi-coding-agent` core, `pi-mcp` |
+| `crates/yapi-ext` | wasmtime host, WIT bindings, grant enforcement, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
 | `crates/yapi-mock` | Mock provider server: replays cassettes and records requests. | None |
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored JS. | None |
@@ -141,11 +141,11 @@ Module loading runs on the host, in `yapi-ext`:
   - all JS packages share one `yapi-js` instance;
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
-- Every package gets pi's default grants: filesystem, process, network, environment.
-- The host enforces grants: WASI preopens for files; grant checks for exec, fetch and environment.
+- Every package gets every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant.
+- The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration.
 - The host carries `pi.events` between instances, through a bounded queue per instance, so every extension hears every other's events, as in pi.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the host requests that still ignore them must check them: `tool.execute`, `codemode.execute`, the extension event bus and session actions.
+- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, two paths that still ignore them must check them: the extension event bus and event-hook results, such as a `tool_call` handler's input rewrite.
 
 ### Concurrency
 

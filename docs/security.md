@@ -11,7 +11,7 @@ Treat the commands and code the model generates as untrusted. Files, comments an
 | Component | Runs as | Access |
 |---|---|---|
 | Built-in tools and `!` commands | yapi's process and its child processes | Everything the user can access |
-| Extensions | WebAssembly instances | What their grants allow. For now, Pi's defaults: files, processes, network and environment. |
+| Extensions | WebAssembly instances | What their grants allow. For now, every grant, so as much as in Pi: files, processes, network, environment and session actions. |
 | Processes that extensions start, including subagents | Child processes, outside the sandbox | Everything the user can access |
 | MCP servers over stdio | Child processes | Everything the user can access |
 | MCP servers over HTTP | Remote services | What the server allows |
@@ -36,11 +36,35 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 ### Grants
 
-The host checks every file, process, network and environment access against the extension's grants. Without the file grant, an extension cannot import modules from files either. For now, every package receives Pi's default grants, which allow all four, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks an extension's file, process, network, environment and session access against its grants. Two paths do not check grants yet: the `pi.events` bus, and what event handlers return, such as a `tool_call` handler that rewrites a tool's input. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
-A process grant amounts to all four in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
+A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
-An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider's credentials with `ctx.modelRegistry.getProviderAuth`, `getApiKey`, `getApiKeyForProvider` or `getApiKeyAndHeaders`, and calls a model with `complete`, `stream`, `streamSimple`, `classify` or `generateImages`, only with the network grant. It runs the built-in `grep` and `find` tools only with the file, process and network grants, because they run ripgrep and fd and download them when they are missing.
+An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider's credentials with `ctx.modelRegistry.getProviderAuth`, `getApiKey`, `getApiKeyForProvider` or `getApiKeyAndHeaders`, and calls a model with `complete`, `stream`, `streamSimple`, `classify` or `generateImages`, only with the network grant. Without the network grant, `ctx.modelRegistry.refresh` refreshes model lists offline.
+
+Running a tool needs grants too, whether an extension creates a built-in tool such as `createBashTool` or calls a tool with `ctx.executeTool`:
+
+- The built-in `read`, `write`, `edit` and `ls` tools need the file grant, and `bash` needs the process grant.
+- The built-in `grep` and `find` tools need the file, process and network grants, because they run ripgrep and fd and download them when they are missing.
+- Any other tool needs every grant, because yapi cannot tell what it reaches. This covers another extension's tool, a tool that replaces a built-in one, and an MCP tool.
+
+A codemode script that an extension runs sees only the tools that the extension's grants allow. It calls models only with the network grant, and keeps what it stores only with the session grant.
+
+The session grant covers actions that start, steer or stop turns, or change the session, its files or the model's setup:
+
+- `pi.sendMessage`, `sendUserMessage`, `appendEntry`, `setSessionName`, `setLabel`, `setModel`, `setThinkingLevel` and `setActiveTools`
+- writes through `ctx.sessionManager`, and the system prompt options that a command edits
+- `ctx.compact`, `abort` and `shutdown`, and a command's `newSession`, `fork`, `navigateTree`, `switchSession` and `reload`
+- text that a custom editor submits
+- the editor actions that interrupt, exit or suspend yapi, clear the editor, cycle the model or the thinking level, show or hide thinking, restore queued messages, or start a new session
+
+Without the file grant, `switchSession` and the `parentSession` of `newSession` accept only session files in the session directory. Reading the session, such as its entries, name and model, needs no grant, and neither do dialogs, widgets and notifications. Pi has no session grant.
+
+Some actions need every grant, because they reach outside the sandbox or act with yapi's own access:
+
+- registering a provider or a wire API, because a provider's replies drive the agent's tools and its requests carry your credentials
+- custom editor text that starts with `!` or `/`, after any leading spaces, because it runs a shell or slash command
+- the editor actions that open the external editor, paste from the clipboard, or submit the editor's text as a follow-up
 
 ### Agent sessions and events
 

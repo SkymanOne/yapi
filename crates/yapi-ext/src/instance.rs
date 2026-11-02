@@ -22,6 +22,7 @@ use wasmtime::component::{Component, ResourceTable};
 use wasmtime::{CallHook, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxView, WasiView};
 use yapi_agent::tool::UpdateSink;
+use yapi_core::extensions::Grants;
 
 use crate::Error;
 use crate::engine::{Engine, Extension, yapi as wit};
@@ -31,42 +32,6 @@ use crate::requests::{AiStreams, Host};
 /// How long one guest export may compute, not counting time spent in host
 /// calls, before the instance is stopped.
 const CALL_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 60 });
-
-/// What an instance may reach. The default grants everything, as pi does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Grants {
-    /// Read and write files.
-    pub filesystem: bool,
-    /// Run processes.
-    pub process: bool,
-    /// Send HTTP requests and resolve host names.
-    pub network: bool,
-    /// Read environment variables.
-    pub environment: bool,
-}
-
-impl Default for Grants {
-    fn default() -> Grants {
-        Grants {
-            filesystem: true,
-            process: true,
-            network: true,
-            environment: true,
-        }
-    }
-}
-
-impl Grants {
-    /// Nothing outside the instance.
-    pub fn none() -> Grants {
-        Grants {
-            filesystem: false,
-            process: false,
-            network: false,
-            environment: false,
-        }
-    }
-}
 
 /// The session side of an instance: requests and operations the runtime does
 /// not answer itself, and console output.

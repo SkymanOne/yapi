@@ -1065,6 +1065,7 @@ async fn unregister_restores_builtin() {
 }
 
 const AUTH_EXTENSION: &str = r#"
+import { registerApiProvider } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
@@ -1077,6 +1078,9 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.registerProvider("fixture", provider("fixture-key"));
 	pi.registerProvider("broken", provider("!exit 1"));
+	let leaked = null;
+	pi.registerProvider("leak", { ...provider("leak-key"), async refreshModels(context) { leaked = context.credential?.key ?? null; } });
+	registerApiProvider({ api: "auth-api", stream: () => {}, streamSimple: () => {} });
 	pi.registerCommand("auth", {
 		description: "Reads provider credentials",
 		handler: async (_args, ctx) => {
@@ -1084,7 +1088,9 @@ export default function (pi: ExtensionAPI) {
 			const request = (provider) => ctx.modelRegistry.getApiKeyAndHeaders({ provider, id: "m" });
 			const model = { provider: "fixture", id: "m" };
 			const failure = (promise) => promise.catch((error) => error.message);
+			await ctx.modelRegistry.refresh({ providers: ["refreshing", "leak"], allowNetwork: true });
 			pi.appendEntry("auth", {
+				leaked,
 				apiKey: await failure(ctx.modelRegistry.getApiKey(model)),
 				classify: await failure(ctx.modelRegistry.classify(model, {})),
 				fixture: await read("fixture"),
@@ -1100,14 +1106,34 @@ export default function (pi: ExtensionAPI) {
 }
 "#;
 
+/// An extension with every grant whose provider reports whether a refresh
+/// reached the network.
+const REFRESHING_EXTENSION: &str = r#"
+export default function (pi) {
+	let online = false;
+	pi.registerProvider("refreshing", {
+		baseUrl: "http://127.0.0.1:9",
+		apiKey: "refreshing-key",
+		api: "openai-completions",
+		models: [{ id: "r", name: "R", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 }],
+		async refreshModels(context) {
+			if (context.allowNetwork) online = true;
+		},
+	});
+	pi.registerCommand("online", { handler: async () => pi.appendEntry("online", online) });
+}
+"#;
+
 /// `getProviderAuth` resolves pi's `AuthResult` for a provider, without its
 /// models' headers, and nothing for an unknown provider or one without
 /// credentials. `getApiKeyAndHeaders` resolves what a request to a model
-/// sends. These, `getApiKey` and the session's classifiers need the network
-/// grant.
+/// sends. These, `getApiKey`, the session's classifiers, the providers an
+/// extension registers and refreshing models over the network need the
+/// network grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_auth_needs_network() {
     let mut entries = Vec::new();
+    let mut online = Vec::new();
     for network in [true, false] {
         let dir = scratch(&format!("provider-auth-{network}"));
         let path = dir.join("auth.ts");
@@ -1116,7 +1142,7 @@ async fn provider_auth_needs_network() {
         std::fs::create_dir_all(dir.join("agent")).unwrap();
         std::fs::write(
             dir.join("agent/auth.json"),
-            r#"{"stored":{"type":"api_key","key":"stored-key"}}"#,
+            r#"{"stored":{"type":"api_key","key":"stored-key"},"leak":{"type":"api_key","key":"stored-leak-key"}}"#,
         )
         .unwrap();
         let mut options = options(&dir);
@@ -1125,7 +1151,23 @@ async fn provider_auth_needs_network() {
             .await
             .unwrap();
         assert!(host.errors().is_empty(), "{:?}", host.errors());
-        let session = AgentSession::new(session_config(&host, &dir));
+        // Providers and wire APIs need every grant.
+        assert_eq!(host.providers().len(), if network { 3 } else { 0 });
+        assert_eq!(host.apis().len(), usize::from(network));
+        let refreshing = dir.join("refreshing.ts");
+        std::fs::write(&refreshing, REFRESHING_EXTENSION).unwrap();
+        let refreshing =
+            ExtensionHost::load(&engine(), common::options(&dir), &[cli_source(&refreshing)])
+                .await
+                .unwrap();
+        let mut config = session_config(&host, &dir);
+        for provider in refreshing.providers() {
+            provider
+                .install(&mut config.registry, &mut config.apis)
+                .unwrap();
+        }
+        config.extensions.extend(refreshing.for_session());
+        let session = AgentSession::new(config);
         session
             .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
             .await;
@@ -1135,13 +1177,22 @@ async fn provider_auth_needs_network() {
         })
         .await;
         entries.extend(custom_entries(&session, "auth"));
+        session.prompt("/online", Vec::new()).await.unwrap();
+        eventually("the online entry", || {
+            !custom_entries(&session, "online").is_empty()
+        })
+        .await;
+        online.extend(custom_entries(&session, "online"));
     }
+    // Refreshing goes online only for an extension with the network grant.
+    assert_eq!(online, [json!(true), json!(false)]);
     let denied = "Network access is not permitted for this extension";
     let broken = "API key auth failed for provider broken: Failed to resolve API key for provider \"broken\" from shell command: exit 1";
     assert_eq!(
         entries,
         [
             json!({
+                "leaked": "stored-leak-key",
                 "apiKey": "fixture-key",
                 "classify": "Unknown classifier model \"fixture/m\"",
                 "fixture": {"auth": {"apiKey": "fixture-key", "headers": {"X-Team": "yapi"}}, "source": "configured API key"},
@@ -1153,6 +1204,7 @@ async fn provider_auth_needs_network() {
                 "storedRequest": {"ok": true},
             }),
             json!({
+                "leaked": null,
                 "apiKey": denied,
                 "classify": denied,
                 "fixture": denied,

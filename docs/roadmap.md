@@ -4,12 +4,12 @@ yapi implements Pi's coding agent. This page lists the work planned beyond it. T
 
 ## Capability-based sandboxing
 
-For now, every package receives Pi's default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:
+For now, every package receives every grant: file, process, network, environment and session access. The plan is to run each package with only the access it needs:
 
 - A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
 - File grants can be limited to paths and to read-only access, and network grants to hosts.
 - The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it.
-- Host features that do not check grants today, such as running other tools, the event bus and session actions, will check them.
+- The `pi.events` bus and what event handlers return, such as a rewritten tool input, will check grants. Today they do not.
 
 [Security model and sandboxing](security.md) describes the current model.
 

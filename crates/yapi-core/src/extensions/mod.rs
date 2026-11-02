@@ -9,9 +9,11 @@
 
 pub mod codemode;
 pub mod discovery;
+mod grants;
 pub mod tool_search;
 mod ui;
 
+pub use grants::Grants;
 pub use ui::{
     ComponentHost, CustomOptions, DialogOptions, ExtensionUi, NoUi, NotifyKind, Placement,
     RemoteComponent, TerminalState, Widget, WorkingIndicator,

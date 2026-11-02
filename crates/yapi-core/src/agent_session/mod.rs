@@ -2220,7 +2220,8 @@ impl AgentSession {
     /// the tool pipeline and hooks against [`AgentSession::callable_tools`],
     /// emits `tool_execution_*` events with `parentToolCallId`, and is recorded
     /// on the caller's tool result message. Failures come back as error
-    /// results. `updates` also receives the tool's partial results.
+    /// results. `updates` also receives the tool's partial results. Only
+    /// the tools `allowed` accepts are found, as the call resolves its tool.
     pub async fn execute_tool(
         &self,
         caller: &str,
@@ -2228,6 +2229,7 @@ impl AgentSession {
         args: Value,
         cancel: CancellationToken,
         updates: Option<UpdateSink>,
+        allowed: impl Fn(&RegisteredTool) -> bool + Send,
     ) -> ToolCallOutcome {
         let mut call = ToolCall {
             id: String::new(),
@@ -2258,7 +2260,8 @@ impl AgentSession {
         // pi awaits the start event, which lets the caller's queued progress
         // update, such as codemode's running row, go out before the call runs.
         tokio::task::yield_now().await;
-        let callable = self.callable_tools();
+        let mut callable = self.callable_tools();
+        callable.retain(|tool| allowed(tool));
         let exclusive = !started.holds_queue
             && callable.iter().any(|tool| {
                 tool.name() == name && tool.tool.execution_mode() == ExecutionMode::Sequential

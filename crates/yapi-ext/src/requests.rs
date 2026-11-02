@@ -24,6 +24,7 @@ use yapi_types::message::Message;
 use yapi_types::model::Model;
 use yapi_types::sync::lock;
 
+use crate::Grants;
 use crate::instance::Options;
 use crate::loader::Loader;
 use crate::{Bridge, ops};
@@ -357,8 +358,24 @@ impl AiStreams {
     }
 }
 
-fn denied(what: &str) -> String {
+pub(crate) fn denied(what: &str) -> String {
     format!("{what} is not permitted for this extension")
+}
+
+/// Whether `grants` allow running `tool`. The built-in `bash`, `grep` and
+/// `find` run processes, and the other built-in tools need file access. Any
+/// other tool, including one an extension registers under a built-in name,
+/// may reach anything, so it needs every grant.
+pub(crate) fn tool_granted(grants: &Grants, tool: &RegisteredTool) -> bool {
+    let all = *grants == Grants::default();
+    match tool.name() {
+        _ if tool.source.is_some() => all,
+        "bash" => grants.process,
+        // They run ripgrep and fd, which they download when missing.
+        "grep" | "find" => grants.filesystem && grants.process && grants.network,
+        "read" | "write" | "edit" | "ls" => grants.filesystem,
+        _ => all,
+    }
 }
 
 /// The offset of the zone `payload` names, in seconds east of UTC: the local
@@ -726,16 +743,6 @@ impl Host {
     /// allow running it.
     fn builtin_tool(&self, payload: &Value, run: bool) -> Result<RegisteredTool, String> {
         let name = text(payload, "name");
-        let grants = &self.options.grants;
-        let granted = match name {
-            "bash" => grants.process,
-            // They run ripgrep and fd, which they download when missing.
-            "grep" | "find" => grants.filesystem && grants.process && grants.network,
-            _ => grants.filesystem,
-        };
-        if run && !granted {
-            return Err(denied(&format!("The {name} tool")));
-        }
         let cwd = payload["cwd"]
             .as_str()
             .map_or_else(|| self.options.cwd.clone(), PathBuf::from);
@@ -744,8 +751,12 @@ impl Host {
             runtime: Arc::default(),
             bin_dir: yapi_core::config::bin_dir(&self.options.agent_dir),
         };
-        yapi_core::tools::builtin(name, &env)
-            .ok_or_else(|| format!("Unknown built-in tool: {name}"))
+        let tool = yapi_core::tools::builtin(name, &env)
+            .ok_or_else(|| format!("Unknown built-in tool: {name}"))?;
+        if run && !tool_granted(&self.options.grants, &tool) {
+            return Err(denied(&format!("The {name} tool")));
+        }
+        Ok(tool)
     }
 }
 
@@ -808,5 +819,45 @@ mod tests {
         let unknown = json!({ "zone": "Foo/Bar", "time": summer });
         assert_eq!(zone_offset("timezone.offset", &unknown), Value::Null);
         assert!(zone_offset("timezone.offset", &json!(summer)).is_i64());
+    }
+
+    /// Built-in tools need the grants of what they reach, and any other
+    /// tool, even one registered under a built-in name, needs every grant.
+    #[test]
+    fn grants_gate_tools() {
+        let env = ToolEnv {
+            cwd: PathBuf::new(),
+            runtime: Arc::default(),
+            bin_dir: PathBuf::new(),
+        };
+        let fs = Grants {
+            filesystem: true,
+            ..Grants::none()
+        };
+        let all_but_process = Grants {
+            process: false,
+            ..Grants::default()
+        };
+        // Each tool, extension or built-in, and whether none, fs, all but
+        // process, and all may run it.
+        let cases = [
+            ("read", false, [false, true, true, true]),
+            ("write", false, [false, true, true, true]),
+            ("edit", false, [false, true, true, true]),
+            ("ls", false, [false, true, true, true]),
+            ("bash", false, [false, false, false, true]),
+            ("grep", false, [false, false, false, true]),
+            ("find", false, [false, false, false, true]),
+            ("read", true, [false, false, false, true]),
+        ];
+        for (name, extension, expected) in cases {
+            let mut tool = yapi_core::tools::builtin(name, &env).unwrap();
+            if extension {
+                tool.source = Some(yapi_types::rpc::SourceInfo::default());
+            }
+            let granted = [Grants::none(), fs, all_but_process, Grants::default()]
+                .map(|grants| tool_granted(&grants, &tool));
+            assert_eq!(granted, expected, "{name}, extension {extension}");
+        }
     }
 }
