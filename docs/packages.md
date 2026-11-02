@@ -47,7 +47,13 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 ## Package manifests
 
-yapi reads the `pi` key of `package.json` to find a package's resources. An optional `yapi` key with the same shape takes precedence, so one package can ship a [native build](native-extensions.md) for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: `extensions`, `skills`, `prompts` and `themes`. yapi loads `.wasm` files from `extensions` as native extensions.
+yapi reads the `pi` key of `package.json` to find a package's resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:
+
+1. The `[package]` table of a `chest.toml` in the package.
+2. The `yapi` key of `package.json`, with the same shape as `pi`.
+3. The `pi` key.
+
+This lets one package ship a [native build](native-extensions.md) for yapi and JavaScript for Pi, and lets a package without `package.json` list its resources in `chest.toml`. When a `pi` key exists, or `[package]` or `yapi` lists some kind, a kind that no source lists provides nothing, as in Pi. Otherwise the package uses the conventional folders: `extensions`, `skills`, `prompts` and `themes`. A `yapi` key that holds only `capabilities` therefore hides neither the `pi` lists nor the folders. yapi loads `.wasm` files from `extensions` as native extensions.
 
 Pi's [package documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md) covers the manifest format.
 

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use yapi_types::rpc::SourceInfo;
 use yapi_types::settings::FilteredPackage;
 
+use crate::chest::manifest::package_meta;
 use crate::glob;
 use crate::tools::path::{relative, resolve_lexically};
 
@@ -592,32 +593,22 @@ fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceType) -> Vec<PathBu
     files
 }
 
-/// pi's `readPiManifest`: the `yapi` key of a package's `package.json`, else
-/// its `pi` key. A list is `None` when absent or not all strings.
+/// pi's `readPiManifest`, extended kind by kind: each resource list comes
+/// from the package's `chest.toml` `[package]`, else its `package.json`
+/// `yapi` key, else its `pi` key, as [`package_meta`] reads them. A list is
+/// `None` when no source lists the kind.
 #[derive(Default)]
 pub(crate) struct Manifest {
     lists: [Option<Vec<String>>; 4],
 }
 
 impl Manifest {
-    /// The manifest of the package at `root`; `None` when its `package.json`
-    /// is unreadable or declares neither key.
+    /// The manifest of the package at `root`; `None` when no source decides
+    /// its resources, so the conventional folders apply.
     pub(crate) fn read(root: &Path) -> Option<Manifest> {
-        let text = std::fs::read_to_string(root.join("package.json")).ok()?;
-        let package: serde_json::Value = yapi_types::json::parse(&text).ok()?;
-        let manifest = ["yapi", "pi"]
-            .iter()
-            .find_map(|key| package.get(*key).filter(|value| value.is_object()))?;
-        let list = |kind: ResourceType| {
-            let entries = manifest[kind.key()].as_array()?;
-            entries
-                .iter()
-                .map(|entry| entry.as_str().map(str::to_owned))
-                .collect()
-        };
-        Some(Manifest {
-            lists: ResourceType::ALL.map(list),
-        })
+        let meta = package_meta(root);
+        let lists = ResourceType::ALL.map(|kind| meta.resources.get(kind.key()).cloned());
+        meta.manifest.then_some(Manifest { lists })
     }
 
     /// The entries of `kind`, when listed.

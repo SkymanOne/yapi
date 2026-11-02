@@ -156,6 +156,74 @@ fn ignores_non_string_lists() {
     );
 }
 
+/// A `chest.toml` `[package]` loads a package without `package.json`, with
+/// the globs and `!` patterns of pi's lists, and each kind falls back on its
+/// own: a `yapi` key holding only capabilities hides no `pi` list.
+#[test]
+fn package_lists_resolve() {
+    let tmp = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let chest = tmp.join("package-chest");
+    write(
+        &chest,
+        &[
+            (
+                "chest.toml",
+                "[package]\nname = \"acme\"\nextensions = [\"ext/*.ts\", \"!ext/skip.ts\"]\nskills = [\"skills\"]\n",
+            ),
+            ("ext/a.ts", ""),
+            ("ext/skip.ts", ""),
+            ("skills/x/SKILL.md", ""),
+            ("prompts/p.md", ""),
+        ],
+    );
+    let resources = package_resources(&chest, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [chest.join("ext/a.ts")]
+    );
+    assert_eq!(
+        enabled(&resources, ResourceType::Skills),
+        [chest.join("skills/x/SKILL.md")]
+    );
+    // As with pi's lists, a kind none names provides nothing.
+    assert!(enabled(&resources, ResourceType::Prompts).is_empty());
+
+    let mixed = tmp.join("package-yapi-capabilities");
+    write(
+        &mixed,
+        &[
+            (
+                "package.json",
+                r#"{"yapi": {"capabilities": ["fs"]}, "pi": {"extensions": ["./pi.ts"]}}"#,
+            ),
+            ("pi.ts", ""),
+            ("native.wasm", ""),
+            ("p.md", ""),
+            ("extensions/other.ts", ""),
+        ],
+    );
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("pi.ts")]
+    );
+    // A `yapi` list still wins for its kind, and pi's lists fill the rest.
+    std::fs::write(
+        mixed.join("package.json"),
+        r#"{"yapi": {"extensions": ["./native.wasm"]}, "pi": {"extensions": ["./pi.ts"], "prompts": ["./p.md"]}}"#,
+    )
+    .unwrap();
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("native.wasm")]
+    );
+    assert_eq!(
+        enabled(&resources, ResourceType::Prompts),
+        [mixed.join("p.md")]
+    );
+}
+
 /// The enabled resources of `kind`, as paths.
 fn enabled(resolved: &ResolvedPaths, kind: ResourceType) -> Vec<PathBuf> {
     resolved

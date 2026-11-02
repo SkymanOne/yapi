@@ -126,7 +126,7 @@ impl Pinned {
 
 /// The package names along a pin's `path`, outermost first, which must be
 /// `node_modules/<name>` repeated, each `<name>` a valid package name.
-fn pin_names(path: &str) -> Result<Vec<String>, NpmError> {
+pub(crate) fn pin_names(path: &str) -> Result<Vec<String>, NpmError> {
     let refused = || NpmError::Refused(format!("Invalid package path: {path}"));
     let mut names = Vec::new();
     let mut parts = path.split('/');

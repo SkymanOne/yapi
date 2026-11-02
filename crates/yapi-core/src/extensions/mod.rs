@@ -9,10 +9,12 @@
 
 pub mod codemode;
 pub mod discovery;
+mod events;
 mod grants;
 pub mod tool_search;
 mod ui;
 
+pub use events::{EventPolicy, delivers};
 pub use grants::{Grants, receives, tool_granted};
 pub use ui::{
     ComponentHost, CustomOptions, DialogOptions, ExtensionUi, NoUi, NotifyKind, Placement,
