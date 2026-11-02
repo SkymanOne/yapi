@@ -375,6 +375,17 @@ impl Entry {
             return fail("`rev` must not start with `-`".into());
         }
         match (&self.path, self.git.is_some() || self.npm.is_some()) {
+            // An extension's folder is its module root, so it must be the package.
+            (Some(path), false)
+                if section == Section::Extensions
+                    && !Path::new(path)
+                        .components()
+                        .any(|part| matches!(part, Component::Normal(_))) =>
+            {
+                return fail(format!(
+                    "`path`: \"{path}\" must name the extension package, not a folder that holds the manifest"
+                ));
+            }
             (Some(path), false) => check_source(path, scope).or_else(fail)?,
             (Some(path), true) => {
                 let parts = Path::new(path).components();
@@ -932,6 +943,14 @@ extensions = ["extensions/index.ts"]
             (
                 "[skills]\nx = { git = \"https://github.com/a/b\", path = \"../x\" }",
                 "skills.x: `path`: \"../x\" must be a folder inside the package",
+            ),
+            (
+                "[extensions]\nx = { path = \".\" }",
+                "extensions.x: `path`: \".\" must name the extension package, not a folder that holds the manifest",
+            ),
+            (
+                "[extensions]\nx = { path = \"../..\" }",
+                "extensions.x: `path`: \"../..\" must name the extension package, not a folder that holds the manifest",
             ),
             (
                 "[skills]\nx = { git = \"https://github.com/a/b\", rev = \"--upload-pack=x\" }",

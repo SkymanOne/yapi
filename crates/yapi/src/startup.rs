@@ -10,6 +10,7 @@ use anyhow::{Context, bail};
 use yapi_ai::api::Apis;
 use yapi_ai::registry::ModelRegistry;
 use yapi_core::agent_session::{AgentSession, Replacement, Resources, SessionConfig};
+use yapi_core::chest::startup::FilePolicies;
 use yapi_core::config::{SESSION_DIR_ENV, agent_dir, default_session_dir};
 use yapi_core::extensions::discovery::is_native;
 use yapi_core::model_resolver::{
@@ -694,7 +695,16 @@ fn build(
     let resolved = if resolved_with_extensions {
         &extensions.resolved
     } else {
-        fresh = yapi_core::packages::resolve_resources(&project, &agent_dir, &settings, &BUILTINS);
+        // What chest installed, as the run's extensions saw it.
+        let chest = yapi_core::chest::startup::installed(&project, trusted);
+        fresh = yapi_core::packages::resolve_resources(
+            &project,
+            &agent_dir,
+            &settings,
+            &BUILTINS,
+            &chest.installed.packages,
+            &chest.installed.skills,
+        );
         &fresh
     };
     let merge = |cli: &[SourceInfo], kind: ResourceType, skip: bool, extra: Vec<SourceInfo>| {
@@ -933,11 +943,9 @@ pub async fn load_extensions(
         eprintln!("Warning: {message}");
         ControlFlow::Continue(())
     };
-    let policies = Policies::default();
-    let (extensions, flag_errors) =
-        start_extensions(args, &run, terminal_size, warn, None, &policies)
-            .await
-            .map_err(fail)?;
+    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, warn, None)
+        .await
+        .map_err(fail)?;
     let mut messages: Vec<String> = extensions
         .failures()
         .into_iter()
@@ -985,35 +993,18 @@ async fn session_extensions(
         uninstalled.push((source.to_owned(), message));
         ControlFlow::Continue(())
     };
-    let policies = Policies::default();
-    let (mut extensions, _) = start_extensions(
-        args,
-        &run,
-        terminal_size,
-        install_failed,
-        previous,
-        &policies,
-    )
-    .await
-    .map_err(anyhow::Error::msg)?;
+    let (mut extensions, _) = start_extensions(args, &run, terminal_size, install_failed, previous)
+        .await
+        .map_err(anyhow::Error::msg)?;
     extensions.issues.splice(0..0, uninstalled);
     Ok((extensions, run))
 }
 
-/// What an extension source runs with: its grants, its `pi.events` policy,
-/// and the package folder it loads modules from without file access.
-#[derive(Clone, Debug, Default, PartialEq)]
-struct Policy {
-    grants: yapi_ext::Grants,
-    events: yapi_core::extensions::EventPolicy,
-    root: Option<PathBuf>,
+/// `path` as one file, whichever way it is named; itself when it is not a
+/// file.
+fn canonical(path: &str) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
 }
-
-/// The policies of extension sources, by scope and source. A source without
-/// an entry keeps every grant and the shared event policy, as packages from
-/// `yapi install` keep pi's grants. Whoever fills it builds the sources and
-/// their policies in one place, so the keys match.
-type Policies = std::collections::HashMap<(String, String), Policy>;
 
 /// The sources one host runs, with what it runs them with.
 #[derive(Clone, Debug, PartialEq)]
@@ -1029,12 +1020,14 @@ struct Group {
 /// The hosts that run `sources`: one JS runtime for each grant set and event
 /// policy, in the order each first appears, since one JS realm cannot keep
 /// extensions apart, then one for each native extension.
-fn group_sources(sources: Vec<SourceInfo>, policies: &Policies) -> Vec<Group> {
+fn group_sources(sources: Vec<SourceInfo>, policies: &FilePolicies) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     let mut natives = Vec::new();
     for source in sources {
-        let key = (source.scope.clone(), source.source.clone());
-        let policy = policies.get(&key).cloned().unwrap_or_default();
+        let policy = policies
+            .get(&canonical(&source.path))
+            .cloned()
+            .unwrap_or_default();
         if is_native(Path::new(&source.path)) {
             natives.push(Group {
                 native: true,
@@ -1099,19 +1092,20 @@ fn serves(previous: &Group, next: &Group) -> bool {
         && (!next.native || first(previous) == first(next))
 }
 
-/// Installs missing packages, reporting failures to `install_failed` with
-/// their sources, and starts the extensions found in `run`'s directory with
-/// the command line's flag values, each with its entry in `policies`. The
-/// hosts of `previous` that serve the same group run their factories again
-/// instead, keeping the modules they imported. Returns the problems with the
-/// flags too; an error means no extension could start.
+/// Installs missing packages and puts back what chest manifests lock,
+/// reporting failures and chest's warnings to `install_failed` with their
+/// sources, and starts the extensions found in `run`'s directory with the
+/// command line's flag values, chest's each with its manifest's grants,
+/// event policy and module root. The hosts of `previous` that serve the
+/// same group run their factories again instead, keeping the modules they
+/// imported. Returns the problems with the flags too; an error means no
+/// extension could start.
 async fn start_extensions(
     args: &Args,
     run: &RunSettings,
     terminal_size: Option<(usize, usize)>,
-    install_failed: impl FnMut(&str, String) -> ControlFlow<()> + Send,
+    mut install_failed: impl FnMut(&str, String) -> ControlFlow<()> + Send,
     previous: Option<&Extensions>,
-    policies: &Policies,
 ) -> Result<(Extensions, Vec<String>), String> {
     let cwd = run.cwd.clone();
     // pi resolves `-e` paths against the directory yapi started in.
@@ -1127,7 +1121,13 @@ async fn start_extensions(
     // Installs missing packages; what they provide comes from pi's resolver.
     // Unlike pi, a failure does not stop the others (docs/compat.md).
     if !offline {
-        let _ = packages.install_missing(install_failed).await;
+        let _ = packages.install_missing(&mut install_failed).await;
+    }
+    // A reload reads the manifests again, so what they grant applies.
+    let chest =
+        yapi_core::chest::startup::load(run.settings.project_dir(), run.trusted, offline).await;
+    for (path, message) in &chest.problems {
+        let _ = install_failed(path, message.clone());
     }
     let mut issues = Vec::new();
     let mut missing = Vec::new();
@@ -1180,7 +1180,19 @@ async fn start_extensions(
         &agent_dir,
         packages.settings(),
         &BUILTINS,
+        &chest.installed.packages,
+        &chest.installed.skills,
     );
+    // chest's grants follow the files the resolver gave its packages.
+    let mut problems = Vec::new();
+    let chest_policies = yapi_core::chest::startup::file_policies(
+        &resolved,
+        &chest.installed.policies,
+        &mut problems,
+    );
+    for (source, message) in problems {
+        let _ = install_failed(&source, message);
+    }
     if !args.no_extensions {
         sources.extend(
             resolved
@@ -1189,8 +1201,23 @@ async fn start_extensions(
                 .cloned(),
         );
     }
+    // chest's grants follow its files, whichever other source names them.
+    let shadowed = resolved.shadowed.iter().filter(|_| !args.no_extensions);
+    let mut warned = std::collections::HashSet::new();
+    for source in sources.iter().chain(shadowed) {
+        let file = canonical(&source.path);
+        let chest = source.source.starts_with("chest:");
+        if !chest && chest_policies.contains_key(&file) && warned.insert(file) {
+            let message = format!(
+                "{} is also loaded from {}; chest's grants apply",
+                source.path, source.source
+            );
+            let _ = install_failed(&source.path, message);
+        }
+    }
+    // A file counts once, however its sources name it.
     let mut seen = std::collections::HashSet::new();
-    sources.retain(|source| seen.insert(source.path.clone()));
+    sources.retain(|source| seen.insert(canonical(&source.path)));
     let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
     // The hosts started here, which need the flags.
@@ -1208,7 +1235,7 @@ async fn start_extensions(
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;
-        for group in group_sources(sources, policies) {
+        for group in group_sources(sources, &chest_policies) {
             // A host of `previous` serves the same group again, keeping the
             // modules it imported.
             let reused = previous.and_then(|previous| {
@@ -1469,6 +1496,7 @@ mod builtin_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use yapi_core::chest::startup::Policy;
 
     /// A settings manager whose global settings are `json`, in `dir`.
     fn settings(dir: &Path, json: &str) -> SettingsManager {
@@ -1529,11 +1557,14 @@ mod tests {
             events: yapi_core::extensions::EventPolicy::isolated(),
             root: Some(PathBuf::from(root)),
         };
-        let policies: Policies = [
-            (("project".into(), "a".into()), narrow("/a")),
-            (("project".into(), "b".into()), narrow("/b")),
-            (("project".into(), "native".into()), narrow("/n")),
+        // By file, as chest gives them, whichever source names the file.
+        let policies: FilePolicies = [
+            ("/a/one.ts", narrow("/a")),
+            ("/a/four.ts", narrow("/a")),
+            ("/b/three.ts", narrow("/b")),
+            ("/n/ext.wasm", narrow("/n")),
         ]
+        .map(|(file, policy)| (PathBuf::from(file), policy))
         .into();
         let sources = vec![
             source("/a/one.ts", "a"),

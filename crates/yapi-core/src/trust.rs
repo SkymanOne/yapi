@@ -28,14 +28,15 @@ fn canonical(path: &Path) -> PathBuf {
 }
 
 /// Whether `cwd` has project resources that need trust: anything in `.yapi/` that
-/// changes behavior, or an `.agents/skills` directory in it or an ancestor (other
-/// than the user's own).
+/// changes behavior, a chest manifest that installs anything, or an
+/// `.agents/skills` directory in it or an ancestor (other than the user's own).
 pub fn requires_trust(cwd: &Path) -> bool {
     let cwd = canonical(cwd);
     let config = cwd.join(PROJECT_DIR);
     if TRUST_REQUIRING
         .iter()
         .any(|entry| config.join(entry).exists())
+        || crate::chest::startup::needs_trust(&cwd)
     {
         return true;
     }

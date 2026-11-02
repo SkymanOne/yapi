@@ -133,6 +133,8 @@ A package needs no manifest, because yapi loads every `.wasm` file in its `exten
 
 Commit or publish the built `.wasm` file, not only the Rust sources. yapi never compiles code during installation, because a build runs `build.rs` scripts and procedural macros outside the sandbox.
 
+A package can request capabilities and `pi.events` channels as a Pi package does, with `capabilities` and `events` in `[package]` of its `chest.toml` or in the `yapi` key. [Request capabilities](extensions.md#request-capabilities) explains how a project grants them.
+
 ## API
 
 | Item | Purpose |

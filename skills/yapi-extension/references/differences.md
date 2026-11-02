@@ -35,4 +35,5 @@ yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in 
 ## Packages
 
 - yapi reads a `yapi` key in `package.json` before the `pi` key.
+- A package from a chest manifest runs with only the capabilities its entry grants. Without `fs` it loads only its own files and dependencies, and those of the packages that share its runtime instance because they have the same grants and event policy. Calls outside its grants fail with "... is not permitted for this extension". Without `session` the results of its event handlers that would change the conversation are ignored. A package can request capabilities with `capabilities` and `events` in the `yapi` key.
 - Dependencies install with yapi's own npm client, without lifecycle scripts. It reads registries and credentials from `~/.npmrc` and `npm_config_*` variables, not from a project's `.npmrc` or npm's global configuration.

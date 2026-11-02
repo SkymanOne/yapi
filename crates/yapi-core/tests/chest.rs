@@ -17,9 +17,11 @@ use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use yapi_core::chest::hash::tree_hash;
+use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
 use yapi_core::packages::npm::Npm;
-use yapi_core::settings::Scope;
+use yapi_core::packages::resolve_resources;
+use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
 fn scratch(name: &str) -> PathBuf {
@@ -560,6 +562,20 @@ async fn npm_extension_locked() {
     assert_eq!(paths, ["node_modules/dep", "node_modules/ext"]);
     assert!(store.join("node_modules/ext/index.js").exists());
     assert!(!store.join("package.json").exists());
+    // Its index file, which no manifest lists, runs with the entry's
+    // grants and loads modules from the whole store folder.
+    let inputs = installed_inputs(&project, &mut Vec::new());
+    let (root, agent) = (dir.join("project"), dir.join("agent"));
+    let settings = SettingsManager::load(&agent, &root, false);
+    let packages = (&inputs.packages, &inputs.skills);
+    let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
+    let policies = file_policies(&resolved, &inputs.policies, &mut Vec::new());
+    let policy = &policies[&store.join("node_modules/ext/index.js")];
+    assert!(
+        policy.grants.filesystem && !policy.grants.network,
+        "{policy:?}"
+    );
+    assert_eq!(policy.root.as_ref(), Some(&store));
 
     // A mirror that serves only the tarballs rebuilds the same store.
     let mirror = MockServer::local_with(|base| {
@@ -617,6 +633,24 @@ async fn startup_skips_stale() {
     sync(&mut project, Mode::Resolve).await;
     let lock_path = project.lock_path();
     let (locked, ignored) = (read(&lock_path), read(&root.join(".gitignore")));
+
+    // Startup takes the lock's lock only to put something back, so one held
+    // elsewhere holds up neither a run with everything present nor one offline.
+    let held = root.join("chest.lock.lock");
+    std::fs::create_dir(&held).unwrap();
+    let manifest = skill_manifest(&remote, "v1");
+    let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Unchanged)]);
+    std::fs::remove_dir_all(root.join(".agents/skills/pdf")).unwrap();
+    let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
+    assert_eq!(
+        report.warnings,
+        ["chest.toml: skills.pdf could not be put back offline, so they were skipped"]
+    );
+    std::fs::remove_dir(&held).unwrap();
+    let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
 
     // An unlocked entry and a stale one are skipped, with one warning.
     let manifest = skill_manifest(&remote, "v2") + "notes = { path = \"notes\" }\n";
@@ -833,10 +867,29 @@ async fn path_source_notice() {
         let report = sync(&mut open(&dir, &patched), Mode::Resolve).await;
         assert_eq!(outcomes(&report)[0], ("skills.pdf", Outcome::Installed));
     }
+    // Startup leaves it where it is, without a lock entry.
+    let report = sync(&mut open(&dir, &patched), Mode::Startup { offline: false }).await;
+    assert_eq!(outcomes(&report)[0], ("skills.pdf", Outcome::Unchanged));
     assert_eq!(
         read(&dir.join("project/.agents/skills/pdf/SKILL.md")),
         "# local\n"
     );
     assert!(read(&dir.join("project/.gitignore")).contains("\n.agents/skills/pdf\n"));
     assert!(!read(&dir.join("project/chest.lock")).contains("pdf"));
+
+    // A git or npm extension loads modules from its store folder, whatever
+    // its `path`.
+    let project = open(
+        &dir,
+        "[extensions]\ngit = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"ext\" }\nnpm = { npm = \"ext\", path = \"ext\" }\n",
+    );
+    let store = dir.join("project/.yapi/chest");
+    assert_eq!(
+        project.extension_roots("git"),
+        Some((store.join("git"), store.join("git")))
+    );
+    assert_eq!(
+        project.extension_roots("npm"),
+        Some((store.join("npm/node_modules/ext"), store.join("npm")))
+    );
 }

@@ -81,6 +81,10 @@ pub struct ResolvedPaths {
     pub prompts: Vec<Resolved>,
     /// Themes.
     pub themes: Vec<Resolved>,
+    /// Extensions another source named again, each under that source,
+    /// which does not load them: by the same path, or by another path to
+    /// the same file.
+    pub shadowed: Vec<SourceInfo>,
 }
 
 impl ResolvedPaths {
@@ -109,17 +113,18 @@ impl ResolvedPaths {
         if path.is_empty() {
             return;
         }
+        let info = SourceInfo {
+            path,
+            ..metadata.clone()
+        };
         let list = self.of_mut(kind);
-        if list.iter().any(|resource| resource.info.path == path) {
+        if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
+            if kind == ResourceType::Extensions && listed.info.source != info.source {
+                self.shadowed.push(info);
+            }
             return;
         }
-        list.push(Resolved {
-            info: SourceInfo {
-                path,
-                ..metadata.clone()
-            },
-            enabled,
-        });
+        list.push(Resolved { info, enabled });
     }
 
     /// The enabled resources of `kind`, in order.
@@ -160,6 +165,9 @@ pub struct ResolveInput<'a> {
     pub project_trusted: bool,
     /// Installed packages, project entries first.
     pub packages: Vec<PackageInput>,
+    /// Skill folders a package manager placed, each one skill of the
+    /// package its source and scope name.
+    pub skills: Vec<PackageInput>,
     /// The user's `extensions`, `skills`, `prompts` and `themes` settings.
     pub user: [&'a [String]; 4],
     /// The project's.
@@ -983,6 +991,10 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
             metadata(&package.source, &package.scope, "package", None),
         );
     }
+    for skill in &input.skills {
+        let meta = metadata(&skill.source, &skill.scope, "package", None);
+        acc.add(ResourceType::Skills, &skill.root, &meta, true);
+    }
     for (index, kind) in ResourceType::ALL.into_iter().enumerate() {
         let project_meta = metadata("local", "project", "top-level", None);
         let user_meta = metadata("local", "user", "top-level", None);
@@ -1029,6 +1041,7 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
             project.unwrap_or_else(|| is_enabled_by_overrides(&path, user_ext, &input.agent_dir));
         acc.add(ResourceType::Extensions, &path, &meta, enabled);
     }
+    let mut shadowed = Vec::new();
     for kind in ResourceType::ALL {
         let list = acc.of_mut(kind);
         list.sort_by_key(|resource| precedence(&resource.info));
@@ -1036,9 +1049,14 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
         list.retain(|resource| {
             let canonical = std::fs::canonicalize(&resource.info.path)
                 .unwrap_or_else(|_| PathBuf::from(&resource.info.path));
-            seen.insert(canonical)
+            let first = seen.insert(canonical);
+            if !first && kind == ResourceType::Extensions {
+                shadowed.push(resource.info.clone());
+            }
+            first
         });
     }
+    acc.shadowed.extend(shadowed);
     acc
 }
 
@@ -1162,6 +1180,11 @@ pub fn package_inputs(
         let Some(source) = super::entry_source(&entry) else {
             continue;
         };
+        // Only chest names its packages `chest:`, so no settings entry
+        // passes for one.
+        if source.starts_with("chest:") {
+            continue;
+        }
         let filter: Option<FilteredPackage> = entry
             .is_object()
             .then(|| serde_json::from_value(entry.clone()).ok())

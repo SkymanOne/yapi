@@ -143,7 +143,7 @@ Module loading runs on the host, in `yapi-ext`:
   - JS packages with the same grants and event policy share one `yapi-js` instance, so each such set is its own instance;
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
-- Every package gets every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant.
+- Packages from `yapi install` and `-e` get every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant. Extensions from chest manifests get their entry's grants, event policy and module root through `chest::startup::Policies`.
 - The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration. The session in `yapi-core` applies event-hook results only within each extension's `Extension::grants()`.
 - The host carries `pi.events` between instances, through a bounded queue per instance. It routes each event by the instances' grants and `EventPolicy`: identical grants always share, and otherwise the sender's `send` and the receiver's `receive` must allow the channel. The default policy shares everything, as in pi. Guests report the channels they listen on, so blocked events for listeners are warned of.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.

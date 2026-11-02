@@ -45,6 +45,14 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 `yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`. Tab switches between global settings and the current project. `yapi config -l` starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, `yapi config` prints the error and exits. `PI_OFFLINE` skips these installs.
 
+## Project packages with chest
+
+chest keeps a project's skills, subagents and extensions in `chest.toml` and pins them in `chest.lock`, with a content hash for each entry. Use it when a project's packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Use `yapi install` for packages you want in every project, as in Pi. [Manage project packages with chest](chest.md) covers the commands, and the [chest.toml reference](chest-manifest.md) the manifest.
+
+At startup and on `/reload`, yapi reads the project's manifest when the project is [trusted](security.md#project-trust), and `~/.chest/chest.toml` in every project. It puts back entries that the lock pins and that are missing, unless `--offline` or `PI_OFFLINE` is set, in which case it warns about them. It loads the installed extensions as packages named `chest:<name>`. Only chest names packages this way, so yapi ignores a `packages` entry in settings that starts with `chest:`. An entry under `[patch]` needs no lock entry. A patched extension loads from its patch, and a patched skill from where `chest install` placed it, or else from its patch. An entry that is not locked, or whose lock no longer matches the manifest, is left out with a warning to run `chest install`. yapi never writes the lock.
+
+Each chest extension runs with the [capabilities](chest-manifest.md#capabilities) its entry grants and with its [event policy](chest-manifest.md#event-bus), while packages from `yapi install` keep every grant. A skill that chest places loads in yapi wherever the manifest puts it, even in a folder yapi does not read on its own, such as `.claude/skills`. `yapi config` lists chest's extensions and skills as a run loads them, marked as managed by chest. They are read-only there, because the manifest decides what loads. [Configure yapi](configuration.md#chest) lists the files.
+
 ## Package manifests
 
 yapi reads the `pi` key of `package.json` to find a package's resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:

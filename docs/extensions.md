@@ -54,6 +54,20 @@ yapi loads extensions from:
 
 `yapi -ne` starts without extensions, and `yapi config` turns single extensions off.
 
+A [chest](packages.md#project-packages-with-chest) manifest adds a project's extensions too, each with the capabilities its entry grants.
+
+### Request capabilities
+
+A package can say which capabilities it needs, from `fs`, `net`, `env`, `session` and `all`, and which `pi.events` channels it sends and hears. List them as `capabilities` and `events` in the `[package]` table of a `chest.toml` in the package, or as `capabilities` and `events` in the `yapi` key of `package.json`:
+
+```json
+{
+  "yapi": { "capabilities": ["fs"], "events": { "send": ["todo:*"], "receive": [] } }
+}
+```
+
+A request grants nothing. chest shows it when a project adds the package, and the project's manifest decides what the package gets. [Publish skills, subagents and extensions](chest.md#publish-skills-subagents-and-extensions) shows how consumers see it, and the [capability table](chest-manifest.md#capabilities) lists what each capability allows. A package from `yapi install` gets every grant whatever it requests. Test a package under the grants it requests, so a call it needs is not refused for its users. [Security](security.md#grants) lists what each capability allows.
+
 `/reload` loads every extension again from disk, so edits and rebuilt native extensions take effect. A new, resumed, forked or cloned session picks up added and removed extension files and installs packages added to settings, but keeps the extensions it already loaded until `/reload`. A session in another working folder loads every extension again.
 
 ## Write a Pi extension

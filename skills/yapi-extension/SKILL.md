@@ -100,6 +100,8 @@ A package is a folder or npm package. Without a manifest, yapi loads every exten
 - Install for testing: `yapi install ./my-extension` (add `-l` for the project only). `yapi list` tags it `[npm]`, `[wasm]` or both.
 - Share it from git (`yapi install git:github.com/you/my-extension`) or npm (`yapi install npm:my-extension`).
 - Commit or publish the built `.wasm` file. yapi never compiles code during installation.
+- Request the capabilities the extension needs, from `fs`, `net`, `env`, `session` and `all`, and the `pi.events` channels it sends and hears, with `capabilities` and `events` in the `yapi` key or in `[package]` of a `chest.toml`. A request grants nothing: a project's chest manifest grants them, and `yapi install` grants everything.
+- Test under the grants you request: add the package to a test project's `chest.toml` with only those capabilities, then try every command and tool. A refused call reads "... is not permitted for this extension".
 
 ## Before you finish
 

@@ -26,6 +26,14 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 chest warns that entries are not locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` does not pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`. `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. See [Lock and reproduce](chest.md#lock-and-reproduce).
 
+## An extension's call is refused
+
+An error such as "Network access is not permitted for this extension" means the extension lacks a grant. Packages from `yapi install` have every grant. For an extension from a [chest](packages.md#project-packages-with-chest) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
+
+## An extension misses events
+
+A warning in the extension output that starts with `add "<channel>" to events.send of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
+
 ## Reporting a problem
 
 Run `/bug`, or `/bug <description>`, to report a problem:

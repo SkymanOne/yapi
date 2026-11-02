@@ -70,12 +70,15 @@ pub fn install_location(source: &Source, base: &Path) -> PathBuf {
 /// `project_root` and of `agent_dir`: every resource of installed packages,
 /// settings entries and the discovered directories, each enabled or not,
 /// with `builtins` as the built-in extensions. Packages that are not
-/// installed are left out.
+/// installed are left out. `extra` packages, such as chest's, follow the
+/// settings' packages, and `skills` are skill folders placed for them.
 pub fn resolve_resources(
     project_root: &Path,
     agent_dir: &Path,
     settings: &SettingsManager,
     builtins: &[&str],
+    extra: &[resolve::PackageInput],
+    skills: &[resolve::PackageInput],
 ) -> resolve::ResolvedPaths {
     let project_dir = project_root.join(PROJECT_DIR);
     let base = |scope: &str| {
@@ -85,12 +88,13 @@ pub fn resolve_resources(
             agent_dir.to_path_buf()
         }
     };
-    let packages = resolve::package_inputs(
+    let mut packages = resolve::package_inputs(
         &settings_packages(settings, Scope::Project),
         &settings_packages(settings, Scope::Global),
         base,
         |source, scope| install_location(source, &base(scope)),
     );
+    packages.extend(extra.iter().cloned());
     let user = resolve::settings_lists(settings.document(Scope::Global));
     let project = resolve::settings_lists(settings.document(Scope::Project));
     resolve::resolve(&resolve::ResolveInput {
@@ -100,6 +104,7 @@ pub fn resolve_resources(
         home: crate::tools::path::home_dir(),
         project_trusted: settings.project_trusted(),
         packages,
+        skills: skills.to_vec(),
         user: [&user[0], &user[1], &user[2], &user[3]],
         project: [&project[0], &project[1], &project[2], &project[3]],
         builtins,

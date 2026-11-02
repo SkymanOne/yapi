@@ -9,6 +9,7 @@ pub mod lock;
 pub mod manifest;
 pub mod place;
 mod record;
+pub mod startup;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -343,7 +344,7 @@ impl Project {
         &mut self,
         mode: Mode,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
         self.path_notices(&mut report);
@@ -351,6 +352,12 @@ impl Project {
             // Frozen writes nothing, not even the lock's lock.
             self.lock = self.read_lock()?;
             self.check_frozen(&mut report)?;
+            return Ok(report);
+        }
+        // Startup takes the lock's lock only to put something back.
+        if let Mode::Startup { offline } = mode
+            && self.startup_without_lock(offline, &mut report)?
+        {
             return Ok(report);
         }
         let lock_path = self.lock_path();
@@ -422,7 +429,7 @@ impl Project {
         mode: &Mode,
         old: &Lock,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
         report: &mut Report,
     ) -> Result<(Vec<Staged>, fetch::Work), ChestError> {
         if let Mode::Update(names) = mode
@@ -458,7 +465,10 @@ impl Project {
                     stale = true;
                     Some(Outcome::Skipped)
                 }
-                Mode::Startup { .. } if present => Some(Outcome::Unchanged),
+                // A patched entry loads from its patch, as without the lock.
+                Mode::Startup { .. } if present || target.patch.is_some() => {
+                    Some(Outcome::Unchanged)
+                }
                 Mode::Startup { offline: true } => Some(Outcome::Skipped),
                 _ if fresh && present && !local && !named => Some(Outcome::Unchanged),
                 _ => None,
@@ -494,10 +504,7 @@ impl Project {
             }
         }
         if stale {
-            report.warnings.push(format!(
-                "{}: entries that are not locked, or whose lock is stale, were skipped: run `chest install`",
-                self.file_name()
-            ));
+            report.warnings.push(self.stale_warning());
         }
         Ok((staged, work))
     }
@@ -955,18 +962,104 @@ impl Project {
         problems
     }
 
-    /// The folder installed extension `name` loads from: its store folder,
-    /// the npm package inside it, or its path source. `None` for an entry
-    /// that is not an installed extension.
+    /// The folder installed extension `name` loads from: its `[patch]`
+    /// path, its store folder, the npm package inside it, or its path
+    /// source. `None` for an entry that is not an installed extension.
     pub fn installed_root(&self, name: &str) -> Option<PathBuf> {
+        self.extension_roots(name)
+            .map(|(root, _)| root)
+            .filter(|root| root.exists())
+    }
+
+    /// Where extension `name` loads from, as [`Project::installed_root`]
+    /// says whether or not it exists, and the folder that holds the package
+    /// and its own dependencies, which it may load modules from: the
+    /// `[patch]` or path source, or `<store>/<name>` for git and npm.
+    pub fn extension_roots(&self, name: &str) -> Option<(PathBuf, PathBuf)> {
         let entry = self.manifest.extensions.get(name)?;
-        let root = match (&entry.npm, &entry.git, &entry.path) {
-            (Some(npm), _, _) => self.store().join(name).join("node_modules").join(npm),
-            (None, Some(_), _) => self.store().join(name),
-            (None, None, Some(path)) => self.resolve(path),
-            (None, None, None) => return None,
+        let patch = self
+            .manifest
+            .patch
+            .get(name)
+            .and_then(|patch| patch.path.as_deref());
+        let store = self.store().join(name);
+        Some(
+            match (patch, &entry.npm, &entry.git, entry.path.as_deref()) {
+                (Some(path), ..) | (None, None, None, Some(path)) => {
+                    let root = self.resolve(path);
+                    (root.clone(), root)
+                }
+                (None, Some(npm), _, _) => (store.join("node_modules").join(npm), store),
+                (None, None, Some(_), _) => (store.clone(), store),
+                (None, None, None, None) => return None,
+            },
+        )
+    }
+
+    /// For [`Mode::Startup`]: when nothing must be put back, because every
+    /// locked, current entry is present or `offline` leaves it missing, the
+    /// report of what a sync would find, without taking the lock's lock.
+    /// Whether it gave the report.
+    fn startup_without_lock(
+        &mut self,
+        offline: bool,
+        report: &mut Report,
+    ) -> Result<bool, ChestError> {
+        self.lock = self.read_lock()?;
+        let Some(lock) = &self.lock else {
+            report.warnings.push(format!(
+                "{} has no lock, so nothing from it was installed: run `chest install`",
+                self.file_name()
+            ));
+            return Ok(true);
         };
-        root.exists().then_some(root)
+        let mut entries = Vec::new();
+        let mut stale = false;
+        let mut missing = Vec::new();
+        for (section, name, entry) in self.entries() {
+            let locked = lock
+                .section(section)
+                .iter()
+                .find(|locked| &locked.name == name);
+            let patched = self.manifest.patch.contains_key(name);
+            let current = patched || locked.is_some_and(|locked| fresh(entry, locked));
+            // A patched entry loads from its patch, or where `chest install`
+            // put it.
+            let present = patched || locked.is_some_and(|locked| self.present(section, locked));
+            let id = format!("{}.{name}", section.key());
+            let outcome = match (current, present) {
+                (false, _) => {
+                    stale = true;
+                    Outcome::Skipped
+                }
+                (true, true) => Outcome::Unchanged,
+                (true, false) if offline => {
+                    missing.push(id.clone());
+                    Outcome::Skipped
+                }
+                (true, false) => return Ok(false),
+            };
+            entries.push((id, outcome));
+        }
+        report.entries = entries;
+        if stale {
+            report.warnings.push(self.stale_warning());
+        }
+        if !missing.is_empty() {
+            report.warnings.push(format!(
+                "{}: {} could not be put back offline, so they were skipped",
+                self.file_name(),
+                missing.join(", ")
+            ));
+        }
+        Ok(true)
+    }
+
+    fn stale_warning(&self) -> String {
+        format!(
+            "{}: entries that are not locked, or whose lock is stale, were skipped: run `chest install`",
+            self.file_name()
+        )
     }
 
     /// Checks every installed copy of a locked git or npm entry: canonical

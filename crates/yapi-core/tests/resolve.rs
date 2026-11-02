@@ -112,6 +112,7 @@ fn resolves_resources_as_pi() {
             home: root.join("home"),
             project_trusted: trusted,
             packages,
+            skills: Vec::new(),
             user: [&user[0][..], &user[1][..], &user[2][..], &user[3][..]],
             project: [
                 &project_lists[0][..],
@@ -222,6 +223,21 @@ fn package_lists_resolve() {
         enabled(&resources, ResourceType::Prompts),
         [mixed.join("p.md")]
     );
+
+    // A settings entry cannot pass for one of chest's packages.
+    std::fs::create_dir_all(tmp.join("chest:package-chest")).unwrap();
+    let entries = [json!("chest:package-chest"), json!("package-chest")];
+    let inputs = package_inputs(
+        &entries,
+        &[],
+        |_| tmp.to_path_buf(),
+        |source, _| match source {
+            Source::Local { path } => local_path(path, tmp),
+            _ => PathBuf::new(),
+        },
+    );
+    let sources: Vec<&str> = inputs.iter().map(|input| input.source.as_str()).collect();
+    assert_eq!(sources, ["package-chest"]);
 }
 
 /// The enabled resources of `kind`, as paths.
