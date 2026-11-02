@@ -193,7 +193,7 @@ pub(super) fn items(
         return Ok(vec![(placed_name(section, name), item)]);
     }
     let key = section.key();
-    let meta = package_meta(package);
+    let meta = package_meta(package)?;
     let listed = meta.resources.get(key);
     let files = if meta.manifest && listed.is_none() {
         Vec::new()

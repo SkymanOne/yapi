@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::bail;
-use yapi_core::chest::manifest::package_meta;
+use yapi_core::chest::manifest::{PackageMeta, package_meta};
 use yapi_core::chest::wasm::{Capabilities, capabilities, covers};
 use yapi_core::extensions::Grants;
 use yapi_core::packages::resolve::{ResourceType, package_resources};
@@ -76,6 +76,18 @@ pub fn inspect(item: &Path) -> Inspected {
     inspected
 }
 
+/// The folder of the package that holds `item`: `item` itself when it is a
+/// folder, else the nearest folder above it with a `chest.toml` or
+/// `package.json`.
+fn package_root(item: &Path) -> Option<&Path> {
+    if item.is_dir() {
+        return Some(item);
+    }
+    let manifest =
+        |dir: &Path| dir.join("chest.toml").is_file() || dir.join("package.json").is_file();
+    item.ancestors().skip(1).find(|dir| manifest(dir))
+}
+
 /// Runs `chest check` on the package or extension file at `path`: an
 /// error for each capability an extension uses that the package does not
 /// request and for each WASI import yapi does not support, a warning for
@@ -85,7 +97,10 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
     if !item.exists() {
         bail!("{} does not exist", path.display());
     }
-    let meta = package_meta(&item);
+    let meta = match package_root(&item) {
+        Some(root) => package_meta(root)?,
+        None => PackageMeta::default(),
+    };
     let requested = Grants::parse(&meta.capabilities)
         .map_err(|err| anyhow::anyhow!("the package's `capabilities`: {err}"))?;
     let inspected = inspect(&item);

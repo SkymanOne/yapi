@@ -296,8 +296,14 @@ async fn update(target: &Target, names: Vec<String>, npm: &mut Npm) -> anyhow::R
     let project = sync(target, Mode::Update(names), npm).await?;
     for (name, entry) in &project.manifest.extensions {
         if let Some(root) = project.installed_root(name) {
-            let warnings = requests(&project.manifest, entry, &package_meta(&root));
-            for warning in warnings {
+            let meta = match package_meta(&root) {
+                Ok(meta) => meta,
+                Err(err) => {
+                    say(&format!("warning: extensions.{name}: {err}"));
+                    continue;
+                }
+            };
+            for warning in requests(&project.manifest, entry, &meta) {
                 say(&format!("warning: extensions.{name} {warning}"));
             }
         }
@@ -387,9 +393,14 @@ fn list(target: &Target) -> anyhow::Result<()> {
             };
             out(&format!("    capabilities: {shown}"));
         }
-        let root = project.installed_root(name);
-        if let Some(description) = root.and_then(|root| package_meta(&root).description) {
-            out(&format!("    {description}"));
+        match project.installed_root(name).map(|root| package_meta(&root)) {
+            Some(Ok(meta)) => {
+                if let Some(description) = meta.description {
+                    out(&format!("    {description}"));
+                }
+            }
+            Some(Err(err)) => say(&format!("warning: {id}: {err}")),
+            None => {}
         }
     }
     Ok(())

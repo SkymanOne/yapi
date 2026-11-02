@@ -660,17 +660,24 @@ pub struct PackageMeta {
 }
 
 /// What the package at `root` says about itself, as [`PackageMeta`]
-/// describes. A `chest.toml` or `package.json` that does not read or parse
-/// counts as absent.
-pub fn package_meta(root: &Path) -> PackageMeta {
+/// describes. `Err` when its `chest.toml` does not parse, or its
+/// `[package]` holds what [`Package`] does not. A `chest.toml` that does not
+/// read, and a `package.json` that does not read or parse, count as absent,
+/// as pi treats a `package.json`.
+pub fn package_meta(root: &Path) -> Result<PackageMeta, ChestError> {
     #[derive(Deserialize)]
     struct File {
         package: Option<Package>,
     }
-    let package = std::fs::read_to_string(root.join("chest.toml"))
-        .ok()
-        .and_then(|text| toml_edit::de::from_str::<File>(&text).ok())
-        .and_then(|file| file.package);
+    let path = root.join("chest.toml");
+    let package = match std::fs::read_to_string(&path) {
+        Ok(text) => {
+            toml_edit::de::from_str::<File>(&text)
+                .map_err(|err| invalid(format!("{}: {err}", path.display())))?
+                .package
+        }
+        Err(_) => None,
+    };
     let json: Value = std::fs::read_to_string(root.join("package.json"))
         .ok()
         .and_then(|text| yapi_types::json::parse(&text).ok())
@@ -701,7 +708,7 @@ pub fn package_meta(root: &Path) -> PackageMeta {
         own.and_then(|package| pick(package).clone())
             .or_else(|| text(key))
     };
-    PackageMeta {
+    Ok(PackageMeta {
         name: field(|package| &package.name, "name"),
         version: field(|package| &package.version, "version"),
         description: field(|package| &package.description, "description"),
@@ -719,7 +726,7 @@ pub fn package_meta(root: &Path) -> PackageMeta {
         }),
         resources,
         manifest: pi.is_some() || listed,
-    }
+    })
 }
 
 /// npm's `author`: `"Name <email> (url)"` as written, or `{ name, email }`.
@@ -1147,7 +1154,7 @@ capabilities = []
             r#"{"name": "pkg", "version": "1.0.0", "description": "From npm", "author": {"name": "Ada", "email": "ada@acme.dev"},
                 "pi": {"extensions": ["./pi.ts"], "skills": ["pi-skills"], "capabilities": ["all"]}}"#,
         );
-        let meta = package_meta(&dir);
+        let meta = package_meta(&dir).unwrap();
         assert_eq!(meta.name.as_deref(), Some("pkg"));
         assert_eq!(meta.authors, ["Ada <ada@acme.dev>"]);
         assert!(meta.capabilities.is_empty());
@@ -1165,7 +1172,7 @@ capabilities = []
             "chest.toml",
             "[skills]\nignored = { path = \"x\" }\n[package]\ndescription = \"From chest\"\nprompts = [\"chest-prompts\"]\nagents = [\"agents/*.md\"]\n",
         );
-        let meta = package_meta(&dir);
+        let meta = package_meta(&dir).unwrap();
         assert_eq!(meta.name.as_deref(), Some("pkg"));
         assert_eq!(meta.version.as_deref(), Some("1.0.0"));
         assert_eq!(meta.description.as_deref(), Some("From chest"));
@@ -1189,23 +1196,26 @@ capabilities = []
             "chest.toml",
             "[package]\ncapabilities = []\nauthors = [\"Bo\"]\n",
         );
-        let meta = package_meta(&dir);
+        let meta = package_meta(&dir).unwrap();
         assert!(meta.capabilities.is_empty());
         assert_eq!(meta.authors, ["Bo"]);
 
         // Lists only of capabilities decide nothing, so the folders apply.
         std::fs::remove_file(dir.join("chest.toml")).unwrap();
         write("package.json", r#"{"yapi": {"capabilities": ["fs"]}}"#);
-        let meta = package_meta(&dir);
+        let meta = package_meta(&dir).unwrap();
         assert_eq!(meta.capabilities, ["fs"]);
         assert!(meta.resources.is_empty() && !meta.manifest);
-        // A broken [package] counts as absent.
+        // A broken [package] is an error that names the file.
         write(
             "chest.toml",
             "[package]\nauthor = \"Ada\"\nskills = [\"s\"]\n",
         );
-        assert!(!package_meta(&dir).manifest);
+        let broken = package_meta(&dir).unwrap_err().to_string();
+        let file = dir.join("chest.toml").display().to_string();
+        assert!(broken.starts_with(&file), "{broken}");
+        assert!(broken.contains("unknown field `author`"), "{broken}");
         std::fs::remove_dir_all(&dir).unwrap();
-        assert_eq!(package_meta(&dir), PackageMeta::default());
+        assert_eq!(package_meta(&dir).unwrap(), PackageMeta::default());
     }
 }

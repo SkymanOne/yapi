@@ -184,6 +184,6 @@ Every command takes `-g` (the global manifest) and `--manifest <path>`. Without 
 | `chest outdated` | | Lists entries whose source has something newer. |
 | `chest verify` | | Checks installed copies against the lock. |
 | `chest import` | `--settings` or `--skills-lock`, `[path]` | Turns settings.json packages or a skills-lock.json into entries. |
-| `chest check [path]` | | Compares the capabilities the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests. `path` is the current folder by default. Reads no manifest. |
+| `chest check [path]` | | Compares the capabilities the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests in its `chest.toml` or `package.json`. `path` is the current folder by default. A `.wasm` file belongs to the nearest folder above it with either file. Fails when the package's `[package]` does not parse. |
 
 chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error. Questions go to stderr and are asked only at a terminal.

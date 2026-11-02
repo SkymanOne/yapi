@@ -772,6 +772,21 @@ fn chest_check_mismatch() {
             .contains("note: index.ts is a JS or TS extension, which yapi checks only as it runs"),
         "{report}"
     );
+    // A `.wasm` file is compared with the package that holds it.
+    let report = text(&ok(&scratch, &["check", "extensions/hello.wasm"]));
+    assert_eq!(
+        report,
+        "hello.wasm uses `session` (SDK feature `session`)\n"
+    );
+    // A `[package]` that does not parse is an error, not an empty request.
+    write(&package, "[package]\nauthor = \"Ada\"\n");
+    let broken = chest(&scratch, &["check", "extensions/hello.wasm"], &[]);
+    assert_eq!(broken.status.code(), Some(1), "{}", text(&broken));
+    assert!(
+        text(&broken).contains("unknown field `author`"),
+        "{}",
+        text(&broken)
+    );
 
     // `yapi new`'s template, whose source is the `hello` example, passes.
     let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../yapi/templates/extension");

@@ -141,6 +141,8 @@ For each kind of resource, the first of these that lists it wins: the package's 
 
 Capabilities come from `[package]`, else `yapi.capabilities`, else none. Name, version, description and authors come from `[package]`, else from `package.json`.
 
+chest reports a package's `chest.toml` that does not parse, or a `[package]` with an unknown key, and `chest check` and `chest add` fail on it. yapi warns about it and resolves the package as if the file were absent.
+
 ## `chest.lock`
 
 chest writes the lock. Do not edit it. It holds `version = 1` and one table per entry, in `[[skill]]`, `[[agent]]` and `[[extension]]`, sorted by name:

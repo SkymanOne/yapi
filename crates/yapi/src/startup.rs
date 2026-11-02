@@ -1190,6 +1190,9 @@ async fn start_extensions(
     let mut sources: Vec<SourceInfo> = Vec::new();
     for (root, local) in &requested {
         let found = yapi_core::packages::resolve::package_resources(root, None, *local);
+        for (folder, message) in &found.problems {
+            let _ = install_failed(folder, message.clone());
+        }
         let cli = |info: &SourceInfo| yapi_core::resources::cli_source(Path::new(&info.path));
         sources.extend(found.enabled(ResourceType::Extensions).map(cli));
         skills.extend(found.enabled(ResourceType::Skills).map(cli));
@@ -1207,6 +1210,9 @@ async fn start_extensions(
         &chest.installed.packages,
         &chest.installed.skills,
     );
+    for (folder, message) in &resolved.problems {
+        let _ = install_failed(folder, message.clone());
+    }
     // chest's grants follow the files the resolver gave its packages.
     let mut problems = Vec::new();
     let chest_policies = yapi_core::chest::startup::file_policies(

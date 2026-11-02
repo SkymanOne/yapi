@@ -188,6 +188,19 @@ fn package_lists_resolve() {
     );
     // As with pi's lists, a kind none names provides nothing.
     assert!(enabled(&resources, ResourceType::Prompts).is_empty());
+    assert!(resources.problems.is_empty());
+    // A `[package]` that does not parse is reported, and the folders apply.
+    std::fs::write(chest.join("chest.toml"), "[package]\nauthor = \"Ada\"\n").unwrap();
+    let resources = package_resources(&chest, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Prompts),
+        [chest.join("prompts/p.md")]
+    );
+    let [(folder, message)] = &resources.problems[..] else {
+        panic!("{:?}", resources.problems);
+    };
+    assert_eq!(folder, &chest.display().to_string());
+    assert!(message.contains("unknown field `author`"), "{message}");
 
     let mixed = tmp.join("package-yapi-capabilities");
     write(

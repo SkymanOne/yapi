@@ -136,7 +136,7 @@ fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
     if item.join("SKILL.md").is_file() {
         return Ok(Section::Skills);
     }
-    let meta = package_meta(&item);
+    let meta = package_meta(&item)?;
     let lists = |kind: &str| {
         meta.resources.contains_key(kind) || !meta.manifest && item.join(kind).is_dir()
     };
@@ -398,7 +398,7 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
             Some(section) => section,
             None => infer(&fetched.root, &entry)?,
         };
-        let meta = package_meta(&fetched.root);
+        let meta = package_meta(&fetched.root)?;
         show(&meta);
         nested(&fetched.root, &name);
         if section == Section::Extensions {

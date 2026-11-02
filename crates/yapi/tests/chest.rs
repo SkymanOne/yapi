@@ -384,7 +384,8 @@ async fn chest_manifest_env() {
 }
 
 /// A native chest extension that uses a capability its entry does not grant
-/// is warned of once at startup, and one granted it is not.
+/// is warned of once at startup, and one granted it is not. So is a package
+/// whose `[package]` does not parse.
 #[tokio::test(flavor = "multi_thread")]
 async fn native_used_ungranted_warns() {
     let home = common::scratch("chest-native");
@@ -398,12 +399,20 @@ async fn native_used_ungranted_warns() {
     }
     let manifest = "[extensions]\ndenied = { path = \"denied.wasm\" }\ngranted = { path = \"granted.wasm\", capabilities = [\"session\"] }\n";
     install(&home, &[], "chest.toml", manifest).await;
+    let broken = home.join("broken");
+    std::fs::create_dir_all(&broken).unwrap();
+    std::fs::write(broken.join("chest.toml"), "[package]\nauthor = \"Ada\"\n").unwrap();
     let output = common::yapi(&home)
-        .args(["--approve", "--help"])
+        .args(["--approve", "-e", "broken", "--help"])
         .output()
         .unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     let warning = "denied.wasm uses `session` (SDK feature `session`), which its chest entry does not grant, so those calls will be denied";
     assert_eq!(stderr.matches(warning).count(), 1, "{stderr}");
     assert!(!stderr.contains("granted.wasm uses"), "{stderr}");
+    assert_eq!(
+        stderr.matches("unknown field `author`").count(),
+        1,
+        "{stderr}"
+    );
 }
