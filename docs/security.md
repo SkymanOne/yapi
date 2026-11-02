@@ -58,13 +58,21 @@ The session grant covers actions that start, steer or stop turns, or change the 
 - text that a custom editor submits
 - the editor actions that interrupt, exit or suspend yapi, clear the editor, cycle the model or the thinking level, show or hide thinking, restore queued messages, or start a new session
 
-Without the file grant, `switchSession` and the `parentSession` of `newSession` accept only session files in the session directory. Reading the session, such as its entries, name and model, needs no grant, and neither do dialogs, widgets and notifications. Pi has no session grant.
+Without the file grant, `switchSession` and the `parentSession` of `newSession` accept only session files in the session directory. Holding a file with `withFileMutationQueue` needs the file grant, because the model's `edit` and `write` tools wait while an extension holds it. Pi has no session grant.
+
+Some requests need no grant:
+
+- reading the session, such as its entries, name and model
+- dialogs, widgets and notifications
+- the editor actions that expand tool output, copy the last message, or open the model, tree, fork or resume selector, where you make the choice
+- `copyToClipboard`, which writes the system clipboard. A person may paste what it copies into a terminal or another program, so treat text an extension copies as untrusted, as you would text from a web page.
 
 Some actions need every grant, because they reach outside the sandbox or act with yapi's own access:
 
 - registering a provider or a wire API, because a provider's replies drive the agent's tools and its requests carry your credentials
 - custom editor text that starts with `!` or `/`, after any leading spaces, because it runs a shell or slash command
 - the editor actions that open the external editor, paste from the clipboard, or submit the editor's text as a follow-up
+- any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it
 
 ### Agent sessions and events
 
