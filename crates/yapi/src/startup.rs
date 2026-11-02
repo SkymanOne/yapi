@@ -1006,6 +1006,30 @@ fn canonical(path: &str) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
 }
 
+/// The warning for native chest extension `source` when it uses a
+/// capability its chest entry does not grant, whose calls will be denied.
+fn ungranted_use(source: &SourceInfo, policies: &FilePolicies) -> Option<String> {
+    if !is_native(Path::new(&source.path)) {
+        return None;
+    }
+    let policy = policies.get(&canonical(&source.path))?;
+    // A file that does not read is reported when it loads.
+    let bytes = std::fs::read(&source.path).ok()?;
+    let used = yapi_core::chest::wasm::capabilities(&bytes).ok()?.used;
+    let missing: Vec<String> = used
+        .iter()
+        .filter(|used| !yapi_core::chest::wasm::covers(&policy.grants, used.capability))
+        .map(|used| format!("`{}` ({})", used.capability, used.source))
+        .collect();
+    (!missing.is_empty()).then(|| {
+        format!(
+            "{} uses {}, which its chest entry does not grant, so those calls will be denied",
+            source.path,
+            missing.join(", ")
+        )
+    })
+}
+
 /// The sources one host runs, with what it runs them with.
 #[derive(Clone, Debug, PartialEq)]
 struct Group {
@@ -1218,6 +1242,11 @@ async fn start_extensions(
     // A file counts once, however its sources name it.
     let mut seen = std::collections::HashSet::new();
     sources.retain(|source| seen.insert(canonical(&source.path)));
+    for source in &sources {
+        if let Some(message) = ungranted_use(source, &chest_policies) {
+            let _ = install_failed(&source.path, message);
+        }
+    }
     let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
     // The hosts started here, which need the flags.

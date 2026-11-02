@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use anyhow::bail;
 use yapi_core::chest::manifest::package_meta;
-use yapi_core::chest::wasm::{Capabilities, capabilities};
+use yapi_core::chest::wasm::{Capabilities, capabilities, covers};
 use yapi_core::extensions::Grants;
 use yapi_core::packages::resolve::{ResourceType, package_resources};
 use yapi_core::tools::path::relative;
@@ -66,17 +66,6 @@ pub fn inspect(item: &Path) -> Inspected {
         }
     }
     inspected
-}
-
-/// Whether `requested` covers using `capability`.
-fn covers(requested: &Grants, capability: &str) -> bool {
-    match capability {
-        "fs" => requested.filesystem,
-        "net" => requested.network,
-        "env" => requested.environment,
-        "session" => requested.session,
-        _ => requested.process,
-    }
 }
 
 /// Runs `chest check` on the package or extension file at `path`: an

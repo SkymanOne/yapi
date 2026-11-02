@@ -115,7 +115,7 @@ chest check
 
 `chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [chest](chest.md#publish-skills-subagents-and-extensions).
 
-Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them.
+Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.
 
 ### Move to capability features
 

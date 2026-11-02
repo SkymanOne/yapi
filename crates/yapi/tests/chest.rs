@@ -382,3 +382,28 @@ async fn chest_manifest_env() {
         "{stderr}"
     );
 }
+
+/// A native chest extension that uses a capability its entry does not grant
+/// is warned of once at startup, and one granted it is not.
+#[tokio::test(flavor = "multi_thread")]
+async fn native_used_ungranted_warns() {
+    let home = common::scratch("chest-native");
+    // `hello` is built with the SDK's `session` feature.
+    let hello = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../yapi-ext/tests/fixtures/hello.wasm"
+    );
+    for name in ["denied.wasm", "granted.wasm"] {
+        std::fs::copy(hello, home.join(name)).unwrap();
+    }
+    let manifest = "[extensions]\ndenied = { path = \"denied.wasm\" }\ngranted = { path = \"granted.wasm\", capabilities = [\"session\"] }\n";
+    install(&home, &[], "chest.toml", manifest).await;
+    let output = common::yapi(&home)
+        .args(["--approve", "--help"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let warning = "denied.wasm uses `session` (SDK feature `session`), which its chest entry does not grant, so those calls will be denied";
+    assert_eq!(stderr.matches(warning).count(), 1, "{stderr}");
+    assert!(!stderr.contains("granted.wasm uses"), "{stderr}");
+}

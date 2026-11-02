@@ -5,6 +5,7 @@
 use wasmparser::{Encoding, Parser, Payload};
 
 use super::{ChestError, invalid};
+use crate::extensions::Grants;
 
 /// The custom section that lists the SDK features of a build.
 const SECTION: &str = "yapi:capabilities";
@@ -57,6 +58,18 @@ fn import(name: &str) -> Option<&'static str> {
         Some("net")
     } else {
         None
+    }
+}
+
+/// Whether `grants` cover using `capability`, one of [`Use::capability`].
+/// `all` needs the process grant, which amounts to every other.
+pub fn covers(grants: &Grants, capability: &str) -> bool {
+    match capability {
+        "fs" => grants.filesystem,
+        "net" => grants.network,
+        "env" => grants.environment,
+        "session" => grants.session,
+        _ => grants.process,
     }
 }
 
