@@ -37,6 +37,14 @@ impl Inspected {
     }
 }
 
+/// Why WASI import `import`, one of [`Capabilities::unsupported`], of
+/// extension `file` fails in yapi.
+pub fn unsupported_import(file: &str, import: &str) -> String {
+    format!(
+        "{file} imports `{import}`, which yapi does not support. Network access goes through the SDK's `fetch`."
+    )
+}
+
 /// The extensions of the package or extension file at `item`, as yapi
 /// resolves them when it loads `item` with `-e`.
 pub fn inspect(item: &Path) -> Inspected {
@@ -70,7 +78,8 @@ pub fn inspect(item: &Path) -> Inspected {
 
 /// Runs `chest check` on the package or extension file at `path`: an
 /// error for each capability an extension uses that the package does not
-/// request, a warning for each one requested that no extension uses.
+/// request and for each WASI import yapi does not support, a warning for
+/// each capability requested that no extension uses.
 pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
     let item = std::path::absolute(path)?;
     if !item.exists() {
@@ -87,6 +96,7 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
         );
     }
     let mut errors = 0;
+    let mut unrequested = false;
     for (file, found) in &inspected.components {
         let found = match found {
             Ok(found) => found,
@@ -113,7 +123,12 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
                     used.capability, used.source
                 ));
                 errors += 1;
+                unrequested = true;
             }
+        }
+        for import in &found.unsupported {
+            say(&format!("error: {}", unsupported_import(file, import)));
+            errors += 1;
         }
     }
     for script in &inspected.scripts {
@@ -133,10 +148,12 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             ));
         }
     }
-    if errors > 0 {
+    if unrequested {
         say(
             "Add what the extensions use to `capabilities` in chest.toml's [package], or package.json's `yapi.capabilities`.",
         );
+    }
+    if errors > 0 {
         return Ok(ExitCode::FAILURE);
     }
     Ok(ExitCode::SUCCESS)

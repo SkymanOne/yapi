@@ -15,7 +15,7 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect};
+use crate::check::{Inspected, inspect, unsupported_import};
 use crate::prompt::Prompt;
 use crate::{Target, entries, open, read, requests, say, source, sync, write};
 
@@ -211,6 +211,9 @@ fn show_used(inspected: &Inspected) {
             say(
                 "    it was built without capability metadata, so only its WASI imports show what it uses",
             );
+        }
+        for import in &found.unsupported {
+            say(&format!("  warning: {}", unsupported_import(file, import)));
         }
     }
 }

@@ -614,11 +614,12 @@ fn add_prompts_capabilities() {
     let remote = Remote::new(&scratch.dir);
     let package = json!({
         "name": "risky",
-        "pi": {"extensions": ["./index.ts", "./hello.wasm"]},
+        "pi": {"extensions": ["./index.ts", "./hello.wasm", "./http.wasm"]},
         "yapi": {"capabilities": ["all", "process"], "events": {"send": ["risky:*"], "receive": []}},
     });
     // It uses `session`, which the package does not request.
     std::fs::copy(fixture("hello"), remote.work.join("hello.wasm")).unwrap();
+    std::fs::write(remote.work.join("http.wasm"), http_component()).unwrap();
     remote.commit(
         &[
             ("package.json", &package.to_string()),
@@ -667,6 +668,12 @@ fn add_prompts_capabilities() {
         "{:#?}",
         pty.rows()
     );
+    let http = "warning: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`.";
+    assert!(
+        pty.rows().iter().any(|row| row.contains(http)),
+        "{:#?}",
+        pty.rows()
+    );
     // Declining `all` leaves the capability the extension uses on offer.
     pty.write("n\r").unwrap();
     assert!(
@@ -709,6 +716,16 @@ fn add_prompts_capabilities() {
 fn fixture(name: &str) -> PathBuf {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../yapi-ext/tests/fixtures");
     Path::new(dir).join(format!("{name}.wasm"))
+}
+
+/// An empty component that imports `wasi:http`, which yapi does not link.
+fn http_component() -> Vec<u8> {
+    let name = b"wasi:http/outgoing-handler@0.2.6";
+    let imports = [&[0x01, 0x00, name.len() as u8][..], name, &[0x05, 0x00]].concat();
+    // The component header, a type section with one empty instance type,
+    // and the id of the import section.
+    let head = b"\0asm\x0d\x00\x01\x00\x07\x03\x01\x42\x00\x0a";
+    [&head[..], &[imports.len() as u8], &imports].concat()
 }
 
 #[test]
@@ -778,6 +795,15 @@ fn chest_check_mismatch() {
     assert!(
         report.contains("warning: bare.wasm was built without capability metadata"),
         "{report}"
+    );
+    let http = scratch.dir.join("http.wasm");
+    std::fs::write(&http, http_component()).unwrap();
+    let failed = chest(&scratch, &["check", http.to_str().unwrap()], &[]);
+    assert_eq!(failed.status.code(), Some(1), "{}", text(&failed));
+    assert!(
+        text(&failed).contains("error: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`."),
+        "{}",
+        text(&failed)
     );
     let module = scratch.dir.join("module.wasm");
     std::fs::write(&module, b"\0asm\x01\x00\x00\x00").unwrap();
