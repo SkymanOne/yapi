@@ -33,6 +33,7 @@ use yapi_core::extensions::{
     Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
     LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
     Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
+    tool_granted,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -50,7 +51,7 @@ use yapi_types::rpc::{SourceInfo, StreamingBehavior};
 use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
-use crate::requests::{denied, tool_granted};
+use crate::requests::denied;
 use crate::{Bridge, Engine, Error, Grants, Instance, Options};
 
 /// Requests and operations that start, steer or stop turns, or change the
@@ -184,6 +185,8 @@ pub struct ExtensionHost {
     auth: PathBuf,
     /// The session whose end the guest last heard of.
     ended: Mutex<Option<String>>,
+    /// The providers and wire APIs warned of as unused for lack of grants.
+    unprovided: Mutex<std::collections::HashSet<String>>,
 }
 
 /// The extension hosts that share `pi.events`.
@@ -271,6 +274,7 @@ impl ExtensionHost {
             dropping: AtomicBool::new(false),
             auth: options.agent_dir.join("auth.json"),
             ended: Mutex::default(),
+            unprovided: Mutex::default(),
         });
         let _ = extensions.bridge.owner.set(Arc::downgrade(&extensions));
         extensions.forward_events(queued);
@@ -282,8 +286,39 @@ impl ExtensionHost {
     /// Checks the API key and filters the models of each pi-ai `Provider`
     /// with API-key auth or model filters for its stored credential, as pi
     /// does once a provider registers. A provider whose check fails finds
-    /// no key and keeps every model.
+    /// no key and keeps every model. Extensions without every grant get no
+    /// credentials, and each provider and wire API they registered, which
+    /// stays unused, is warned of once.
     async fn check_providers(&self) {
+        if !self.provides() {
+            let mut warned = lock(&self.unprovided);
+            let loaded = lock(&self.loaded);
+            let providers = loaded.iter().flat_map(|extension| {
+                let path = text(&extension["path"]);
+                list(&extension["providers"])
+                    .iter()
+                    .map(move |provider| {
+                        format!(
+                            "Provider \"{}\" of extension {path}",
+                            text(&provider["name"])
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let apis = lock(&self.apis)
+                .iter()
+                .map(|api| format!("Wire API \"{api}\" of {}", self.bridge.name))
+                .collect::<Vec<_>>();
+            for registered in providers.chain(apis) {
+                if warned.insert(registered.clone()) {
+                    self.bridge.log(
+                        "warn",
+                        &format!("{registered} is not used: registering a provider needs every grant (\"all\")"),
+                    );
+                }
+            }
+            return;
+        }
         let mut store = None;
         let mut loaded = lock(&self.loaded).clone();
         for extension in &mut loaded {
@@ -1357,6 +1392,14 @@ impl Extension for JsExtension {
                 origin: "top-level".into(),
                 base_dir: None,
             })
+    }
+
+    fn grants(&self) -> Grants {
+        self.shared.bridge.grants
+    }
+
+    fn warn(&self, message: &str) {
+        self.shared.bridge.log("warn", message);
     }
 
     fn load(&self, tools: &Tools) {

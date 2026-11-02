@@ -1,5 +1,7 @@
 //! What an extension may reach outside its sandbox.
 
+use crate::tools::RegisteredTool;
+
 /// What an extension may reach. The default grants everything, as pi does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grants {
@@ -77,6 +79,32 @@ impl Grants {
     }
 }
 
+/// Whether `grants` allow running `tool`. The built-in `bash`, `grep` and
+/// `find` run processes, and the other built-in tools need file access. Any
+/// other tool, including one an extension registers under a built-in name,
+/// may reach anything, so it needs every grant.
+pub fn tool_granted(grants: &Grants, tool: &RegisteredTool) -> bool {
+    let all = *grants == Grants::default();
+    match tool.name() {
+        _ if tool.source.is_some() => all,
+        "bash" => grants.process,
+        // They run ripgrep and fd, which they download when missing.
+        "grep" | "find" => grants.filesystem && grants.process && grants.network,
+        "read" | "write" | "edit" | "ls" => grants.filesystem,
+        _ => all,
+    }
+}
+
+/// Whether an extension with `grants` hears pi event `kind`. The provider
+/// request events carry the request's body and headers, credentials
+/// included, which only the network grant may read.
+pub fn receives(kind: &str, grants: &Grants) -> bool {
+    match kind {
+        "before_provider_request" | "before_provider_headers" => grants.network,
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,5 +151,67 @@ mod tests {
                 ..Grants::none()
             }
         );
+    }
+
+    /// Built-in tools need the grants of what they reach, and any other
+    /// tool, even one registered under a built-in name, needs every grant.
+    #[test]
+    fn grants_gate_tools() {
+        let env = crate::tools::ToolEnv {
+            cwd: std::path::PathBuf::new(),
+            runtime: std::sync::Arc::default(),
+            bin_dir: std::path::PathBuf::new(),
+        };
+        let fs = Grants {
+            filesystem: true,
+            ..Grants::none()
+        };
+        let all_but_process = Grants {
+            process: false,
+            ..Grants::default()
+        };
+        // Each tool, extension or built-in, and whether none, fs, all but
+        // process, and all may run it.
+        let cases = [
+            ("read", false, [false, true, true, true]),
+            ("write", false, [false, true, true, true]),
+            ("edit", false, [false, true, true, true]),
+            ("ls", false, [false, true, true, true]),
+            ("bash", false, [false, false, false, true]),
+            ("grep", false, [false, false, false, true]),
+            ("find", false, [false, false, false, true]),
+            ("read", true, [false, false, false, true]),
+        ];
+        for (name, extension, expected) in cases {
+            let mut tool = crate::tools::builtin(name, &env).unwrap();
+            if extension {
+                tool.source = Some(yapi_types::rpc::SourceInfo::default());
+            }
+            let granted = [Grants::none(), fs, all_but_process, Grants::default()]
+                .map(|grants| tool_granted(&grants, &tool));
+            assert_eq!(granted, expected, "{name}, extension {extension}");
+        }
+    }
+
+    #[test]
+    fn provider_events_need_network() {
+        let net = Grants {
+            network: true,
+            ..Grants::none()
+        };
+        let no_net = Grants {
+            network: false,
+            ..Grants::default()
+        };
+        for (kind, heard_without_network) in [
+            ("before_provider_request", false),
+            ("before_provider_headers", false),
+            ("after_provider_response", true),
+            ("provider_stream_event", true),
+            ("tool_call", true),
+        ] {
+            assert!(receives(kind, &net), "{kind}");
+            assert_eq!(receives(kind, &no_net), heard_without_network, "{kind}");
+        }
     }
 }

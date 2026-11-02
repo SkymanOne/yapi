@@ -19,12 +19,12 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use yapi_ai::api::Apis;
 use yapi_ai::stream::{EventStream, ProviderResponse, Request, RequestHooks};
+use yapi_core::extensions::tool_granted;
 use yapi_core::tools::{RegisteredTool, ToolEnv};
 use yapi_types::message::Message;
 use yapi_types::model::Model;
 use yapi_types::sync::lock;
 
-use crate::Grants;
 use crate::instance::Options;
 use crate::loader::Loader;
 use crate::{Bridge, ops};
@@ -360,22 +360,6 @@ impl AiStreams {
 
 pub(crate) fn denied(what: &str) -> String {
     format!("{what} is not permitted for this extension")
-}
-
-/// Whether `grants` allow running `tool`. The built-in `bash`, `grep` and
-/// `find` run processes, and the other built-in tools need file access. Any
-/// other tool, including one an extension registers under a built-in name,
-/// may reach anything, so it needs every grant.
-pub(crate) fn tool_granted(grants: &Grants, tool: &RegisteredTool) -> bool {
-    let all = *grants == Grants::default();
-    match tool.name() {
-        _ if tool.source.is_some() => all,
-        "bash" => grants.process,
-        // They run ripgrep and fd, which they download when missing.
-        "grep" | "find" => grants.filesystem && grants.process && grants.network,
-        "read" | "write" | "edit" | "ls" => grants.filesystem,
-        _ => all,
-    }
 }
 
 /// The offset of the zone `payload` names, in seconds east of UTC: the local
@@ -819,45 +803,5 @@ mod tests {
         let unknown = json!({ "zone": "Foo/Bar", "time": summer });
         assert_eq!(zone_offset("timezone.offset", &unknown), Value::Null);
         assert!(zone_offset("timezone.offset", &json!(summer)).is_i64());
-    }
-
-    /// Built-in tools need the grants of what they reach, and any other
-    /// tool, even one registered under a built-in name, needs every grant.
-    #[test]
-    fn grants_gate_tools() {
-        let env = ToolEnv {
-            cwd: PathBuf::new(),
-            runtime: Arc::default(),
-            bin_dir: PathBuf::new(),
-        };
-        let fs = Grants {
-            filesystem: true,
-            ..Grants::none()
-        };
-        let all_but_process = Grants {
-            process: false,
-            ..Grants::default()
-        };
-        // Each tool, extension or built-in, and whether none, fs, all but
-        // process, and all may run it.
-        let cases = [
-            ("read", false, [false, true, true, true]),
-            ("write", false, [false, true, true, true]),
-            ("edit", false, [false, true, true, true]),
-            ("ls", false, [false, true, true, true]),
-            ("bash", false, [false, false, false, true]),
-            ("grep", false, [false, false, false, true]),
-            ("find", false, [false, false, false, true]),
-            ("read", true, [false, false, false, true]),
-        ];
-        for (name, extension, expected) in cases {
-            let mut tool = yapi_core::tools::builtin(name, &env).unwrap();
-            if extension {
-                tool.source = Some(yapi_types::rpc::SourceInfo::default());
-            }
-            let granted = [Grants::none(), fs, all_but_process, Grants::default()]
-                .map(|grants| tool_granted(&grants, &tool));
-            assert_eq!(granted, expected, "{name}, extension {extension}");
-        }
     }
 }

@@ -1132,6 +1132,7 @@ export default function (pi) {
 /// network grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_auth_needs_network() {
+    yapi_ext::capture_output();
     let mut entries = Vec::new();
     let mut online = Vec::new();
     for network in [true, false] {
@@ -1151,9 +1152,25 @@ async fn provider_auth_needs_network() {
             .await
             .unwrap();
         assert!(host.errors().is_empty(), "{:?}", host.errors());
-        // Providers and wire APIs need every grant.
+        // Providers and wire APIs need every grant, and each unused one is warned of once.
         assert_eq!(host.providers().len(), if network { 3 } else { 0 });
         assert_eq!(host.apis().len(), usize::from(network));
+        let auth = path.display();
+        let output = yapi_ext::extension_output();
+        for registered in [
+            format!("Provider \"fixture\" of extension {auth}"),
+            format!("Provider \"leak\" of extension {auth}"),
+            format!("Wire API \"auth-api\" of {auth}"),
+        ] {
+            let warning = format!(
+                "{registered} is not used: registering a provider needs every grant (\"all\")"
+            );
+            let count = output
+                .iter()
+                .filter(|line| line.ends_with(&warning))
+                .count();
+            assert_eq!(count, usize::from(!network), "{warning} in {output:#?}");
+        }
         let refreshing = dir.join("refreshing.ts");
         std::fs::write(&refreshing, REFRESHING_EXTENSION).unwrap();
         let refreshing =

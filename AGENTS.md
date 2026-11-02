@@ -83,7 +83,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | `ModelOperations` | `yapi-ai` | Classify and generate images with a provider's models of an API. | Extension-registered providers |
 | `Tool` | `yapi-agent` | Declare a schema; execute with progress updates and cancellation. | Built-in, MCP and extension tools |
 | `AgentHooks` | `yapi-agent` | Intercept the loop: context transform, before and after tool calls, queue reads. | `yapi-core` session, which dispatches to extensions |
-| `Extension` | `yapi-core` | Register capabilities; handle events, tool calls and commands; build components for the transcript items it draws; transform Markdown and render code blocks; refresh the model lists and availability of providers it registers. | Built-ins (MCP); wasm instances in `yapi-ext` |
+| `Extension` | `yapi-core` | Register capabilities; report its grants; handle events, tool calls and commands; build components for the transcript items it draws; transform Markdown and render code blocks; refresh the model lists and availability of providers it registers. | Built-ins (MCP); wasm instances in `yapi-ext` |
 | `Bridge` | `yapi-ext` | Answer an instance's requests and operations that need the session. | The session bridge of loaded extensions; `NoBridge` for headless loading |
 | `ExtensionUi` | `yapi-core` | Dialogs, notifications, widgets, custom components, extension editors, input listeners and autocomplete providers. | Interactive TUI; RPC (`extension_ui_request`); headless no-op |
 | `ComponentHost` | `yapi-core` | Render an extension component for a width; deliver input and editor operations to it; run the runtime's terminal input listeners and autocomplete providers. | Extension runtimes in `yapi-ext` |
@@ -142,10 +142,10 @@ Module loading runs on the host, in `yapi-ext`:
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
 - Every package gets every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant.
-- The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration.
+- The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration. The session in `yapi-core` applies event-hook results only within each extension's `Extension::grants()`.
 - The host carries `pi.events` between instances, through a bounded queue per instance, so every extension hears every other's events, as in pi.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, two paths that still ignore them must check them: the extension event bus and event-hook results, such as a `tool_call` handler's input rewrite.
+- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the extension event bus, which still ignores them, must check them.
 
 ### Concurrency
 

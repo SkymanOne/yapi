@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use yapi_agent::UpdateSink;
 use yapi_core::agent_session::AgentSession;
-use yapi_core::extensions::tool_search;
+use yapi_core::extensions::{tool_granted, tool_search};
 use yapi_core::tools::RegisteredTool;
 use yapi_types::event::ToolResult;
 use yapi_types::message::{ContentBlock, Usage};
@@ -26,7 +26,6 @@ use yapi_types::sync::lock;
 use super::declarations::{identifier, sample};
 use super::models;
 use crate::ops::Job;
-use crate::requests::tool_granted;
 use crate::{Bridge, Engine, Grants, Instance, Options};
 
 /// The custom entry type of `store()` writes.

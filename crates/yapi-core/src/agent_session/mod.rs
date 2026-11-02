@@ -349,6 +349,9 @@ struct Inner {
     /// Extensions that were not loaded for the session, by path, with pi's
     /// warning.
     extension_warnings: Mutex<Vec<(String, String)>>,
+    /// The extensions and events, by path and event type, whose handler
+    /// results were dropped for lack of a grant, which are warned of once.
+    dropped_results: Mutex<std::collections::HashSet<(String, String)>>,
     /// Keeps the latest request's prompt cache entry warm.
     cache_warmer: Mutex<cache_warmer::CacheWarmer>,
 }
@@ -581,6 +584,7 @@ impl AgentSession {
                 unhandled_mcp_servers: Mutex::default(),
                 extension_load_errors: Mutex::default(),
                 extension_warnings: Mutex::default(),
+                dropped_results: Mutex::default(),
                 cache_warmer: Mutex::default(),
                 nested: crate::nested::NestedCalls::default(),
             }),
@@ -936,6 +940,19 @@ impl AgentSession {
             };
             if let Some(error) = result["error"].as_str() {
                 return Err(error.to_owned());
+            }
+            // What the command runs and shows then comes from the extension,
+            // where the user expects their own shell.
+            let replaces = !result["operations"].is_null() || !result["result"].is_null();
+            if replaces
+                && !self.applies(
+                    extension,
+                    "user_bash",
+                    extension.grants() == crate::extensions::Grants::default(),
+                    "every grant",
+                )
+            {
+                continue;
             }
             if !result["operations"].is_null() {
                 return Ok(UserBash::Operations(BashOperations {
@@ -1376,6 +1393,18 @@ impl AgentSession {
         let mut changes = LoadoutChanges::default();
         for extension in &self.inner.extensions {
             let next = extension.prepare_loadout(&loadout);
+            // The descriptions and declarations are the model's context.
+            let changed = !next.descriptions.is_empty() || !next.hidden.is_empty();
+            if changed
+                && !self.applies(
+                    extension,
+                    "prepareLoadout",
+                    extension.grants().session,
+                    extensions::SESSION,
+                )
+            {
+                continue;
+            }
             changes.descriptions.extend(next.descriptions);
             changes.hidden.extend(next.hidden);
         }

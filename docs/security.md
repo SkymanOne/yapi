@@ -36,7 +36,7 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 ### Grants
 
-The host checks an extension's file, process, network, environment and session access against its grants. Two paths do not check grants yet: the `pi.events` bus, and what event handlers return, such as a `tool_call` handler that rewrites a tool's input. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
+The host checks an extension's file, process, network, environment and session access against its grants. Only the `pi.events` bus does not check grants yet. Without the file grant, an extension cannot import modules from files either. For now, every package receives all five grants, so an extension can do what it could do in Pi. Per-package grants that you approve are planned, as the [Roadmap](roadmap.md#capability-based-sandboxing) describes.
 
 A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
@@ -65,6 +65,25 @@ Some actions need every grant, because they reach outside the sandbox or act wit
 - registering a provider or a wire API, because a provider's replies drive the agent's tools and its requests carry your credentials
 - custom editor text that starts with `!` or `/`, after any leading spaces, because it runs a shell or slash command
 - the editor actions that open the external editor, paste from the clipboard, or submit the editor's text as a follow-up
+
+A provider or wire API that an extension without every grant registers stays unused, and yapi logs a warning for each one in the extension output.
+
+A custom editor that passes a key on to extension shortcuts runs only extension shortcuts, never yapi's own key actions, which go through the editor actions above. Each shortcut runs under the grants of the extension that registered it, as a `pi.events` listener does.
+
+### Event handler results
+
+yapi applies what an extension's event handlers return only within the extension's grants. Any change to what the model sees needs the session grant:
+
+- A `tool_call` handler can always block a call, but the reason it gives reaches the model only with the session grant. Without it, the model reads "Tool execution was blocked".
+- A `tool_call` handler changes the call's input only with the session grant and the grants that would let it run that tool itself.
+- Results that add or change messages, context, user input, the system prompt or its options, provider requests, tool results, tool descriptions, compaction or tree summaries, or entries staged at the end of a turn need the session grant. So do results that start another turn or keep warming the prompt cache.
+- Results that only cancel, block or stop need no grant, such as cancelling a compaction, a session switch or a fork, or stopping a run or cache warming. An `input` handler that handles the input itself and a `user_bash` handler that fails a `!` command need no grant either, because they stop work and show text only to you, not to the model.
+- A `user_bash` handler that runs a `!` command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.
+- The skill, prompt and theme paths that a `resources_discover` handler names need the session and file grants.
+
+A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each ignored result, once for each extension and event.
+
+The `before_provider_request` and `before_provider_headers` events carry a request's body and headers, which can hold your credentials, so they reach only extensions with the network grant.
 
 ### Agent sessions and events
 

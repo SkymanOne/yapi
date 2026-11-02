@@ -598,10 +598,19 @@ impl AgentSession {
         .to_value();
         let ctx = self.extension_context(CancellationToken::new());
         for extension in handlers {
+            // Without the session grant, a handler may only stop warming.
             if let Some(next) = extension
                 .handle(&ctx, &event)
                 .await
                 .and_then(|mut result| result.get_mut("action").map(Value::take))
+                && (next == "stop"
+                    || next == action
+                    || self.applies(
+                        extension,
+                        "cache_warming_decision",
+                        extension.grants().session,
+                        super::extensions::SESSION,
+                    ))
             {
                 action = next;
             }
@@ -734,7 +743,7 @@ mod tests {
 
     use super::*;
     use crate::agent_session::{Resources, SessionConfig};
-    use crate::extensions::{Context, Extension, builtin_source};
+    use crate::extensions::{Context, Extension, Grants, builtin_source};
     use crate::resources::SourceInfo;
     use crate::session::SessionManager;
     use crate::settings::SettingsManager;
@@ -842,12 +851,17 @@ mod tests {
         }
     }
 
-    /// Answers `cache_warming_decision` with `decide`'s action, if any.
-    struct Decide(Box<dyn Fn() -> Option<&'static str> + Send + Sync>);
+    /// Answers `cache_warming_decision` with `decide`'s action, if any, with
+    /// these grants.
+    struct Decide(Box<dyn Fn() -> Option<&'static str> + Send + Sync>, Grants);
 
     impl Extension for Decide {
         fn source(&self) -> SourceInfo {
             builtin_source("decide")
+        }
+
+        fn grants(&self) -> Grants {
+            self.1
         }
 
         fn handles(&self, kind: &str) -> bool {
@@ -1096,10 +1110,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn deadline_rechecked_after_extensions() {
         let provider = Cached::default();
-        let slow = Decide(Box::new(|| {
-            sleep_through(Duration::from_secs(16));
-            Some("warm")
-        }));
+        let slow = Decide(
+            Box::new(|| {
+                sleep_through(Duration::from_secs(16));
+                Some("warm")
+            }),
+            Grants::default(),
+        );
         let session = warming_session(
             cached_model(),
             &provider,
@@ -1117,9 +1134,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn extensions_override_decision() {
-        // pi would warm; an extension stops it.
+        // pi would warm; an extension stops it, which needs no grant.
+        let no_session = Grants {
+            session: false,
+            ..Grants::default()
+        };
         let provider = Cached::default();
-        let veto = Decide(Box::new(|| Some("stop")));
+        let veto = Decide(Box::new(|| Some("stop")), no_session);
         let session = warming_session(
             cached_model(),
             &provider,
@@ -1143,8 +1164,13 @@ mod tests {
         model.cost.cache_read = 0.3;
         model.cost.cache_write = 3.75;
         let provider = Cached::default();
-        let force = Decide(Box::new(|| Some("warm")));
-        let session = warming_session(model, &provider, vec![Arc::new(force)], CacheWarming::Idle);
+        let force = Decide(Box::new(|| Some("warm")), Grants::default());
+        let session = warming_session(
+            model.clone(),
+            &provider,
+            vec![Arc::new(force)],
+            CacheWarming::Idle,
+        );
         session.prompt("hi", Vec::new()).await.unwrap();
         assert!(!session.cache_warming_status().decision.unwrap().warm);
         tokio::time::sleep(REFRESH).await;
@@ -1154,9 +1180,17 @@ mod tests {
             Some("extension override")
         );
 
+        // Warming anyway sends a request, which needs the session grant.
+        let provider = Cached::default();
+        let force = Decide(Box::new(|| Some("warm")), no_session);
+        let session = warming_session(model, &provider, vec![Arc::new(force)], CacheWarming::Idle);
+        session.prompt("hi", Vec::new()).await.unwrap();
+        tokio::time::sleep(REFRESH).await;
+        assert_eq!(provider.caps(), [None]);
+
         // A handler without an action leaves pi's decision.
         let provider = Cached::default();
-        let silent = Decide(Box::new(|| None));
+        let silent = Decide(Box::new(|| None), Grants::default());
         let session = warming_session(
             cached_model(),
             &provider,

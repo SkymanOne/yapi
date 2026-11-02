@@ -765,6 +765,417 @@ async fn session_actions_need_grant() {
     }
 }
 
+/// The session applies an event handler's result only within the handler's
+/// grants: results that change what the model sees need the session grant,
+/// rewriting a tool's input also needs the grants to run the tool, and
+/// answering a `!` command needs every grant. A block or a cancel always
+/// applies, but a block's reason reaches the model only with the session
+/// grant, and an ignored result never replaces a granted one. Each ignored
+/// result is warned of once per event. Provider request events reach only
+/// extensions with the network grant.
+#[tokio::test(flavor = "multi_thread")]
+async fn hook_results_need_grants() {
+    yapi_ext::capture_output();
+    let hooks = r#"export default function (pi) {
+	let settled = false;
+	pi.on("input", (event) => (event.text === "go" ? { action: "transform", text: "transformed" } : undefined));
+	pi.on("before_agent_start", (event) => {
+		event.systemPromptOptions.selectedTools.reverse();
+		return { message: { customType: "injected", content: "injected", display: false }, systemPrompt: "forced prompt" };
+	});
+	pi.on("context", (event) => ({ messages: [...event.messages, { role: "user", content: "added by context", timestamp: 1 }] }));
+	pi.on("context_with_system", (event) => ({ messages: [...event.messages, { role: "user", content: "added with system", timestamp: 1 }] }));
+	pi.on("tool_call", (event) => {
+		if (event.toolName === "bash") event.input.command = "echo rewritten";
+		if (event.toolName === "read") event.input.path = "b.txt";
+		if (event.toolName === "ls") return { block: true, reason: "blocked" };
+	});
+	pi.on("tool_result", (event) => (event.toolName === "read" ? { content: [{ type: "text", text: "changed" }] } : undefined));
+	pi.on("message_end", (event) => {
+		const done = event.message.role === "assistant" && event.message.content.some((block) => block.text === "done");
+		if (done) return { message: { ...event.message, content: [{ type: "text", text: "replaced" }] } };
+	});
+	pi.on("turn_end", () => ({ entries: [{ type: "custom", customType: "staged", data: 1 }] }));
+	pi.on("agent_before_settle", () => {
+		if (settled) return;
+		settled = true;
+		return { entries: [{ type: "custom_message", customType: "nudge", content: "keep going" }] };
+	});
+	pi.on("user_bash", (event) =>
+		event.command === "ops"
+			? { operations: { exec: async () => ({ exitCode: 0 }) } }
+			: { result: { output: "fake", exitCode: 0, cancelled: false, truncated: false } },
+	);
+	pi.on("session_before_switch", () => ({ cancel: true, reason: "kept" }));
+	pi.on("session_before_compact", (event) => ({
+		compaction: { summary: "extension summary", firstKeptEntryId: event.preparation.firstKeptEntryId, tokensBefore: event.preparation.tokensBefore },
+	}));
+	pi.on("session_before_tree", () => ({ summary: { summary: "extension tree" } }));
+	pi.on("resources_discover", () => ({ promptPaths: ["extra.md"] }));
+	pi.on("before_provider_request", (event) => event.payload);
+	pi.on("before_provider_headers", () => {});
+	pi.registerTool({
+		name: "probe", label: "Probe", description: "Probes", parameters: { type: "object", properties: {} },
+		prepareLoadout: () => ({ descriptions: { read: "described" } }),
+		async execute() { return { content: [] }; },
+	});
+}
+"#;
+    // Loads after the hooks with only file access: what it returns changes
+    // nothing, so it never replaces their results, and only its attempt to
+    // continue the run, which the hooks' staged entry would allow, is
+    // warned of.
+    let observer = r#"export default function (pi) {
+	pi.on("session_before_compact", () => ({}));
+	pi.on("session_before_tree", () => ({}));
+	pi.on("before_agent_start", () => {});
+	pi.on("agent_before_settle", () => ({ continue: true }));
+}
+"#;
+    let fs = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
+    let labels = [
+        "input",
+        "before_agent_start message",
+        "before_agent_start systemPrompt",
+        "before_agent_start reordered tools",
+        "context",
+        "context_with_system",
+        "tool_call bash input",
+        "tool_call block reason",
+        "tool_call read input and tool_result",
+        "message_end",
+        "agent_before_settle entries",
+        "agent_before_settle continue",
+        "prepareLoadout",
+        "turn_end entries",
+        "user_bash result",
+        "user_bash operations",
+        "session_before_compact",
+        "session_before_tree",
+        "session_before_switch cancel",
+        "resources_discover",
+        "provider events heard",
+    ];
+    let cases = [
+        (
+            fs,
+            [
+                "go",
+                "",
+                "",
+                "read first",
+                "",
+                "",
+                "original\n",
+                "Tool execution was blocked",
+                "alpha",
+                "done",
+                "",
+                "",
+                "Read the contents",
+                "",
+                "local",
+                "local",
+                "model summary",
+                "model tree",
+                "cancelled",
+                "0",
+                "",
+            ],
+        ),
+        (
+            Grants::default(),
+            [
+                "transformed",
+                "injected",
+                "forced prompt",
+                "reordered",
+                "added by context",
+                "added with system",
+                "rewritten\n",
+                "blocked",
+                "changed",
+                "replaced",
+                "keep going",
+                "",
+                "described",
+                "staged",
+                "fake",
+                "operations",
+                "extension summary",
+                "extension tree",
+                "cancelled",
+                "1",
+                "heard",
+            ],
+        ),
+    ];
+    let text = |content: &yapi_types::message::Content| match content {
+        yapi_types::message::Content::Text(text) => text.clone(),
+        yapi_types::message::Content::Blocks(blocks) => {
+            yapi_types::message::blocks_text(blocks, "")
+        }
+    };
+    let mut paths = Vec::new();
+    for (index, (grants, expected)) in cases.into_iter().enumerate() {
+        let dir = scratch(&format!("hook-grants-{index}"));
+        std::fs::write(dir.join("a.txt"), "alpha").unwrap();
+        std::fs::write(dir.join("b.txt"), "beta").unwrap();
+        std::fs::write(dir.join("extra.md"), "Extra $1\n").unwrap();
+        let mut extensions = Vec::new();
+        for (name, source, grants) in [("hooks.ts", hooks, grants), ("observer.ts", observer, fs)] {
+            let path = dir.join(name);
+            std::fs::write(&path, source).unwrap();
+            paths.push(path.display().to_string());
+            let mut options = options(&dir);
+            options.grants = grants;
+            let host = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
+                .await
+                .unwrap();
+            assert!(host.errors().is_empty(), "{:?}", host.errors());
+            extensions.extend(host.for_session());
+        }
+        let granted = grants == Grants::default();
+        let mut responses = vec![
+            Response::tool_call("call-1", "bash", json!({"command": "echo original"})),
+            Response::tool_call("call-2", "ls", json!({})),
+            Response::tool_call("call-3", "read", json!({"path": "a.txt"})),
+            Response::text("done"),
+        ];
+        // Without granted hooks, yapi's own summaries ask the model.
+        if !granted {
+            responses.extend([
+                Response::text("model summary"),
+                Response::text("model tree"),
+            ]);
+        }
+        let faux = Faux::new(responses);
+        let session = session_with_tools(&faux, &dir, extensions, &["read", "bash", "ls"]);
+        session
+            .set_nested_global_setting("compaction", "keepRecentTokens", 2.into())
+            .unwrap();
+        session
+            .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+            .await;
+        session.prompt("go", Vec::new()).await.unwrap();
+        let messages = session.messages();
+        let user = messages
+            .iter()
+            .find_map(|message| match message {
+                Message::User(user) => Some(text(&user.content)),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let injected = messages
+            .iter()
+            .find(|message| matches!(message, Message::Custom(_)))
+            .map(text_of)
+            .unwrap_or_default();
+        let requests = faux.requests();
+        let sent = |wanted: &str| {
+            let found = requests.last().into_iter().flatten().any(
+                |message| matches!(message, Message::User(user) if text(&user.content) == wanted),
+            );
+            if found {
+                wanted.to_owned()
+            } else {
+                String::new()
+            }
+        };
+        let system = requests[0]
+            .iter()
+            .find_map(|message| match message {
+                Message::System(system) => Some(system),
+                _ => None,
+            })
+            .unwrap();
+        let forced = if system.text() == "forced prompt" {
+            "forced prompt"
+        } else {
+            ""
+        };
+        let tools = session.active_tool_names();
+        let order = if tools.first().map(String::as_str) == Some("read") {
+            "read first"
+        } else {
+            "reordered"
+        };
+        let read = system
+            .tools_added
+            .iter()
+            .flatten()
+            .find(|tool| tool.name == "read")
+            .map(|tool| tool.description.chars().take(17).collect())
+            .unwrap_or_default();
+        let results: Vec<String> = messages
+            .iter()
+            .filter(|message| matches!(message, Message::ToolResult(_)))
+            .map(text_of)
+            .collect();
+        let replies: Vec<String> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(assistant) => {
+                    Some(yapi_types::message::blocks_text(&assistant.content, ""))
+                }
+                _ => None,
+            })
+            .collect();
+        let replied = |wanted: &[&str]| {
+            wanted
+                .iter()
+                .find(|wanted| replies.iter().any(|reply| reply == *wanted))
+                .map(|wanted| (*wanted).to_owned())
+                .unwrap_or_default()
+        };
+        let staged = if custom_entries(&session, "staged").is_empty() {
+            ""
+        } else {
+            "staged"
+        };
+        let mut bash = Vec::new();
+        for command in ["echo hi", "ops"] {
+            bash.push(match session.user_bash(command, false).await {
+                Ok(yapi_core::agent_session::UserBash::Done(result)) => result.output,
+                Ok(yapi_core::agent_session::UserBash::Operations(_)) => "operations".to_owned(),
+                Ok(yapi_core::agent_session::UserBash::Local) => "local".to_owned(),
+                Err(error) => error,
+            });
+        }
+        // yapi's own summaries come inside its summary layout.
+        let summarized = |summary: String, by_model: &str| {
+            if summary.contains(by_model) {
+                by_model.to_owned()
+            } else {
+                summary
+            }
+        };
+        let compacted = session
+            .compact(None)
+            .await
+            .map(|result| result.summary)
+            .unwrap_or_else(|error| error);
+        let first = session.with_session(|file| {
+            file.entries()
+                .find_map(|entry| match entry {
+                    yapi_types::session::FileEntry::Message(message)
+                        if matches!(message.message, Message::Assistant(_)) =>
+                    {
+                        Some(message.meta.id.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        });
+        let navigation = yapi_core::agent_session::TreeNavigation {
+            summarize: true,
+            ..yapi_core::agent_session::TreeNavigation::default()
+        };
+        let tree = match session.navigate_tree(&first, navigation).await {
+            Ok(outcome) => match outcome.summary_entry {
+                Some(yapi_types::session::FileEntry::BranchSummary(summary)) => summary.summary,
+                other => format!("{other:?}"),
+            },
+            Err(error) => error,
+        };
+        let switch = yapi_core::agent_session::SessionChange::New;
+        let cancelled = if session.cancels(&switch).await {
+            "cancelled"
+        } else {
+            ""
+        };
+        // They carry the request's credentials, which need the network grant.
+        let heard = session.has_handlers("before_provider_request")
+            || session.has_handlers("before_provider_headers");
+        let found = [
+            user,
+            injected,
+            forced.to_owned(),
+            order.to_owned(),
+            sent("added by context"),
+            sent("added with system"),
+            results[0].clone(),
+            results[1].clone(),
+            results[2].clone(),
+            replied(&["replaced", "done"]),
+            messages
+                .iter()
+                .filter(|message| matches!(message, Message::Custom(_)))
+                .map(text_of)
+                .find(|text| text == "keep going")
+                .unwrap_or_default(),
+            // The tool calls and the final reply, then any continuation.
+            if replies.len() > 4 { "continued" } else { "" }.to_owned(),
+            read,
+            staged.to_owned(),
+            bash[0].clone(),
+            bash[1].clone(),
+            summarized(compacted, "model summary"),
+            summarized(tree, "model tree"),
+            cancelled.to_owned(),
+            session.resources().templates.len().to_string(),
+            if heard { "heard" } else { "" }.to_owned(),
+        ];
+        for ((label, found), expected) in labels.iter().zip(&found).zip(expected) {
+            assert_eq!(found, expected, "{label} with {grants:?}");
+        }
+    }
+    let output = yapi_ext::extension_output();
+    let session = "the session grant";
+    for (event, missing) in [
+        ("input", session),
+        ("before_agent_start", session),
+        ("context", session),
+        ("context_with_system", session),
+        (
+            "tool_call",
+            "the session grant and the grants to run the bash tool",
+        ),
+        ("tool_result", session),
+        ("message_end", session),
+        ("prepareLoadout", session),
+        ("turn_end", session),
+        ("agent_before_settle", session),
+        ("user_bash", "every grant"),
+        ("session_before_compact", session),
+        ("session_before_tree", session),
+        ("session_before_switch", session),
+        ("resources_discover", "the session and file grants"),
+    ] {
+        let warning = format!(
+            "Ignored a {event} result of extension {}: it needs {missing}",
+            paths[0]
+        );
+        let count = output
+            .iter()
+            .filter(|line| line.ends_with(&warning))
+            .count();
+        assert_eq!(count, 1, "{warning} in {output:#?}");
+    }
+    // The granted hooks are never warned of, and the observers only of
+    // continuing.
+    assert!(
+        !output.iter().any(|line| line.contains(paths[2].as_str())),
+        "{output:#?}"
+    );
+    for observer in [&paths[1], &paths[3]] {
+        let warnings: Vec<&String> = output
+            .iter()
+            .filter(|line| line.contains(observer.as_str()))
+            .collect();
+        let settle = format!(
+            "Ignored a agent_before_settle result of extension {observer}: it needs the session grant"
+        );
+        assert!(
+            warnings.len() == 1 && warnings[0].ends_with(&settle),
+            "{warnings:#?}"
+        );
+    }
+}
+
 /// `pi.registerMcpServer` throws pi's errors for a name, or a tool
 /// namespace, that an extension of another runtime registered, and the
 /// refused server stays out of the runtime's list. Its later registrations

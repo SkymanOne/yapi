@@ -9,7 +9,7 @@ For now, every package receives every grant: file, process, network, environment
 - A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
 - File grants can be limited to paths and to read-only access, and network grants to hosts.
 - The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it.
-- The `pi.events` bus and what event handlers return, such as a rewritten tool input, will check grants. Today they do not.
+- The `pi.events` bus, which does not check grants today, will check them.
 
 [Security model and sandboxing](security.md) describes the current model.
 
