@@ -752,10 +752,20 @@ fn default_resources(
 /// pi's `collectManifestFiles`: the files the manifest's entries select,
 /// or the conventional directory's.
 fn package_files(root: &Path, manifest: Option<&Manifest>, kind: ResourceType) -> Vec<PathBuf> {
-    if let Some(entries) = manifest
-        .and_then(|manifest| manifest.get(kind))
-        .filter(|entries| !entries.is_empty())
-    {
+    let entries = manifest.and_then(|manifest| manifest.get(kind));
+    selected_files(root, entries.map(Vec::as_slice), kind.key(), kind)
+}
+
+/// The files of `kind` that the package at `root` provides: those its
+/// manifest `entries` select, with their globs and `!` patterns, else
+/// those in its folder `folder`.
+pub(crate) fn selected_files(
+    root: &Path,
+    entries: Option<&[String]>,
+    folder: &str,
+    kind: ResourceType,
+) -> Vec<PathBuf> {
+    if let Some(entries) = entries.filter(|entries| !entries.is_empty()) {
         let all = manifest_files(entries, root, kind);
         let patterns: Vec<String> = entries
             .iter()
@@ -771,7 +781,7 @@ fn package_files(root: &Path, manifest: Option<&Manifest>, kind: ResourceType) -
             .filter(|file| enabled.contains(file))
             .collect();
     }
-    let dir = root.join(kind.key());
+    let dir = root.join(folder);
     if dir.exists() {
         collect_resource_files(&dir, kind)
     } else {

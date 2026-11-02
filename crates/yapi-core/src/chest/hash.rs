@@ -13,14 +13,20 @@ use super::{ChestError, invalid, io};
 /// at any depth, in the byte order of their `/`-separated relative paths.
 /// Each file adds its path, a NUL, `x` when it is executable (any execute
 /// bit on Unix, never elsewhere) or `-`, then the SHA-256 of its contents.
+/// A file at `root` hashes as a tree of that one file with an empty path.
 /// Fails on any symbolic link, `root` included, and on a path that is not
 /// UTF-8.
 pub fn tree_hash(root: &Path) -> Result<String, ChestError> {
-    if root.symlink_metadata().map_err(io(root))?.is_symlink() {
+    let metadata = root.symlink_metadata().map_err(io(root))?;
+    if metadata.is_symlink() {
         return Err(refused(root));
     }
     let mut files = Vec::new();
-    collect(root, "", &mut files)?;
+    if metadata.is_dir() {
+        collect(root, "", &mut files)?;
+    } else {
+        files.push((String::new(), root.to_path_buf()));
+    }
     files.sort();
     let mut context = Context::new(&SHA256);
     for (relative, path) in files {
@@ -143,6 +149,13 @@ mod tests {
         std::fs::remove_dir(&link).unwrap();
         std::os::unix::fs::symlink(&root, &link).unwrap();
         assert!(tree_hash(&link).is_err());
+
+        // A file alone hashes with an empty path:
+        // { printf '\0-'; printf 'hello\n' | shasum -a 256 | cut -c1-64 | xxd -r -p; } | shasum -a 256
+        assert_eq!(
+            tree_hash(&root.join("a.txt")).unwrap(),
+            "sha256-89c31f91aca023cafd6de1c6c60492fe1c63117041231bdf5370629f71254cec"
+        );
 
         // Paths and contents cannot trade bytes.
         let (one, two) = (scratch("ab-c"), scratch("a-bc"));

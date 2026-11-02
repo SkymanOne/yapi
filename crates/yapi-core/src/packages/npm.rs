@@ -167,7 +167,7 @@ fn is_link(path: &Path) -> bool {
 
 /// A new, empty folder beside `dir` in which to build its replacement.
 /// Refuses when `dir` is a link, which would put the result elsewhere.
-fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
+pub(crate) fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
     if is_link(dir) {
         return Err(NpmError::Refused(format!(
             "Refusing to install through the link {}",
@@ -187,8 +187,16 @@ fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
 /// Puts `staging`, built by `built`, in place of `dir`, so that `dir` holds
 /// either what it held or all of `staging`. A failed build only removes
 /// `staging`.
-fn swap(staging: &Path, dir: &Path, built: Result<(), NpmError>) -> Result<(), NpmError> {
-    swap_with(staging, dir, built, |from, to| std::fs::rename(from, to))
+pub(crate) fn swap<E: From<NpmError>>(
+    staging: &Path,
+    dir: &Path,
+    built: Result<(), E>,
+) -> Result<(), E> {
+    if let Err(err) = built {
+        let _ = remove_path(staging);
+        return Err(err);
+    }
+    swap_with(staging, dir, Ok(()), |from, to| std::fs::rename(from, to)).map_err(E::from)
 }
 
 /// [`swap`], renaming with `rename`. The previous `dir` is deleted only
@@ -660,9 +668,10 @@ impl Npm {
     }
 
     /// Fails unless `pin` is safe to download: a valid name, an integrity
-    /// that is exactly one sha512 digest, and an https tarball URL, or http
-    /// only on the host and port of the http registry configured for its
-    /// name, so that an edited lock never sends credentials in cleartext.
+    /// that is exactly one sha512 digest, and a tarball on the host and port
+    /// of the registry configured for its name, over https unless that
+    /// registry uses http. An edited lock can then neither send a download
+    /// elsewhere nor credentials in cleartext.
     fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
         check_name(&pin.name)?;
         let id = format!("{}@{}", pin.name, pin.version);
@@ -671,31 +680,66 @@ impl Npm {
                 "Invalid integrity for {id}: expected one sha512 digest"
             )));
         }
-        // Credentials go by host, so plain http may reach only the host and
-        // port of an http registry the user configured for this name.
-        let registry = url::Url::parse(&self.registry(&pin.name));
-        let secure = match url::Url::parse(&pin.tarball) {
-            Ok(url) if url.scheme() == "https" => true,
-            Ok(url) if url.scheme() == "http" => registry.is_ok_and(|registry| {
-                registry.scheme() == "http"
-                    && registry.host_str() == url.host_str()
-                    && registry.port_or_known_default() == url.port_or_known_default()
-            }),
-            _ => false,
-        };
-        if !secure {
-            return Err(NpmError::Refused(format!(
-                "Refusing to download {id} from {}: tarballs need https, or the host and port of an http registry",
+        self.pinned_url(pin).map(drop)
+    }
+
+    /// Where to download `pin`'s tarball: its URL when that lies on the
+    /// registry configured for its name, over https unless that registry
+    /// uses http, at the standard `<name>/-/<unscoped name>-<version>.tgz`
+    /// path for its name and version under the registry's own path. A
+    /// tarball pinned on registry.npmjs.org
+    /// comes from the configured registry when that differs, as npm's
+    /// `replace-registry-host` does. Anything else is refused, so an edited
+    /// lock can neither send a download elsewhere, nor credentials in
+    /// cleartext, nor put another package's tarball in its place.
+    fn pinned_url(&self, pin: &Pinned) -> Result<String, NpmError> {
+        let id = format!("{}@{}", pin.name, pin.version);
+        let refuse = |why: String| {
+            NpmError::Refused(format!(
+                "Refusing to download {id} from {}: {why}",
                 pin.tarball
+            ))
+        };
+        let registry = self.registry(&pin.name);
+        let unscoped = pin.name.rsplit('/').next().unwrap_or(&pin.name);
+        let file = format!("{}/-/{unscoped}-{}.tgz", pin.name, pin.version);
+        let url = url::Url::parse(&pin.tarball).map_err(|_| refuse("not a URL".into()))?;
+        let from =
+            url::Url::parse(&registry).map_err(|_| refuse(format!("{registry} is not a URL")))?;
+        let misplaced = |expected: String| {
+            refuse(format!(
+                "a pinned tarball must be at {expected}. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock"
+            ))
+        };
+        const NPMJS: Option<&str> = Some("registry.npmjs.org");
+        if url.host_str() == NPMJS && from.host_str() != NPMJS {
+            if url.path() != format!("/{file}") {
+                return Err(misplaced(format!("/{file}")));
+            }
+            return Ok(format!("{registry}{file}"));
+        }
+        let scheme = url.scheme() == "https" || url.scheme() == "http" && from.scheme() == "http";
+        let same = url.host_str() == from.host_str()
+            && url.port_or_known_default() == from.port_or_known_default();
+        if !scheme || !same {
+            return Err(refuse(format!(
+                "a pinned tarball must come from {registry}, the registry for {}, over https unless that registry uses http",
+                pin.name
             )));
         }
-        Ok(())
+        // Under the registry's own path, which may be a subpath.
+        let expected = format!("{}{file}", from.path());
+        if url.path() != expected {
+            return Err(misplaced(expected));
+        }
+        Ok(pin.tarball.clone())
     }
 
     /// The tarball of `pin`, which [`Npm::check_pin`] passed, checked
     /// against its sha512 digest alone.
     async fn pinned_tarball(&self, pin: &Pinned) -> Result<Vec<u8>, NpmError> {
-        let bytes = self.download(&pin.name, &pin.tarball).await?;
+        let url = self.pinned_url(pin)?;
+        let bytes = self.download(&pin.name, &url).await?;
         if sha512_digest(&pin.integrity).as_deref() == Some(digest(&SHA512, &bytes).as_ref()) {
             Ok(bytes)
         } else {

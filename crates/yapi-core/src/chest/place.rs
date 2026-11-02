@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::manifest::valid_name;
 use super::{ChestError, invalid, io};
+use crate::packages::npm;
 use crate::tools::path::relative;
 
 /// Copies the folder or file `source` to `<folders[0]>/<name>`, then links
@@ -43,8 +44,7 @@ pub fn place_with(
     check_name(name)?;
     targets.iter().try_for_each(|target| within(root, target))?;
     let canonical = first.join(name);
-    remove(&canonical)?;
-    copy(source, &canonical)?;
+    put(source, &canonical)?;
     let mut placed = vec![canonical.clone()];
     for folder in others {
         let path = folder.join(name);
@@ -73,6 +73,24 @@ pub fn unplace(root: &Path, paths: &[PathBuf]) -> Result<(), ChestError> {
     paths.iter().try_for_each(|path| remove(path))
 }
 
+/// Copies `source` to `target` through a staged sibling, so that `target`
+/// holds the old copy or the new one, never part of either.
+fn put(source: &Path, target: &Path) -> Result<(), ChestError> {
+    if source.symlink_metadata().map_err(io(source))?.is_dir() {
+        let staging = npm::stage(target)?;
+        let built = copy(source, &staging);
+        return npm::swap(&staging, target, built);
+    }
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let staging = target.with_file_name(format!(".{name}-staging"));
+    remove(&staging)?;
+    copy(source, &staging)?;
+    std::fs::rename(&staging, target).map_err(|err| {
+        let _ = remove(&staging);
+        io(target)(err)
+    })
+}
+
 fn check_name(name: &str) -> Result<(), ChestError> {
     if valid_name(name) {
         Ok(())
@@ -84,7 +102,7 @@ fn check_name(name: &str) -> Result<(), ChestError> {
 /// Fails unless `path` has no `..` and the deepest part of its folder that
 /// exists resolves inside `root`. A link at `path` itself is not followed:
 /// placing replaces the link, and removing removes it.
-fn within(root: &Path, path: &Path) -> Result<(), ChestError> {
+pub(super) fn within(root: &Path, path: &Path) -> Result<(), ChestError> {
     let outside = || {
         invalid(format!(
             "Refusing {}: it is outside {}",
@@ -144,7 +162,7 @@ fn remove(path: &Path) -> Result<(), ChestError> {
 
 /// Copies the folder or file `from` to `to`, leaving out `.git` folders and
 /// refusing links.
-fn copy(from: &Path, to: &Path) -> Result<(), ChestError> {
+pub(super) fn copy(from: &Path, to: &Path) -> Result<(), ChestError> {
     let metadata = from.symlink_metadata().map_err(io(from))?;
     if metadata.is_symlink() {
         return Err(invalid(format!(

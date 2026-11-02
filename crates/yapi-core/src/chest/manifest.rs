@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use indexmap::IndexMap;
 use serde::de::{DeserializeOwned, IntoDeserializer as _};
@@ -16,6 +16,7 @@ use super::{ChestError, invalid};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::source::{self, Source};
 use crate::settings::Scope;
+use crate::tools::path::{expand_home, home_dir, resolve_lexically};
 
 /// A manifest section of named entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,7 +274,17 @@ impl Manifest {
         let skills = folders.skills.iter().map(|path| ("skills", path));
         let agents = folders.agents.iter().map(|path| ("agents", path));
         let store = folders.extensions.iter().map(|path| ("extensions", path));
-        for (key, path) in skills.chain(agents).chain(store) {
+        let named: Vec<(&str, &String)> = skills.chain(agents).chain(store).collect();
+        for (key, path) in &named {
+            let expanded = expand_home(path);
+            if !Path::new(&expanded)
+                .components()
+                .any(|part| matches!(part, Component::Normal(_)))
+            {
+                return Err(invalid(format!(
+                    "folders.{key}: \"{path}\" must name a folder"
+                )));
+            }
             let parts = Path::new(path).components();
             let inside = !path.is_empty()
                 && !path.starts_with('~')
@@ -284,6 +295,30 @@ impl Manifest {
                 return Err(invalid(format!(
                     "folders.{key}: \"{path}\" must be a relative path inside the project, without `..` or `~`"
                 )));
+            }
+        }
+        // No folder may hold another, or the store, or the store them.
+        let default_store = match scope {
+            Scope::Project => ".yapi/chest",
+            Scope::Global => "~/.chest/store",
+        };
+        let mut paths: Vec<&str> = named.iter().map(|(_, path)| path.as_str()).collect();
+        if folders.extensions.is_none() {
+            paths.push(default_store);
+        }
+        let base = match scope {
+            Scope::Project => PathBuf::from("/"),
+            Scope::Global => home_dir().join(".chest"),
+        };
+        let normal = |path: &str| resolve_lexically(&base, Path::new(&expand_home(path)));
+        for (index, first) in paths.iter().enumerate() {
+            for second in &paths[index + 1..] {
+                let (a, b) = (normal(first), normal(second));
+                if a.starts_with(&b) || b.starts_with(&a) {
+                    return Err(invalid(format!(
+                        "folders: \"{first}\" and \"{second}\" overlap"
+                    )));
+                }
             }
         }
         let mut seen: HashMap<&str, Section> = HashMap::new();
@@ -301,7 +336,7 @@ impl Manifest {
                         other.key()
                     )));
                 }
-                entry.validate(section, &context)?;
+                entry.validate(section, &context, scope)?;
             }
         }
         for (name, entry) in &self.patch {
@@ -309,9 +344,10 @@ impl Manifest {
                 path: entry.path.clone(),
                 ..Entry::default()
             };
-            if entry.path.is_none() || *entry != path_only {
+            let Some(path) = entry.path.as_deref().filter(|_| *entry == path_only) else {
                 return Err(invalid(format!("patch.{name}: a patch takes `path` only")));
-            }
+            };
+            check_source(path, scope).map_err(|err| invalid(format!("patch.{name}: {err}")))?;
         }
         if let Some(capabilities) = self.package.as_ref().and_then(|p| p.capabilities.as_ref()) {
             Grants::parse(capabilities)
@@ -322,7 +358,7 @@ impl Manifest {
 }
 
 impl Entry {
-    fn validate(&self, section: Section, context: &str) -> Result<(), ChestError> {
+    fn validate(&self, section: Section, context: &str, scope: Scope) -> Result<(), ChestError> {
         let fail = |message: String| Err(invalid(format!("{context}: {message}")));
         match (&self.git, &self.npm, &self.path) {
             (Some(_), Some(_), _) => return fail("`git` and `npm` cannot be combined".into()),
@@ -335,10 +371,37 @@ impl Entry {
         if self.version.is_some() && self.npm.is_none() {
             return fail("`version` needs `npm`".into());
         }
-        if let Some(git) = &self.git
-            && !matches!(source::parse(&format!("git:{git}")), Source::Git { .. })
-        {
-            return fail(format!("`git`: not a git repository: {git}"));
+        if self.rev.as_deref().is_some_and(|rev| rev.starts_with('-')) {
+            return fail("`rev` must not start with `-`".into());
+        }
+        match (&self.path, self.git.is_some() || self.npm.is_some()) {
+            (Some(path), false) => check_source(path, scope).or_else(fail)?,
+            (Some(path), true) => {
+                let parts = Path::new(path).components();
+                let inside = parts
+                    .into_iter()
+                    .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
+                if path.is_empty() || !inside {
+                    return fail(format!(
+                        "`path`: \"{path}\" must be a folder inside the package"
+                    ));
+                }
+            }
+            (None, _) => {}
+        }
+        if let Some(git) = &self.git {
+            match source::parse(&format!("git:{git}")) {
+                Source::Git {
+                    reference: Some(reference),
+                    ..
+                } => {
+                    return fail(format!(
+                        "`git`: \"{git}\" names the revision `{reference}`: put it in `rev`"
+                    ));
+                }
+                Source::Git { .. } => {}
+                _ => return fail(format!("`git`: not a git repository: {git}")),
+            }
         }
         if section == Section::Extensions {
             if let Some(Err(err)) = self.capabilities.as_deref().map(Grants::parse) {
@@ -360,9 +423,22 @@ impl Entry {
     }
 }
 
+/// Fails unless a path source `path` is allowed in a manifest of `scope`:
+/// in a project, relative to the manifest. It may climb out with `..`,
+/// which the install notes.
+fn check_source(path: &str, scope: Scope) -> Result<(), String> {
+    let anchored = path.starts_with('~') || Path::new(path).has_root();
+    if scope == Scope::Project && anchored {
+        return Err(format!(
+            "`path`: \"{path}\" must be relative to the manifest, not absolute or under `~`"
+        ));
+    }
+    Ok(())
+}
+
 /// Whether `name` matches `[a-z0-9][a-z0-9._-]*`, the rule for entry and
 /// item names, which keeps each a single path segment.
-pub(crate) fn valid_name(name: &str) -> bool {
+pub fn valid_name(name: &str) -> bool {
     let lower_or_digit = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
     let mut chars = name.chars();
     chars.next().is_some_and(lower_or_digit)
@@ -845,7 +921,39 @@ extensions = ["extensions/index.ts"]
                 "[folders]\nextensions = \"~/x\"",
                 "folders.extensions: \"~/x\" must be a relative path inside the project, without `..` or `~`",
             ),
+            (
+                "[skills]\nx = { path = \"~/x\" }",
+                "skills.x: `path`: \"~/x\" must be relative to the manifest, not absolute or under `~`",
+            ),
+            (
+                "[patch]\nx = { path = \"/abs\" }",
+                "patch.x: `path`: \"/abs\" must be relative to the manifest, not absolute or under `~`",
+            ),
+            (
+                "[skills]\nx = { git = \"https://github.com/a/b\", path = \"../x\" }",
+                "skills.x: `path`: \"../x\" must be a folder inside the package",
+            ),
+            (
+                "[skills]\nx = { git = \"https://github.com/a/b\", rev = \"--upload-pack=x\" }",
+                "skills.x: `rev` must not start with `-`",
+            ),
             ("skills = 1", "skills: expected a table"),
+            (
+                "[folders]\nskills = [\".\"]",
+                "folders.skills: \".\" must name a folder",
+            ),
+            (
+                "[folders]\nskills = [\".agents\", \".agents/skills\"]",
+                "folders: \".agents\" and \".agents/skills\" overlap",
+            ),
+            (
+                "[folders]\nagents = [\".yapi/chest/agents\"]",
+                "folders: \".yapi/chest/agents\" and \".yapi/chest\" overlap",
+            ),
+            (
+                "[skills]\nx = { git = \"github.com/a/b@v1\" }",
+                "skills.x: `git`: \"github.com/a/b@v1\" names the revision `v1`: put it in `rev`",
+            ),
         ];
         for (text, message) in rejected {
             let error = Manifest::parse(text, Scope::Project)
@@ -854,8 +962,8 @@ extensions = ["extensions/index.ts"]
             assert_eq!(error, message, "{text}");
         }
         // The user's own global manifest may name folders anywhere.
-        let global =
-            Manifest::parse("[folders]\nskills = [\"~/x\", \"/abs\"]", Scope::Global).unwrap();
+        let global = "[folders]\nskills = [\"~/x\", \"/abs\"]\n[skills]\nx = { path = \"~/x\" }";
+        let global = Manifest::parse(global, Scope::Global).unwrap();
         assert_eq!(global.folders.skills, ["~/x", "/abs"]);
         // Unknown keys name the entry and the key.
         for (text, start) in [

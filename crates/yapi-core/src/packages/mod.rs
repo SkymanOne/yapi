@@ -149,12 +149,22 @@ impl std::fmt::Debug for PackageManager {
 
 /// The standard output of `git` with `args`, run in `dir` (else the process
 /// directory) without a terminal prompt.
-async fn run_git(args: &[&str], dir: Option<&Path>) -> Result<String, PackageError> {
+pub(crate) async fn run_git(args: &[&str], dir: Option<&Path>) -> Result<String, PackageError> {
+    run_git_with(args, dir, &[]).await
+}
+
+/// [`run_git`] with `env` set on top of what git normally gets.
+pub(crate) async fn run_git_with(
+    args: &[&str],
+    dir: Option<&Path>,
+    env: &[(&str, &str)],
+) -> Result<String, PackageError> {
     let mut command = tokio::process::Command::new("git");
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .envs(crate::config::child_env())
+        .envs(env.iter().copied())
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
     if let Some(dir) = dir {

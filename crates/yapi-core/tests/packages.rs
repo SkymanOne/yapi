@@ -78,12 +78,13 @@ fn publish(
 ) -> Vec<Interaction> {
     let mut manifests = serde_json::Map::new();
     let mut tarball_bytes = Vec::new();
+    let file = name.rsplit('/').next().unwrap();
     for (version, manifest, bytes) in versions {
         let mut manifest = manifest.clone();
         manifest["name"] = json!(name);
         manifest["version"] = json!(version);
         manifest["dist"] = json!({
-            "tarball": format!("{base}/{name}/-/{name}-{version}.tgz"),
+            "tarball": format!("{base}/{name}/-/{file}-{version}.tgz"),
             "integrity": format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes))),
         });
         manifests.insert((*version).to_owned(), manifest);
@@ -96,7 +97,7 @@ fn publish(
     vec![
         get(&format!("/{name}"), json_response(&packument)),
         get(
-            &format!("/{name}/-/{name}-{served}.tgz"),
+            &format!("/{name}/-/{file}-{served}.tgz"),
             Response {
                 status: 200,
                 headers: IndexMap::new(),
@@ -687,7 +688,8 @@ async fn npm_tree_replays() {
         let (.., bytes) = packages.iter().find(|(n, ..)| *n == pin.name).unwrap();
         let sha512 = STANDARD.encode(digest(&SHA512, bytes));
         assert_eq!(pin.integrity, format!("sha512-{sha512}"), "{pin:?}");
-        let tarball = format!("{}/{1}/-/{1}-{2}.tgz", server.url(), pin.name, pin.version);
+        let file = pin.name.rsplit('/').next().unwrap();
+        let tarball = format!("{}/{}/-/{file}-{}.tgz", server.url(), pin.name, pin.version);
         assert_eq!(pin.tarball, tarball);
     }
 
@@ -777,7 +779,7 @@ async fn npm_tree_replays() {
     let corp = Pinned {
         path: "node_modules/@local/x".into(),
         name: "@local/x".into(),
-        tarball: "http://npm.corp.test/x.tgz".into(),
+        tarball: "http://npm.corp.test/@local/x/-/x-1.0.0.tgz".into(),
         ..tree[2].clone()
     };
     let refused = [
@@ -832,14 +834,14 @@ async fn npm_tree_replays() {
             &secure,
             tree.clone(),
             format!(
-                "Refusing to download @acme/lib@1.0.0 from {}: tarballs need https, or the host and port of an http registry",
+                "Refusing to download @acme/lib@1.0.0 from {}: a pinned tarball must come from https://registry.test/, the registry for @acme/lib, over https unless that registry uses http",
                 tree[0].tarball
             ),
         ),
         (
             &local,
             vec![corp],
-            "Refusing to download @local/x@1.0.0 from http://npm.corp.test/x.tgz: tarballs need https, or the host and port of an http registry".into(),
+            "Refusing to download @local/x@1.0.0 from http://npm.corp.test/@local/x/-/x-1.0.0.tgz: a pinned tarball must come from http://localhost:4873/, the registry for @local/x, over https unless that registry uses http".into(),
         ),
     ];
     for (npm, pins, message) in refused {

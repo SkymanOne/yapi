@@ -90,6 +90,16 @@ pub struct Item {
 }
 
 impl Lock {
+    /// The entries of `section`. `[patch]` entries are never locked.
+    pub fn section(&self, section: Section) -> &[Locked] {
+        match section {
+            Section::Skills => &self.skills,
+            Section::Agents => &self.agents,
+            Section::Extensions => &self.extensions,
+            Section::Patch => &[],
+        }
+    }
+
     /// The lock in `text`. Fails on unknown keys, on versions other than 1,
     /// and on entry and item names that break the manifest's name rule or
     /// package paths that replay would refuse, so that no name or path from
@@ -116,9 +126,24 @@ impl Lock {
                         item.name
                     )));
                 }
+                // Exact versions only: replay builds tarball URLs from them.
+                let exact = |version: &str| semver::Version::parse(version).is_ok();
+                if let Some(version) = entry.version.as_deref().filter(|_| entry.npm.is_some())
+                    && !exact(version)
+                {
+                    return Err(invalid(format!(
+                        "{key} `{name}`: invalid version `{version}`"
+                    )));
+                }
                 for pin in &entry.packages {
                     npm::pin_names(&pin.path)
                         .map_err(|err| invalid(format!("{key} `{name}`: {err}")))?;
+                    if !exact(&pin.version) {
+                        return Err(invalid(format!(
+                            "{key} `{name}`: invalid version `{}` for {}",
+                            pin.version, pin.path
+                        )));
+                    }
                 }
             }
         }
@@ -167,11 +192,8 @@ impl Lock {
     /// are never compared.
     pub fn drift(&self, manifest: &Manifest) -> Vec<String> {
         let mut drift = Vec::new();
-        for (section, locked) in [
-            (Section::Skills, &self.skills),
-            (Section::Agents, &self.agents),
-            (Section::Extensions, &self.extensions),
-        ] {
+        for section in [Section::Skills, Section::Agents, Section::Extensions] {
+            let locked = self.section(section);
             let entries = manifest.section(section);
             for (name, entry) in entries {
                 let found = locked.iter().find(|locked| &locked.name == name);
@@ -338,7 +360,8 @@ integrity = "sha512-AAAA"
         );
         assert!(Lock::parse("version = 2\n").is_err());
         // No name or package path from a lock leaves the folder it joins.
-        let pin = "path = \"node_modules/../x\"\nname = \"x\"\nversion = \"1\"\ntarball = \"t\"\nintegrity = \"i\"\n";
+        let pin = "path = \"node_modules/../x\"\nname = \"x\"\nversion = \"1.0.0\"\ntarball = \"t\"\nintegrity = \"i\"\n";
+        let climbing = "path = \"node_modules/x\"\nname = \"x\"\nversion = \"1.0.0/../../../evil/-/evil-1.0.0\"\ntarball = \"t\"\nintegrity = \"i\"\n";
         for (text, message) in [
             (
                 "[[skill]]\nname = \"../x\"\n",
@@ -351,6 +374,14 @@ integrity = "sha512-AAAA"
             (
                 &format!("[[extension]]\nname = \"ok\"\n[[extension.package]]\n{pin}"),
                 "extension `ok`: Invalid package path: node_modules/../x".into(),
+            ),
+            (
+                &format!("[[extension]]\nname = \"ok\"\n[[extension.package]]\n{climbing}"),
+                "extension `ok`: invalid version `1.0.0/../../../evil/-/evil-1.0.0` for node_modules/x".into(),
+            ),
+            (
+                "[[skill]]\nname = \"ok\"\nnpm = \"x\"\nversion = \"^1\"\n",
+                "skill `ok`: invalid version `^1`".into(),
             ),
         ] {
             let error = Lock::parse(&format!("version = 1\n{text}")).unwrap_err();
