@@ -4,6 +4,10 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and let native extensions declare the capabilities they use ([#TBD](https://github.com/SkymanOne/yapi/pull/TBD)).
+
 ### Fixes
 
 - Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270)).

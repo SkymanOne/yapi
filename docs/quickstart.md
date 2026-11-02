@@ -63,6 +63,7 @@ Use `/resume` to choose another session. See [Manage sessions](sessions.md).
 - [Use yapi in the terminal](interactive.md) covers keys, commands and queued messages.
 - [Configure yapi](configuration.md) covers settings and project instructions in `AGENTS.md`.
 - [Coming from Pi](migrating.md) shows how to copy a Pi setup with `yapi import pi`.
+- [Manage project packages with chest](chest.md) pins a project's skills, subagents and extensions so everyone who clones it gets the same set.
 
 ### Choose how to customize yapi
 
@@ -76,3 +77,4 @@ Start with the simplest mechanism that meets the need:
 | Tools from an external server | [MCP server](mcp.md) |
 | New tools, commands or event handlers | [Extension](extensions.md) |
 | Several resources to share | [Package](packages.md) |
+| The same skills, subagents and extensions for everyone on a project | [chest](chest.md) |

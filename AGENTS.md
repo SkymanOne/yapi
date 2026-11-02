@@ -10,13 +10,15 @@ Project plan and working rules for `yapi`, for human and agent contributors.
 2. Start faster, use less memory and install smaller than pi.
 3. Provide a sandboxable extension system built on WebAssembly components.
 
+yapi also adds features beyond pi, starting with chest, a project package manager with grants per extension. They keep pi packages, skills and extensions compatible: whatever runs in pi runs in yapi as before.
+
 The pi release pinned in `tests/fixtures/pi/generator/package.json` is the behavioral specification. Every intentional deviation is listed in [docs/compat.md](docs/compat.md) with its reason.
 
 License: MIT OR Apache-2.0. Vendored and ported code keeps its own notices.
 
 ## Scope
 
-yapi covers what pi's coding agent does, through the pi packages in the architecture table, plus native WebAssembly extensions. Out of scope:
+yapi covers what pi's coding agent does, through the pi packages in the architecture table, plus native WebAssembly extensions and chest. Out of scope:
 
 - pi's experimental stack (`chord`, `durable`, `protocol`, `client`, `server`) and `evals`.
 - Native addons, `net`/`tls` servers and `worker_threads` in npm packages.
@@ -143,12 +145,14 @@ Module loading runs on the host, in `yapi-ext`:
   - JS packages with the same grants and event policy share one `yapi-js` instance, so each such set is its own instance;
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
-- Packages from `yapi install` and `-e` get every grant: filesystem, process, network, environment and session. pi's defaults allow as much, and pi has no session grant. Extensions from chest manifests get their entry's grants, event policy and module root through `chest::startup::Policies`.
+- An extension that chest installs gets what its manifest entry lists, through `chest::startup::Policies`: `capabilities-defaults` plus its own `capabilities`, its `events` policy and its module root. A project's `chest.toml` counts only once the project is trusted. Only `all` grants processes.
+- Packages from `yapi install`, `settings.json` and `-e` get every grant: filesystem, process, network, environment and session, with the shared event policy. pi's defaults allow as much, and pi has no session grant.
+- A package's `[package]` table, its `yapi.capabilities` and a native build's features only request capabilities. Grants come from the person who adds the entry.
 - The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration. The session in `yapi-core` applies event-hook results only within each extension's `Extension::grants()`.
 - The host carries `pi.events` between instances, through a bounded queue per instance. It routes each event by the instances' grants and `EventPolicy`: identical grants always share, and otherwise the sender's `send` and the receiver's `receive` must allow the channel. The default policy shares everything, as in pi. Guests report the channels they listen on, so blocked events for listeners are warned of.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- A native extension declares the capabilities it uses with `yapi-extension-api` features. A request whose feature is off fails in the guest, and the build lists its features in a `yapi:capabilities` custom section, which `chest check` and `chest add` read with `wasmparser`, beside the WASI imports. A declaration grants nothing.
-- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md).
+- A native extension declares the capabilities it uses with `yapi-extension-api` features. A request whose feature is off fails in the guest, and the build lists its features in a `yapi:capabilities` custom section, which `chest check` and `chest add` read with `wasmparser`, beside the WASI imports. yapi warns at startup when a native chest extension uses more than its entry grants. A declaration grants nothing.
+- Grants scoped to paths, hosts and programs, and a package registry, are planned in [docs/roadmap.md](docs/roadmap.md).
 
 ### Concurrency
 
@@ -184,6 +188,7 @@ Module loading runs on the host, in `yapi-ext`:
 | 14 | The binary embeds `yapi-js.wasm` deflated, and the release profile optimizes Cranelift's code generator for size. | Both matter only when the component cache has no entry, once per runtime version, so the smaller binary costs one slower compile. |
 | 15 | The docs the model reads, yapi's book and pi's README, docs and examples, ship as the `yapi-docs.tar.gz` release asset, not in the repository or the binary. Installs unpack or download it into `~/.yapi/agent/docs`. Without a local copy, the prompt points to the published docs. | pi's prompt, header and sign-in help point to the docs installed with pi. Packing pi's files at release time keeps them out of the repository and the binary. |
 | 16 | chest is a separate binary with its own manifest and lock, beside `yapi install`. It replaces or removes only what its local record says it placed, or what is exactly what it would install. | Projects need reproducible installs, grants per extension and skills shared with other agents. Leaving `yapi install` as in Pi keeps pi packages compatible, and a committed lock never makes a user's files chest's. |
+| 17 | Grants narrower than pi's come only from chest entries. Packages from `yapi install` keep every grant, and nothing a package declares grants anything. | Narrow defaults would break pi packages. A grant is a decision of the person who adds the package, so a package cannot widen its own. |
 
 ## Development guidelines
 

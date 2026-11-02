@@ -4,21 +4,18 @@ yapi implements Pi's coding agent. This page lists the work planned beyond it. T
 
 ## Capability-based sandboxing
 
-For now, every package receives every grant: file, process, network, environment and session access. The plan is to run each package with only the access it needs:
+Extensions installed with [chest](chest.md) run with the capabilities their manifest grants, and packages from `yapi install` keep Pi's grants. The capabilities are coarse for now, so the plan is to narrow them:
 
-- A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
-- File grants can be limited to paths and to read-only access, and network grants to hosts. Extensions then share `pi.events` without a channel list only when their paths and hosts match too.
-- The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it. yapi already routes the bus by grants and event policies, and every package gets the shared policy for now.
+- File grants limited to paths and to read-only access, such as `fs:read` or a list of folders.
+- Network grants limited to hosts.
+- Process grants limited to programs, such as `exec:git`, so an extension can run one tool without `all`.
+- Extensions with identical grants always share `pi.events`. Once file and network grants are scoped, they will share only when their paths and hosts match too.
 
 [Security model and sandboxing](security.md) describes the current model.
 
-## Project manifests
-
-A `yapi.toml` file at a project's root will list the packages, extensions and skills the project uses. Anyone who checks out the project then installs the same set at the same versions, as `Cargo.toml` does for a Rust project.
-
 ## Package registry
 
-A central registry of yapi packages will let manifests name packages and versions instead of npm or git sources.
+A central registry of yapi packages will let `chest.toml` name packages and versions instead of npm or git sources.
 
 ## Stable native extension API
 
