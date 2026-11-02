@@ -44,6 +44,16 @@
 //! [`Context::add_autocomplete_provider`] completes text in the editor, and
 //! [`Api::register_shortcut`] binds a key, as Pi's `ctx.ui.onTerminalInput`,
 //! `ctx.ui.addAutocompleteProvider` and `pi.registerShortcut` do.
+//!
+//! The features `fs`, `net`, `env` and `session` declare the capabilities the
+//! extension uses, and `all` declares every one, running processes included.
+//! Each enables the requests that need that grant: a request whose feature is
+//! off fails without reaching yapi, and [`exec`], [`Process`],
+//! [`send_message`] and [`append_entry`] exist only with theirs. The build
+//! records its features in a `yapi:capabilities` custom section, which
+//! `chest check` compares with the capabilities its package requests.
+// The docs link to items that only some features build, as docs.rs has all.
+#![cfg_attr(not(feature = "all"), allow(rustdoc::broken_intra_doc_links))]
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -52,16 +62,21 @@ use std::rc::Rc;
 
 pub use serde_json::{Value, json};
 
+mod capabilities;
 pub mod events;
 mod input;
+#[cfg(feature = "all")]
 mod process;
 mod task;
 mod ui;
 
+#[doc(hidden)]
+pub use capabilities::KIND_FEATURES;
 pub use input::{
     AutocompleteProvider, Current, EditorState, Subscription, Suggestions, TerminalInput,
     editor_text,
 };
+#[cfg(feature = "all")]
 pub use process::{Process, ProcessEvent};
 use task::{LocalFuture, Signal};
 pub use task::{op, sleep, spawn};
@@ -567,10 +582,16 @@ impl Api {
 /// `getLabel`, `getLeafId`, `getLeafEntry`, `getBranch` and
 /// `buildSessionContext`. Entries have the shapes of Pi's session files.
 ///
+/// `exec.sync` needs the `all` feature, and the `session` kinds other than
+/// `session.read` need the `session` feature. Without it the request fails
+/// with a message that names the feature, as do other kinds that need a
+/// grant, such as `fetch` with `net` and `env` with `env`.
+///
 /// `ui.notify` and the `session` requests fail while the init function runs,
 /// before yapi binds the extension to a session. Every other kind is internal
 /// to yapi and unstable: it may change or disappear in any release.
 pub fn request(kind: &str, payload: &Value) -> Result<Value, String> {
+    capabilities::check(kind)?;
     let text = host::request(kind, &payload.to_string())?;
     if text.is_empty() {
         return Ok(Value::Null);
@@ -584,6 +605,7 @@ pub fn notify(message: &str, level: &str) {
 }
 
 /// pi's `sendMessage`: adds a custom message to the session.
+#[cfg(feature = "session")]
 pub fn send_message(custom_type: &str, content: &str, display: bool) -> Result<(), String> {
     request(
         "session.sendMessage",
@@ -593,6 +615,7 @@ pub fn send_message(custom_type: &str, content: &str, display: bool) -> Result<(
 }
 
 /// pi's `appendEntry`: stores `data` in the session file.
+#[cfg(feature = "session")]
 pub fn append_entry(custom_type: &str, data: Value) -> Result<(), String> {
     request(
         "session.appendEntry",
@@ -602,6 +625,7 @@ pub fn append_entry(custom_type: &str, data: Value) -> Result<(), String> {
 }
 
 /// A finished process.
+#[cfg(feature = "all")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecOutput {
     /// Standard output.
@@ -613,6 +637,7 @@ pub struct ExecOutput {
 }
 
 /// Runs `command` with `args` in `cwd` and waits for it.
+#[cfg(feature = "all")]
 pub fn exec(command: &str, args: &[&str], cwd: Option<&str>) -> Result<ExecOutput, String> {
     let result = request(
         "exec.sync",

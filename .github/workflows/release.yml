@@ -233,7 +233,7 @@ jobs:
           cargo "+$tui" check -p yapi-tui
           cd guest
           cargo "+$sdk" check -p yapi-extension-api --target wasm32-wasip2
-          cargo "+$tui" check -p yapi-extension-api --features widgets --target wasm32-wasip2
+          cargo "+$tui" check -p yapi-extension-api --features widgets,all --target wasm32-wasip2
       - name: Check that the crates package
         if: github.ref_type != 'tag'
         run: |

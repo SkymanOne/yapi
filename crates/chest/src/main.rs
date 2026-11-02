@@ -3,6 +3,7 @@
 //! their exit codes are described in docs/chest.md.
 
 mod add;
+mod check;
 mod import;
 mod init;
 mod prompt;
@@ -71,6 +72,12 @@ enum Command {
     Verify,
     /// Turn settings.json packages or a skills-lock.json into entries.
     Import(import::ImportArgs),
+    /// Compare the capabilities a package's native extensions use with
+    /// those it requests.
+    Check {
+        /// The package folder or `.wasm` file, the current folder by default.
+        path: Option<PathBuf>,
+    },
 }
 
 /// The manifest a command works on.
@@ -146,6 +153,9 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::Outdated => outdated(&target, &mut npm).await?,
         Command::Verify => return verify(&target),
         Command::Import(args) => import::run(&target, &args)?,
+        Command::Check { path } => {
+            return check::run(path.as_deref().unwrap_or(Path::new(".")));
+        }
     }
     Ok(ExitCode::SUCCESS)
 }

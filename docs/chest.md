@@ -73,7 +73,7 @@ An extension entry lists what it may reach:
 | `all` | Everything above, plus running programs |
 | `none` | Nothing beyond the baseline. The default. |
 
-`chest add` shows the capabilities a package requests and asks about each one. A request never grants anything by itself. Without a terminal, it grants only what `--grant` lists, which is nothing by default. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
+`chest add` shows the capabilities a package requests and asks about each one. For a native extension it also shows what the build uses, from the features it was built with and the WASI interfaces it imports, and asks about the ones the package does not request. A bare `.wasm` file requests nothing, so chest offers what it uses. A request never grants anything by itself. Without a terminal, it grants only what `--grant` lists, which is nothing by default. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
 
 `all` is the only way to run programs. A program runs as you, outside the sandbox, with yapi's environment and API keys, so `all` is full access, and `chest add` says so before granting it. [The reference](chest-manifest.md#capabilities) lists exactly what each capability allows.
 
@@ -159,7 +159,15 @@ agents = ["agents/*.md"]
 extensions = ["extensions/index.ts"]
 ```
 
-`capabilities` and `events` are requests. `chest add` shows them to the consumer, who decides what to grant. A package can also request them in `package.json` under `yapi.capabilities` and `yapi.events`. Entries in the package's own `[skills]`, `[agents]` or `[extensions]` sections are not installed for its consumers. `chest add` lists them so the consumer can add the ones they want.
+`capabilities` and `events` are requests. `chest add` shows them to the consumer, who decides what to grant. A package can also request them in `package.json` under `yapi.capabilities` and `yapi.events`.
+
+Before you publish a native extension, run `chest check` in the package folder. It compares the capabilities each `.wasm` extension uses with the ones the package requests:
+
+```sh
+chest check
+```
+
+It reads the [capability features](native-extensions.md#declare-capabilities) the extension was built with, and the WASI interfaces it imports, where `wasi:filesystem` means `fs` and `wasi:sockets` or `wasi:http` mean `net`. A capability the extension uses that the package does not request is an error, and chest exits with 1. A capability the package requests that no extension uses is a warning. An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime. Entries in the package's own `[skills]`, `[agents]` or `[extensions]` sections are not installed for its consumers. `chest add` lists them so the consumer can add the ones they want.
 
 ## Command reference
 
@@ -176,5 +184,6 @@ Every command takes `-g` (the global manifest) and `--manifest <path>`. Without 
 | `chest outdated` | | Lists entries whose source has something newer. |
 | `chest verify` | | Checks installed copies against the lock. |
 | `chest import` | `--settings` or `--skills-lock`, `[path]` | Turns settings.json packages or a skills-lock.json into entries. |
+| `chest check [path]` | | Compares the capabilities the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests. `path` is the current folder by default. Reads no manifest. |
 
-chest exits with 0 on success, 1 when a command fails or `verify` finds a mismatch, and 2 on a usage error. Questions go to stderr and are asked only at a terminal.
+chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error. Questions go to stderr and are asked only at a terminal.

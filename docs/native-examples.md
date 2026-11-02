@@ -24,7 +24,14 @@ The repository has nineteen native extensions in [`guest/examples`](https://gith
 | [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
 | [`code-renderer`](#code-renderer) | Colors Rust keywords with yapi's code renderer API, and bolds `TODO` with a Markdown transformer | None |
 
-Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
+Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature. Each enables the [capability features](native-extensions.md#declare-capabilities) it uses in its `Cargo.toml`:
+
+| Feature | Examples |
+|---|---|
+| `session` | `hello`, `message-renderer`, `entry-renderer` and `crash-recovery`, which add messages or entries to the session |
+| `all` | `repo-status`, `package-scripts` and `subagent`, which run processes |
+
+The others use no capability.
 
 ## Build and try them
 

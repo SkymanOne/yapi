@@ -50,7 +50,7 @@ Choose a Pi extension unless the user asks for Rust or a sandboxed, self-contain
 Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests they use may change in any release before then, and extensions may need to be rebuilt. Pi extensions from npm use Pi's extension API and are not affected.
 
 1. Install the target once: `rustup target add wasm32-wasip2`.
-2. Run `yapi new <name>`. It creates a Cargo project laid out as a package: a `cdylib` crate that depends on `yapi-extension-api` 0.3.1 from crates.io and registers a flag, a tool, a command and two event handlers, a `package.json` naming `extensions/<crate>.wasm`, and `.cargo/config.toml` making `wasm32-wasip2` the default target. `cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.1 crates/yapi/templates/extension` makes the same project.
+2. Run `yapi new <name>`. It creates a Cargo project laid out as a package: a `cdylib` crate that depends on `yapi-extension-api` 0.3.1 from crates.io and registers a flag, a tool, a command and two event handlers, a `package.json` naming `extensions/<crate>.wasm`, a `chest.toml` requesting the `session` capability, and `.cargo/config.toml` making `wasm32-wasip2` the default target. `cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.1 crates/yapi/templates/extension` makes the same project.
 3. Register everything in the init function and export it with `yapi_extension_api::extension!(init)`:
 
    | Item | Purpose |
@@ -60,7 +60,7 @@ Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Ru
    | `Api::register_flag(name, FlagType, default, description)` | `--name`, read with `get_flag` |
    | `Api::register_shortcut(key, description, handler)` | A key such as `alt+k`, with an `async` handler that gets the `Context` |
    | `Api::on(event, handler)` | A Pi event, with an `async` handler. Return `Ok(None)`, or `Ok(Some(json))` with the handler's result in Pi's shape, such as `{"block": true, "reason": "..."}`. |
-   | `notify`, `send_message`, `append_entry`, `exec`, `request` | Host actions that answer at once: notifications, session messages and entries, processes, and any other action by name |
+   | `notify`, `send_message`, `append_entry`, `exec`, `request` | Host actions that answer at once: notifications, session messages and entries, processes, and any other action by name. `send_message` and `append_entry` need the SDK's `session` feature, and `exec` and `Process` need `all`. |
    | `op`, `sleep`, `Process`, `spawn` | Async work: host operations such as dialogs and `fetch`, timers, processes read as they run, and background tasks that outlive the handler. A process inherits yapi's environment, and `"envAdd": {...}` in `exec.sync` or `Process::spawn` adds variables to it, where `env` would replace it. |
    | `events::on(channel, handler)`, `events::emit(channel, &data)` | Pi's `pi.events`, shared with every other extension, native or Pi. `emit` runs this extension's handlers at once and the others' after it returns. `on` returns a `Subscription` to `unsubscribe()`. |
    | `extension_path()` | The extension's `.wasm` file and the root of the package it was installed from, such as to run `yapi -e` with the extension itself |
@@ -73,15 +73,19 @@ Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Ru
    | `Api::register_code_renderer` | Colors code, which yapi shows in one color |
    | `widgets` (feature `widgets`) | pi-tui's widgets as yapi ports them: `tui::select_list::SelectList`, `tui::editor::Editor`, `CustomEditor` for editor components, `Text`, and `to_ansi` to turn their styled lines into a component's lines |
 
-4. Build, copy the build into the package, then check it loads:
+4. Enable the SDK features for the capabilities the extension uses, `fs`, `net`, `env`, `session` or `all`, and list the same ones in `capabilities` under `[package]` in `chest.toml`. A request whose feature is off fails with a message that names the feature.
+5. Build, copy the build into the package, then check its capabilities and that it loads:
 
    ```sh
    cargo build --release
    cp target/wasm32-wasip2/release/<crate>.wasm extensions/
+   chest check
    python3 scripts/check-extension.py .
    ```
 
-5. The repository's [native examples](https://skymanone.github.io/yapi/native-examples.html) show a command guard, protected paths, a todo list kept per session branch and shown in a component, a footer component, a git status reporter, a subagent that runs another yapi in the foreground or the background, events shared with other extensions, scripts shipped in the package, a modal editor, a question tool with its own rendering, an overlay, a message renderer, an entry renderer, a select list, a terminal input listener with an autocomplete provider and a shortcut, and a countdown that stops with its own result when the run is aborted.
+   `chest check` fails when the build uses a capability the package does not request.
+
+6. The repository's [native examples](https://skymanone.github.io/yapi/native-examples.html) show a command guard, protected paths, a todo list kept per session branch and shown in a component, a footer component, a git status reporter, a subagent that runs another yapi in the foreground or the background, events shared with other extensions, scripts shipped in the package, a modal editor, a question tool with its own rendering, an overlay, a message renderer, an entry renderer, a select list, a terminal input listener with an autocomplete provider and a shortcut, and a countdown that stops with its own result when the run is aborted.
 
 ## Package and share
 

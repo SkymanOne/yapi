@@ -1,7 +1,7 @@
 //! `chest add`: looks at a package, asks what to grant it, writes its entry
 //! and installs it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};
 use clap::Args;
@@ -15,6 +15,7 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
+use crate::check::{Inspected, inspect};
 use crate::prompt::Prompt;
 use crate::{Target, entries, open, read, requests, say, source, sync, write};
 
@@ -108,14 +109,19 @@ fn default_name(entry: &Entry) -> String {
     last.to_ascii_lowercase()
 }
 
+/// The item `entry` picks from the package fetched at `root`.
+fn item(root: &Path, entry: &Entry) -> PathBuf {
+    match (&entry.git, &entry.npm) {
+        (None, None) => root.to_path_buf(),
+        _ => root.join(entry.path.as_deref().unwrap_or_default()),
+    }
+}
+
 /// The section a package at `root` belongs in, judged from the item the
 /// entry picks: a `.md` file is a subagent, a folder with a `SKILL.md` a
 /// skill, and a package with extensions an extension.
 fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
-    let item = match (&entry.git, &entry.npm) {
-        (None, None) => root.to_path_buf(),
-        _ => root.join(entry.path.as_deref().unwrap_or_default()),
-    };
+    let item = item(root, entry);
     let extension =
         |name: &str| name.ends_with(".wasm") || name.ends_with(".ts") || name.ends_with(".js");
     let name = item.file_name().unwrap_or_default().to_string_lossy();
@@ -178,6 +184,37 @@ fn show(meta: &PackageMeta) {
     }
 }
 
+/// Prints what each native extension uses, under what the package
+/// requests.
+fn show_used(inspected: &Inspected) {
+    for (file, found) in &inspected.components {
+        let found = match found {
+            Ok(found) => found,
+            Err(err) => {
+                say(&format!("  {file}: {err}"));
+                continue;
+            }
+        };
+        let used: Vec<String> = found
+            .used
+            .iter()
+            .map(|used| format!("{} ({})", used.capability, used.source))
+            .collect();
+        match (used.is_empty(), found.metadata) {
+            (true, true) => say(&format!("  {file} uses no capabilities")),
+            (false, _) => say(&format!("  {file} uses: {}", used.join(", "))),
+            (true, false) => say(&format!(
+                "  {file} uses no capabilities its WASI imports show"
+            )),
+        }
+        if !found.metadata {
+            say(
+                "    it was built without capability metadata, so only its WASI imports show what it uses",
+            );
+        }
+    }
+}
+
 fn channels(patterns: &[String]) -> String {
     if patterns.is_empty() {
         "none".into()
@@ -199,10 +236,15 @@ fn meaning(capability: &str) -> &'static str {
 }
 
 /// The capabilities to grant: `--grant`, where `none` is the empty start,
-/// then each requested one the person accepts. Requests that are not
-/// capabilities, such as `process`, are skipped with a warning, so they are
-/// never asked about or written.
-fn grants(prompt: &Prompt, args: &AddArgs, meta: &PackageMeta) -> anyhow::Result<Vec<String>> {
+/// then each requested or `used` one the person accepts. Requests that are
+/// not capabilities, such as `process`, are skipped with a warning, so they
+/// are never asked about or written.
+fn grants(
+    prompt: &Prompt,
+    args: &AddArgs,
+    meta: &PackageMeta,
+    used: &[&str],
+) -> anyhow::Result<Vec<String>> {
     Grants::parse(&args.grant)
         .map_err(anyhow::Error::msg)
         .context("--grant")?;
@@ -226,7 +268,17 @@ fn grants(prompt: &Prompt, args: &AddArgs, meta: &PackageMeta) -> anyhow::Result
     if !prompt.interactive() {
         return Ok(granted);
     }
-    for capability in valid {
+    let mut offered: Vec<String> = valid.into_iter().cloned().collect();
+    for capability in used {
+        if !offered.iter().any(|offer| offer == capability) {
+            offered.push((*capability).to_owned());
+        }
+    }
+    for capability in &offered {
+        // `all` covers the rest.
+        if granted.iter().any(|grant| grant == "all") {
+            break;
+        }
         if granted.contains(capability) || capability == "none" {
             continue;
         }
@@ -347,8 +399,10 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         show(&meta);
         nested(&fetched.root, &name);
         if section == Section::Extensions {
+            let inspected = inspect(&item(&fetched.root, &entry));
+            show_used(&inspected);
             let prompt = Prompt::new(args.yes);
-            let granted = grants(&prompt, &args, &meta)?;
+            let granted = grants(&prompt, &args, &meta, &inspected.used())?;
             entry.capabilities = (!granted.is_empty()).then_some(granted);
             entry.events = events(&prompt, &meta);
             for warning in requests(&project.manifest, &entry, &meta) {

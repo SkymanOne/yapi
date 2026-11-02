@@ -10,6 +10,7 @@ pub mod manifest;
 pub mod place;
 mod record;
 pub mod startup;
+pub mod wasm;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

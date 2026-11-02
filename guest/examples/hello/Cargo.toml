@@ -10,7 +10,7 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-yapi-extension-api = { path = "../../yapi-extension-api" }
+yapi-extension-api = { path = "../../yapi-extension-api", features = ["session"] }
 
 [lints]
 workspace = true

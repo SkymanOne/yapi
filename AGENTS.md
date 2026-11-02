@@ -69,7 +69,7 @@ Dependency direction:
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
 - `yapi-mock` is never a dependency of a shipped crate.
-- `chest` depends on `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime.
+- `chest` depends on `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
 - `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
@@ -147,6 +147,7 @@ Module loading runs on the host, in `yapi-ext`:
 - The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration. The session in `yapi-core` applies event-hook results only within each extension's `Extension::grants()`.
 - The host carries `pi.events` between instances, through a bounded queue per instance. It routes each event by the instances' grants and `EventPolicy`: identical grants always share, and otherwise the sender's `send` and the receiver's `receive` must allow the channel. The default policy shares everything, as in pi. Guests report the channels they listen on, so blocked events for listeners are warned of.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
+- A native extension declares the capabilities it uses with `yapi-extension-api` features. A request whose feature is off fails in the guest, and the build lists its features in a `yapi:capabilities` custom section, which `chest check` and `chest add` read with `wasmparser`, beside the WASI imports. A declaration grants nothing.
 - Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md).
 
 ### Concurrency

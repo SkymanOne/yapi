@@ -26,6 +26,7 @@ shout/
 ├── .gitignore
 ├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.3.1
 ├── README.md
+├── chest.toml           the capabilities the extension asks for
 ├── extensions/          where the built extension goes
 ├── package.json         names extensions/shout.wasm for yapi
 └── src/lib.rs           the hello example, to replace with your own
@@ -82,6 +83,47 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 ```
 
 A crate without the template's `.cargo/config.toml` builds with `cargo build --release --target wasm32-wasip2`.
+
+## Declare capabilities
+
+The features of `yapi-extension-api` declare the capabilities an extension uses, the same ones a package requests in [`capabilities`](chest-manifest.md#capabilities). Each feature enables the requests that need its grant:
+
+| Feature | Enables |
+|---|---|
+| `fs` | `context.files` |
+| `net` | `fetch`, `fetch.stream`, `dns.lookup`, and the model and credential operations such as `ai.stream` and `models.apiKey` |
+| `env` | `env`, which reads environment variables |
+| `session` | `send_message`, `append_entry`, and the requests that change the session, such as `session.sendMessage`, `session.reload` and `model.set` |
+| `all` | Everything above, plus `exec`, `Process` and registering providers |
+
+The template starts with `session`, which its `hello` code needs:
+
+```toml
+[dependencies]
+yapi-extension-api = { version = "0.3.1", features = ["session"] }
+```
+
+A request whose feature the build leaves out fails without reaching yapi, with a message such as ``request `session.appendEntry` needs the `session` feature of yapi-extension-api``. `exec`, `Process`, `send_message` and `append_entry` exist only with their features. Requests that need a grant only for some payloads, such as `tool.execute` and `ui.editorSubmit`, need no feature, and yapi checks them as they run.
+
+The build records its features in a `yapi:capabilities` custom section. `chest check` reads the section and the WASI interfaces the component imports, where `wasi:filesystem` means `fs` and `wasi:sockets` or `wasi:http` mean `net`. Then it compares them with the capabilities in the package's `chest.toml` or `package.json`:
+
+```sh
+cargo build --release
+cp target/wasm32-wasip2/release/shout.wasm extensions/
+chest check
+```
+
+`chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [chest](chest.md#publish-skills-subagents-and-extensions).
+
+Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them.
+
+### Move to capability features
+
+Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls `exec`, `Process`, `send_message` or `append_entry`, and its other requests that need a grant fail at runtime. To move it:
+
+1. Enable the features of the requests it sends: `session` for session changes, `net` for `fetch` and models, `env` for environment variables, `fs` for context files, and `all` for processes and providers.
+2. List the same capabilities in `capabilities` under `[package]` in `chest.toml`, or `yapi.capabilities` in `package.json`.
+3. Build it and run `chest check`.
 
 ## Try it
 
@@ -146,9 +188,9 @@ A package can request capabilities and `pi.events` channels as a Pi package does
 | `Api::on` | Handle a Pi event such as `session_start` or `tool_call`. The return value is the handler's result in Pi, for example `{"block": true, "reason": "..."}`. A handler gets a copy of the event, so a `tool_call` handler changes the call's arguments by returning them as `input` instead of editing them. |
 | `events::on`, `events::emit` | Subscribe to and emit events that every extension shares, Pi's `pi.events`. See [Events between extensions](#events-between-extensions). |
 | `notify` | Show a notification |
-| `send_message`, `append_entry` | Add a custom message or entry to the session |
-| `exec` | Run a process and wait for it |
-| `Process` | Run a process in the background, reading its output as it arrives |
+| `send_message`, `append_entry` | Add a custom message or entry to the session, with the `session` feature |
+| `exec` | Run a process and wait for it, with the `all` feature |
+| `Process` | Run a process in the background, reading its output as it arrives, with the `all` feature |
 | `sleep` | Wait a number of milliseconds |
 | `spawn` | Run a future in the background, after the handler that started it has returned |
 | `request` | Call any host action by name with a JSON payload and get its answer at once |
@@ -191,6 +233,8 @@ A package can request capabilities and `pi.events` channels as a Pi package does
 
 `session.read` takes the method's arguments as the array `args`, such as `["<entry id>"]` for `getEntry`. The methods are `getCwd`, `getSessionDir`, `getSessionId`, `getSessionFile`, `getSessionName`, `isPersisted`, `getHeader`, `getEntries`, `getEntry`, `getChildren`, `getLabel`, `getLeafId`, `getLeafEntry`, `getBranch`, `buildContextEntries`, `buildSessionProjection` and `buildSessionContext`. Entries have the shapes of Pi's session files.
 
+`exec.sync` needs the `all` feature, and `session.sendMessage` and `session.appendEntry` need the `session` feature. See [Declare capabilities](#declare-capabilities).
+
 `ui.notify` and the `session` requests fail while the init function runs, before yapi binds the extension to a session. Every other kind is internal to yapi and may change or disappear in any release.
 
 ### Host operations
@@ -205,7 +249,7 @@ A package can request capabilities and `pi.events` channels as a Pi package does
 | `ui.confirm` | `{"title", "message"}` | `true` or `false`, as Pi's `ctx.ui.confirm` |
 | `ui.input` | `{"title", "placeholder"}` | The text entered, or `null` when cancelled, as Pi's `ctx.ui.input` |
 
-`fetch` fails when the extension may not use the network. The dialogs answer `null` or `false` at once in print and JSON modes, which have no interface, so check `Context::has_ui` first. Every other kind is internal to yapi and may change or disappear in any release.
+`fetch` needs the `net` feature, and fails when the extension may not use the network. The dialogs answer `null` or `false` at once in print and JSON modes, which have no interface, so check `Context::has_ui` first. Every other kind is internal to yapi and may change or disappear in any release.
 
 ### Processes
 
@@ -215,7 +259,7 @@ A package can request capabilities and `pi.events` channels as a Pi package does
 - `Process::next` waits for the next `ProcessEvent`: output on standard output or standard error, then the exit. A dropped `next` future loses no output.
 - `write` waits while the process has not taken the previous write. `close_stdin` and `kill` act at once.
 
-Dropping a `Process` kills it, and so does stopping the extension. Starting one needs the process grant, which every extension has by default.
+Dropping a `Process` kills it, and so does stopping the extension. `Process` needs the `all` feature, and starting one needs the process grant, which every extension has by default.
 
 A process inherits yapi's environment, so `envAdd` is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits:
 

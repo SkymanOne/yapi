@@ -20,7 +20,7 @@ use serde_json::json;
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::{AgentSession, TreeNavigation};
 use yapi_core::extensions::{
-    ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Mode, NoUi, NotifyKind,
+    ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Grants, Mode, NoUi, NotifyKind,
     RemoteComponent,
 };
 use yapi_ext::ExtensionHost;
@@ -71,6 +71,60 @@ async fn native_register_and_run() {
         .collect();
     assert_eq!(results, ["HELLO!!", "Nothing to shout"]);
     assert_eq!(session.extensions()[0].commands()[0].name, "hello");
+}
+
+/// Each kind the SDK gates behind a feature is one yapi refuses without the
+/// grant: the capability probe, built with every feature, sends them all
+/// from an extension granted nothing. `env` answers no variables instead.
+/// Kinds that need no grant still answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn gated_kinds_denied() {
+    let dir = scratch("native-capability-probe");
+    let mut options = options(&dir);
+    options.grants = Grants::none();
+    let probe = cli_source(&fixture("capability-probe"));
+    let host = ExtensionHost::load_native(&engine(), options, &probe)
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    let faux = Faux::new([
+        Response::tool_call("call-1", "probe", json!({})),
+        Response::text("done"),
+    ]);
+    let session = session(&faux, &dir, host.for_session());
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    session.prompt("probe", Vec::new()).await.unwrap();
+    let results = tool_results(&session);
+    let answers: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&results[0]).unwrap();
+    let (allowed, denied): (Vec<_>, Vec<_>) = answers
+        .iter()
+        .partition(|(_, answer)| answer.get("ok").is_some());
+    let denied: Vec<&str> = denied
+        .iter()
+        .map(|(kind, answer)| {
+            let message = answer["err"].as_str().unwrap();
+            assert!(
+                message.ends_with("is not permitted for this extension"),
+                "{kind}: {message}"
+            );
+            kind.as_str()
+        })
+        .collect();
+    let allowed: Vec<(&str, &serde_json::Value)> = allowed
+        .iter()
+        .map(|(kind, answer)| (kind.as_str(), &answer["ok"]))
+        .collect();
+    assert_eq!(denied.len(), 35, "{allowed:?}");
+    assert!(allowed.contains(&("env", &json!({}))), "{allowed:?}");
+    assert!(
+        allowed.contains(&("timer", &serde_json::Value::Null)),
+        "{allowed:?}"
+    );
+    let names: Vec<&str> = allowed.iter().map(|(kind, _)| *kind).collect();
+    assert_eq!(names, ["cwd", "env", "session.read", "timer"]);
 }
 
 /// A UI whose theme colors keywords magenta.

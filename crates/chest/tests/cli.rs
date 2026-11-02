@@ -614,9 +614,11 @@ fn add_prompts_capabilities() {
     let remote = Remote::new(&scratch.dir);
     let package = json!({
         "name": "risky",
-        "pi": {"extensions": ["./index.ts"]},
+        "pi": {"extensions": ["./index.ts", "./hello.wasm"]},
         "yapi": {"capabilities": ["all", "process"], "events": {"send": ["risky:*"], "receive": []}},
     });
+    // It uses `session`, which the package does not request.
+    std::fs::copy(fixture("hello"), remote.work.join("hello.wasm")).unwrap();
     remote.commit(
         &[
             ("package.json", &package.to_string()),
@@ -625,7 +627,7 @@ fn add_prompts_capabilities() {
         "v1",
     );
     init(&scratch);
-    // `--grant none` is the empty start, so accepting `all` writes `all` alone.
+    // `--grant none` is the empty start, so `none` is never written.
     let source = format!("{}@v1", remote.source);
     let args = ["add", &source, "--name", "risky", "--grant", "none"].map(str::to_owned);
     let mut pty = yapi_mock::pty::Pty::spawn(
@@ -659,6 +661,20 @@ fn add_prompts_capabilities() {
         "{:#?}",
         pty.rows()
     );
+    let uses = "hello.wasm uses: session (SDK feature `session`)";
+    assert!(
+        pty.rows().iter().any(|row| row.contains(uses)),
+        "{:#?}",
+        pty.rows()
+    );
+    // Declining `all` leaves the capability the extension uses on offer.
+    pty.write("n\r").unwrap();
+    assert!(
+        pty.wait_for(Duration::from_secs(10), shown("Grant `session`"))
+            .is_some(),
+        "{:#?}",
+        pty.rows()
+    );
     pty.write("y\r").unwrap();
     assert!(
         pty.wait_for(Duration::from_secs(10), shown("3) isolated"))
@@ -684,7 +700,92 @@ fn add_prompts_capabilities() {
     let _ = pty.finish();
     let manifest = read(&scratch.project.join("chest.toml"));
     assert!(
-        manifest.contains("capabilities = [\"all\"], events = \"isolated\" }"),
+        manifest.contains("capabilities = [\"session\"], events = \"isolated\" }"),
         "{manifest}"
+    );
+}
+
+/// A native extension's build in yapi-ext's fixtures.
+fn fixture(name: &str) -> PathBuf {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../yapi-ext/tests/fixtures");
+    Path::new(dir).join(format!("{name}.wasm"))
+}
+
+#[test]
+fn chest_check_mismatch() {
+    let scratch = scratch("check");
+    let package = scratch.project.join("chest.toml");
+    write(
+        &package,
+        "[package]\nname = \"probe\"\ncapabilities = [\"net\"]\nextensions = [\"extensions/hello.wasm\"]\n",
+    );
+    std::fs::create_dir_all(scratch.project.join("extensions")).unwrap();
+    std::fs::copy(
+        fixture("hello"),
+        scratch.project.join("extensions/hello.wasm"),
+    )
+    .unwrap();
+    let mismatch = chest(&scratch, &["check"], &[]);
+    assert_eq!(mismatch.status.code(), Some(1), "{}", text(&mismatch));
+    let report = text(&mismatch);
+    assert!(
+        report.contains("error: extensions/hello.wasm uses `session` (SDK feature `session`), which the package does not request"),
+        "{report}"
+    );
+    assert!(
+        report.contains("warning: the package requests `net`, which no extension uses"),
+        "{report}"
+    );
+
+    write(
+        &package,
+        "[package]\nname = \"probe\"\ncapabilities = [\"session\"]\nextensions = [\"extensions/hello.wasm\", \"index.ts\"]\n",
+    );
+    write(
+        &scratch.project.join("index.ts"),
+        "export default () => {};\n",
+    );
+    let report = text(&ok(&scratch, &["check", "."]));
+    assert!(
+        report.contains("extensions/hello.wasm uses `session` (SDK feature `session`)"),
+        "{report}"
+    );
+    assert!(
+        report
+            .contains("note: index.ts is a JS or TS extension, which yapi checks only as it runs"),
+        "{report}"
+    );
+
+    // `yapi new`'s template, whose source is the `hello` example, passes.
+    let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../yapi/templates/extension");
+    let created = scratch.dir.join("created");
+    for file in ["chest.toml", "package.json"] {
+        let text = read(&template.join(file)).replace("{{crate_name}}", "hello");
+        write(&created.join(file), &text);
+    }
+    std::fs::create_dir_all(created.join("extensions")).unwrap();
+    std::fs::copy(fixture("hello"), created.join("extensions/hello.wasm")).unwrap();
+    let report = text(&ok(&scratch, &["check", created.to_str().unwrap()]));
+    assert_eq!(
+        report,
+        "extensions/hello.wasm uses `session` (SDK feature `session`)\n"
+    );
+
+    // A component built without the SDK shows only its WASI imports.
+    let bare = scratch.dir.join("bare.wasm");
+    std::fs::write(&bare, b"\0asm\x0d\x00\x01\x00").unwrap();
+    let report = text(&ok(&scratch, &["check", bare.to_str().unwrap()]));
+    assert!(
+        report.contains("warning: bare.wasm was built without capability metadata"),
+        "{report}"
+    );
+    let module = scratch.dir.join("module.wasm");
+    std::fs::write(&module, b"\0asm\x01\x00\x00\x00").unwrap();
+    let failed = chest(&scratch, &["check", module.to_str().unwrap()], &[]);
+    assert_eq!(failed.status.code(), Some(1), "{}", text(&failed));
+    assert!(
+        text(&failed).contains("not a component"),
+        "{}",
+        text(&failed)
     );
 }

@@ -2,7 +2,7 @@
 
 A native extension for [yapi](https://github.com/SkymanOne/yapi), written in Rust with the `yapi-extension-api` crate. `src/lib.rs` starts as yapi's `hello` example: a `shout` tool, a `/hello` command, a `--shout-suffix` flag and two event handlers. Replace them with your own.
 
-The project is a yapi package. `package.json` names the built extension, `extensions/{{crate_name}}.wasm`.
+The project is a yapi package. `package.json` names the built extension, `extensions/{{crate_name}}.wasm`, and `chest.toml` lists the capabilities it asks for.
 
 Native WebAssembly extensions are unstable until yapi 1.0. The WIT world, the Rust SDK and the host requests they use may change in any release before then, and extensions may need to be rebuilt. Pi extensions from npm use Pi's extension API and are not affected.
 
@@ -15,6 +15,20 @@ cp target/wasm32-wasip2/release/{{crate_name}}.wasm extensions/
 ```
 
 `.cargo/config.toml` makes `wasm32-wasip2` the default target, so `cargo build` builds the WebAssembly component.
+
+## Declare capabilities
+
+The extension starts with the `session` capability, which `/hello`'s session entry needs. Each feature of `yapi-extension-api` in `Cargo.toml` declares one capability: `fs`, `net`, `env`, `session`, or `all` for everything, running processes included. A request that needs a capability the build leaves out fails with a message that names the feature.
+
+List the same capabilities in `chest.toml`. After each build, [chest](https://skymanone.github.io/yapi/chest.html) checks that they match:
+
+```sh
+cargo build --release
+cp target/wasm32-wasip2/release/{{crate_name}}.wasm extensions/
+chest check
+```
+
+`chest check` fails when the extension uses a capability that `chest.toml` does not list, and warns about one listed that it does not use.
 
 ## Try it
 

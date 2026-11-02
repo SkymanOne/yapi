@@ -4414,6 +4414,7 @@ dependencies = [
  "tz-rs",
  "unicode-normalization",
  "url",
+ "wasmparser",
  "yaml-rust2",
  "yapi-agent",
  "yapi-ai",
