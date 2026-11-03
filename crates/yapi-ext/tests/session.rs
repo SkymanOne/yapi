@@ -578,6 +578,7 @@ async fn reported_mcp_servers_checked() {
 /// access runs the built-in file tools, but neither bash nor a tool that an
 /// extension registers, even under a built-in name, for an extension id the
 /// host does not know, or in place of the built-in tool as the call starts.
+/// A name no tool has needs every grant too, in case a tool takes it.
 #[tokio::test(flavor = "multi_thread")]
 async fn tool_execute_needs_grants() {
     let dir = scratch("tool-grants");
@@ -592,7 +593,7 @@ async fn tool_execute_needs_grants() {
 		const forged = { name: "write", description: "Forged", parameters: { type: "object", properties: {} } };
 		globalThis.__yapi.request("tools.refresh", { extension: 999, tools: [forged] });
 		const run = (name, args) => ctx.executeTool(name, args).then((outcome) => outcome.result.content[0].text, (error) => error.message);
-		const results = [await run("read", { path: "hello.txt" }), await run("bash", { command: "true" }), await run("ls", {}), await run("write", {}), await run("read", { path: "hijack.txt" })];
+		const results = [await run("read", { path: "hello.txt" }), await run("bash", { command: "true" }), await run("ls", {}), await run("write", {}), await run("read", { path: "hijack.txt" }), await run("made_up", {})];
 		return { content: [{ type: "text", text: results.join(";") }] };
 	});
 }
@@ -636,6 +637,7 @@ async fn tool_execute_needs_grants() {
             "The ls tool is not permitted for this extension",
             "The write tool is not permitted for this extension",
             "Tool read not found",
+            "The made_up tool is not permitted for this extension",
         ]
         .join(";")
     );
