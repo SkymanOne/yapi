@@ -505,6 +505,15 @@ async fn frozen_rejects_drift() {
     let error = frozen(&mut project).await.unwrap_err();
     assert_eq!(error, "chest.toml has no lock: run `chest install`");
     assert!(!lock_path.exists());
+
+    // A tag deleted upstream no longer resolves from the cached clone.
+    git(
+        &remote.work,
+        &["push", "--quiet", "origin", ":refs/tags/v2"],
+    );
+    let mut gone = open(&dir, &skill_manifest(&remote, "v2"));
+    let error = failed(&mut gone, Mode::Update(Vec::new())).await;
+    assert!(error.ends_with("has no revision v2"), "{error}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
