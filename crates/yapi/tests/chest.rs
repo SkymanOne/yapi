@@ -39,6 +39,8 @@ async fn install(home: &Path, files: &[(&str, &str)], name: &str, text: &str) {
         _ => Scope::Project,
     };
     let mut project = Project::open(&path, scope).unwrap();
+    // The test's home, not the developer's, for `~` and the global store.
+    project.home = home.canonicalize().unwrap();
     project.cache = home.join(".chest/cache");
     project.state = home.join(".chest/state");
     let mut npm = Npm::new(HashMap::new());
@@ -199,7 +201,11 @@ async fn chest_extensions_load() {
     let manifest = format!(
         "[extensions]\nglobal = {{ path = \"global.js\" }}\ngranted = {{ path = \"granted.js\", capabilities = [\"fs\"] }}\nshared = {{ path = {shared:?}, capabilities = [\"all\"] }}\nwider = {{ path = {wider:?} }}\n"
     );
+    // The global install cleans the test's store, not the developer's.
+    let leftover = home.join(".chest/store/.left-staging");
+    std::fs::create_dir_all(&leftover).unwrap();
     install(&home, &files, ".chest/chest.toml", &manifest).await;
+    assert!(!leftover.exists());
     let args = ["--approve", "-e", "closed.js"];
     let loaded = commands(&home, &args, &[]);
     let described = |name: &str| loaded.get(name).map(String::as_str);

@@ -212,7 +212,7 @@ pub struct Project {
     pub state: PathBuf,
     path: PathBuf,
     /// The canonical home folder, which `~` names.
-    home: PathBuf,
+    pub home: PathBuf,
 }
 
 /// What startup does with an entry, as its lock and folders stand.
