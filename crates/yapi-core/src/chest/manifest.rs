@@ -285,18 +285,6 @@ impl Manifest {
                     "folders.{key}: \"{path}\" must be a relative path inside the project, without `..` or `~`"
                 )));
             }
-            // The `.gitignore` block lists paths in these folders, one per line.
-            let first = Path::new(path).components().find_map(|part| match part {
-                Component::Normal(part) => part.to_str(),
-                _ => None,
-            });
-            let pattern = path.contains(['*', '?', '[', '\\', '\n', '\r'])
-                || first.is_some_and(|part| part.starts_with(['!', '#']));
-            if scope == Scope::Project && pattern {
-                return Err(invalid(format!(
-                    "folders.{key}: \"{path}\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns"
-                )));
-            }
         }
         let mut seen: HashMap<&str, Section> = HashMap::new();
         for section in [Section::Skills, Section::Agents, Section::Extensions] {
@@ -852,18 +840,6 @@ extensions = ["extensions/index.ts"]
             (
                 "[folders]\nagents = [\"/abs\"]",
                 "folders.agents: \"/abs\" must be a relative path inside the project, without `..` or `~`",
-            ),
-            (
-                "[folders]\nskills = [\"skills[1]\"]",
-                "folders.skills: \"skills[1]\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
-            ),
-            (
-                "[folders]\nagents = [\"./!keep\"]",
-                "folders.agents: \"./!keep\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
-            ),
-            (
-                "[folders]\nextensions = \"s*\"",
-                "folders.extensions: \"s*\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
             ),
             (
                 "[folders]\nextensions = \"~/x\"",
