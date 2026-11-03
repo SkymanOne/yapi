@@ -993,6 +993,28 @@ async fn path_source_notice() {
         "# notes\n"
     );
 
+    // A path source holding the folder chest installs to, as an entry or as
+    // a patch, would copy itself, and is refused before anything is copied.
+    std::fs::write(dir.join("project/SKILL.md"), "# self\n").unwrap();
+    let pdf = "pdf = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"skills/pdf\" }";
+    for manifest in [
+        format!("{folders}me = {{ path = \".\" }}\n"),
+        format!("{folders}{pdf}\n\n[patch]\npdf = {{ path = \".\" }}\n"),
+    ] {
+        let error = failed(&mut open(&dir, &manifest), Mode::Resolve).await;
+        let holds = format!(
+            "{} holds {}, where chest installs",
+            dir.join("project").display(),
+            dir.join("project/.agents/skills").display()
+        );
+        assert!(error.contains(&holds), "{error}");
+        for name in ["me", ".me-staging", "pdf", ".pdf-staging"] {
+            let placed = dir.join("project/.agents/skills").join(name);
+            assert!(placed.symlink_metadata().is_err(), "{name}");
+        }
+    }
+    std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
+
     // A patched entry installs from its patch, again and again, and is
     // ignored by git, while the lock stays as it was.
     std::fs::create_dir_all(dir.join("project/local/pdf")).unwrap();

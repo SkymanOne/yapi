@@ -731,6 +731,20 @@ impl Project {
                 let item = (fetch::placed_name(section, name), source);
                 (vec![item], Vec::new())
             };
+            // An item holding a folder chest installs to would copy itself.
+            let sections = [Section::Skills, Section::Agents].into_iter();
+            let mut installs: Vec<PathBuf> = sections.flat_map(|s| self.homes(s)).collect();
+            installs.push(real_path(&self.store()));
+            for (_, item) in &items {
+                let real = real_path(item);
+                if let Some(home) = installs.iter().find(|home| home.starts_with(&real)) {
+                    return Err(invalid(format!(
+                        "{} holds {}, where chest installs, so it cannot be installed",
+                        item.display(),
+                        home.display()
+                    )));
+                }
+            }
             let content = Content::Items(hashed(items)?);
             return Ok(staged(record, content, Outcome::Installed, warnings));
         }
