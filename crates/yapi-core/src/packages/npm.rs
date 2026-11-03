@@ -1223,9 +1223,16 @@ pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmEr
     let staging = stage(&modules)?;
     let built = async {
         // Downloads overlap, and each tarball unpacks in order once checked.
-        let mut downloads = futures_util::stream::iter(&pins)
-            .map(|(_, _, pin)| async move { (*pin, npm.pinned_tarball(pin).await) })
-            .buffered(REPLAY_DOWNLOADS);
+        // The futures are built first: a closure the stream held across
+        // these awaits would keep the caller's future from being `Send`.
+        let downloads: Vec<_> = pins
+            .iter()
+            .map(|(_, _, pin)| {
+                let pin: &Pinned = pin;
+                async move { (pin, npm.pinned_tarball(pin).await) }
+            })
+            .collect();
+        let mut downloads = futures_util::stream::iter(downloads).buffered(REPLAY_DOWNLOADS);
         while let Some((pin, bytes)) = downloads.next().await {
             let bytes = bytes?;
             // `pin_names` checked that the path starts so; `staging` stands for it.

@@ -484,6 +484,13 @@ mod tests {
     use crate::packages::resolve::Resolved;
     use yapi_types::rpc::SourceInfo;
 
+    /// yapi's startup runs `load` in futures that move between threads.
+    #[test]
+    fn startup_load_send() {
+        fn send<T: Send>(_: T) {}
+        send(load(Path::new("."), false, true));
+    }
+
     /// A chest file whose package has no policy runs with none, with a
     /// warning, while other sources' files get no policy at all.
     #[test]
