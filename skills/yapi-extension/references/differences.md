@@ -4,7 +4,7 @@ yapi runs Pi extensions in a QuickJS-NG runtime compiled to WebAssembly, not in 
 
 ## Runtime
 
-- Each call into the extension may compute for 60 seconds, and the runtime may use 1 GiB of memory. A trapped runtime restarts and its extensions load again.
+- Each call into the extension may compute for 60 seconds, or 10 seconds while the extension loads, and the runtime may use 1 GiB of memory. A trapped runtime restarts and its extensions load again.
 - Node's built-in modules are shims. `fs`, `path`, `os`, `child_process`, `fetch` and `dns.lookup` work. These import but throw when called: `http` requests, `net` sockets and servers, `dns` queries other than `lookup`, `tls`, `worker_threads` workers, `node:sqlite`, `zlib` compression, `vm`, `v8`, `http2`, `dgram`, `cluster`, `inspector`, `child_process.fork`, `util.parseArgs`, `stream.pipeline`, `stream.finished`, `events.on` and `process.chdir`.
 - `require()` of an ES module fails. Use `import`.
 - Native addons are installed unbuilt and fail when loaded. Load them lazily, so the rest of the extension still works.

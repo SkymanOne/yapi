@@ -14,16 +14,16 @@ use yapi_types::settings::PackageSource;
 
 use crate::{Target, out, say, write};
 
-/// `chest import` options.
+/// `chest import` options: one of the two sources, and its file.
 #[derive(Args)]
-#[group(required = true, multiple = false, id = "from")]
+#[command(group(clap::ArgGroup::new("from").required(true).args(["settings", "skills_lock"])))]
 pub struct ImportArgs {
     /// Import the packages of settings.json: the project's `.yapi`, or the
     /// agent folder's with `-g`.
-    #[arg(long, group = "from")]
+    #[arg(long)]
     settings: bool,
     /// Import the skills of a skills.sh `skills-lock.json`.
-    #[arg(long, group = "from")]
+    #[arg(long)]
     skills_lock: bool,
     /// The file to read instead of the default.
     path: Option<PathBuf>,
@@ -86,7 +86,8 @@ fn add(
 }
 
 /// The settings packages as extensions with every capability, as `yapi
-/// install` gives them, and their filters.
+/// install` gives them, and their `skills`, `prompts` and `themes` filters.
+/// A package with a filter chest cannot express is left out.
 fn settings(
     target: &Target,
     path: &Path,
@@ -128,14 +129,16 @@ fn settings(
             }
         }
         if let Some(filtered) = filtered {
+            // Importing without these filters would load more than settings.json does.
+            if filtered.extensions.is_some() || filtered.autoload == Some(false) {
+                say(&format!(
+                    "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+                ));
+                continue;
+            }
             entry.skills = filtered.skills.clone();
             entry.prompts = filtered.prompts.clone();
             entry.themes = filtered.themes.clone();
-            if filtered.extensions.is_some() || filtered.autoload.is_some() {
-                say(&format!(
-                    "warning: {spec}: chest has no `extensions` or `autoload` filter, so those were left out"
-                ));
-            }
         }
         let name = name_of(&entry);
         if !valid_name(&name) {

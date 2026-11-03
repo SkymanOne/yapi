@@ -1105,12 +1105,17 @@ fn host_group(host: &ExtensionHost) -> Group {
 /// its grants and event policy are the same, `next`'s roots are the same
 /// once canonical now, a native extension's file is the same, and no file
 /// it ran is in another group now, since the modules it imported keep
-/// running with its grants. A file that is gone keeps its module, as in
-/// pi's module cache. A root that moved or appeared since starts a new host.
+/// running with its grants. A file counts as itself whichever path names
+/// it. A file that is gone keeps its module, as in pi's module cache. A
+/// root that moved or appeared since starts a new host.
 fn serves(previous: &Group, next: &Group, all: &[Group]) -> bool {
     let first = |group: &Group| group.sources.first().map(|source| source.path.clone());
     let runs = |group: &Group, source: &SourceInfo| {
-        group.sources.iter().any(|other| other.path == source.path)
+        let file = canonical(&source.path);
+        group
+            .sources
+            .iter()
+            .any(|other| canonical(&other.path) == file)
     };
     let stayed =
         |source: &SourceInfo| runs(next, source) || !all.iter().any(|group| runs(group, source));
@@ -1240,18 +1245,12 @@ async fn start_extensions(
     for source in sources.iter().chain(shadowed) {
         let file = canonical(&source.path);
         let chest = source.source.starts_with("chest:");
-        if !chest && chest_policies.manages(&file) && warned.insert(file.clone()) {
-            let message = match chest_policies.closes(&file) {
-                true => format!(
-                    "{} is also loaded from {}, but its chest entry does not load, so it runs with no capabilities",
-                    source.path, source.source
-                ),
-                false => format!(
-                    "{} is also loaded from {}; chest's grants apply",
-                    source.path, source.source
-                ),
-            };
-            let _ = install_failed(&source.path, message);
+        if !chest
+            && let Some((path, message)) =
+                chest_policies.also_loaded(&file, &source.path, &source.source)
+            && warned.insert(file.clone())
+        {
+            let _ = install_failed(&path, message);
         }
     }
     // A file counts once, however its sources name it.
@@ -1770,6 +1769,21 @@ mod tests {
             ..js.clone()
         };
         assert!(!super::serves(&host, &gone, &[gone.clone(), elsewhere]));
+        // So has one that the next run names through a link.
+        #[cfg(unix)]
+        {
+            let file = a.join("six.ts");
+            std::fs::write(&file, "").unwrap();
+            let mut ran = js.clone();
+            ran.sources.push(source(&file.display().to_string(), "a"));
+            let linked = link.join("six.ts").display().to_string();
+            let linked = Group {
+                grants: yapi_ext::Grants::none(),
+                sources: vec![source(&linked, "settings")],
+                ..js.clone()
+            };
+            assert!(!super::serves(&started(&ran), &js, &[js.clone(), linked]));
+        }
         let mut roots = js.clone();
         roots.roots.push(b.clone());
         let mut grants = js.clone();

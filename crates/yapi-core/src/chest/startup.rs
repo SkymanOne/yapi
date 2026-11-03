@@ -12,7 +12,7 @@ use super::lock::fresh;
 use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
 use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
-use crate::packages::npm::Npm;
+use crate::packages::npm::{Npm, escaped};
 use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
 use crate::settings::Scope;
 use crate::tools::path::home_dir;
@@ -147,6 +147,23 @@ impl FilePolicies {
     pub fn closes(&self, file: &Path) -> bool {
         self.closed.iter().any(|root| file.starts_with(root))
     }
+
+    /// The warning for extension file `file`, a canonical path, that
+    /// `source` names by `path` though chest decides what it runs with, as
+    /// the path and message to show, or `None` when chest does not. Both are
+    /// escaped, since a cloned project's file names can hold anything.
+    pub fn also_loaded(&self, file: &Path, path: &str, source: &str) -> Option<(String, String)> {
+        if !self.manages(file) {
+            return None;
+        }
+        let message = match self.closes(file) {
+            true => format!(
+                "{path} is also loaded from {source}, but its chest entry does not load, so it runs with no capabilities"
+            ),
+            false => format!("{path} is also loaded from {source}; chest's grants apply"),
+        };
+        Some((escaped(path), escaped(&message)))
+    }
 }
 
 /// The policy of each extension file the resolver gave a `chest:` source in
@@ -171,13 +188,11 @@ pub fn file_policies(
         let file = Path::new(&info.path);
         let file = file.canonicalize().unwrap_or_else(|_| file.into());
         let policy = installed.policies.get(&key).cloned().unwrap_or_else(|| {
-            problems.push((
-                info.source.clone(),
-                format!(
-                    "{}: no chest entry grants this file, so it runs with no capabilities",
-                    info.path
-                ),
-            ));
+            let message = format!(
+                "{}: no chest entry grants this file, so it runs with no capabilities",
+                info.path
+            );
+            problems.push((escaped(&info.source), escaped(&message)));
             Policy::closed(&file)
         });
         let policy = match found.files.get(&file) {
@@ -224,6 +239,15 @@ pub struct Loaded {
     pub installed: Installed,
     /// Each problem's manifest path and message.
     pub problems: Vec<(String, String)>,
+}
+
+impl Loaded {
+    /// Adds problem `message` under manifest `path`, both with their
+    /// unprintable characters escaped: they quote files a cloned project
+    /// holds, and reach the terminal.
+    fn warn(&mut self, (path, message): (String, String)) {
+        self.problems.push((escaped(&path), escaped(&message)));
+    }
 }
 
 /// The extensions and skills `project` has installed, locked and up to
@@ -392,9 +416,9 @@ fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
         .installed
         .extend(installed_inputs(project, project_root, &mut problems));
     let path = project.path.display().to_string();
-    loaded
-        .problems
-        .extend(problems.into_iter().map(|problem| (path.clone(), problem)));
+    for problem in problems {
+        loaded.warn((path.clone(), problem));
+    }
 }
 
 /// What chest gives a run in `project_root`, as [`load`] would, without
@@ -404,7 +428,7 @@ pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
     for project in manifests(project_root, trusted) {
         match project {
             Ok(project) => add(&mut loaded, &project, project_root),
-            Err(problem) => loaded.problems.push(problem),
+            Err(problem) => loaded.warn(problem),
         }
     }
     loaded
@@ -422,7 +446,7 @@ pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
         let mut project = match project {
             Ok(project) => project,
             Err(problem) => {
-                loaded.problems.push(problem);
+                loaded.warn(problem);
                 continue;
             }
         };
@@ -433,12 +457,11 @@ pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
             .await
         {
             Ok(report) => {
-                let messages = report.warnings.into_iter().chain(report.notices);
-                loaded
-                    .problems
-                    .extend(messages.map(|message| (path.clone(), message)));
+                for message in report.warnings.into_iter().chain(report.notices) {
+                    loaded.warn((path.clone(), message));
+                }
             }
-            Err(err) => loaded.problems.push((path.clone(), err.to_string())),
+            Err(err) => loaded.warn((path.clone(), err.to_string())),
         }
         add(&mut loaded, &project, project_root);
     }
@@ -459,7 +482,8 @@ mod tests {
     }
 
     /// A chest file whose package has no policy runs with none, with a
-    /// warning, while other sources' files get no policy at all. A file
+    /// warning, while other sources' files get no policy at all. Warnings
+    /// escape a file name's control characters. A file
     /// that two entries give loads modules from the narrower root, and one
     /// in an entry chest left out from itself alone.
     #[test]
@@ -475,19 +499,38 @@ mod tests {
             info,
             enabled: true,
         };
+        // A cloned project's file name may hold a terminal escape.
+        let spoof = "/p/\x1b[2J.js";
         let resolved = ResolvedPaths {
             extensions: vec![
                 enabled(file("/p/a.js", "chest:a", "project")),
                 enabled(file("/p/b.js", "npm:b", "project")),
+                enabled(file(spoof, "chest:a", "project")),
             ],
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
         let policies = file_policies(&resolved, &Installed::default(), &mut problems);
-        let file_a = PathBuf::from("/p/a.js");
-        let files = HashMap::from([(file_a.clone(), Policy::closed(&file_a))]);
+        let (file_a, file_spoof) = (PathBuf::from("/p/a.js"), PathBuf::from(spoof));
+        let files = HashMap::from([
+            (file_a.clone(), Policy::closed(&file_a)),
+            (file_spoof.clone(), Policy::closed(&file_spoof)),
+        ]);
         assert_eq!(policies.files, files);
-        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        let warned = policies.also_loaded(&file_spoof, spoof, "cli");
+        let warned = warned
+            .into_iter()
+            .flat_map(|(path, message)| [path, message]);
+        let texts: Vec<String> = problems
+            .iter()
+            .flat_map(|(source, message)| [source.clone(), message.clone()])
+            .chain(warned)
+            .collect();
+        assert!(
+            texts.len() == 6 && texts.iter().all(|text| !text.contains('\x1b')),
+            "{texts:?}"
+        );
         let rooted = |root: &str| Policy {
             root: Some(root.into()),
             ..Policy::unrestricted()
