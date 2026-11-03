@@ -31,11 +31,13 @@ fn code(kind: std::io::ErrorKind) -> (&'static str, &'static str) {
 
 /// Whether the instance has the file grant, asked of the host once. Without
 /// it the host preopens no folder, so WASI reports every path as missing.
+/// Only an explicit `false` counts, so a host that refuses the request never
+/// turns a missing file into `EACCES`.
 fn granted() -> bool {
     static GRANTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *GRANTED.get_or_init(|| {
-        crate::bindings::yapi::extension::host::request("fs.granted", "null")
-            .is_ok_and(|answer| answer == "true")
+        let answer = crate::bindings::yapi::extension::host::request("fs.granted", "null");
+        answer.as_deref() != Ok("false")
     })
 }
 
