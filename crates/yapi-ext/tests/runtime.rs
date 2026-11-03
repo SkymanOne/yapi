@@ -438,7 +438,8 @@ export default function (pi) {
 /// extension still loads its own files and its `node_modules`, but nothing
 /// that leads outside the root, even through a symlink inside it, and a
 /// missing file looks the same as one outside. `node:fs` fails with
-/// `EACCES`, naming the grant.
+/// `EACCES`, naming the grant, while with the file grant alone a missing
+/// file is `ENOENT`.
 #[tokio::test(flavor = "multi_thread")]
 async fn modules_need_filesystem_grant() {
     let dir = scratch("modules-without-files");
@@ -587,6 +588,36 @@ async fn modules_need_filesystem_grant() {
             }
         }
     }
+    // With the file grant alone, a file that is not there is just missing.
+    let probe = package.join("probe.js");
+    let absent = dir.join("absent.txt").display().to_string();
+    std::fs::write(
+        &probe,
+        format!(
+            "import fs from \"node:fs\";\nlet code;\ntry {{ fs.readFileSync({absent:?}); }} catch (error) {{ code = error.code; }}\nexport default function (pi) {{ pi.registerCommand(\"x\", {{ description: code, handler() {{}} }}); }}\n"
+        ),
+    )
+    .unwrap();
+    let mut options = Options::new(dir.clone());
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
+    options.filesystem_roots = vec![dir.clone()];
+    let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
+        .await
+        .unwrap();
+    let loaded = instance
+        .call(
+            "load",
+            &json!({"cwd": dir, "extensions": [{"id": 1, "path": probe}]}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        loaded["extensions"][0]["commands"][0]["description"], "ENOENT",
+        "{loaded}"
+    );
 }
 
 /// A bridge that keeps the runtime's log.
