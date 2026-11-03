@@ -71,6 +71,7 @@ Some actions need every grant, because they reach outside the sandbox or act wit
 
 - registering a provider or a wire API, because a provider's replies drive the agent's tools and its requests carry your credentials
 - custom editor text that starts with `!` or `/`, after any leading spaces, because it runs a shell or slash command
+- listening to raw terminal input with `ctx.ui.onTerminalInput`, or adding an autocomplete provider with `ctx.ui.addAutocompleteProvider`, because either can turn what you type into a shell or slash command. Without every grant, both calls throw in a Pi extension and do nothing in a native one.
 - the editor actions that open the external editor, paste from the clipboard, or submit the editor's text as a follow-up
 - any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it
 
