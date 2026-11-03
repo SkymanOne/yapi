@@ -475,7 +475,8 @@ struct ViewState {
     rows: Vec<StyledLine>,
     cursor: Option<(usize, usize)>,
     rendered: Option<usize>,
-    requested: Option<usize>,
+    /// The render it waits for; see [`RemoteView::rendered`].
+    requested: Option<u64>,
     dirty: bool,
     /// See [`RemoteView::retire`].
     retired: bool,
@@ -562,25 +563,30 @@ impl RemoteView {
             && state.requested.is_none()
             && !state.retired
         {
+            // Shared by every view, since views of a restarted runtime share keys.
+            static RENDERS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let request = RENDERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             state.dirty = false;
-            state.requested = Some(width);
+            state.requested = Some(request);
             let render = self
                 .component
                 .render(u16::try_from(width).unwrap_or(u16::MAX));
             let (tx, epoch, key) = (self.tx.clone(), self.epoch, self.key());
             tokio::spawn(async move {
                 let lines = render.await;
-                let _ = tx.send(Event::Rendered(epoch, key, width, lines));
+                let _ = tx.send(Event::Rendered(epoch, key, request, width, lines));
             });
         }
         (state.rows.clone(), state.cursor)
     }
 
-    /// Takes the lines of a render at `width`; `false` when they change
-    /// nothing. A retired view takes none: its handle may be another
-    /// component's in the restarted runtime.
-    pub fn rendered(&self, width: usize, lines: &[String]) -> bool {
-        if self.retired() {
+    /// Takes the lines of its render `request` at `width`; `false` when they
+    /// change nothing or answer another request. A runtime that restarted
+    /// gives its components the handles of the last one's, so a render the
+    /// stopped runtime answered may carry this view's key. A retired view
+    /// takes none, for the same reason.
+    pub fn rendered(&self, request: u64, width: usize, lines: &[String]) -> bool {
+        if self.retired() || self.state.borrow().requested != Some(request) {
             return false;
         }
         let mut cursor = None;
@@ -1116,22 +1122,28 @@ impl super::App {
     }
 
     /// Takes the lines of a component render.
-    pub(super) fn on_rendered(&mut self, key: (u64, u32), width: usize, lines: &[String]) {
+    pub(super) fn on_rendered(
+        &mut self,
+        key: (u64, u32),
+        request: u64,
+        width: usize,
+        lines: &[String],
+    ) {
         use super::selectors::Selector;
         if let Some(Selector::Remote(view)) = &mut self.selector
             && view.key() == key
         {
-            view.rendered(width, lines);
+            view.rendered(request, width, lines);
         }
         for (view, _) in &mut self.overlays_below {
             if view.key() == key {
-                view.rendered(width, lines);
+                view.rendered(request, width, lines);
             }
         }
         let touched: Vec<usize> = self
             .transcript_views()
             .into_iter()
-            .filter(|(_, view)| view.key() == key && view.rendered(width, lines))
+            .filter(|(_, view)| view.key() == key && view.rendered(request, width, lines))
             .map(|(index, _)| index)
             .collect();
         for index in touched {
@@ -1140,7 +1152,7 @@ impl super::App {
         let header = self.ext.header.as_ref().map(RemoteView::key);
         let mut header_changed = false;
         for view in self.ext.views() {
-            if view.key() == key && view.rendered(width, lines) && Some(key) == header {
+            if view.key() == key && view.rendered(request, width, lines) && Some(key) == header {
                 header_changed = true;
             }
         }
