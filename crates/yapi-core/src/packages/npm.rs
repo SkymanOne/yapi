@@ -476,11 +476,40 @@ const PACKUMENT_ACCEPT: &str =
 /// npm's default `fetch-timeout`.
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// How much one tarball may take, so that a registry or a lock can neither
+/// fill memory with a huge download nor the disk with a small gzip bomb.
+#[derive(Clone, Copy, Debug)]
+struct Caps {
+    /// The bytes downloaded, which are held in memory.
+    download: usize,
+    /// The bytes it unpacks to, tar headers included.
+    unpacked: u64,
+    /// Its tar entries.
+    entries: usize,
+}
+
+// shortcut: fixed caps far above any npm package yapi installs, raise them when a real package hits one.
+const CAPS: Caps = Caps {
+    download: 512 << 20,
+    unpacked: 2 << 30,
+    entries: 200_000,
+};
+
+/// `bytes` in the largest binary unit that divides them.
+fn size(bytes: u64) -> String {
+    match bytes {
+        _ if bytes.is_multiple_of(1 << 30) => format!("{} GiB", bytes >> 30),
+        _ if bytes.is_multiple_of(1 << 20) => format!("{} MiB", bytes >> 20),
+        _ => format!("{bytes} bytes"),
+    }
+}
+
 /// A registry client with a per-run packument cache.
 #[derive(Clone)]
 pub struct Npm {
     config: HashMap<String, String>,
     packuments: HashMap<String, Value>,
+    caps: Caps,
 }
 
 impl Npm {
@@ -489,6 +518,7 @@ impl Npm {
         Npm {
             config,
             packuments: HashMap::new(),
+            caps: CAPS,
         }
     }
 
@@ -654,16 +684,25 @@ impl Npm {
     }
 
     /// The tarball at `url` of package `name`, sent with the credentials of
-    /// its registry.
+    /// its registry. It is read in chunks, and the read stops at the cap.
     async fn download(&self, name: &str, url: &str) -> Result<Vec<u8>, NpmError> {
         let registry = self.registry(name);
-        let bytes = self
-            .get(url, "*/*", &registry)
-            .await?
-            .bytes()
+        let mut response = self.get(url, "*/*", &registry).await?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|err| request_error(url, &err))?;
-        Ok(bytes.to_vec())
+            .map_err(|err| request_error(url, &err))?
+        {
+            if bytes.len() + chunk.len() > self.caps.download {
+                return Err(NpmError::Refused(format!(
+                    "The tarball of {name} at {url} is over the download cap of {}",
+                    size(self.caps.download as u64)
+                )));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
     }
 
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
@@ -761,12 +800,67 @@ fn verify(bytes: &[u8], dist: &Value) -> bool {
         .is_some_and(|shasum| crate::time::hex(sha1.as_ref()).eq_ignore_ascii_case(shasum))
 }
 
-/// Unpacks an npm tarball into `dir`, dropping each entry's first path
-/// component (`package/`). Links and entries leaving `dir` are skipped.
-fn unpack(bytes: &[u8], dir: &Path) -> Result<(), NpmError> {
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+/// `inner`, failing once more than `left` bytes come out of it, which it
+/// then records in `over`.
+struct Capped<'a, R> {
+    inner: R,
+    left: u64,
+    over: &'a std::cell::Cell<bool>,
+}
+
+impl<R: std::io::Read> std::io::Read for Capped<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        match self.left.checked_sub(read as u64) {
+            Some(left) => {
+                self.left = left;
+                Ok(read)
+            }
+            None => {
+                self.over.set(true);
+                Err(std::io::Error::other("over the cap"))
+            }
+        }
+    }
+}
+
+/// Unpacks the npm tarball of package `id` into `dir`, dropping each entry's
+/// first path component (`package/`). Links and entries leaving `dir` are
+/// skipped. Fails once the tarball unpacks to more than `caps` allow, with
+/// what it unpacked left in `dir` for the caller to remove.
+fn unpack(bytes: &[u8], dir: &Path, id: &str, caps: Caps) -> Result<(), NpmError> {
+    let over = std::cell::Cell::new(false);
+    let stream = Capped {
+        inner: flate2::read::GzDecoder::new(bytes),
+        left: caps.unpacked,
+        over: &over,
+    };
+    // A read past the cap fails whatever step made it, long names included.
+    unpack_entries(stream, dir, id, caps).map_err(|err| match over.get() {
+        true => NpmError::Refused(format!(
+            "The tarball of {id} unpacks to over the cap of {}",
+            size(caps.unpacked)
+        )),
+        false => err,
+    })
+}
+
+/// [`unpack`], from the tarball's decompressed `stream`.
+fn unpack_entries(
+    stream: impl std::io::Read,
+    dir: &Path,
+    id: &str,
+    caps: Caps,
+) -> Result<(), NpmError> {
+    let mut archive = tar::Archive::new(stream);
     let entries = archive.entries().map_err(io(dir))?;
-    for entry in entries {
+    for (count, entry) in entries.enumerate() {
+        if count == caps.entries {
+            return Err(NpmError::Refused(format!(
+                "The tarball of {id} holds over the cap of {} entries",
+                caps.entries
+            )));
+        }
         let mut entry = entry.map_err(io(dir))?;
         let kind = entry.header().entry_type();
         if !(kind.is_file() || kind.is_dir()) {
@@ -1002,7 +1096,8 @@ impl Installer<'_> {
                 // install that never returns is redone.
                 let marker = dir.join(INCOMPLETE);
                 std::fs::write(&marker, "").map_err(io(&marker))?;
-                unpack(&bytes, &dir)?;
+                let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
+                unpack(&bytes, &dir, &id, self.npm.caps)?;
                 self.installing.push(dir.clone());
                 let dependencies = self.dependencies(&dir, &manifest).await;
                 self.installing.pop();
@@ -1218,7 +1313,8 @@ pub async fn fetch(
     let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
     let bytes = npm.tarball(&manifest).await?;
     let staging = stage(dir)?;
-    swap(&staging, dir, unpack(&bytes, &staging))?;
+    let id = format!("{name}@{}", text(&manifest["version"]));
+    swap(&staging, dir, unpack(&bytes, &staging, &id, npm.caps))?;
     Ok(Pinned::new(String::new(), &manifest, &bytes))
 }
 
@@ -1228,7 +1324,8 @@ pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), Npm
     npm.check_pin(pin)?;
     let bytes = npm.pinned_tarball(pin).await?;
     let staging = stage(dir)?;
-    swap(&staging, dir, unpack(&bytes, &staging))
+    let id = format!("{}@{}", pin.name, pin.version);
+    swap(&staging, dir, unpack(&bytes, &staging, &id, npm.caps))
 }
 
 /// How many tarballs [`replay`] downloads at once.
@@ -1306,7 +1403,8 @@ pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmEr
             // A bundled copy in the parent's tarball gives way to the pinned one.
             remove_path(&dir).map_err(io(&dir))?;
             std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-            unpack(&bytes, &dir)?;
+            let id = format!("{}@{}", pin.name, pin.version);
+            unpack(&bytes, &dir, &id, npm.caps)?;
         }
         let pins: Vec<&Pinned> = pins.iter().map(|(_, _, pin)| *pin).collect();
         check_tree(root, &staging, &pins)
@@ -1612,7 +1710,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&parent);
         let dir = parent.join("package");
         std::fs::create_dir_all(&dir).unwrap();
-        unpack(&bytes, &dir).unwrap();
+        unpack(&bytes, &dir, "pkg@1.0.0", CAPS).unwrap();
         let names = |dir: &Path| {
             let mut names: Vec<String> = std::fs::read_dir(dir)
                 .unwrap()
@@ -1636,6 +1734,113 @@ mod tests {
             assert_eq!((mode("index.js"), mode("run")), (0o644, 0o755));
         }
         std::fs::remove_dir_all(&parent).unwrap();
+    }
+
+    /// A tarball over any of the caps fails its replay, which then leaves
+    /// the root as it was: one too large to download, one that unpacks to
+    /// too much, and one with too many entries.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn capped_tarballs_leave_nothing() {
+        // Noise, so that the gzip stream stays as large as what it holds.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let noise: Vec<u8> = (0..2 << 20)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state.to_le_bytes()[0]
+            })
+            .collect();
+        let mut builder = tar::Builder::new(Vec::new());
+        for (name, data) in [
+            (
+                "package/package.json",
+                &br#"{"name": "app", "version": "1.0.0"}"#[..],
+            ),
+            ("package/noise", &noise),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append_data(&mut header, name, data).unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, &builder.into_inner().unwrap()).unwrap();
+        let body = gz.finish().unwrap();
+        assert!(body.len() > 1 << 20);
+        let sha512 = STANDARD.encode(digest(&SHA512, &body));
+        // Serves `body` at every path.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            use std::io::{BufRead as _, Write as _};
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 2 {
+                    line.clear();
+                }
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        let pin = Pinned {
+            path: "node_modules/app".into(),
+            name: "app".into(),
+            version: "1.0.0".into(),
+            tarball: format!("{base}/app/-/app-1.0.0.tgz"),
+            integrity: format!("sha512-{sha512}"),
+        };
+        let root = std::env::temp_dir().join(format!("yapi-npm-caps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("node_modules/kept")).unwrap();
+        let npm = Npm::new(HashMap::from([("registry".to_owned(), format!("{base}/"))]));
+        let lowered = [
+            (
+                Caps {
+                    download: 1 << 20,
+                    ..CAPS
+                },
+                format!(
+                    "The tarball of app at {} is over the download cap of 1 MiB",
+                    pin.tarball
+                ),
+            ),
+            (
+                Caps {
+                    unpacked: 1 << 20,
+                    ..CAPS
+                },
+                "The tarball of app@1.0.0 unpacks to over the cap of 1 MiB".to_owned(),
+            ),
+            (
+                Caps { entries: 1, ..CAPS },
+                "The tarball of app@1.0.0 holds over the cap of 1 entries".to_owned(),
+            ),
+        ];
+        for (caps, message) in lowered {
+            let npm = Npm {
+                caps,
+                ..npm.clone()
+            };
+            let error = replay(&npm, &root, std::slice::from_ref(&pin))
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), message);
+            let names: Vec<_> = std::fs::read_dir(&root)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, ["node_modules"]);
+            assert!(root.join("node_modules/kept").exists());
+        }
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     /// When the new tree cannot take its place and the old one cannot go
