@@ -6,7 +6,6 @@
 //! they unpacked as pins, which [`replay`] reproduces without the registry.
 
 use std::collections::{HashMap, HashSet};
-use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
 
 use aws_lc_rs::digest::{SHA1_FOR_LEGACY_USE_ONLY as SHA1, SHA512, digest};
@@ -792,9 +791,9 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<(), NpmError> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(io(parent))?;
         }
-        let mut contents = Vec::new();
-        entry.read_to_end(&mut contents).map_err(io(&target))?;
-        std::fs::write(&target, contents).map_err(io(&target))?;
+        // Streamed: a small tarball can unpack to a file far larger than memory.
+        let mut file = std::fs::File::create(&target).map_err(io(&target))?;
+        std::io::copy(&mut entry, &mut file).map_err(io(&target))?;
         #[cfg(unix)]
         if let Ok(mode) = entry.header().mode() {
             use std::os::unix::fs::PermissionsExt as _;
@@ -1573,12 +1572,13 @@ mod tests {
     }
 
     /// Entries that climb out of the package, absolute paths and links stay
-    /// out of the folder, and nothing lands beside it.
+    /// out of the folder, and nothing lands beside it. Files keep their bytes
+    /// and executable bits, however large.
     #[test]
     fn unpack_stays_inside() {
         use tar::EntryType;
         let mut builder = tar::Builder::new(Vec::new());
-        let mut add = |name: &str, kind: EntryType, link: &str, data: &[u8]| {
+        let mut add = |name: &str, kind: EntryType, link: &str, data: &[u8], mode: u32| {
             // Raw names: `set_path` refuses `..`.
             let mut header = tar::Header::new_gnu();
             let raw = header.as_old_mut();
@@ -1586,15 +1586,24 @@ mod tests {
             raw.linkname[..link.len()].copy_from_slice(link.as_bytes());
             header.set_entry_type(kind);
             header.set_size(data.len() as u64);
-            header.set_mode(0o644);
+            header.set_mode(mode);
             header.set_cksum();
             builder.append(&header, data).unwrap();
         };
-        add("package/index.js", EntryType::Regular, "", b"ok");
-        add("package/../evil", EntryType::Regular, "", b"evil");
-        add("/abs/evil", EntryType::Regular, "", b"abs");
-        add("package/link", EntryType::Symlink, "/etc", b"");
-        add("package/hard", EntryType::Link, "package/index.js", b"");
+        // Larger than the buffers a streamed copy goes through.
+        let large: Vec<u8> = (0..300_000u32).map(|n| (n % 251) as u8).collect();
+        add("package/index.js", EntryType::Regular, "", b"ok", 0o644);
+        add("package/run", EntryType::Regular, "", &large, 0o755);
+        add("package/../evil", EntryType::Regular, "", b"evil", 0o644);
+        add("/abs/evil", EntryType::Regular, "", b"abs", 0o644);
+        add("package/link", EntryType::Symlink, "/etc", b"", 0o644);
+        add(
+            "package/hard",
+            EntryType::Link,
+            "package/index.js",
+            b"",
+            0o644,
+        );
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         std::io::Write::write_all(&mut gz, &builder.into_inner().unwrap()).unwrap();
         let bytes = gz.finish().unwrap();
@@ -1614,8 +1623,18 @@ mod tests {
         };
         assert_eq!(names(&parent), ["package"]);
         // An absolute path loses its root with the first component.
-        assert_eq!(names(&dir), ["abs", "index.js"]);
+        assert_eq!(names(&dir), ["abs", "index.js", "run"]);
         assert_eq!(std::fs::read(dir.join("index.js")).unwrap(), b"ok");
+        assert_eq!(std::fs::read(dir.join("run")).unwrap(), large);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = |name: &str| {
+                let metadata = std::fs::metadata(dir.join(name)).unwrap();
+                metadata.permissions().mode() & 0o777
+            };
+            assert_eq!((mode("index.js"), mode("run")), (0o644, 0o755));
+        }
         std::fs::remove_dir_all(&parent).unwrap();
     }
 
