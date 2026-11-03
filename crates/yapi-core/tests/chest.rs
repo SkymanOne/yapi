@@ -30,16 +30,20 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Lets `localhost/<path>` git sources, which the manifest accepts, clone
-/// the local repository at `/<path>`, for every test in this file. It also
-/// gives git a line-ending conversion, a smudge filter, and a template whose
-/// config asks for CRLF and defines that filter again, none of which may
-/// change the bytes a checkout produces.
+/// the local repository at `/<path>`, for every test in this file, without
+/// the user's or the system's git config. It also gives git a line-ending
+/// conversion, a smudge filter, and a template whose config asks for CRLF
+/// and defines that filter again, none of which may change the bytes a
+/// checkout produces.
 fn local_git() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         // SAFETY: every test here calls this first, and `Once` holds the
         // others back until the variables are set.
         unsafe {
+            let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+            std::env::set_var("GIT_CONFIG_GLOBAL", null);
+            std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
             std::env::set_var("GIT_CONFIG_COUNT", "3");
             std::env::set_var("GIT_CONFIG_KEY_0", "url.file:///.insteadOf");
             std::env::set_var("GIT_CONFIG_VALUE_0", "https://localhost/");
