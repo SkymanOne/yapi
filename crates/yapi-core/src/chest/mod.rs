@@ -60,8 +60,9 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> ChestError + '_ {
 /// What [`Project::sync`] does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// `chest install`: keep what is locked, fresh and present, replay what
-    /// is locked and fresh but missing, resolve the rest, then write the
+    /// `chest install`: keep what is locked, fresh and present, holding
+    /// what the lock pins as chest's record says, replay what is locked and
+    /// fresh but missing or different, resolve the rest, then write the
     /// lock and the `.gitignore` block and remove what the manifest dropped.
     Resolve,
     /// `chest update`: [`Mode::Resolve`], resolving the named entries, or
@@ -371,6 +372,22 @@ impl Project {
         pinned
     }
 
+    /// Whether `record` says each path `locked` occupies holds what the lock
+    /// pins, with no placement in progress. A link counts by the copy it
+    /// points to.
+    fn recorded(&self, section: Section, locked: &Locked, record: &Record) -> bool {
+        let homes = self.homes(section);
+        let items = locked_items(section, locked);
+        items.iter().all(|(name, hash)| {
+            let holds = |hash: &String| {
+                homes
+                    .iter()
+                    .all(|home| record.holds(&home.join(name), hash))
+            };
+            hash.as_ref().is_some_and(holds)
+        })
+    }
+
     /// Whether everything `locked` occupies is there. A link in the first
     /// folder, where the copy belongs, counts as missing, as after the
     /// folders were reordered. An extension from a path loads where it is,
@@ -451,11 +468,11 @@ impl Project {
             .await
             .map_err(|err| ChestError::Failed(format!("{}: {err}", record_path.display())))?;
         self.prepare_folders()?;
+        let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         // `_work` holds the fetched items until they are placed.
         let (staged, _work) = self
-            .prepare(&mode, &old, npm, progress, &mut report)
+            .prepare(&mode, &old, &record, npm, progress, &mut report)
             .await?;
-        let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         let committed = self.commit(&staged, &old, &mut record, &record_path, &mut report);
         let occupied = match committed {
             Ok(occupied) => occupied,
@@ -559,6 +576,7 @@ impl Project {
         &self,
         mode: &Mode,
         old: &Lock,
+        record: &Record,
         npm: &mut Npm,
         progress: &mut dyn FnMut(&str),
         report: &mut Report,
@@ -588,6 +606,7 @@ impl Project {
             };
             let fresh = locked.is_some_and(|locked| fresh(entry, locked));
             let present = locked.is_some_and(|locked| self.present(section, locked));
+            let recorded = locked.is_some_and(|locked| self.recorded(section, locked, record));
             let local = target.patch.is_some() || entry.git.is_none() && entry.npm.is_none();
             let named = matches!(mode, Mode::Update(names)
                 if names.is_empty() || names.iter().any(|n| n == name));
@@ -599,7 +618,7 @@ impl Project {
                 Mode::Startup { .. } if present => Some(Outcome::Unchanged),
                 Mode::Startup { offline: true } => Some(Outcome::Skipped),
                 Mode::Frozen if present => Some(Outcome::Unchanged),
-                _ if fresh && present && !local && !named => Some(Outcome::Unchanged),
+                _ if fresh && present && recorded && !local && !named => Some(Outcome::Unchanged),
                 _ => None,
             };
             if let Some(outcome) = keep {

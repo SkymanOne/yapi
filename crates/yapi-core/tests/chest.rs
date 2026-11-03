@@ -224,6 +224,17 @@ async fn git_skill_locked_commit() {
     .await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
 
+    // A copy that no longer holds what the lock pins, as once a [patch] is
+    // dropped, is put back.
+    std::fs::create_dir_all(root.join("local/pdf")).unwrap();
+    std::fs::write(root.join("local/pdf/SKILL.md"), "# local\n").unwrap();
+    let patched = skill_manifest(&remote, "v1") + "\n[patch]\npdf = { path = \"local/pdf\" }\n";
+    sync(&mut open(&dir, &patched), Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
+
     // The tag moves, and every mode but update keeps the locked commit.
     let second = remote.commit(&[("skills/pdf/SKILL.md", "# pdf 2\n")], "v1");
     let report = sync(&mut project, Mode::Resolve).await;
@@ -250,11 +261,22 @@ async fn git_skill_locked_commit() {
     );
     assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
     std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    let before = read(&project.lock_path());
     let report = sync(&mut project, Mode::Update(Vec::new())).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
     let locked = &project.lock.as_ref().unwrap().skills[0];
     assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+    // An update stopped before it wrote the lock leaves the new copy, and
+    // install puts back what the lock pins.
+    let updated = read(&project.lock_path());
+    std::fs::write(project.lock_path(), &before).unwrap();
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
+    std::fs::write(project.lock_path(), updated).unwrap();
+    sync(&mut project, Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
 
     // A lock moved to another commit, or to no commit, is refused on replay.
     let lock_path = project.lock_path();
