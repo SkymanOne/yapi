@@ -284,6 +284,51 @@ impl Project {
         resolve_lexically(&self.base, &path)
     }
 
+    /// Whether `folder`, an extension's module root, holds far more than one
+    /// package, so the extension could load any file there: it is, or holds,
+    /// the home folder, the agent folder, the filesystem's root, the
+    /// manifest's folder, which is the project's for a project manifest, or
+    /// a folder in `also`.
+    pub fn too_wide(&self, folder: &Path, also: &[&Path]) -> bool {
+        let Ok(folder) = folder.canonicalize() else {
+            return false;
+        };
+        let held = [
+            self.home.clone(),
+            crate::config::agent_dir(),
+            PathBuf::from("/"),
+            self.base.clone(),
+        ];
+        held.into_iter()
+            .chain(also.iter().map(|path| path.to_path_buf()))
+            .filter_map(|held| held.canonicalize().ok())
+            .any(|held| held.starts_with(&folder))
+    }
+
+    /// Refuses an extension whose path source, or `[patch]`, is a folder
+    /// [`Project::too_wide`] for it.
+    fn refuse_wide(&self) -> Result<(), ChestError> {
+        for (name, entry) in &self.manifest.extensions {
+            let patch = self.manifest.patch.get(name);
+            let patch = patch.and_then(|patch| patch.path.as_deref());
+            let source = entry.path.as_deref();
+            let source = source.filter(|_| entry.git.is_none() && entry.npm.is_none());
+            let (id, path) = match (patch, source) {
+                (Some(path), _) => (format!("patch.{name}"), path),
+                (None, Some(path)) => (format!("extensions.{name}"), path),
+                (None, None) => continue,
+            };
+            let folder = self.resolve(path);
+            if self.too_wide(&folder, &[]) {
+                return Err(invalid(format!(
+                    "{id}: {} holds more than the extension, such as the project, the home or the agent folder, so chest does not install it",
+                    folder.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// The folders of skill or agent entries, the canonical one first, by
     /// real path. A folder that links to an earlier one, or spells it
     /// another way, is left out, so nothing is placed there twice.
@@ -416,6 +461,10 @@ impl Project {
         progress: &mut dyn FnMut(&str),
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
+        // yapi's startup skips such an entry on its own, with a warning.
+        if !matches!(mode, Mode::Startup { .. }) {
+            self.refuse_wide()?;
+        }
         self.path_notices(&mut report);
         let frozen = mode == Mode::Frozen;
         // Frozen with everything in place writes nothing, not even the
