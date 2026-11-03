@@ -601,11 +601,11 @@ fn files(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 async fn npm_tree_replays() {
     let dir = scratch("replay");
     let package = |name: &str, version: &str, dependencies: Value| {
+        let mut manifest = dependencies.clone();
+        manifest["name"] = json!(name);
+        manifest["version"] = json!(version);
         let bytes = tarball(&[
-            (
-                "package.json",
-                &json!({"name": name, "version": version}).to_string(),
-            ),
+            ("package.json", &manifest.to_string()),
             (
                 "index.js",
                 &format!("module.exports = '{name}@{version}';\n"),
@@ -706,8 +706,9 @@ async fn npm_tree_replays() {
     assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
     server.finish().unwrap();
 
-    // A mirror of the tarballs: one replay, whose downloads overlap, a
-    // replay with a tampered download, then `fetch_pinned`.
+    // A mirror of the tarballs: one replay, one whose downloads overlap up
+    // to replay's cap, a replay with a tampered download, then
+    // `fetch_pinned`.
     let mirror = Mirror::default();
     for (name, version, _, bytes) in &packages {
         let path = format!("/{name}/-/{name}-{version}.tgz");
@@ -725,11 +726,7 @@ async fn npm_tree_replays() {
     std::fs::create_dir_all(&stale).unwrap();
     std::fs::write(stale.join("package.json"), "{}").unwrap();
     let reversed: Vec<Pinned> = tree.iter().rev().cloned().collect();
-    *mirror.gather.lock().unwrap() = true;
     npm::replay(&offline, &replayed, &reversed).await.unwrap();
-    *mirror.gather.lock().unwrap() = false;
-    let most = mirror.load.0.lock().unwrap().1;
-    assert!((2..=8).contains(&most), "{most} downloads at once");
     let modules = files(&root.join("node_modules"));
     assert_eq!(modules.len(), 8);
     // The unlisted package is gone, and nothing is left beside the tree.
@@ -741,6 +738,30 @@ async fn npm_tree_replays() {
             .collect()
     };
     assert_eq!(entries(&replayed), ["node_modules"]);
+
+    // Nine pins, one more than replay downloads at once, which the mirror
+    // holds until nine overlap, so that a higher cap shows.
+    let mut crowd = tree.clone();
+    for n in 0..5 {
+        let (name, version, _, bytes) = package(&format!("extra{n}"), "1.0.0", json!({}));
+        let path = format!("/{name}/-/{name}-{version}.tgz");
+        let integrity = format!("sha512-{}", STANDARD.encode(digest(&SHA512, &bytes)));
+        mirror.files.lock().unwrap().insert(path.clone(), bytes);
+        crowd.push(Pinned {
+            path: format!("node_modules/{name}"),
+            name,
+            version,
+            tarball: format!("{mirror_url}{path}"),
+            integrity,
+        });
+    }
+    *mirror.gather.lock().unwrap() = true;
+    npm::replay(&offline, &dir.join("crowd"), &crowd)
+        .await
+        .unwrap();
+    *mirror.gather.lock().unwrap() = false;
+    let most = mirror.load.0.lock().unwrap().1;
+    assert!((2..=8).contains(&most), "{most} downloads at once");
 
     // A download that fails partway leaves the root as it was.
     let fork = "/@acme/fork/-/@acme/fork-2.0.0.tgz".to_owned();
@@ -758,6 +779,45 @@ async fn npm_tree_replays() {
     assert_eq!(files(&replayed), before);
     assert_eq!(entries(&replayed), ["node_modules"]);
     mirror.files.lock().unwrap().insert(fork, original.unwrap());
+
+    // A pin that names another package than its folder's dependents ask
+    // for, or than its own package.json, is refused once unpacked, though
+    // its tarball matches its digest.
+    let util = tree[3].clone();
+    let relabeled = format!("{mirror_url}/util/-/util-1.0.1.tgz");
+    let bytes = mirror.files.lock().unwrap()["/util/-/util-1.0.0.tgz"].clone();
+    mirror
+        .files
+        .lock()
+        .unwrap()
+        .insert("/util/-/util-1.0.1.tgz".into(), bytes);
+    let swapped = [
+        (
+            1,
+            Pinned {
+                path: tree[1].path.clone(),
+                ..util.clone()
+            },
+            "node_modules/@acme/lib/node_modules/util holds util@1.0.0, but node_modules/@acme/lib needs @acme/fork@^2 there",
+        ),
+        (
+            3,
+            Pinned {
+                version: "1.0.1".into(),
+                tarball: relabeled,
+                ..util
+            },
+            "The package.json in node_modules/util names util@1.0.0, not the pinned util@1.0.1",
+        ),
+    ];
+    for (index, pin, message) in swapped {
+        let mut pins = tree.clone();
+        pins[index] = pin;
+        let error = npm::replay(&offline, &replayed, &pins).await.unwrap_err();
+        assert_eq!(error.to_string(), message);
+        assert_eq!(files(&replayed), before);
+        assert_eq!(entries(&replayed), ["node_modules"]);
+    }
 
     // Refused before any request: the tree plus one more pin, last so that a
     // lazy check would download the others first.
@@ -812,6 +872,22 @@ async fn npm_tree_replays() {
         ),
         (
             &offline,
+            with(app("node_modules/.git")),
+            "Invalid package path: node_modules/.git".into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/_app")),
+            "Invalid package path: node_modules/_app".into(),
+        ),
+        (
+            &offline,
+            // A terminal title escape, printed escaped.
+            with(app("node_modules/\u{1b}]0;owned\u{7}")),
+            "Invalid package path: node_modules/\\u{1b}]0;owned\\u{7}".into(),
+        ),
+        (
+            &offline,
             // Its parent differs from the pinned `node_modules/app` by case alone.
             with(app("node_modules/APP/node_modules/app")),
             "Package path node_modules/APP/node_modules/app has no pinned parent node_modules/APP"
@@ -835,6 +911,12 @@ async fn npm_tree_replays() {
         (
             &offline,
             with(integrity(String::new())),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
+            &offline,
+            // Valid base64, but three bytes rather than sha512's 64.
+            with(integrity("sha512-AAAA".into())),
             "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
         ),
         (
@@ -890,7 +972,9 @@ async fn npm_tree_replays() {
 /// Files served over HTTP by path, in any order and many at once, which
 /// remembers the most requests it held at the same time. While `gather` is
 /// set, each request waits up to 5 s for another before it is answered, so
-/// that downloads made one at a time show as one.
+/// that downloads made one at a time show as one, then up to 1 s more until
+/// nine are held, so that more than replay's eight at once show. A slow
+/// machine can only make fewer overlap.
 #[derive(Clone, Default)]
 struct Mirror {
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
@@ -933,6 +1017,11 @@ impl Mirror {
             let alone = |load: &mut (usize, usize)| load.1 < 2;
             load = wake
                 .wait_timeout_while(load, Duration::from_secs(5), alone)
+                .unwrap()
+                .0;
+            let fewer_than_nine = |load: &mut (usize, usize)| load.0 < 9;
+            load = wake
+                .wait_timeout_while(load, Duration::from_secs(1), fewer_than_nine)
                 .unwrap()
                 .0;
         }
@@ -1411,8 +1500,9 @@ async fn autoload_delta_user_package() {
 }
 
 /// A dependency named by a path, absolute or climbing out of `node_modules`,
-/// fails the install before anything is written there, even when the
-/// registry serves a package for that name.
+/// or by a name npm refuses, fails the install before anything is written
+/// there, even when the registry serves a package for that name. The error
+/// shows the name escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn path_dependency_names_refused() {
     let dir = scratch("dependency-paths");
@@ -1421,7 +1511,12 @@ async fn path_dependency_names_refused() {
     std::fs::write(outside.join("keep.txt"), "mine").unwrap();
     let package = tarball(&[("package.json", r#"{"name": "evil-pkg"}"#)]);
     let payload = tarball(&[("package.json", r#"{"name": "evil", "version": "1.0.0"}"#)]);
-    for name in [outside.to_str().unwrap(), "../../../outside"] {
+    for name in [
+        outside.to_str().unwrap(),
+        "../../../outside",
+        ".git",
+        "\u{1b}[2Jevil",
+    ] {
         let server = registry(|base| {
             let manifest = json!({"dependencies": {name: "1.0.0"}});
             let versions = [("1.0.0", manifest, package.clone())];
@@ -1439,7 +1534,8 @@ async fn path_dependency_names_refused() {
         .await;
         let mut packages = manager(&dir, &server.url());
         let error = packages.install("npm:evil-pkg", false).await.unwrap_err();
-        assert_eq!(error.to_string(), format!("Invalid package name: {name}"));
+        let shown = name.escape_debug();
+        assert_eq!(error.to_string(), format!("Invalid package name: {shown}"));
         assert_eq!(
             std::fs::read_to_string(outside.join("keep.txt")).unwrap(),
             "mine"
