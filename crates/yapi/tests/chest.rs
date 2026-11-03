@@ -144,15 +144,17 @@ impl Drop for Rpc {
 /// read a file, with it it can. Both load from their install root, and so
 /// do a global manifest's, a patched one's and a package's `index.js` that
 /// no manifest lists. The grants follow the file when `-e` or discovery
-/// loads it too, even by another path, with a warning. An entry whose folder holds the agent
-/// folder does not load.
+/// loads it too, even by another path, with a warning. An entry whose
+/// folder holds the agent folder does not load, and one left out for its
+/// lock runs with no grant when discovery loads it. A file two manifests
+/// give runs with what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
     let secret = home.join("secret.txt");
     std::fs::write(&secret, "s3cret").unwrap();
     let ext = |name: &str| reader(name, &secret);
-    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
+    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\nshared = { path = \"shared.js\" }\nwider = { path = \"wider.js\", capabilities = [\"all\"] }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
     let wide = r#"{"name": "wide", "pi": {"extensions": ["wide.js"]}}"#;
     let files = [
         ("closed.js", ext("closed")),
@@ -164,12 +166,18 @@ async fn chest_extensions_load() {
         ("index/package.json", r#"{"name": "index"}"#.to_owned()),
         ("index/index.js", ext("index")),
         ("linked/index.js", ext("linked")),
+        ("shared.js", ext("shared")),
+        ("wider.js", ext("wider")),
+        (".yapi/extensions/late.js", ext("late")),
     ];
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(path, text)| (*path, text.as_str()))
         .collect();
     install(&home, &files, "chest.toml", manifest).await;
+    // An entry added after the install is left out, and discovery finds its file.
+    let late = "late = { path = \".yapi/extensions/late.js\" }\n\n[patch]";
+    std::fs::write(home.join("chest.toml"), manifest.replace("\n[patch]", late)).unwrap();
     // Discovery names `linked` by another path, which takes precedence.
     #[cfg(unix)]
     std::os::unix::fs::symlink("../../linked", home.join(".yapi/extensions/linked")).unwrap();
@@ -178,12 +186,26 @@ async fn chest_extensions_load() {
         (".chest/global.js", global.as_str()),
         (".chest/granted.js", granted.as_str()),
     ];
-    let manifest = "[extensions]\nglobal = { path = \"global.js\" }\ngranted = { path = \"granted.js\", capabilities = [\"fs\"] }\n";
-    install(&home, &files, ".chest/chest.toml", manifest).await;
+    // The global manifest grants `shared` everything, which the project
+    // grants nothing, and `wider` nothing, which the project grants everything.
+    let shared = home.join("shared.js").display().to_string();
+    // `wider` names the project's path as is, and `shared` spells it otherwise.
+    let wider = home
+        .canonicalize()
+        .unwrap()
+        .join("wider.js")
+        .display()
+        .to_string();
+    let manifest = format!(
+        "[extensions]\nglobal = {{ path = \"global.js\" }}\ngranted = {{ path = \"granted.js\", capabilities = [\"fs\"] }}\nshared = {{ path = {shared:?}, capabilities = [\"all\"] }}\nwider = {{ path = {wider:?} }}\n"
+    );
+    install(&home, &files, ".chest/chest.toml", &manifest).await;
     let args = ["--approve", "-e", "closed.js"];
     let loaded = commands(&home, &args, &[]);
     let described = |name: &str| loaded.get(name).map(String::as_str);
-    let mut refused = vec!["closed", "found", "patched", "global", "index"];
+    let mut refused = vec![
+        "closed", "found", "patched", "global", "index", "late", "shared", "wider",
+    ];
     refused.extend(cfg!(unix).then_some("linked"));
     for name in refused {
         assert_eq!(described(name), Some("refused"), "{name}: {loaded:?}");
@@ -202,6 +224,7 @@ async fn chest_extensions_load() {
         "closed.js is also loaded from cli; chest's grants apply",
         "found.js is also loaded from auto; chest's grants apply",
         "agent holds more than the extension",
+        "late.js is also loaded from auto, but its chest entry is not installed, so it runs with no capabilities",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));

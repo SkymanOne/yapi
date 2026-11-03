@@ -1024,10 +1024,7 @@ fn group_sources(sources: Vec<SourceInfo>, policies: &FilePolicies) -> Vec<Group
     let mut groups: Vec<Group> = Vec::new();
     let mut natives = Vec::new();
     for source in sources {
-        let policy = policies
-            .get(&canonical(&source.path))
-            .cloned()
-            .unwrap_or_default();
+        let policy = policies.of(&canonical(&source.path));
         if is_native(Path::new(&source.path)) {
             natives.push(Group {
                 native: true,
@@ -1185,11 +1182,8 @@ async fn start_extensions(
     );
     // chest's grants follow the files the resolver gave its packages.
     let mut problems = Vec::new();
-    let chest_policies = yapi_core::chest::startup::file_policies(
-        &resolved,
-        &chest.installed.policies,
-        &mut problems,
-    );
+    let chest_policies =
+        yapi_core::chest::startup::file_policies(&resolved, &chest.installed, &mut problems);
     for (source, message) in problems {
         let _ = install_failed(&source, message);
     }
@@ -1207,11 +1201,17 @@ async fn start_extensions(
     for source in sources.iter().chain(shadowed) {
         let file = canonical(&source.path);
         let chest = source.source.starts_with("chest:");
-        if !chest && chest_policies.contains_key(&file) && warned.insert(file) {
-            let message = format!(
-                "{} is also loaded from {}; chest's grants apply",
-                source.path, source.source
-            );
+        if !chest && chest_policies.manages(&file) && warned.insert(file.clone()) {
+            let message = match chest_policies.closes(&file) {
+                true => format!(
+                    "{} is also loaded from {}, but its chest entry is not installed, so it runs with no capabilities",
+                    source.path, source.source
+                ),
+                false => format!(
+                    "{} is also loaded from {}; chest's grants apply",
+                    source.path, source.source
+                ),
+            };
             let _ = install_failed(&source.path, message);
         }
     }
@@ -1558,14 +1558,18 @@ mod tests {
             root: Some(PathBuf::from(root)),
         };
         // By file, as chest gives them, whichever source names the file.
-        let policies: FilePolicies = [
+        let files = [
             ("/a/one.ts", narrow("/a")),
             ("/a/four.ts", narrow("/a")),
             ("/b/three.ts", narrow("/b")),
             ("/n/ext.wasm", narrow("/n")),
-        ]
-        .map(|(file, policy)| (PathBuf::from(file), policy))
-        .into();
+        ];
+        let policies = FilePolicies {
+            files: files
+                .map(|(file, policy)| (PathBuf::from(file), policy))
+                .into(),
+            closed: Vec::new(),
+        };
         let sources = vec![
             source("/a/one.ts", "a"),
             source("/x/two.ts", "settings"),

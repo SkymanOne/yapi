@@ -119,7 +119,8 @@ impl ResolvedPaths {
         };
         let list = self.of_mut(kind);
         if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
-            if kind == ResourceType::Extensions && listed.info.source != info.source {
+            let other = (&listed.info.source, &listed.info.scope) != (&info.source, &info.scope);
+            if kind == ResourceType::Extensions && other {
                 self.shadowed.push(info);
             }
             return;

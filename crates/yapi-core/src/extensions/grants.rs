@@ -101,6 +101,17 @@ impl Grants {
             session: self.session || other.session,
         }
     }
+
+    /// What both `self` and `other` grant.
+    pub fn intersection(self, other: Grants) -> Grants {
+        Grants {
+            filesystem: self.filesystem && other.filesystem,
+            process: self.process && other.process,
+            network: self.network && other.network,
+            environment: self.environment && other.environment,
+            session: self.session && other.session,
+        }
+    }
 }
 
 /// Whether `grants` allow running `tool`. The built-in `bash`, `grep` and

@@ -66,6 +66,38 @@ impl EventPolicy {
     pub fn receives(&self, channel: &str) -> bool {
         matches_any(&self.receive, channel)
     }
+
+    /// The channels both `self` and `other` send on and hear.
+    pub fn intersection(&self, other: &EventPolicy) -> EventPolicy {
+        EventPolicy {
+            send: both(&self.send, &other.send),
+            receive: both(&self.receive, &other.receive),
+        }
+    }
+}
+
+/// The patterns of `left` and `right` that the other side covers whole. Two
+/// patterns that match one channel are nested, so these match exactly the
+/// channels both sides match.
+fn both(left: &[String], right: &[String]) -> Vec<String> {
+    let covers = |patterns: &[String], pattern: &str| match pattern.strip_suffix('*') {
+        Some(prefix) => patterns.iter().any(|other| {
+            other
+                .strip_suffix('*')
+                .is_some_and(|wider| prefix.starts_with(wider))
+        }),
+        None => matches_any(patterns, pattern),
+    };
+    let mut found: Vec<String> = Vec::new();
+    for pattern in left.iter().filter(|pattern| covers(right, pattern)) {
+        found.push(pattern.clone());
+    }
+    for pattern in right.iter().filter(|pattern| covers(left, pattern)) {
+        if !found.contains(pattern) {
+            found.push(pattern.clone());
+        }
+    }
+    found
 }
 
 fn matches_any(patterns: &[String], channel: &str) -> bool {
@@ -162,6 +194,19 @@ mod tests {
         assert!(todo.receives("subagent:done") && !todo.receives("subagent:done:x"));
         assert!(EventPolicy::default().sends("any") && EventPolicy::shared().receives(""));
         assert!(!EventPolicy::isolated().sends("any"));
+        // An intersection matches exactly the channels both match.
+        let wide = policy(&["todo:*", "x"], &["*"]);
+        let both = todo.intersection(&wide);
+        assert_eq!(both, policy(&["todo:*"], &["subagent:done"]));
+        let narrow = policy(&["todo:a", "todo:b*", "y"], &[]);
+        assert_eq!(
+            narrow.intersection(&todo),
+            policy(&["todo:a", "todo:b*"], &[])
+        );
+        assert_eq!(
+            EventPolicy::shared().intersection(&EventPolicy::isolated()),
+            EventPolicy::isolated()
+        );
 
         let fs = Grants {
             filesystem: true,

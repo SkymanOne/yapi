@@ -73,8 +73,9 @@ pub fn needs_trust(project_root: &Path) -> bool {
 }
 
 /// What an extension runs with: its grants, its `pi.events` policy, and the
-/// folder it loads modules from without file access.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// folder it loads modules from without file access. It has no default, so
+/// every file says which one it gets.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Policy {
     /// What it may reach.
     pub grants: Grants,
@@ -86,33 +87,122 @@ pub struct Policy {
     pub root: Option<PathBuf>,
 }
 
+impl Policy {
+    /// What a package from `yapi install` runs with, as in pi: every grant
+    /// and the shared event policy.
+    pub fn unrestricted() -> Policy {
+        Policy {
+            grants: Grants::default(),
+            events: EventPolicy::shared(),
+            root: None,
+        }
+    }
+
+    /// What a file chest cannot vouch for runs with: no grant, the
+    /// isolated event policy, and modules only from `root`.
+    pub fn closed(root: &Path) -> Policy {
+        Policy {
+            grants: Grants::none(),
+            events: EventPolicy::isolated(),
+            root: Some(root.to_path_buf()),
+        }
+    }
+
+    /// What both `self` and `other` allow: the grants and channels of both,
+    /// and the narrower of two nested module roots, or none.
+    fn intersection(&self, other: &Policy) -> Policy {
+        let canonical = |root: &PathBuf| root.canonicalize().unwrap_or_else(|_| root.clone());
+        let roots = (
+            self.root.as_ref().map(canonical),
+            other.root.as_ref().map(canonical),
+        );
+        let root = match roots {
+            (Some(left), Some(right)) if left.starts_with(&right) => Some(left),
+            (Some(left), Some(right)) if right.starts_with(&left) => Some(right),
+            _ => None,
+        };
+        Policy {
+            grants: self.grants.intersection(other.grants),
+            events: self.events.intersection(&other.events),
+            root,
+        }
+    }
+}
+
 /// The policies of chest's packages, by the scope and source the resolver
 /// gives their files, such as `("project", "chest:todo")`.
 /// [`installed_inputs`] builds the packages and their policies in one place,
 /// so they always match.
 pub type Policies = HashMap<(String, String), Policy>;
 
-/// The policies of extension files, by canonical path, so a policy applies
-/// whichever source of the same file loads it. A file without an entry
-/// keeps every grant and the shared event policy, as packages from `yapi
-/// install` keep pi's grants.
-pub type FilePolicies = HashMap<PathBuf, Policy>;
+/// The policies of extension files, so a policy applies whichever source of
+/// the same file loads it.
+#[derive(Clone, Debug, Default)]
+pub struct FilePolicies {
+    /// The policy of each file of chest's packages, by canonical path: what
+    /// every entry that gives it allows.
+    pub files: HashMap<PathBuf, Policy>,
+    /// The canonical folders and files of entries chest left out, whose
+    /// files run with no grant, whatever loads them.
+    pub closed: Vec<PathBuf>,
+}
+
+impl FilePolicies {
+    /// What extension file `file`, a canonical path, runs with: nothing in
+    /// an entry chest left out, its entries' policy, and for a file chest
+    /// does not know, every grant, as packages from `yapi install` keep
+    /// pi's grants.
+    pub fn of(&self, file: &Path) -> Policy {
+        if let Some(root) = self.closer(file) {
+            return Policy::closed(root);
+        }
+        self.files
+            .get(file)
+            .cloned()
+            .unwrap_or_else(Policy::unrestricted)
+    }
+
+    /// Whether chest decides what `file` runs with.
+    pub fn manages(&self, file: &Path) -> bool {
+        self.files.contains_key(file) || self.closes(file)
+    }
+
+    /// Whether `file` belongs to an entry chest left out.
+    pub fn closes(&self, file: &Path) -> bool {
+        self.closer(file).is_some()
+    }
+
+    /// The folder or file of the entry chest left out that holds `file`.
+    fn closer(&self, file: &Path) -> Option<&Path> {
+        self.closed
+            .iter()
+            .find(|root| file.starts_with(root))
+            .map(PathBuf::as_path)
+    }
+}
 
 /// The policy of each extension file the resolver gave a `chest:` source in
-/// `resolved`, loaded or shadowed, from its package's entry in `policies`.
-/// A chest file whose package has no entry runs with no grant and the
-/// isolated event policy, and adds a line to `problems` under its source.
+/// `resolved`, loaded or shadowed, from its package's entry in
+/// `installed`, with the entries `installed` left out. A file that several
+/// entries give gets what all of them allow. A chest file whose package has
+/// no entry runs with no grant and the isolated event policy, and adds a
+/// line to `problems` under its source.
 pub fn file_policies(
     resolved: &ResolvedPaths,
-    policies: &Policies,
+    installed: &Installed,
     problems: &mut Vec<(String, String)>,
 ) -> FilePolicies {
     let files = resolved.of(ResourceType::Extensions).iter();
     let files = files.map(|file| &file.info).chain(&resolved.shadowed);
-    let mut found = FilePolicies::new();
+    let mut found = FilePolicies {
+        files: HashMap::new(),
+        closed: installed.closed.clone(),
+    };
     for info in files.filter(|info| info.source.starts_with("chest:")) {
         let key = (info.scope.clone(), info.source.clone());
-        let policy = policies.get(&key).cloned().unwrap_or_else(|| {
+        let file = Path::new(&info.path);
+        let file = file.canonicalize().unwrap_or_else(|_| file.into());
+        let policy = installed.policies.get(&key).cloned().unwrap_or_else(|| {
             problems.push((
                 info.source.clone(),
                 format!(
@@ -120,14 +210,13 @@ pub fn file_policies(
                     info.path
                 ),
             ));
-            Policy {
-                grants: Grants::none(),
-                events: EventPolicy::isolated(),
-                root: None,
-            }
+            Policy::closed(&file)
         });
-        let file = Path::new(&info.path);
-        found.insert(file.canonicalize().unwrap_or_else(|_| file.into()), policy);
+        let policy = match found.files.get(&file) {
+            Some(other) => other.intersection(&policy),
+            None => policy,
+        };
+        found.files.insert(file, policy);
     }
     found
 }
@@ -142,6 +231,10 @@ pub struct Installed {
     pub skills: Vec<PackageInput>,
     /// The packages' policies.
     pub policies: Policies,
+    /// The canonical folders and files of extension entries left out
+    /// because their lock is stale or missing, which run with no grant if
+    /// something else loads them.
+    pub closed: Vec<PathBuf>,
 }
 
 impl Installed {
@@ -149,6 +242,7 @@ impl Installed {
         self.packages.extend(other.packages);
         self.skills.extend(other.skills);
         self.policies.extend(other.policies);
+        self.closed.extend(other.closed);
     }
 }
 
@@ -203,6 +297,11 @@ pub fn installed_inputs(project: &Project, problems: &mut Vec<String>) -> Instal
     for (name, entry) in &project.manifest.extensions {
         let patched = project.manifest.patch.contains_key(name);
         if !patched && current(Section::Extensions, name, entry).is_none() {
+            // Its files may still load through pi's discovery or settings.
+            let roots = project.extension_roots(name);
+            if let Some(root) = roots.and_then(|(_, root)| root.canonicalize().ok()) {
+                installed.closed.push(root);
+            }
             continue;
         }
         let Some((root, module_root)) = project.extension_roots(name) else {
@@ -404,13 +503,10 @@ mod tests {
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
-        let policies = file_policies(&resolved, &Policies::new(), &mut problems);
-        let closed = Policy {
-            grants: Grants::none(),
-            events: EventPolicy::isolated(),
-            root: None,
-        };
-        assert_eq!(policies, FilePolicies::from([("/p/a.js".into(), closed)]));
+        let policies = file_policies(&resolved, &Installed::default(), &mut problems);
+        let file = PathBuf::from("/p/a.js");
+        let files = HashMap::from([(file.clone(), Policy::closed(&file))]);
+        assert_eq!(policies.files, files);
         assert_eq!(problems.len(), 1, "{problems:?}");
     }
 }
