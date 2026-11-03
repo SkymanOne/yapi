@@ -69,7 +69,7 @@ Dependency direction:
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
 - `yapi-mock` is never a dependency of a shipped crate.
-- `chest` depends on `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
+- `chest` depends on `yapi-ai`, `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
 - `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
