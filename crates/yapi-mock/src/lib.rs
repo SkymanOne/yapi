@@ -128,6 +128,9 @@ struct State {
     mode: Mode,
     requests: Vec<RecordedRequest>,
     problems: Vec<String>,
+    /// Whether a request takes the first unused interaction it matches,
+    /// rather than the next one.
+    any_order: bool,
 }
 
 #[derive(Debug)]
@@ -159,6 +162,15 @@ impl MockServer {
         .await
     }
 
+    /// Like [`Self::local_with`], but each request takes the first unused
+    /// interaction it matches, for a client that sends several at once.
+    /// [`Self::finish`] still fails for an interaction never used.
+    pub async fn local_any_order(cassette: impl FnOnce(&str) -> Cassette) -> Result<Self, Error> {
+        let server = Self::local_with(cassette).await?;
+        lock(&server.state).any_order = true;
+        Ok(server)
+    }
+
     /// Starts a recording proxy on `addr` that forwards every request to `upstream`,
     /// a base URL such as `https://api.anthropic.com`. See [`Self::recording`].
     pub async fn record(addr: SocketAddr, upstream: &str) -> Result<Self, Error> {
@@ -178,6 +190,7 @@ impl MockServer {
             mode: mode(&format!("http://{addr}")),
             requests: Vec::new(),
             problems: Vec::new(),
+            any_order: false,
         }));
         let task = tokio::spawn(accept(listener, Arc::clone(&state)));
         Ok(Self { addr, state, task })
@@ -291,7 +304,15 @@ async fn respond(
         let number = state.requests.len() + 1;
         let label = format!("request {number} ({} {})", recorded.method, recorded.path);
         let expected = |interaction: &Interaction| matches(&interaction.request, &recorded);
+        let any_order = state.any_order;
         let action = match &mut state.mode {
+            Mode::Replay(pending) if any_order => match pending.iter().position(expected) {
+                Some(index) => match pending.remove(index) {
+                    Some(interaction) => Action::Reply(interaction.response),
+                    None => Action::Fail(format!("{label}: no interactions left")),
+                },
+                None => Action::Fail(format!("{label}: no unused interaction matches it")),
+            },
             Mode::Replay(pending) => match pending.pop_front() {
                 Some(interaction) if expected(&interaction) => Action::Reply(interaction.response),
                 Some(interaction) => {
