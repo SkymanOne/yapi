@@ -372,6 +372,10 @@ integrity = "sha512-AAAA"
                 "skill `ok`: invalid item name `../x`".into(),
             ),
             (
+                "[[agent]]\nname = \"ok\"\nitems = [{ name = \"..\", hash = \"h\" }]\n",
+                "agent `ok`: invalid item name `..`".into(),
+            ),
+            (
                 &format!("[[extension]]\nname = \"ok\"\n[[extension.package]]\n{pin}"),
                 "extension `ok`: Invalid package path: node_modules/../x".into(),
             ),

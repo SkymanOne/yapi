@@ -193,14 +193,17 @@ const REQUESTS: &[(&str, Need)] = &[
     ("ui.pasteToEditor", Need::Nothing),
     ("ui.requestRender", Need::Nothing),
     ("ui.select", Need::Nothing),
-    ("ui.setAutocomplete", Need::Nothing),
+    // Completions and raw keys can turn what a person types into a `!` or
+    // `/` command, which interactive mode runs.
+    ("ui.setAutocomplete", Need::All),
     ("ui.setEditor", Need::Nothing),
     ("ui.setEditorText", Need::Nothing),
     ("ui.setFooter", Need::Nothing),
     ("ui.setHeader", Need::Nothing),
     ("ui.setHiddenThinkingLabel", Need::Nothing),
     ("ui.setStatus", Need::Nothing),
-    ("ui.setTerminalInput", Need::Nothing),
+    // See `ui.setAutocomplete`.
+    ("ui.setTerminalInput", Need::All),
     ("ui.setTheme", Need::Nothing),
     ("ui.setTitle", Need::Nothing),
     ("ui.setToolsExpanded", Need::Nothing),
@@ -3860,7 +3863,8 @@ mod tests {
 
     /// Every kind the bridge dispatches is classified, and nothing else, and
     /// each needs exactly its grant. Kinds and editor actions yapi does not
-    /// know need every grant.
+    /// know need every grant, and the kinds that guard the user keep their
+    /// needs.
     #[test]
     fn requests_all_classified() {
         let classified: std::collections::BTreeSet<&str> =
@@ -3917,11 +3921,28 @@ mod tests {
             "ui.editorAction",
             &action("app.session.new")
         ));
-        assert!(!granted(
-            &no_process,
-            "ui.editorSubmit",
-            &json!({"text": " !ls"})
-        ));
+        // Kinds that guard the user, with the need they must keep whatever
+        // the table says: lacking only that grant refuses them.
+        let lacking = |need: Need| match need {
+            Need::Session => Grants {
+                session: false,
+                ..Grants::default()
+            },
+            _ => no_process,
+        };
+        for (kind, payload, need) in [
+            ("session.sendUserMessage", json!({}), Need::Session),
+            ("session.new", json!({}), Need::Session),
+            ("agent.abort", json!({}), Need::Session),
+            ("ui.editorSubmit", json!({"text": "hello"}), Need::Session),
+            ("ui.editorSubmit", json!({"text": " !ls"}), Need::All),
+            ("ui.editorSubmit", json!({"text": "/model"}), Need::All),
+            ("providers.register", json!({}), Need::All),
+            ("ui.setTerminalInput", json!({"listening": true}), Need::All),
+            ("ui.setAutocomplete", json!({}), Need::All),
+        ] {
+            assert!(!granted(&lacking(need), kind, &payload), "{kind} {payload}");
+        }
     }
 
     /// Without file access, session actions open only session files inside
