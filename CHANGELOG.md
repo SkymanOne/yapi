@@ -8,6 +8,10 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 - Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and let native extensions declare the capabilities they use ([#273](https://github.com/SkymanOne/yapi/pull/273), [#274](https://github.com/SkymanOne/yapi/pull/274), [#275](https://github.com/SkymanOne/yapi/pull/275), [#276](https://github.com/SkymanOne/yapi/pull/276), [#277](https://github.com/SkymanOne/yapi/pull/277), [#278](https://github.com/SkymanOne/yapi/pull/278), [#279](https://github.com/SkymanOne/yapi/pull/279), [#280](https://github.com/SkymanOne/yapi/pull/280), [#281](https://github.com/SkymanOne/yapi/pull/281), [#282](https://github.com/SkymanOne/yapi/pull/282), [#283](https://github.com/SkymanOne/yapi/pull/283), [#284](https://github.com/SkymanOne/yapi/pull/284)).
 
+### Changes
+
+- Change the native extension SDK to require capability features for the requests an extension makes. See [Move to capability features](https://skymanone.github.io/yapi/native-extensions.html#move-to-capability-features) ([#282](https://github.com/SkymanOne/yapi/pull/282)).
+
 ### Fixes
 
 - Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270)).
