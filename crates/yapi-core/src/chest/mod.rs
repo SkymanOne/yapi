@@ -511,8 +511,8 @@ impl Project {
     /// Before anything is placed: makes the folders of sections with
     /// entries, so that a folder linking to another resolves, refuses
     /// folders whose real paths nest or that two sections share, and removes
-    /// staging folders a stopped install left in them or in the store, when
-    /// they are inside [`Project::root`].
+    /// the staging and previous copies a stopped install left in them or in
+    /// the store, when they are inside [`Project::root`].
     fn prepare_folders(&self) -> Result<(), ChestError> {
         let root = self.root();
         let mut homes: Vec<PathBuf> = Vec::new();
@@ -560,7 +560,8 @@ impl Project {
             }
             for entry in std::fs::read_dir(home).into_iter().flatten().flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with('.') && name.ends_with("-staging") {
+                let stopped = name.ends_with("-staging") || name.ends_with("-old");
+                if name.starts_with('.') && stopped {
                     let path = entry.path();
                     npm::remove_path(&path).map_err(io(&path))?;
                 }
@@ -1052,8 +1053,8 @@ impl Project {
     }
 
     /// Lists every `occupied` path in the root's `.gitignore` block, with the
-    /// staging folders a stopped install can leave beside the copies it
-    /// makes: in the first folder of each section and in the store.
+    /// staging and previous copies a stopped install can leave beside the
+    /// copies it makes: in the first folder of each section and in the store.
     fn write_ignore(&self, occupied: &[PathBuf]) -> Result<(), ChestError> {
         let root = self.root();
         let relative = |path: &Path| -> Result<String, ChestError> {
@@ -1077,7 +1078,9 @@ impl Project {
                 .iter()
                 .any(|path| path.parent() == Some(home.as_path()))
             {
-                entries.push(format!("{}/.*-staging", relative(&home)?));
+                let home = relative(&home)?;
+                entries.push(format!("{home}/.*-staging"));
+                entries.push(format!("{home}/.*-old"));
             }
         }
         place::write_ignore(&root, &self.file_name(), &entries)

@@ -501,10 +501,12 @@ async fn gitignore_block_managed() {
     remote.commit(&[("skills/pdf/SKILL.md", "# pdf\n")], "v1");
     let root = dir.join("project");
     std::fs::write(root.join(".gitignore"), "target/\n").unwrap();
-    // What a stopped install left goes: a staging folder, and the work
-    // folder of a process that has ended.
+    // What a stopped install left goes: a staging folder, a previous copy,
+    // and the work folder of a process that has ended.
     let staging = root.join(".agents/skills/.gone-staging");
     std::fs::create_dir_all(&staging).unwrap();
+    let previous = root.join(".agents/skills/.gone-old");
+    std::fs::create_dir_all(&previous).unwrap();
     let mut ended = Command::new("true").spawn().unwrap();
     ended.wait().unwrap();
     let work = dir.join(format!("cache/work/{}-0", ended.id()));
@@ -520,11 +522,11 @@ async fn gitignore_block_managed() {
     let manifest = skill_manifest(&remote, "v1").replace("[folders]\n", agents);
     let mut project = open(&dir, &manifest);
     sync(&mut project, Mode::Resolve).await;
-    assert!(!staging.exists() && !work.exists());
+    assert!(!staging.exists() && !previous.exists() && !work.exists());
     assert!(outside.join(".x-staging").exists());
     assert_eq!(
         read(&root.join(".gitignore")),
-        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
+        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
     // A lock that is a link is not written through.
     #[cfg(unix)]
@@ -568,7 +570,7 @@ async fn gitignore_block_managed() {
         }
         assert_eq!(
             read(&root.join(".gitignore")),
-            "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
+            "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
         );
     }
 }
