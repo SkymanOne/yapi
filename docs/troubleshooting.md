@@ -28,7 +28,7 @@ chest warns that entries are not locked, or that their lock is stale, when `ches
 
 ## An extension's call is refused
 
-An error such as "Network access is not permitted for this extension" means the extension lacks a grant. Packages from `yapi install` have every grant. For an extension from a [chest](packages.md#project-packages-with-chest) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
+An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant. Packages from `yapi install` have every grant. For an extension from a [chest](packages.md#project-packages-with-chest) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
 
 ## An extension misses events
 

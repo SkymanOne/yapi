@@ -3,7 +3,8 @@
 //!
 //! Every call takes JSON arguments and returns JSON: the result, or
 //! `{"error": {"code", "message", "syscall", "path"}}` with Node's codes and
-//! messages, which the shim throws as Node errors.
+//! messages, which the shim throws as Node errors. Without the file grant,
+//! a path reads as `EACCES` rather than missing.
 
 use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::Path;
@@ -28,8 +29,23 @@ fn code(kind: std::io::ErrorKind) -> (&'static str, &'static str) {
     }
 }
 
+/// Whether the instance has the file grant, asked of the host once. Without
+/// it the host preopens no folder, so WASI reports every path as missing.
+fn granted() -> bool {
+    static GRANTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *GRANTED.get_or_init(|| {
+        crate::bindings::yapi::extension::host::request("fs.granted", "null")
+            .is_ok_and(|answer| answer == "true")
+    })
+}
+
 fn error(err: &std::io::Error, syscall: &str, path: &str) -> Value {
-    let (code, text) = code(err.kind());
+    let (code, text) = match err.kind() {
+        std::io::ErrorKind::NotFound if !granted() => {
+            ("EACCES", "file access needs the `fs` grant")
+        }
+        kind => code(kind),
+    };
     json!({"error": {
         "code": code,
         "message": format!("{code}: {text}, {syscall} '{path}'"),

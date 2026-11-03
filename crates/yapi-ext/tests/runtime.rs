@@ -437,7 +437,8 @@ export default function (pi) {
 /// either: an import cannot read what `fs` cannot. Under a module root, an
 /// extension still loads its own files and its `node_modules`, but nothing
 /// that leads outside the root, even through a symlink inside it, and a
-/// missing file looks the same as one outside.
+/// missing file looks the same as one outside. `node:fs` fails with
+/// `EACCES`, naming the grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn modules_need_filesystem_grant() {
     let dir = scratch("modules-without-files");
@@ -493,10 +494,14 @@ async fn modules_need_filesystem_grant() {
     let direct = format!(
         "{requests}.map(([kind, payload]) => {{ try {{ globalThis.__yapi.request(kind, payload); return \"loaded\"; }} catch (error) {{ return error.message; }} }})"
     );
+    // `node:fs` says why it reaches no file, rather than that none exists.
+    let read = format!(
+        "(() => {{ try {{ return fs.readFileSync({secret:?}, \"utf8\"); }} catch (error) {{ return `${{error.code}} ${{error.message}}`; }} }})()"
+    );
     let own = entry(
         "own.js",
-        "import { sibling } from \"./sibling.js\";\nimport { dep } from \"dep\";",
-        &format!("[sibling, dep, ...{direct}].join(\";\")"),
+        "import { sibling } from \"./sibling.js\";\nimport { dep } from \"dep\";\nimport fs from \"node:fs\";",
+        &format!("[sibling, dep, ...{direct}, {read}].join(\";\")"),
     );
     let outside = entry(
         "outside.js",
@@ -515,9 +520,11 @@ async fn modules_need_filesystem_grant() {
         "auth.token",
     );
     let denied = "Loading modules is not permitted for this extension";
+    let unreadable = format!("EACCES EACCES: file access needs the `fs` grant, open '{secret}'");
     let own_description = ["sibling", "dep"]
         .into_iter()
         .chain(std::iter::repeat_n(denied, 6))
+        .chain([unreadable.as_str()])
         .collect::<Vec<_>>()
         .join(";");
     for (roots, extensions, expected) in [
