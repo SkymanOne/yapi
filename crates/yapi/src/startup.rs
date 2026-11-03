@@ -1019,7 +1019,7 @@ fn ungranted_use(source: &SourceInfo, policies: &FilePolicies) -> Option<String>
     let used = yapi_core::chest::wasm::capabilities(&bytes).ok()?.used;
     let missing: Vec<String> = used
         .iter()
-        .filter(|used| !yapi_core::chest::wasm::covers(&policy.grants, used.capability))
+        .filter(|used| !policy.grants.covers(used.capability))
         .map(|used| format!("`{}` ({})", used.capability, used.source))
         .collect();
     (!missing.is_empty()).then(|| {

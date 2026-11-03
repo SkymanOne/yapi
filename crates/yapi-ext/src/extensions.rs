@@ -264,7 +264,7 @@ fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
         Need::Session => grants.session,
         Need::Files => grants.filesystem,
         Need::Network => grants.network,
-        Need::All => *grants == Grants::default(),
+        Need::All => grants.is_all(),
     }
 }
 
@@ -697,7 +697,7 @@ impl ExtensionHost {
     /// Whether the extensions may provide models: a provider's replies drive
     /// the agent's tools, and its streams get credentials.
     fn provides(&self) -> bool {
-        self.bridge.grants == Grants::default()
+        self.bridge.grants.is_all()
     }
 
     fn js_stream(self: &Arc<Self>, api: &str) -> Arc<dyn Provider> {
@@ -3526,9 +3526,7 @@ impl Bridge for SessionBridge {
                         .callable_tools()
                         .iter()
                         .find(|tool| tool.name() == name)
-                        .map_or(grants == Grants::default(), |tool| {
-                            tool_granted(&grants, tool)
-                        });
+                        .map_or(grants.is_all(), |tool| tool_granted(&grants, tool));
                     if !granted {
                         return Err(denied(&format!("The {name} tool")));
                     }

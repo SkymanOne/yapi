@@ -20,8 +20,8 @@ use serde_json::json;
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::{AgentSession, TreeNavigation};
 use yapi_core::extensions::{
-    ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Grants, Mode, NoUi, NotifyKind,
-    RemoteComponent,
+    CAPABILITIES, ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Grants, Mode, NoUi,
+    NotifyKind, RemoteComponent,
 };
 use yapi_ext::ExtensionHost;
 use yapi_types::event::AgentEvent;
@@ -77,11 +77,12 @@ async fn native_register_and_run() {
 /// feature's grant, and serves with it: the capability probe, built with
 /// every feature, sends them all from an extension granted nothing, each
 /// single capability, then everything. Without its grant, `env` answers no
-/// variables instead. Kinds that need no grant always answer.
+/// variables instead. Kinds that need no grant always answer. Every feature
+/// the SDK files a kind under is one of yapi's capabilities.
 #[tokio::test(flavor = "multi_thread")]
 async fn gated_kinds_denied() {
     let probe = cli_source(&fixture("capability-probe"));
-    for capability in ["none", "fs", "net", "env", "session", "all"] {
+    for capability in ["none"].into_iter().chain(CAPABILITIES) {
         let dir = scratch(&format!("native-capability-probe-{capability}"));
         let mut options = options(&dir);
         options.grants = Grants::parse(&[capability.to_owned()]).unwrap();
@@ -125,6 +126,13 @@ async fn gated_kinds_denied() {
             .map(|(kind, _)| kind.as_str())
             .collect();
         assert_eq!(denied, expected, "{capability}: {answers:?}");
+        for (kind, answer) in &answers {
+            let feature = answer["feature"].as_str();
+            assert!(
+                feature.is_none_or(|feature| CAPABILITIES.contains(&feature)),
+                "{kind}: {answer}"
+            );
+        }
         let env = &answers["env"]["ok"];
         assert_eq!(
             env == &json!({}),

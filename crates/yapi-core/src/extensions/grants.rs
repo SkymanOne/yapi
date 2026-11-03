@@ -2,6 +2,11 @@
 
 use crate::tools::RegisteredTool;
 
+/// The capabilities a manifest grants, in the order yapi lists them. Each
+/// but `all` gives one grant, and `all` gives every grant, running
+/// processes included. `none`, which grants nothing, stands alone.
+pub const CAPABILITIES: [&str; 5] = ["fs", "net", "env", "session", "all"];
+
 /// What an extension may reach. The default grants everything, as pi does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grants {
@@ -29,23 +34,11 @@ impl Default for Grants {
     }
 }
 
-/// The manifest capabilities the grants amount to: `all`, `none`, or the
-/// granted ones, such as `fs, net`.
+/// The manifest capabilities the grants amount to, as [`Grants::names`]
+/// lists them, or `none`: such as `all`, or `fs, net`.
 impl std::fmt::Display for Grants {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if *self == Grants::default() {
-            return formatter.write_str("all");
-        }
-        let names: Vec<&str> = [
-            (self.filesystem, "fs"),
-            (self.network, "net"),
-            (self.environment, "env"),
-            (self.session, "session"),
-            (self.process, "process"),
-        ]
-        .into_iter()
-        .filter_map(|(granted, name)| granted.then_some(name))
-        .collect();
+        let names = self.names();
         if names.is_empty() {
             return formatter.write_str("none");
         }
@@ -65,19 +58,57 @@ impl Grants {
         }
     }
 
-    /// The grants of manifest capabilities `values`, each `fs`, `net`,
-    /// `env`, `session`, `all` or `none`. An empty list grants nothing, and
-    /// only `all` grants running processes. `Err` names an unknown value,
+    /// Whether every grant is given, as only `all` gives it.
+    pub fn is_all(&self) -> bool {
+        *self == Grants::default()
+    }
+
+    /// The grants of `capability`, one of [`CAPABILITIES`], or `None`.
+    fn of(capability: &str) -> Option<Grants> {
+        let mut grants = Grants::none();
+        match capability {
+            "fs" => grants.filesystem = true,
+            "net" => grants.network = true,
+            "env" => grants.environment = true,
+            "session" => grants.session = true,
+            "all" => grants = Grants::default(),
+            _ => return None,
+        }
+        Some(grants)
+    }
+
+    /// Whether these grants give all that `capability`, one of
+    /// [`CAPABILITIES`], does. False for any other name.
+    pub fn covers(&self, capability: &str) -> bool {
+        Grants::of(capability).is_some_and(|needed| self.intersection(needed) == needed)
+    }
+
+    /// The capabilities the grants amount to, as a manifest names them:
+    /// `all` alone when they give everything, else each other one of
+    /// [`CAPABILITIES`] they cover, then `process` when they let processes
+    /// run, which no manifest grants without `all`. Empty for none.
+    pub fn names(&self) -> Vec<&'static str> {
+        if self.is_all() {
+            return vec!["all"];
+        }
+        let mut names: Vec<&'static str> = CAPABILITIES
+            .into_iter()
+            .filter(|capability| self.covers(capability))
+            .collect();
+        if self.process {
+            names.push("process");
+        }
+        names
+    }
+
+    /// The grants of manifest capabilities `values`, each one of
+    /// [`CAPABILITIES`] or `none`. An empty list grants nothing, and only
+    /// `all` grants running processes. `Err` names an unknown value,
     /// `process`, or `none` combined with another value.
     pub fn parse(values: &[String]) -> Result<Grants, String> {
         let mut grants = Grants::none();
         for value in values {
             match value.as_str() {
-                "fs" => grants.filesystem = true,
-                "net" => grants.network = true,
-                "env" => grants.environment = true,
-                "session" => grants.session = true,
-                "all" => grants = Grants::default(),
                 "none" if values.len() == 1 => {}
                 "none" => return Err("\"none\" cannot be combined with other capabilities".into()),
                 "process" => {
@@ -85,7 +116,10 @@ impl Grants {
                         "\"process\" is not a capability: a process runs as you, outside the sandbox, so only \"all\" allows it".into(),
                     );
                 }
-                other => return Err(format!("unknown capability \"{other}\"")),
+                other => match Grants::of(other) {
+                    Some(granted) => grants = grants.union(granted),
+                    None => return Err(format!("unknown capability \"{other}\"")),
+                },
             }
         }
         Ok(grants)
@@ -119,7 +153,7 @@ impl Grants {
 /// other tool, including one an extension registers under a built-in name,
 /// may reach anything, so it needs every grant.
 pub fn tool_granted(grants: &Grants, tool: &RegisteredTool) -> bool {
-    let all = *grants == Grants::default();
+    let all = grants.is_all();
     match tool.name() {
         _ if tool.source.is_some() => all,
         "bash" => grants.process,
@@ -174,15 +208,27 @@ mod tests {
             let expected = expected.map_err(str::to_owned);
             assert_eq!(Grants::parse(&values), expected, "{values:?}");
         }
-        // Grants name the capabilities they amount to.
+        // Grants name the capabilities they amount to, and cover those.
+        let no_net = Grants {
+            network: false,
+            ..Grants::default()
+        };
         for (grants, name) in [
             (Grants::default(), "all"),
             (Grants::none(), "none"),
             (fs, "fs"),
             (all_but_process, "fs, net, env, session"),
+            (no_net, "fs, env, session, process"),
         ] {
             assert_eq!(grants.to_string(), name);
+            for capability in CAPABILITIES {
+                let named = grants.names().contains(&capability) || grants.is_all();
+                assert_eq!(grants.covers(capability), named, "{name}: {capability}");
+            }
         }
+        // A name that is not a capability is never covered.
+        assert!(!Grants::default().covers("process"));
+        assert!(!Grants::default().covers("exec"));
         let net = Grants {
             network: true,
             ..Grants::none()

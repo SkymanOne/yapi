@@ -5,7 +5,7 @@
 use wasmparser::{Encoding, Parser, Payload};
 
 use super::{ChestError, invalid};
-use crate::extensions::Grants;
+use crate::extensions::CAPABILITIES;
 
 /// The custom section that lists the SDK features of a build.
 const SECTION: &str = "yapi:capabilities";
@@ -13,7 +13,7 @@ const SECTION: &str = "yapi:capabilities";
 /// A capability a component uses, and what shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Use {
-    /// `fs`, `net`, `env`, `session` or `all`.
+    /// One of [`CAPABILITIES`].
     pub capability: &'static str,
     /// What shows it, such as ``SDK feature `session` `` or
     /// ``WASI import `wasi:filesystem/types@0.2.6` ``.
@@ -47,9 +47,7 @@ impl Capabilities {
 
 /// The capability a section line names.
 fn feature(line: &str) -> Option<&'static str> {
-    ["fs", "net", "env", "session", "all"]
-        .into_iter()
-        .find(|name| *name == line)
+    CAPABILITIES.into_iter().find(|name| *name == line)
 }
 
 /// The capability a WASI import needs. `wasi:cli/environment` counts for
@@ -63,18 +61,6 @@ fn import(name: &str) -> Option<&'static str> {
 /// describes.
 fn unsupported(name: &str) -> bool {
     name.starts_with("wasi:sockets/") || name.starts_with("wasi:http/")
-}
-
-/// Whether `grants` cover using `capability`, one of [`Use::capability`].
-/// `all` needs the process grant, which amounts to every other.
-pub fn covers(grants: &Grants, capability: &str) -> bool {
-    match capability {
-        "fs" => grants.filesystem,
-        "net" => grants.network,
-        "env" => grants.environment,
-        "session" => grants.session,
-        _ => grants.process,
-    }
 }
 
 /// What the component `bytes` uses: the features its `yapi:capabilities`
@@ -163,6 +149,36 @@ mod tests {
     }
 
     const EMPTY: [u8; 8] = *b"\0asm\x0d\x00\x01\x00";
+
+    /// yapi-extension-api cannot depend on yapi-core, so its capability
+    /// features are checked against [`CAPABILITIES`] here: one each, and
+    /// `all` turns on the others.
+    #[test]
+    fn sdk_features_match() {
+        let manifest = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../guest/yapi-extension-api/Cargo.toml"
+        );
+        let manifest: toml_edit::DocumentMut =
+            std::fs::read_to_string(manifest).unwrap().parse().unwrap();
+        let features = manifest["features"].as_table().unwrap();
+        let mut names: Vec<&str> = features
+            .iter()
+            .map(|(name, _)| name)
+            .filter(|name| !["default", "widgets"].contains(name))
+            .collect();
+        let mut expected = CAPABILITIES.to_vec();
+        names.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(names, expected);
+        let all: Vec<&str> = features["all"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        assert_eq!(all, CAPABILITIES[..CAPABILITIES.len() - 1]);
+    }
 
     fn used(found: &Capabilities) -> Vec<(&str, &str)> {
         let pairs = found.used.iter();

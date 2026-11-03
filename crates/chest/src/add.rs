@@ -226,7 +226,8 @@ fn channels(patterns: &[String]) -> String {
     }
 }
 
-/// What each capability allows, for its question.
+/// What each capability allows, for its question. Each of
+/// [`CAPABILITIES`](yapi_core::extensions::CAPABILITIES) has one.
 fn meaning(capability: &str) -> &'static str {
     match capability {
         "fs" => "read and write files",
@@ -425,4 +426,18 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         return Err(err);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn capabilities_have_meanings() {
+        for capability in yapi_core::extensions::CAPABILITIES {
+            assert_ne!(
+                super::meaning(capability),
+                "an unknown capability",
+                "{capability}"
+            );
+        }
+    }
 }

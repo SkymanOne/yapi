@@ -6,12 +6,12 @@ use std::process::ExitCode;
 
 use anyhow::bail;
 use yapi_core::chest::manifest::{PackageMeta, package_meta};
-use yapi_core::chest::wasm::{Capabilities, capabilities, covers};
+use yapi_core::chest::wasm::{Capabilities, capabilities};
 use yapi_core::extensions::Grants;
 use yapi_core::packages::resolve::{ResourceType, package_resources};
 use yapi_core::tools::path::relative;
 
-use crate::{capability_names, say};
+use crate::say;
 
 /// The extensions of a package item.
 pub struct Inspected {
@@ -127,7 +127,7 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             ));
         }
         for used in &found.used {
-            if covers(&requested, used.capability) {
+            if requested.covers(used.capability) {
                 say(&format!(
                     "{file} uses `{}` ({})",
                     used.capability, used.source
@@ -154,7 +154,8 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
     // A script may use what no component does, and `all` uses everything.
     let used = inspected.used();
     if inspected.scripts.is_empty() && !used.contains(&"all") {
-        let unused = capability_names(requested)
+        let unused = requested
+            .names()
             .into_iter()
             .filter(|capability| !used.contains(capability));
         for capability in unused {
