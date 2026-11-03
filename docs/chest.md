@@ -58,7 +58,7 @@ At a terminal, `init` lists the folders by number with the ones it found selecte
 
 A folder can be a link to another one, such as `.claude/skills` linking to `../.agents/skills`. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path one of them drops stays while another still lists it.
 
-The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the `.*-old` folders there too, which hold an item's previous copy when chest stops while replacing it.
+The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. Each line is escaped to match its own path alone, whatever characters a folder name holds. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the `.*-old` folders there too, which hold an item's previous copy when chest stops while replacing it.
 
 Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed, or a copy it did not record that already holds exactly what the lock pins, which it then takes over. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
 
@@ -102,6 +102,8 @@ A pinned tarball must come from the registry configured for its package, at the 
 - `chest install` keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
 - `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes `chest.toml` or `chest.lock`. It is the default when `CI` is set to anything but an empty value, `0` or `false`, so a fresh clone in CI gets every skill and extension.
 - `chest verify` checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.
+
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs and says once that it is waiting. A command that stopped without letting go of its lock holds it for 30 seconds at most.
 
 ## Update
 
