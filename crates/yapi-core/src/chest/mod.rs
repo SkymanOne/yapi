@@ -791,6 +791,20 @@ impl Project {
     ) -> Result<(), ChestError> {
         match (&entry.npm, replay) {
             (_, Some(locked)) => {
+                // The extension loads from the package's own folder, so the
+                // lock must pin the package itself there, at its version.
+                if let Some(npm_name) = &entry.npm {
+                    let root = format!("node_modules/{npm_name}");
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let pinned = locked.packages.iter().any(|pin| {
+                        pin.path == root && pin.name == *npm_name && pin.version == version
+                    });
+                    if !pinned {
+                        return Err(invalid(format!(
+                            "the lock does not pin {npm_name}@{version} at {root}"
+                        )));
+                    }
+                }
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }

@@ -17,8 +17,9 @@ use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use yapi_core::chest::hash::tree_hash;
+use yapi_core::chest::lock::Lock;
 use yapi_core::chest::{Mode, Outcome, Project, Report};
-use yapi_core::packages::npm::Npm;
+use yapi_core::packages::npm::{Npm, Pinned};
 use yapi_core::settings::Scope;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
@@ -647,6 +648,16 @@ async fn npm_extension_locked() {
     .await
     .unwrap();
     let lock_path = project.lock_path();
+    // The tree of a lock that pins dep in ext's place.
+    let swapped_tree = dir.join("swapped");
+    for folder in ["dep", "ext"] {
+        let to = swapped_tree.join("node_modules").join(folder);
+        std::fs::create_dir_all(&to).unwrap();
+        for file in ["package.json", "index.js"] {
+            let from = store.join("node_modules/dep").join(file);
+            std::fs::copy(from, to.join(file)).unwrap();
+        }
+    }
     std::fs::remove_dir_all(&store).unwrap();
     // A lock that points the package at another's tarball is refused.
     let npmjs = read(&lock_path).replace(&server.url(), "https://registry.npmjs.org");
@@ -666,6 +677,29 @@ async fn npm_extension_locked() {
             error.contains("a pinned tarball must be at /ext/-/ext-1.0.0.tgz"),
             "{error}"
         );
+    }
+    // So is one that keeps ext@1.0.0 but pins dep, with the hash of its
+    // tree, in ext's folder, by install and frozen install alike.
+    let mut swapped = Lock::parse(&npmjs).unwrap();
+    let ext = &mut swapped.extensions[0];
+    ext.packages[1] = Pinned {
+        path: "node_modules/ext".into(),
+        ..ext.packages[0].clone()
+    };
+    ext.hash = Some(tree_hash(&swapped_tree).unwrap());
+    std::fs::write(&lock_path, swapped.to_toml().unwrap()).unwrap();
+    for mode in [Mode::Resolve, Mode::Frozen] {
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(mode, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("the lock does not pin ext@1.0.0 at node_modules/ext"),
+            "{error}"
+        );
+        assert!(!store.exists());
     }
     // Tarballs pinned on registry.npmjs.org come from the configured mirror.
     std::fs::write(&lock_path, npmjs).unwrap();
