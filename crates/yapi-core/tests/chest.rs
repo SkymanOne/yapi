@@ -16,6 +16,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+use yapi_ai::auth::lock::FileLock;
 use yapi_core::chest::hash::tree_hash;
 use yapi_core::chest::lock::Lock;
 use yapi_core::chest::{Mode, Outcome, Project, Report};
@@ -551,27 +552,70 @@ async fn gitignore_block_managed() {
         read(&root.join(".gitignore")),
         "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
-    // A lock that is a link is not written through.
+    // A manifest or lock that is a link is refused in either scope, also
+    // when the lock turns into one after the project opened, and nothing is
+    // read or written through it.
     #[cfg(unix)]
     {
-        let lock = root.join("chest.lock");
-        let moved = outside.join("chest.lock");
-        std::fs::rename(&lock, &moved).unwrap();
-        std::os::unix::fs::symlink(&moved, &lock).unwrap();
-        let locked = read(&moved);
+        let refused = |path: &Path| {
+            format!(
+                "{} is a symbolic link, which chest does not follow",
+                path.display()
+            )
+        };
         let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
-        let error = failed(&mut open(&dir, empty), Mode::Resolve).await;
-        assert!(error.ends_with("chest.lock through a link"), "{error}");
-        assert_eq!(read(&moved), locked);
-        assert!(root.join(".agents/skills/pdf").exists());
-        std::fs::remove_file(&lock).unwrap();
-        std::fs::rename(&moved, &lock).unwrap();
+        let mut project = open(&dir, empty);
+        let (manifest, lock) = (root.join("chest.toml"), root.join("chest.lock"));
+        for (file, moved) in
+            [&lock, &manifest].map(|file| (file, outside.join(file.file_name().unwrap())))
+        {
+            std::fs::rename(file, &moved).unwrap();
+            std::os::unix::fs::symlink(&moved, file).unwrap();
+            for scope in [Scope::Project, Scope::Global] {
+                let error = Project::open(&manifest, scope).unwrap_err().to_string();
+                assert!(error.starts_with(&refused(file)), "{error}");
+            }
+            if file == &lock {
+                let locked = read(&moved);
+                for mode in [Mode::Resolve, Mode::Frozen] {
+                    let error = failed(&mut project, mode).await;
+                    assert!(error.starts_with(&refused(&lock)), "{error}");
+                }
+                assert_eq!(read(&moved), locked);
+                assert!(root.join(".agents/skills/pdf").exists());
+            }
+            std::fs::remove_file(file).unwrap();
+            std::fs::rename(&moved, file).unwrap();
+        }
     }
+    // An install waits while another chest command holds the lock, and says
+    // so once.
+    let lock = root.join("chest.lock");
+    let held = FileLock::acquire(&lock, &Default::default()).await.unwrap();
     let mut project = open(
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",
     );
-    sync(&mut project, Mode::Resolve).await;
+    let heard = std::sync::Mutex::new(Vec::new());
+    let mut progress = |line: &str| heard.lock().unwrap().push(line.to_owned());
+    let mut npm = Npm::new(HashMap::new());
+    let release = async {
+        for _ in 0..100 {
+            if !heard.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        drop(held);
+    };
+    let synced = project.sync(Mode::Resolve, &mut npm, &mut progress);
+    let (synced, ()) = tokio::join!(synced, release);
+    synced.unwrap();
+    let waiting = "Waiting for another chest command, which holds the lock of";
+    assert_eq!(
+        heard.into_inner().unwrap(),
+        [format!("{waiting} {}...", lock.display())]
+    );
     assert_eq!(read(&root.join(".gitignore")), "target/\n");
 
     // `.claude/skills` linking to `.agents/skills`, which does not exist
@@ -1169,6 +1213,31 @@ async fn path_source_notice() {
         }
     }
     std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
+    // So is one that holds it through a folder linking there.
+    #[cfg(unix)]
+    {
+        let project = dir.join("project");
+        std::fs::create_dir_all(project.join(".claude")).unwrap();
+        std::os::unix::fs::symlink("../.agents/skills", project.join(".claude/skills")).unwrap();
+        std::fs::write(project.join(".agents/SKILL.md"), "# agents\n").unwrap();
+        let linked =
+            "[folders]\nskills = [\".claude/skills\"]\n\n[skills]\nme = { path = \".agents\" }\n";
+        let error = failed(&mut open(&dir, linked), Mode::Resolve).await;
+        let holds = format!(
+            "{} holds {}, where chest installs",
+            project.join(".agents").display(),
+            project.join(".agents/skills").display()
+        );
+        assert!(error.contains(&holds), "{error}");
+        assert!(
+            project
+                .join(".agents/skills/me")
+                .symlink_metadata()
+                .is_err()
+        );
+        std::fs::remove_file(project.join(".agents/SKILL.md")).unwrap();
+        std::fs::remove_file(project.join(".claude/skills")).unwrap();
+    }
 
     // An extension whose folder holds the project or the store, as a path
     // source or as a patch, is refused before anything is written.

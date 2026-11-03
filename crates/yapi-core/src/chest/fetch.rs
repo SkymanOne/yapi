@@ -4,11 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio_util::sync::CancellationToken;
-use yapi_ai::auth::lock::FileLock;
-
 use super::manifest::{Section, package_meta, valid_name};
-use super::{ChestError, invalid, io};
+use super::{ChestError, hold_lock, invalid, io};
 use crate::packages::resolve::{ResourceType, selected_files};
 use crate::packages::source::{self, Source};
 
@@ -121,9 +118,7 @@ async fn mirror(cache: &Path, repo: &str, refresh: bool) -> Result<PathBuf, Ches
     let parent = dir.parent().unwrap_or(cache);
     std::fs::create_dir_all(parent).map_err(io(parent))?;
     // Projects share the cache, so one process changes a clone at a time.
-    let _held = FileLock::acquire(&dir, &CancellationToken::new())
-        .await
-        .map_err(|err| ChestError::Failed(format!("{}: {err}", dir.display())))?;
+    let _held = hold_lock(&dir, &mut || {}).await?;
     if !dir.join("HEAD").is_file() {
         let _ = std::fs::remove_dir_all(&dir);
         git(
