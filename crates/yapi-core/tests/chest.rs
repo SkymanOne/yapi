@@ -994,11 +994,11 @@ async fn path_source_notice() {
         assert_eq!(read(&placed), format!("# {skill}\n"));
     }
 
-    // A git or npm extension loads modules from its store folder, whatever
-    // its `path`.
+    // A git extension loads modules from its store folder, whatever its
+    // `path`, and an npm one from its store folder too.
     let project = open(
         &dir,
-        "[extensions]\ngit = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"ext\" }\nnpm = { npm = \"ext\", path = \"ext\" }\n",
+        "[extensions]\ngit = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"ext\" }\nnpm = { npm = \"ext\" }\n",
     );
     let store = dir.join("project/.yapi/chest");
     assert_eq!(
