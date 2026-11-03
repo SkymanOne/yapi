@@ -413,6 +413,12 @@ impl Entry {
             }
         }
         if section == Section::Extensions {
+            if self.npm.is_some() && self.path.is_some() {
+                return fail(
+                    "`path` cannot be combined with `npm` for an extension, which loads its whole npm package"
+                        .into(),
+                );
+            }
             if let Some(Err(err)) = self.capabilities.as_deref().map(Grants::parse) {
                 return fail(format!("`capabilities`: {err}"));
             }
@@ -888,6 +894,10 @@ extensions = ["extensions/index.ts"]
             (
                 "[agents]\nx = { path = \"a\", events = \"isolated\" }",
                 "agents.x: `events` belongs to [extensions] entries",
+            ),
+            (
+                "[extensions]\nx = { npm = \"a\", path = \"b\" }",
+                "extensions.x: `path` cannot be combined with `npm` for an extension, which loads its whole npm package",
             ),
             (
                 "[extensions]\nx = { path = \"a\", capabilities = [\"process\"] }",
