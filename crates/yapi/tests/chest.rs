@@ -147,11 +147,13 @@ impl Drop for Rpc {
 /// do a global manifest's, a patched one's and a package's `index.js` that
 /// no manifest lists. The grants follow the file when `-e` or discovery
 /// loads it too, even by another path, with a warning. An entry whose
-/// folder holds the agent folder does not load, nor does a global entry for
-/// the project yapi runs in, or one that holds home by another name. Their
-/// files, and those of entries left out for their lock, run with no grant
-/// when something else loads them, and load no module but themselves. A
-/// file two manifests give runs with what both allow.
+/// folder holds the agent folder or home does not load, locked or not, nor
+/// does a global entry for the project yapi runs in, or one that holds home
+/// by another name. Only the files such an entry would load run with no
+/// grant when something else loads them, and a settings extension in its
+/// folder keeps its grants. Every file of an entry left out for its lock
+/// runs with no grant. Both load no module but themselves. A file two
+/// manifests give runs with what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
@@ -168,6 +170,11 @@ async fn chest_extensions_load() {
         ("patched.js", ext("patched")),
         ("agent/package.json", wide.to_owned()),
         ("agent/wide.js", ext("wide")),
+        ("agent/kept.js", ext("kept")),
+        (
+            "agent/settings.json",
+            r#"{"extensions": ["kept.js"]}"#.to_owned(),
+        ),
         ("index/package.json", r#"{"name": "index"}"#.to_owned()),
         ("index/index.js", ext("index")),
         ("linked/index.js", ext("linked")),
@@ -213,8 +220,13 @@ async fn chest_extensions_load() {
     std::fs::create_dir_all(&leftover).unwrap();
     install(&home, &files, ".chest/chest.toml", &manifest).await;
     assert!(!leftover.exists());
+    // chest refuses to install these, so they are not locked.
+    let global = home.join(".chest/chest.toml");
+    let all = format!("{manifest}all = {{ path = \"~\" }}\n");
+    std::fs::write(global, all).unwrap();
+    std::fs::create_dir_all(home.join("proj")).unwrap();
     let up = "[extensions]\nup = { path = \"agent/../../..\" }\n";
-    install(&home, &[], "proj/chest.toml", up).await;
+    std::fs::write(home.join("proj/chest.toml"), up).unwrap();
     let args = ["--approve", "-e", "closed.js", "-e", "agent/wide.js"];
     let loaded = commands(&home, &args, &[]);
     let described = |name: &str| loaded.get(name).map(String::as_str);
@@ -225,7 +237,7 @@ async fn chest_extensions_load() {
     for name in refused {
         assert_eq!(described(name), Some("refused"), "{name}: {loaded:?}");
     }
-    for name in ["open", "granted"] {
+    for name in ["open", "granted", "kept"] {
         assert_eq!(described(name), Some("read"), "{name}: {loaded:?}");
     }
     let output = common::yapi(&home)
@@ -238,8 +250,8 @@ async fn chest_extensions_load() {
         "closed.js is also loaded from cli; chest's grants apply",
         "found.js is also loaded from auto; chest's grants apply",
         "agent holds more than the extension",
-        "late.js is also loaded from auto, but its chest entry is not installed, so it runs with no capabilities",
-        "agent/wide.js is also loaded from cli, but its chest entry is not installed",
+        "late.js is also loaded from auto, but its chest entry does not load, so it runs with no capabilities",
+        "agent/wide.js is also loaded from cli, but its chest entry does not load",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));

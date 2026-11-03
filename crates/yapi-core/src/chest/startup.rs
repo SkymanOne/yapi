@@ -13,7 +13,7 @@ use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
 use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::Npm;
-use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType};
+use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
 use crate::settings::Scope;
 use crate::tools::path::home_dir;
 
@@ -200,8 +200,9 @@ pub struct Installed {
     /// The packages' policies.
     pub policies: Policies,
     /// The canonical folders and files of extension entries left out
-    /// because their lock is stale or missing, or their folder holds too
-    /// much, which run with no grant if something else loads them.
+    /// because their lock is stale or missing, and the extension files of
+    /// those whose folder holds too much, which run with no grant if
+    /// something else loads them.
     pub closed: Vec<PathBuf>,
 }
 
@@ -223,26 +224,6 @@ pub struct Loaded {
     pub installed: Installed,
     /// Each problem's manifest path and message.
     pub problems: Vec<(String, String)>,
-}
-
-/// Whether `root` is, or holds, a folder no extension may load modules
-/// from because it holds far more than one package: `project`'s folder,
-/// `project_root`, the home folder, the agent folder or the filesystem's
-/// root.
-fn too_wide(project: &Project, project_root: &Path, root: &Path) -> bool {
-    let Ok(root) = root.canonicalize() else {
-        return false;
-    };
-    let held = [
-        project.base.clone(),
-        project_root.to_path_buf(),
-        home_dir(),
-        crate::config::agent_dir(),
-        PathBuf::from("/"),
-    ];
-    held.iter()
-        .filter_map(|folder| folder.canonicalize().ok())
-        .any(|folder| folder.starts_with(&root))
 }
 
 /// The extensions and skills `project` has installed, locked and up to
@@ -270,15 +251,32 @@ pub fn installed_inputs(
     };
     for (name, entry) in &project.manifest.extensions {
         let patched = project.manifest.patch.contains_key(name);
+        let roots = project.extension_roots(name);
+        // Locked or not, it never loads. Only the files it would load run
+        // closed, as other files there belong to other sources.
+        if let Some((root, module_root)) = &roots
+            && project.too_wide(module_root, &[project_root])
+        {
+            problems.push(format!(
+                "extensions.{name}: {} holds more than the extension, such as the project, the home or the agent folder, so it does not load",
+                module_root.display()
+            ));
+            let local = crate::packages::source::is_local(&format!("chest:{name}"));
+            let files = package_resources(root, None, local).extensions;
+            let files = files.iter().map(|file| Path::new(&file.info.path));
+            installed
+                .closed
+                .extend(files.filter_map(|file| file.canonicalize().ok()));
+            continue;
+        }
         if !patched && current(Section::Extensions, name, entry).is_none() {
             // Its files may still load through pi's discovery or settings.
-            let roots = project.extension_roots(name);
             if let Some(root) = roots.and_then(|(_, root)| root.canonicalize().ok()) {
                 installed.closed.push(root);
             }
             continue;
         }
-        let Some((root, module_root)) = project.extension_roots(name) else {
+        let Some((root, module_root)) = roots else {
             continue;
         };
         if !root.exists() {
@@ -290,14 +288,6 @@ pub fn installed_inputs(
                     root.display()
                 ));
             }
-            continue;
-        }
-        if too_wide(project, project_root, &module_root) {
-            problems.push(format!(
-                "extensions.{name}: {} holds more than the extension, such as the project, the home or the agent folder, so it does not load",
-                module_root.display()
-            ));
-            installed.closed.extend(module_root.canonicalize().ok());
             continue;
         }
         let source = format!("chest:{name}");

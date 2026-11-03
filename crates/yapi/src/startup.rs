@@ -1212,7 +1212,7 @@ async fn start_extensions(
         if !chest && chest_policies.manages(&file) && warned.insert(file.clone()) {
             let message = match chest_policies.closes(&file) {
                 true => format!(
-                    "{} is also loaded from {}, but its chest entry is not installed, so it runs with no capabilities",
+                    "{} is also loaded from {}, but its chest entry does not load, so it runs with no capabilities",
                     source.path, source.source
                 ),
                 false => format!(
