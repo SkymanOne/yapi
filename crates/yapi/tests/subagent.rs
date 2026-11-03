@@ -177,10 +177,12 @@ async fn background_subagent_new_turn() {
     tokio::task::spawn_blocking(move || {
         let mut rpc = Rpc::start(&home);
         rpc.send(json!({"type": "prompt", "message": "Delegate the counting"}));
-        rpc.agent_end();
-        // The answer arrives as a message that starts the next turn.
-        let end = rpc.agent_end();
-        assert!(end.to_string().contains("Subagent finished:"), "{end}");
+        // The answer arrives as a message that starts a turn: a run of its
+        // own once this one ends, or a follow-up turn of this run when it
+        // arrives first, so the run ends once with both replies.
+        let end = rpc.wait("agent_end with the answer", |event| {
+            event["type"] == "agent_end" && event.to_string().contains("Subagent finished:")
+        });
         assert!(end.to_string().contains("The subagent counted."), "{end}");
         rpc.stop();
     })
