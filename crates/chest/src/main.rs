@@ -13,7 +13,8 @@ use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use yapi_ai::auth::lock::write_atomic;
+use tokio_util::sync::CancellationToken;
+use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
@@ -131,6 +132,21 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         (None, false) => std::env::current_dir()?.join("chest.toml"),
     };
     let target = Target { path, scope };
+    // Commands that write the manifest hold its lock from their first read
+    // to their last write, a rollback included. Init and import may create
+    // its folder, and a missing folder holds no manifest to protect.
+    let writes = match &cli.command {
+        Command::Init(_) | Command::Import(_) => {
+            std::fs::create_dir_all(target.base())?;
+            true
+        }
+        Command::Add(_) | Command::Remove { .. } | Command::Update { .. } => target.base().is_dir(),
+        _ => false,
+    };
+    let _held = match writes {
+        true => Some(lock(&target).await?),
+        false => None,
+    };
     let mut npm = Npm::new(npm::config());
     match cli.command {
         Command::Init(args) => init::run(&target, &args)?,
@@ -151,6 +167,17 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::Import(args) => import::run(&target, &args)?,
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Locks the manifest against other chest commands that write it, waiting
+/// for them. The lock is an empty folder, which git does not list, named
+/// apart from the lock `sync` takes on the lock file, even for a manifest
+/// without an extension.
+async fn lock(target: &Target) -> anyhow::Result<FileLock> {
+    let file = target.base().join(format!(".{}", target.name()));
+    FileLock::acquire(&file, &CancellationToken::new())
+        .await
+        .with_context(|| format!("locking {}", target.path.display()))
 }
 
 /// Whether `CI` asks for frozen installs: set, and not empty, `0` or

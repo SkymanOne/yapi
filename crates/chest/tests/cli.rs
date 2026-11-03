@@ -51,8 +51,9 @@ fn environment(scratch: &Scratch) -> Vec<(String, OsString)> {
     ]
 }
 
-/// Runs chest in the project with `args` and `extra` environment, no input.
-fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
+/// chest in the project with `args` and `extra` environment, no input, and
+/// its output captured.
+fn command(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chest"));
     command
         .args(args)
@@ -60,8 +61,15 @@ fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
         .env_clear()
         .envs(environment(scratch))
         .envs(extra.iter().copied())
-        .stdin(Stdio::null());
-    command.output().unwrap()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+/// Runs chest in the project with `args` and `extra` environment, no input.
+fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
+    command(scratch, args, extra).output().unwrap()
 }
 
 /// Runs chest and fails the test unless it succeeds.
@@ -640,6 +648,46 @@ fn remove_keeps_handwritten() {
     let missing = chest(&scratch, &["remove", "pdf"], &[]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(text(&missing).contains("No entry is named pdf"));
+
+    // Parallel adds, then parallel removes, each keep the others' changes.
+    let names = ["s1", "s2", "s3", "s4"];
+    for name in names {
+        write(
+            &scratch.dir.join(name).join("SKILL.md"),
+            &format!("# {name}\n"),
+        );
+    }
+    let parallel = |verb: &str, argument: &dyn Fn(&str) -> String| {
+        let children: Vec<_> = names
+            .iter()
+            .map(|name| {
+                command(&scratch, &[verb, &argument(name)], &[])
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for child in children {
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success(), "{}", text(&output));
+        }
+    };
+    parallel("add", &|name| format!("../{name}"));
+    let (manifest, lock) = (
+        read(&scratch.project.join("chest.toml")),
+        read(&scratch.project.join("chest.lock")),
+    );
+    for name in names {
+        let entry = format!("{name} = {{ path = \"../{name}\" }}");
+        assert!(manifest.contains(&entry), "{manifest}");
+        assert!(lock.contains(&format!("name = \"{name}\"")), "{lock}");
+    }
+    parallel("remove", &|name| name.to_owned());
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        !names.iter().any(|name| manifest.contains(name)),
+        "{manifest}"
+    );
+    assert!(!scratch.project.join(".chest.toml.lock").exists());
 }
 
 #[test]
