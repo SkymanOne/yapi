@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b5f336dd.js";
+            window.path_to_searchindex_js = "searchindex-99ce9d01.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -280,7 +280,7 @@ chest install
 <pre><code class="language-toml">[patch]
 todo = { path = "../pi-todo" }
 </code></pre>
-<p>A path that points outside the project gets a notice on each install. A path source or patch whose folder holds one of chest’s install folders or the store is refused, because chest would copy it into itself.</p>
+<p>A path that points outside the project gets a notice on each install. A path source or patch whose folder holds one of chest’s install folders or the store is refused, because chest would copy it into itself. So is an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
 <h2 id="move-from-settingsjson-or-skillssh"><a class="header" href="#move-from-settingsjson-or-skillssh">Move from settings.json or skills.sh</a></h2>
 <p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code> into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them, and keeps their filters. It leaves <code>settings.json</code> alone and prints the <code>yapi remove -l</code> command for each package, to run once chest installs it. <code>-g</code> imports the agent folder’s <code>settings.json</code>.</p>
 <p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. chest computes its own hashes, so the file’s are dropped.</p>
