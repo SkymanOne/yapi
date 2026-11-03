@@ -32,14 +32,15 @@ const HOST_PACKAGES: [&str; 10] = [
     "@sinclair/typebox",
 ];
 
-/// Why an npm operation failed.
+/// Why an npm operation failed. Its message escapes unprintable
+/// characters, which names and URLs from a lock or a registry may hold.
 #[derive(Debug, thiserror::Error)]
 pub enum NpmError {
     /// The registry could not be reached or answered with an error.
-    #[error("{0}")]
+    #[error("{}", escaped(.0))]
     Registry(String),
     /// No published version matches.
-    #[error("No version of {name} matches {range}")]
+    #[error("No version of {} matches {}", escaped(.name), escaped(.range))]
     NoMatch {
         /// The package.
         name: String,
@@ -47,10 +48,10 @@ pub enum NpmError {
         range: String,
     },
     /// The tarball's digest differs from the registry's.
-    #[error("Integrity check failed for {0}")]
+    #[error("Integrity check failed for {}", escaped(.0))]
     Integrity(String),
     /// A package name or folder that would put files outside `node_modules`.
-    #[error("{0}")]
+    #[error("{}", escaped(.0))]
     Refused(String),
     /// A file operation failed.
     #[error("{path}: {source}")]
@@ -69,22 +70,39 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> NpmError + '_ {
     }
 }
 
-/// Fails unless `name` has the shape of an npm package name, `name` or
-/// `@scope/name`, which keeps it inside the `node_modules` it is joined to.
-/// npm accepts only URL-safe names, so the name is ASCII and folding its
-/// case needs no Unicode rules.
+/// `text` with its unprintable characters escaped, as `escape_debug` writes
+/// them, so that it cannot drive the terminal an error is printed to.
+fn escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            // Printable, though `escape_debug` escapes them.
+            '\\' | '\'' | '"' => escaped.push(c),
+            _ => escaped.extend(c.escape_debug()),
+        }
+    }
+    escaped
+}
+
+/// Fails unless `name` is an npm package name, `name` or `@scope/name`,
+/// which keeps it inside the `node_modules` it is joined to. As npm, it
+/// accepts only URL-safe characters and no leading `_`. No part may start
+/// with `.`, so that none is `.git` or another hidden folder. The name is
+/// ASCII, so folding its case needs no Unicode rules.
 fn check_name(name: &str) -> Result<(), NpmError> {
     let segment = |part: &str| {
-        !matches!(part, "" | "." | "..")
-            && part.is_ascii()
-            && !part.contains(['/', '\\', ':', '\0'])
+        !part.is_empty()
+            && !part.starts_with('.')
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"-._~!*'()".contains(&byte))
     };
     let valid = match name
         .strip_prefix('@')
         .and_then(|scoped| scoped.split_once('/'))
     {
         Some((scope, name)) => segment(scope) && segment(name),
-        None => segment(name),
+        None => segment(name) && !name.starts_with('_'),
     };
     if valid {
         Ok(())

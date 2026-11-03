@@ -851,6 +851,22 @@ async fn npm_tree_replays() {
         ),
         (
             &offline,
+            with(app("node_modules/.git")),
+            "Invalid package path: node_modules/.git".into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/_app")),
+            "Invalid package path: node_modules/_app".into(),
+        ),
+        (
+            &offline,
+            // A terminal title escape, printed escaped.
+            with(app("node_modules/\u{1b}]0;owned\u{7}")),
+            "Invalid package path: node_modules/\\u{1b}]0;owned\\u{7}".into(),
+        ),
+        (
+            &offline,
             // Its parent differs from the pinned `node_modules/app` by case alone.
             with(app("node_modules/APP/node_modules/app")),
             "Package path node_modules/APP/node_modules/app has no pinned parent node_modules/APP"
@@ -1450,8 +1466,9 @@ async fn autoload_delta_user_package() {
 }
 
 /// A dependency named by a path, absolute or climbing out of `node_modules`,
-/// fails the install before anything is written there, even when the
-/// registry serves a package for that name.
+/// or by a name npm refuses, fails the install before anything is written
+/// there, even when the registry serves a package for that name. The error
+/// shows the name escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn path_dependency_names_refused() {
     let dir = scratch("dependency-paths");
@@ -1460,7 +1477,12 @@ async fn path_dependency_names_refused() {
     std::fs::write(outside.join("keep.txt"), "mine").unwrap();
     let package = tarball(&[("package.json", r#"{"name": "evil-pkg"}"#)]);
     let payload = tarball(&[("package.json", r#"{"name": "evil", "version": "1.0.0"}"#)]);
-    for name in [outside.to_str().unwrap(), "../../../outside"] {
+    for name in [
+        outside.to_str().unwrap(),
+        "../../../outside",
+        ".git",
+        "\u{1b}[2Jevil",
+    ] {
         let server = registry(|base| {
             let manifest = json!({"dependencies": {name: "1.0.0"}});
             let versions = [("1.0.0", manifest, package.clone())];
@@ -1478,7 +1500,8 @@ async fn path_dependency_names_refused() {
         .await;
         let mut packages = manager(&dir, &server.url());
         let error = packages.install("npm:evil-pkg", false).await.unwrap_err();
-        assert_eq!(error.to_string(), format!("Invalid package name: {name}"));
+        let shown = name.escape_debug();
+        assert_eq!(error.to_string(), format!("Invalid package name: {shown}"));
         assert_eq!(
             std::fs::read_to_string(outside.join("keep.txt")).unwrap(),
             "mine"
