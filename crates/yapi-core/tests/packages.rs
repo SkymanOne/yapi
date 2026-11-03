@@ -712,7 +712,8 @@ async fn npm_tree_replays() {
     // replay with a tampered download, then `fetch_pinned`.
     let mirror = Mirror::default();
     for (name, version, _, bytes) in &packages {
-        let path = format!("/{name}/-/{name}-{version}.tgz");
+        let file = name.rsplit('/').next().unwrap();
+        let path = format!("/{name}/-/{file}-{version}.tgz");
         mirror.files.lock().unwrap().insert(path, bytes.clone());
     }
     let mirror_url = mirror.serve();
@@ -745,7 +746,7 @@ async fn npm_tree_replays() {
     assert_eq!(entries(&replayed), ["node_modules"]);
 
     // A download that fails partway leaves the root as it was.
-    let fork = "/@acme/fork/-/@acme/fork-2.0.0.tgz".to_owned();
+    let fork = "/@acme/fork/-/fork-2.0.0.tgz".to_owned();
     let original = mirror
         .files
         .lock()
