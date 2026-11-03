@@ -51,8 +51,9 @@ fn environment(scratch: &Scratch) -> Vec<(String, OsString)> {
     ]
 }
 
-/// Runs chest in the project with `args` and `extra` environment, no input.
-fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
+/// chest in the project with `args` and `extra` environment, no input, and
+/// its output captured.
+fn command(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_chest"));
     command
         .args(args)
@@ -60,8 +61,15 @@ fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
         .env_clear()
         .envs(environment(scratch))
         .envs(extra.iter().copied())
-        .stdin(Stdio::null());
-    command.output().unwrap()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+/// Runs chest in the project with `args` and `extra` environment, no input.
+fn chest(scratch: &Scratch, args: &[&str], extra: &[(&str, &str)]) -> Output {
+    command(scratch, args, extra).output().unwrap()
 }
 
 /// Runs chest and fails the test unless it succeeds.
@@ -181,6 +189,17 @@ fn init_detects_agents() {
     );
     assert!(dev.status.success(), "{}", text(&dev));
     assert_eq!(read(&scratch.project.join("chest.dev.toml")), expected);
+    // One outside the folder is an error, as yapi loads no manifest for it.
+    let outside = scratch.dir.join("chest.out.toml");
+    let path = outside.display().to_string();
+    let refused = chest(&scratch, &["init", "--yes"], &[("CHEST_MANIFEST", &path)]);
+    assert_eq!(refused.status.code(), Some(1), "{}", text(&refused));
+    assert!(
+        text(&refused).contains("CHEST_MANIFEST must name a file inside the project"),
+        "{}",
+        text(&refused)
+    );
+    assert!(!outside.exists());
 }
 
 #[test]
@@ -277,7 +296,7 @@ async fn add_writes_entry() {
     );
 
     // An npm extension, granted only what --grant lists.
-    let package = json!({"name": "ext", "version": "1.0.0", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
+    let package = json!({"name": "ext", "version": "1.0.0", "description": "To\u{1b}[2J\u{1b}[Hdo\u{9b}2J", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
     let bytes = tarball(&[
         ("package.json", &package.to_string()),
         ("index.js", "export default () => {};\n"),
@@ -309,6 +328,9 @@ async fn add_writes_entry() {
     server.finish().unwrap();
     let said = text(&output);
     assert!(said.contains("requests: fs, net"), "{said}");
+    // Control characters in package text never reach the terminal.
+    assert!(said.contains("  To[2J[Hdo2J\n"), "{said:?}");
+    assert!(!said.contains(['\u{1b}', '\u{9b}']), "{said:?}");
     assert!(
         said.contains("requests capabilities it is not granted: net"),
         "{said}"
@@ -385,6 +407,24 @@ fn add_existing_entry() {
         text(&clash)
     );
     assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // Granting `all` says what it means, asked or not.
+    let all = ok(
+        &scratch,
+        &[
+            "add",
+            &format!("{}@v2", remote.source),
+            "--name",
+            "all",
+            "--grant",
+            "all",
+            "--yes",
+        ],
+    );
+    assert!(
+        text(&all).contains("`all` is full access"),
+        "{}",
+        text(&all)
+    );
 }
 
 #[test]
@@ -484,6 +524,15 @@ fn ci_implies_frozen() {
         read(&scratch.project.join(".agents/skills/pdf/SKILL.md")),
         "# pdf 2\n"
     );
+    // An error quoting the lock prints no control characters from it.
+    let lock =
+        "version = 1\n\n[[extension]]\nname = \"ext\"\nnpm = \"ext\"\nversion = \"1\\u001b[2J\"\n";
+    write(&scratch.project.join("chest.lock"), lock);
+    let output = chest(&scratch, &["install"], &[]);
+    assert_eq!(output.status.code(), Some(1));
+    let said = text(&output);
+    assert!(said.contains("invalid version `1[2J`"), "{said:?}");
+    assert!(!said.contains('\u{1b}'), "{said:?}");
 }
 
 #[test]
@@ -544,6 +593,32 @@ fn import_settings_packages() {
         "{said}"
     );
     assert_eq!(read(&path), settings.to_string());
+
+    // A manifest that is a symbolic link is refused, so a cloned project
+    // cannot point chest at a file outside it.
+    #[cfg(unix)]
+    {
+        let (link, outside) = (
+            scratch.project.join("chest.toml"),
+            scratch.dir.join("outside.toml"),
+        );
+        std::fs::rename(&link, &outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        for args in [
+            &["import", "--settings"][..],
+            &["add", "../local-ext"],
+            &["list"],
+        ] {
+            let output = chest(&scratch, args, &[]);
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {}", text(&output));
+            assert!(
+                text(&output).contains("chest.toml is a symbolic link"),
+                "{}",
+                text(&output)
+            );
+        }
+        assert_eq!(read(&outside), manifest);
+    }
 }
 
 #[test]
@@ -611,6 +686,46 @@ fn remove_keeps_handwritten() {
     let missing = chest(&scratch, &["remove", "pdf"], &[]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(text(&missing).contains("No entry is named pdf"));
+
+    // Parallel adds, then parallel removes, each keep the others' changes.
+    let names = ["s1", "s2", "s3", "s4"];
+    for name in names {
+        write(
+            &scratch.dir.join(name).join("SKILL.md"),
+            &format!("# {name}\n"),
+        );
+    }
+    let parallel = |verb: &str, argument: &dyn Fn(&str) -> String| {
+        let children: Vec<_> = names
+            .iter()
+            .map(|name| {
+                command(&scratch, &[verb, &argument(name)], &[])
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for child in children {
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success(), "{}", text(&output));
+        }
+    };
+    parallel("add", &|name| format!("../{name}"));
+    let (manifest, lock) = (
+        read(&scratch.project.join("chest.toml")),
+        read(&scratch.project.join("chest.lock")),
+    );
+    for name in names {
+        let entry = format!("{name} = {{ path = \"../{name}\" }}");
+        assert!(manifest.contains(&entry), "{manifest}");
+        assert!(lock.contains(&format!("name = \"{name}\"")), "{lock}");
+    }
+    parallel("remove", &|name| name.to_owned());
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        !names.iter().any(|name| manifest.contains(name)),
+        "{manifest}"
+    );
+    assert!(!scratch.project.join(".chest.toml.lock").exists());
 }
 
 #[test]

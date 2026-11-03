@@ -64,7 +64,7 @@ pub fn place_with(
         std::fs::create_dir_all(folder).map_err(io(folder))?;
         let target = relative(&real(folder)?, &real(&canonical)?);
         if link(Path::new(&target), &path).is_err() {
-            copy(&canonical, &path)?;
+            put(&canonical, &path)?;
         }
         placed.push(path);
     }
@@ -84,8 +84,15 @@ pub fn unplace(root: &Path, paths: &[PathBuf]) -> Result<(), ChestError> {
 }
 
 /// Copies `source` to `target` through a staged sibling, so that `target`
-/// holds the old copy or the new one, never part of either.
+/// holds the old copy or the new one, never part of either. A link at
+/// `target`, which the caller owns, goes first.
 fn put(source: &Path, target: &Path) -> Result<(), ChestError> {
+    if target
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_symlink())
+    {
+        remove(target)?;
+    }
     if source.symlink_metadata().map_err(io(source))?.is_dir() {
         let staging = npm::stage(target)?;
         let built = copy(source, &staging);
@@ -329,6 +336,19 @@ mod tests {
             std::fs::read_to_string(placed[1].join("SKILL.md")).unwrap(),
             "# pdf 2\n"
         );
+        // A copy that fails partway leaves nothing at the path or beside it.
+        #[cfg(unix)]
+        {
+            let breaking = |target: &Path, path: &Path| {
+                let canonical = path.parent().unwrap().join(target);
+                std::os::unix::fs::symlink("SKILL.md", canonical.join("link"))?;
+                Err(io::Error::other("no links here"))
+            };
+            assert!(place_with(&source, &root, &pair, "pdf", breaking).is_err());
+            assert!(placed[1].symlink_metadata().is_err());
+            assert!(folders[2].join(".pdf-staging").symlink_metadata().is_err());
+            std::fs::remove_file(folders[0].join("pdf/link")).unwrap();
+        }
 
         // Nothing goes outside the root: not through a folder that links out,
         // nor under a name that climbs, nor by removing what lies outside.

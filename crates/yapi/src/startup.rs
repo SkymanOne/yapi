@@ -1101,17 +1101,25 @@ fn host_group(host: &ExtensionHost) -> Group {
 }
 
 /// Whether a host that ran `previous`, with the canonical module roots it
-/// started with, may serve `next` after a reload: its grants and event
-/// policy are the same, `next`'s roots are the same once canonical now, and
-/// a native extension's file is the same. A root that moved or appeared
-/// since starts a new host.
-fn serves(previous: &Group, next: &Group) -> bool {
+/// started with, may serve `next`, one of the groups `all` after a reload:
+/// its grants and event policy are the same, `next`'s roots are the same
+/// once canonical now, a native extension's file is the same, and no file
+/// it ran is in another group now, since the modules it imported keep
+/// running with its grants. A file that is gone keeps its module, as in
+/// pi's module cache. A root that moved or appeared since starts a new host.
+fn serves(previous: &Group, next: &Group, all: &[Group]) -> bool {
     let first = |group: &Group| group.sources.first().map(|source| source.path.clone());
+    let runs = |group: &Group, source: &SourceInfo| {
+        group.sources.iter().any(|other| other.path == source.path)
+    };
+    let stayed =
+        |source: &SourceInfo| runs(next, source) || !all.iter().any(|group| runs(group, source));
     previous.native == next.native
         && previous.grants == next.grants
         && previous.events == next.events
         && previous.roots == yapi_ext::canonical_roots(&next.roots)
         && (!next.native || first(previous) == first(next))
+        && previous.sources.iter().all(stayed)
 }
 
 /// Installs missing packages and puts back what chest manifests lock,
@@ -1280,56 +1288,64 @@ async fn start_extensions(
         enum Start {
             Reused(Arc<ExtensionHost>),
             Started(Arc<ExtensionHost>),
-            Failed(String, String),
+            /// Each of the group's files, with why its host did not start.
+            Failed(Vec<(String, String)>),
         }
-        // Each host starts on its own thread, so they start together, and
-        // keep their groups' order.
-        let starts = group_sources(sources, &chest_policies)
-            .into_iter()
+        let groups = group_sources(sources, &chest_policies);
+        // A host of `previous` serves the same group again, keeping the
+        // modules it imported.
+        let reused: Vec<Option<Arc<ExtensionHost>>> = groups
+            .iter()
             .map(|group| {
-                // A host of `previous` serves the same group again, keeping the
-                // modules it imported.
-                let reused = previous.and_then(|previous| {
+                previous.and_then(|previous| {
                     previous
                         .hosts
                         .iter()
-                        .find(|host| serves(&host_group(host), &group))
+                        .find(|host| serves(&host_group(host), group, &groups))
                         .cloned()
-                });
-                let (mut options, engine) = (options.clone(), engine.clone());
-                async move {
-                    if let Some(host) = reused {
-                        host.reload(&group.sources).await;
-                        return Ok(Some(Start::Reused(host)));
-                    }
-                    options.grants = group.grants;
-                    options.events = group.events.clone();
-                    options.module_roots = group.roots.clone();
-                    if !group.native {
-                        let host = ExtensionHost::load(&engine, options, &group.sources).await;
-                        return host
-                            .map(|host| Some(Start::Started(host)))
-                            .map_err(|err| err.to_string());
-                    }
-                    let Some(source) = group.sources.first() else {
-                        return Ok(None);
-                    };
-                    Ok(Some(
-                        match ExtensionHost::load_native(&engine, options, source).await {
-                            Ok(host) => Start::Started(host),
-                            Err(err) => Start::Failed(source.path.clone(), err.to_string()),
-                        },
-                    ))
+                })
+            })
+            .collect();
+        // Each host starts on its own thread, so they start together, and
+        // keep their groups' order.
+        let starts = groups.into_iter().zip(reused).map(|(group, reused)| {
+            let (mut options, engine) = (options.clone(), engine.clone());
+            async move {
+                if let Some(host) = reused {
+                    host.reload(&group.sources).await;
+                    return Some(Start::Reused(host));
                 }
-            });
+                options.grants = group.grants;
+                options.events = group.events.clone();
+                options.module_roots = group.roots.clone();
+                let host = match group.native {
+                    false => ExtensionHost::load(&engine, options, &group.sources).await,
+                    true => {
+                        let source = group.sources.first()?;
+                        ExtensionHost::load_native(&engine, options, source).await
+                    }
+                };
+                // A host that fails fails alone, as one extension would.
+                Some(match host {
+                    Ok(host) => Start::Started(host),
+                    Err(err) => Start::Failed(
+                        group
+                            .sources
+                            .iter()
+                            .map(|source| (source.path.clone(), err.to_string()))
+                            .collect(),
+                    ),
+                })
+            }
+        });
         for start in futures_util::future::join_all(starts).await {
-            match start? {
+            match start {
                 Some(Start::Reused(host)) => hosts.push(host),
                 Some(Start::Started(host)) => {
                     started.push(Arc::clone(&host));
                     hosts.push(host);
                 }
-                Some(Start::Failed(path, error)) => issues.push((path, error)),
+                Some(Start::Failed(failed)) => issues.extend(failed),
                 None => {}
             }
         }
@@ -1653,6 +1669,13 @@ mod tests {
             ("/a/four.ts", narrow("/a")),
             ("/b/three.ts", narrow("/b")),
             ("/n/ext.wasm", narrow("/n")),
+            (
+                "/c/five.ts",
+                Policy {
+                    events: yapi_core::extensions::EventPolicy::shared(),
+                    ..narrow("/c")
+                },
+            ),
         ];
         let policies = FilePolicies {
             files: files
@@ -1666,6 +1689,7 @@ mod tests {
             source("/n/ext.wasm", "native"),
             source("/b/three.ts", "b"),
             source("/a/four.ts", "a"),
+            source("/c/five.ts", "c"),
         ];
         let groups = group_sources(sources.clone(), &policies);
         let summary: Vec<(bool, Vec<&str>, Vec<&str>)> = groups
@@ -1693,6 +1717,8 @@ mod tests {
                     vec!["/a", "/b"]
                 ),
                 (false, vec!["/x/two.ts"], vec![]),
+                // The grants of `/a`, but another event policy.
+                (false, vec!["/c/five.ts"], vec!["/c"]),
                 (true, vec!["/n/ext.wasm"], vec!["/n"]),
             ]
         );
@@ -1702,8 +1728,9 @@ mod tests {
         );
 
         // A host serves a reload only with the same grants, events and
-        // canonical roots, and for a native extension the same file. A root
-        // that a link points elsewhere, or that appears, starts a new host.
+        // canonical roots, for a native extension the same file, and while
+        // none of its files is in another group. A root that a link points
+        // elsewhere, or that appears, starts a new host.
         let dir = std::env::temp_dir().join(format!("yapi-serves-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (a, b, later, link) = (
@@ -1726,7 +1753,23 @@ mod tests {
             ..groups[0].clone()
         };
         let host = started(&js);
+        // The groups of the next run are `next` alone, unless they say.
+        let serves = |host: &Group, next: &Group| serves(host, next, std::slice::from_ref(next));
         assert!(serves(&host, &js));
+        // The group gains a file, or loses one that is gone, which keeps
+        // its module as in pi.
+        let mut added = js.clone();
+        added.sources.push(source("/a/five.ts", "a"));
+        let mut gone = js.clone();
+        let moved = gone.sources.remove(0);
+        assert!(serves(&host, &added) && serves(&host, &gone));
+        // A file whose grants changed has left for another group.
+        let elsewhere = Group {
+            grants: yapi_ext::Grants::none(),
+            sources: vec![moved],
+            ..js.clone()
+        };
+        assert!(!super::serves(&host, &gone, &[gone.clone(), elsewhere]));
         let mut roots = js.clone();
         roots.roots.push(b.clone());
         let mut grants = js.clone();
@@ -1747,7 +1790,7 @@ mod tests {
         }
         let native = Group {
             roots: vec![a.clone()],
-            ..groups[2].clone()
+            ..groups[3].clone()
         };
         let host = started(&native);
         let mut moved = native.clone();

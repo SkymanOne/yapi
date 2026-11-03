@@ -305,6 +305,18 @@ impl Manifest {
                     "folders.{key}: \"{path}\" must be a relative path inside the project, without `..` or `~`"
                 )));
             }
+            // The `.gitignore` block lists paths in these folders, one per line.
+            let first = Path::new(path).components().find_map(|part| match part {
+                Component::Normal(part) => part.to_str(),
+                _ => None,
+            });
+            let pattern = path.contains(['*', '?', '[', '\\', '\n', '\r'])
+                || first.is_some_and(|part| part.starts_with(['!', '#']));
+            if scope == Scope::Project && pattern {
+                return Err(invalid(format!(
+                    "folders.{key}: \"{path}\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns"
+                )));
+            }
         }
         // No folder may hold another, or the store, or the store them.
         let default_store = match scope {
@@ -460,6 +472,33 @@ fn check_source(path: &str, scope: Scope) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// The environment variable that names a project's manifest, relative to
+/// the project's folder, for chest and yapi alike.
+pub const MANIFEST_ENV: &str = "CHEST_MANIFEST";
+
+/// The manifest file [`MANIFEST_ENV`] names, if any. `Err` when it names a
+/// file outside the project: an absolute path, one under `~`, or one with
+/// `..`.
+pub fn from_env() -> Result<Option<String>, String> {
+    let Some(name) = std::env::var(MANIFEST_ENV)
+        .ok()
+        .filter(|name| !name.is_empty())
+    else {
+        return Ok(None);
+    };
+    let inside = !name.starts_with('~')
+        && Path::new(&name)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
+    if inside {
+        Ok(Some(name))
+    } else {
+        Err(format!(
+            "{MANIFEST_ENV} must name a file inside the project, not \"{name}\""
+        ))
+    }
 }
 
 /// Whether `name` matches `[a-z0-9][a-z0-9._-]*`, the rule for entry and
@@ -963,6 +1002,18 @@ extensions = ["extensions/index.ts"]
             (
                 "[folders]\nagents = [\"/abs\"]",
                 "folders.agents: \"/abs\" must be a relative path inside the project, without `..` or `~`",
+            ),
+            (
+                "[folders]\nskills = [\"skills[1]\"]",
+                "folders.skills: \"skills[1]\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
+            ),
+            (
+                "[folders]\nagents = [\"./!keep\"]",
+                "folders.agents: \"./!keep\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
+            ),
+            (
+                "[folders]\nextensions = \"s*\"",
+                "folders.extensions: \"s*\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
             ),
             (
                 "[folders]\nextensions = \"~/x\"",

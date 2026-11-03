@@ -17,9 +17,10 @@ use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use yapi_core::chest::hash::tree_hash;
+use yapi_core::chest::lock::Lock;
 use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
-use yapi_core::packages::npm::Npm;
+use yapi_core::packages::npm::{Npm, Pinned};
 use yapi_core::packages::resolve_resources;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
@@ -32,16 +33,20 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Lets `localhost/<path>` git sources, which the manifest accepts, clone
-/// the local repository at `/<path>`, for every test in this file. It also
-/// gives git a line-ending conversion, a smudge filter, and a template whose
-/// config asks for CRLF and defines that filter again, none of which may
-/// change the bytes a checkout produces.
+/// the local repository at `/<path>`, for every test in this file, without
+/// the user's or the system's git config. It also gives git a line-ending
+/// conversion, a smudge filter, and a template whose config asks for CRLF
+/// and defines that filter again, none of which may change the bytes a
+/// checkout produces.
 fn local_git() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         // SAFETY: every test here calls this first, and `Once` holds the
         // others back until the variables are set.
         unsafe {
+            let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+            std::env::set_var("GIT_CONFIG_GLOBAL", null);
+            std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
             std::env::set_var("GIT_CONFIG_COUNT", "3");
             std::env::set_var("GIT_CONFIG_KEY_0", "url.file:///.insteadOf");
             std::env::set_var("GIT_CONFIG_VALUE_0", "https://localhost/");
@@ -204,9 +209,22 @@ async fn git_skill_locked_commit() {
     assert_eq!(read(&canonical.join("notes.txt")), "lower\n");
 
     // Without its record, chest adopts a copy that is exactly what it would
-    // install, but never one holding a `.git`, which the hash leaves out.
+    // install, but never one that differs, nor one holding a `.git`, which
+    // the hash leaves out.
     std::fs::remove_dir_all(dir.join("state")).unwrap();
     std::fs::remove_file(root.join(".claude/skills/pdf")).unwrap();
+    std::fs::write(canonical.join("SKILL.md"), "# mine\n").unwrap();
+    let error = failed(
+        &mut open(&dir, &skill_manifest(&remote, "v1")),
+        Mode::Resolve,
+    )
+    .await;
+    assert!(
+        error.contains("refusing to replace what chest did not install"),
+        "{error}"
+    );
+    assert_eq!(read(&canonical.join("SKILL.md")), "# mine\n");
+    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
     std::fs::create_dir_all(canonical.join(".git")).unwrap();
     let error = failed(
         &mut open(&dir, &skill_manifest(&remote, "v1")),
@@ -221,6 +239,17 @@ async fn git_skill_locked_commit() {
     )
     .await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+
+    // A copy that no longer holds what the lock pins, as once a [patch] is
+    // dropped, is put back.
+    std::fs::create_dir_all(root.join("local/pdf")).unwrap();
+    std::fs::write(root.join("local/pdf/SKILL.md"), "# local\n").unwrap();
+    let patched = skill_manifest(&remote, "v1") + "\n[patch]\npdf = { path = \"local/pdf\" }\n";
+    sync(&mut open(&dir, &patched), Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
 
     // The tag moves, and every mode but update keeps the locked commit.
     let second = remote.commit(&[("skills/pdf/SKILL.md", "# pdf 2\n")], "v1");
@@ -248,11 +277,22 @@ async fn git_skill_locked_commit() {
     );
     assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
     std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    let before = read(&project.lock_path());
     let report = sync(&mut project, Mode::Update(Vec::new())).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
     let locked = &project.lock.as_ref().unwrap().skills[0];
     assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+    // An update stopped before it wrote the lock leaves the new copy, and
+    // install puts back what the lock pins.
+    let updated = read(&project.lock_path());
+    std::fs::write(project.lock_path(), &before).unwrap();
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
+    std::fs::write(project.lock_path(), updated).unwrap();
+    sync(&mut project, Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
 
     // A lock moved to another commit, or to no commit, is refused on replay.
     let lock_path = project.lock_path();
@@ -468,6 +508,15 @@ async fn frozen_rejects_drift() {
     let error = frozen(&mut project).await.unwrap_err();
     assert_eq!(error, "chest.toml has no lock: run `chest install`");
     assert!(!lock_path.exists());
+
+    // A tag deleted upstream no longer resolves from the cached clone.
+    git(
+        &remote.work,
+        &["push", "--quiet", "origin", ":refs/tags/v2"],
+    );
+    let mut gone = open(&dir, &skill_manifest(&remote, "v2"));
+    let error = failed(&mut gone, Mode::Update(Vec::new())).await;
+    assert!(error.ends_with("has no revision v2"), "{error}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -477,21 +526,49 @@ async fn gitignore_block_managed() {
     remote.commit(&[("skills/pdf/SKILL.md", "# pdf\n")], "v1");
     let root = dir.join("project");
     std::fs::write(root.join(".gitignore"), "target/\n").unwrap();
-    // What a stopped install left goes: a staging folder, and the work
-    // folder of a process that has ended.
+    // What a stopped install left goes: a staging folder, a previous copy,
+    // and the work folder of a process that has ended.
     let staging = root.join(".agents/skills/.gone-staging");
     std::fs::create_dir_all(&staging).unwrap();
+    let previous = root.join(".agents/skills/.gone-old");
+    std::fs::create_dir_all(&previous).unwrap();
     let mut ended = Command::new("true").spawn().unwrap();
     ended.wait().unwrap();
     let work = dir.join(format!("cache/work/{}-0", ended.id()));
     std::fs::create_dir_all(&work).unwrap();
-    let mut project = open(&dir, &skill_manifest(&remote, "v1"));
+    // But not from a folder that links out of the project, here that of a
+    // section without entries.
+    let outside = dir.join("outside");
+    std::fs::create_dir_all(outside.join(".x-staging")).unwrap();
+    std::fs::create_dir_all(root.join(".claude")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, root.join(".claude/agents")).unwrap();
+    let agents = "[folders]\nagents = [\".claude/agents\"]\n";
+    let manifest = skill_manifest(&remote, "v1").replace("[folders]\n", agents);
+    let mut project = open(&dir, &manifest);
     sync(&mut project, Mode::Resolve).await;
-    assert!(!staging.exists() && !work.exists());
+    assert!(!staging.exists() && !previous.exists() && !work.exists());
+    assert!(outside.join(".x-staging").exists());
     assert_eq!(
         read(&root.join(".gitignore")),
-        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
+        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
+    // A lock that is a link is not written through.
+    #[cfg(unix)]
+    {
+        let lock = root.join("chest.lock");
+        let moved = outside.join("chest.lock");
+        std::fs::rename(&lock, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        let locked = read(&moved);
+        let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
+        let error = failed(&mut open(&dir, empty), Mode::Resolve).await;
+        assert!(error.ends_with("chest.lock through a link"), "{error}");
+        assert_eq!(read(&moved), locked);
+        assert!(root.join(".agents/skills/pdf").exists());
+        std::fs::remove_file(&lock).unwrap();
+        std::fs::rename(&moved, &lock).unwrap();
+    }
     let mut project = open(
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",
@@ -518,7 +595,7 @@ async fn gitignore_block_managed() {
         }
         assert_eq!(
             read(&root.join(".gitignore")),
-            "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
+            "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
         );
     }
 }
@@ -561,15 +638,19 @@ fn body(text: String, base64: Option<String>) -> Response {
     }
 }
 
-/// The packument and the tarball of `name@1.0.0` with `dependencies`.
-fn publish(base: &str, name: &str, dependencies: Value) -> (Interaction, Interaction) {
-    let bytes = tarball(&[
-        (
-            "package.json",
-            &json!({"name": name, "version": "1.0.0"}).to_string(),
-        ),
-        ("index.js", &format!("module.exports = '{name}';\n")),
-    ]);
+/// The packument and the tarball of `name@1.0.0` with `dependencies`, and
+/// `files` beside its `package.json` and `index.js`.
+fn publish(
+    base: &str,
+    name: &str,
+    dependencies: Value,
+    files: &[(&str, &str)],
+) -> (Interaction, Interaction) {
+    let package = json!({"name": name, "version": "1.0.0"}).to_string();
+    let index = format!("module.exports = '{name}';\n");
+    let mut entries = vec![("package.json", package.as_str()), ("index.js", &index)];
+    entries.extend_from_slice(files);
+    let bytes = tarball(&entries);
     let manifest = json!({
         "name": name,
         "version": "1.0.0",
@@ -593,11 +674,13 @@ fn publish(base: &str, name: &str, dependencies: Value) -> (Interaction, Interac
 #[tokio::test(flavor = "multi_thread")]
 async fn npm_extension_locked() {
     let dir = scratch("npm");
+    let skill = [("skills/guide/SKILL.md", "# guide\n")];
     let server = MockServer::local_with(|base| {
-        let (ext, ext_tarball) = publish(base, "ext", json!({"dep": "^1"}));
-        let (dep, dep_tarball) = publish(base, "dep", json!({}));
+        let (guide, guide_tarball) = publish(base, "guide", json!({}), &skill);
+        let (ext, ext_tarball) = publish(base, "ext", json!({"dep": "^1"}), &[]);
+        let (dep, dep_tarball) = publish(base, "dep", json!({}), &[]);
         Cassette {
-            interactions: vec![ext, ext_tarball, dep, dep_tarball],
+            interactions: vec![guide, guide_tarball, ext, ext_tarball, dep, dep_tarball],
         }
     })
     .await
@@ -615,14 +698,25 @@ async fn npm_extension_locked() {
         assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
         std::fs::remove_file(dir.join("project/.yapi")).unwrap();
     }
+    // With an npm skill too, which places one folder of its package.
+    let guide_manifest = "[folders]\nskills = [\".agents/skills\"]\n\n[skills]\nguide = { npm = \"guide\", version = \"^1\", path = \"skills/guide\" }\n";
+    let manifest = &format!("{guide_manifest}\n{manifest}");
     let mut project = open(&dir, manifest);
     let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
     let report = project
         .sync(Mode::Resolve, &mut npm, &mut |_| {})
         .await
         .unwrap();
-    assert_eq!(outcomes(&report), [("extensions.ext", Outcome::Installed)]);
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("skills.guide", Outcome::Installed),
+            ("extensions.ext", Outcome::Installed)
+        ]
+    );
     server.finish().unwrap();
+    let guide = dir.join("project/.agents/skills/guide");
+    assert_eq!(read(&guide.join("SKILL.md")), "# guide\n");
     let store = dir.join("project/.yapi/chest/ext");
     let installed = tree_hash(&store).unwrap();
     let locked = project.lock.as_ref().unwrap().extensions[0].clone();
@@ -638,8 +732,8 @@ async fn npm_extension_locked() {
     assert!(!store.join("package.json").exists());
     // Its index file, which no manifest lists, runs with the entry's
     // grants and loads modules from the whole store folder.
-    let inputs = installed_inputs(&project, &mut Vec::new());
     let (root, agent) = (dir.join("project"), dir.join("agent"));
+    let inputs = installed_inputs(&project, &root, &mut Vec::new());
     let settings = SettingsManager::load(&agent, &root, false);
     let packages = (&inputs.packages, &inputs.skills);
     let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
@@ -654,15 +748,26 @@ async fn npm_extension_locked() {
     // A mirror that serves only the tarballs rebuilds the same store. The
     // replay downloads them at once, so they may come in either order.
     let mirror = MockServer::local_any_order(|base| {
-        let (_, dep) = publish(base, "dep", json!({}));
-        let (_, ext) = publish(base, "ext", json!({"dep": "^1"}));
+        let (_, dep) = publish(base, "dep", json!({}), &[]);
+        let (_, ext) = publish(base, "ext", json!({"dep": "^1"}), &[]);
+        let (_, guide) = publish(base, "guide", json!({}), &skill);
         Cassette {
-            interactions: vec![dep, ext],
+            interactions: vec![dep, ext, guide],
         }
     })
     .await
     .unwrap();
     let lock_path = project.lock_path();
+    // The tree of a lock that pins dep in ext's place.
+    let swapped_tree = dir.join("swapped");
+    for folder in ["dep", "ext"] {
+        let to = swapped_tree.join("node_modules").join(folder);
+        std::fs::create_dir_all(&to).unwrap();
+        for file in ["package.json", "index.js"] {
+            let from = store.join("node_modules/dep").join(file);
+            std::fs::copy(from, to.join(file)).unwrap();
+        }
+    }
     std::fs::remove_dir_all(&store).unwrap();
     // A lock that points the package at another's tarball is refused.
     let npmjs = read(&lock_path).replace(&server.url(), "https://registry.npmjs.org");
@@ -683,17 +788,83 @@ async fn npm_extension_locked() {
             "{error}"
         );
     }
-    // Tarballs pinned on registry.npmjs.org come from the configured mirror.
+    // So is one that keeps ext@1.0.0 but pins dep, with the hash of its
+    // tree, in ext's folder, by install and frozen install alike.
+    let mut swapped = Lock::parse(&npmjs).unwrap();
+    let ext = &mut swapped.extensions[0];
+    ext.packages[1] = Pinned {
+        path: "node_modules/ext".into(),
+        ..ext.packages[0].clone()
+    };
+    ext.hash = Some(tree_hash(&swapped_tree).unwrap());
+    std::fs::write(&lock_path, swapped.to_toml().unwrap()).unwrap();
+    for mode in [Mode::Resolve, Mode::Frozen] {
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(mode, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("the lock does not pin ext@1.0.0 at node_modules/ext"),
+            "{error}"
+        );
+        assert!(!store.exists());
+    }
+    // Tarballs pinned on registry.npmjs.org come from the configured mirror,
+    // the skill's included.
     std::fs::write(&lock_path, npmjs).unwrap();
+    std::fs::remove_dir_all(&guide).unwrap();
     let mut project = open(&dir, manifest);
     let mut npm = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
     let report = project
         .sync(Mode::Startup { offline: false }, &mut npm, &mut |_| {})
         .await
         .unwrap();
-    assert_eq!(outcomes(&report), [("extensions.ext", Outcome::Replayed)]);
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("skills.guide", Outcome::Replayed),
+            ("extensions.ext", Outcome::Replayed)
+        ]
+    );
     mirror.finish().unwrap();
     assert_eq!(tree_hash(&store).unwrap(), installed);
+    assert_eq!(read(&guide.join("SKILL.md")), "# guide\n");
+
+    // A registry that keeps tarballs elsewhere fails the first install of a
+    // skill or an extension, rather than every replay of its lock.
+    let ext_manifest = "[extensions]\next = { npm = \"ext\", version = \"^1\" }\n";
+    for (name, files, manifest) in [
+        ("guide", &skill[..], guide_manifest),
+        ("ext", &[][..], ext_manifest),
+    ] {
+        let dir = scratch(&format!("npm-elsewhere-{name}"));
+        let server = MockServer::local_with(|base| {
+            let (mut packument, mut tarball) = publish(base, name, json!({}), files);
+            let (pinned, elsewhere) = (
+                format!("/{name}/-/{name}-1.0.0.tgz"),
+                format!("/files/{name}-1.0.0.tgz"),
+            );
+            packument.response.chunks[0] =
+                packument.response.chunks[0].replace(&pinned, &elsewhere);
+            tarball.request.path = elsewhere;
+            Cassette {
+                interactions: vec![packument, tarball],
+            }
+        })
+        .await
+        .unwrap();
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(Mode::Resolve, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        let expected = format!("a pinned tarball must be at /{name}/-/{name}-1.0.0.tgz");
+        assert!(error.contains(&expected), "{error}");
+        assert!(!dir.join("project/chest.lock").exists());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -776,6 +947,23 @@ async fn removed_entry_unplaced() {
     let mut project = open(&dir, &both);
     sync(&mut project, Mode::Resolve).await;
     assert!(root.join(".claude/skills/pdf").symlink_metadata().is_ok());
+    // Dropping the first folder, or swapping the two, puts the copies in the
+    // new first folder, and nothing is lost.
+    for (folders, first) in [
+        ("[\".claude/skills\"]", ".claude/skills"),
+        ("[\".claude/skills\", \".agents/skills\"]", ".claude/skills"),
+        ("[\".agents/skills\", \".claude/skills\"]", ".agents/skills"),
+    ] {
+        let moved = both.replace("[\".agents/skills\", \".claude/skills\"]", folders);
+        let mut project = open(&dir, &moved);
+        sync(&mut project, Mode::Resolve).await;
+        assert_eq!(project.verify().unwrap(), Vec::<String>::new());
+        for name in ["pdf", "notes"] {
+            let copy = root.join(first).join(name).symlink_metadata().unwrap();
+            assert!(copy.is_dir(), "{folders} {name}");
+        }
+        assert_eq!(read(&root.join(".claude/skills/pdf/SKILL.md")), "# pdf\n");
+    }
 
     let manifest = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n\n[skills]\nnotes = { path = \"notes\" }\n";
     let mut project = open(&dir, manifest);
@@ -957,6 +1145,28 @@ async fn path_source_notice() {
         read(&dir.join("project/.agents/skills/notes/SKILL.md")),
         "# notes\n"
     );
+
+    // A path source holding the folder chest installs to, as an entry or as
+    // a patch, would copy itself, and is refused before anything is copied.
+    std::fs::write(dir.join("project/SKILL.md"), "# self\n").unwrap();
+    let pdf = "pdf = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"skills/pdf\" }";
+    for manifest in [
+        format!("{folders}me = {{ path = \".\" }}\n"),
+        format!("{folders}{pdf}\n\n[patch]\npdf = {{ path = \".\" }}\n"),
+    ] {
+        let error = failed(&mut open(&dir, &manifest), Mode::Resolve).await;
+        let holds = format!(
+            "{} holds {}, where chest installs",
+            dir.join("project").display(),
+            dir.join("project/.agents/skills").display()
+        );
+        assert!(error.contains(&holds), "{error}");
+        for name in ["me", ".me-staging", "pdf", ".pdf-staging"] {
+            let placed = dir.join("project/.agents/skills").join(name);
+            assert!(placed.symlink_metadata().is_err(), "{name}");
+        }
+    }
+    std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
 
     // A patched entry installs from its patch, again and again, and is
     // ignored by git, while the lock stays as it was.

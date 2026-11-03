@@ -118,6 +118,15 @@ impl Record {
         if owned { Held::Owned } else { Held::Modified }
     }
 
+    /// Whether the record says `path` holds `hash`, or a link chest made,
+    /// with no placement in progress.
+    pub(super) fn holds(&self, path: &Path, hash: &str) -> bool {
+        let placed = self.placed.get(&self.key(path));
+        placed.is_some_and(|placed| {
+            placed.next.is_none() && (placed.held == hash || placed.held.starts_with("link:"))
+        })
+    }
+
     /// Records that `path` holds `hash`, as chest found it, for this
     /// manifest.
     pub(super) fn adopt(&mut self, path: &Path, hash: &str) {

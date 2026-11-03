@@ -261,6 +261,9 @@ fn grants(
         .filter(|value| *value != "none")
         .cloned()
         .collect();
+    if granted.iter().any(|grant| grant == "all") {
+        say(ALL_WARNING);
+    }
     let (valid, invalid): (Vec<&String>, Vec<&String>) = meta
         .capabilities
         .iter()

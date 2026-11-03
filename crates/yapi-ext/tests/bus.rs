@@ -402,9 +402,12 @@ export default function (pi) {
     };
     let session = start().await;
     let long = "x".repeat(300);
+    // The probe's first load listens on `twice`, `dropped` and ten `capped`
+    // channels before the `many` ones, so `many:1011` is the 1024th channel
+    // the host keeps and `many:1012` the first it does not.
     for command in [
         "/late".to_owned(),
-        format!("/emit-sender gone twice many:5 many:1050 {long}"),
+        format!("/emit-sender gone twice many:5 many:1011 many:1012 many:1050 {long}"),
         format!(
             "/emit-table {}",
             (0..10)
@@ -449,7 +452,11 @@ export default function (pi) {
             "add \"{channel}\" to events.send of {from}: pi.events \"{channel}\" from {from} (fs, env, session, process) did not reach {probe} (all)"
         )
     };
-    let mut expected = vec![warning("twice", &sender), warning("many:5", &sender)];
+    let mut expected = vec![
+        warning("twice", &sender),
+        warning("many:5", &sender),
+        warning("many:1011", &sender),
+    ];
     expected.extend((0..8).map(|i| warning(&format!("capped:{i}"), &table)));
     expected.push(format!(
         "further pi.events warnings from {table} to {probe} suppressed"

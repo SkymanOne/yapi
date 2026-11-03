@@ -842,7 +842,8 @@ mod tests {
 
     /// Without the file grant, a module path counts only when it is
     /// absolute, has no `.` or `..`, and lies under a root once canonical.
-    /// The crate's own folder, the test's working directory, serves as root.
+    /// The crate's own folder, the test's working directory, serves as root,
+    /// and a folder of its own for a link that leaves the root.
     #[test]
     fn module_paths_need_roots() {
         let cwd = std::env::current_dir().unwrap();
@@ -865,5 +866,26 @@ mod tests {
         let outside = cwd.ancestors().nth(2).unwrap().join("Cargo.toml");
         assert!(outside.exists());
         assert_eq!(under_roots(&roots, &path(&outside)), None);
+        // A link inside the root to a file outside it. The folder is
+        // canonical, so only the link leaves the root.
+        #[cfg(unix)]
+        {
+            let dir = std::env::temp_dir()
+                .canonicalize()
+                .unwrap()
+                .join(format!("yapi-module-link-{}", std::process::id()));
+            let root = dir.join("root");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("inside.js"), "").unwrap();
+            std::fs::write(dir.join("outside.js"), "").unwrap();
+            let link = root.join("link.js");
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(dir.join("outside.js"), &link).unwrap();
+            let roots = crate::canonical_roots(std::slice::from_ref(&root));
+            let inside = root.join("inside.js");
+            assert_eq!(under_roots(&roots, &path(&inside)), Some(path(&inside)));
+            assert_eq!(under_roots(&roots, &path(&link)), None);
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
     }
 }

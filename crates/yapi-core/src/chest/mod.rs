@@ -62,8 +62,9 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> ChestError + '_ {
 /// What [`Project::sync`] does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// `chest install`: keep what is locked, fresh and present, replay what
-    /// is locked and fresh but missing, resolve the rest, then write the
+    /// `chest install`: keep what is locked, fresh and present, holding
+    /// what the lock pins as chest's record says, replay what is locked and
+    /// fresh but missing or different, resolve the rest, then write the
     /// lock and the `.gitignore` block and remove what the manifest dropped.
     Resolve,
     /// `chest update`: [`Mode::Resolve`], resolving the named entries, or
@@ -213,7 +214,7 @@ pub struct Project {
     pub state: PathBuf,
     path: PathBuf,
     /// The canonical home folder, which `~` names.
-    home: PathBuf,
+    pub home: PathBuf,
 }
 
 /// What startup does with an entry, as its lock and folders stand.
@@ -380,12 +381,35 @@ impl Project {
         pinned
     }
 
-    /// Whether everything `locked` occupies is there. An extension from a
-    /// path loads where it is, so it always is.
+    /// Whether `record` says each path `locked` occupies holds what the lock
+    /// pins, with no placement in progress. A link counts by the copy it
+    /// points to.
+    fn recorded(&self, section: Section, locked: &Locked, record: &Record) -> bool {
+        let homes = self.homes(section);
+        let items = locked_items(section, locked);
+        items.iter().all(|(name, hash)| {
+            let holds = |hash: &String| {
+                homes
+                    .iter()
+                    .all(|home| record.holds(&home.join(name), hash))
+            };
+            hash.as_ref().is_some_and(holds)
+        })
+    }
+
+    /// Whether everything `locked` occupies is there. A link in the first
+    /// folder, where the copy belongs, counts as missing, as after the
+    /// folders were reordered. An extension from a path loads where it is,
+    /// so it always is.
     pub fn present(&self, section: Section, locked: &Locked) -> bool {
         let placed = self.placed(section, locked);
         let in_place = section == Section::Extensions && placed.is_empty();
-        in_place || !placed.is_empty() && placed.iter().all(|path| path.symlink_metadata().is_ok())
+        let first = self.homes(section).into_iter().next();
+        let there = |path: &PathBuf| match path.symlink_metadata() {
+            Ok(metadata) => !metadata.is_symlink() || path.parent() != first.as_deref(),
+            Err(_) => false,
+        };
+        in_place || !placed.is_empty() && placed.iter().all(there)
     }
 
     /// Brings the installed entries in line with the manifest and lock as
@@ -418,6 +442,18 @@ impl Project {
             return Ok(report);
         }
         let lock_path = self.lock_path();
+        // `write_atomic` writes through a link, which may lead out of the root.
+        let writes = matches!(mode, Mode::Resolve | Mode::Update(_));
+        if writes
+            && lock_path
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.is_symlink())
+        {
+            return Err(invalid(format!(
+                "Refusing to write {} through a link",
+                lock_path.display()
+            )));
+        }
         let _held = FileLock::acquire(&lock_path, &CancellationToken::new())
             .await
             .map_err(|err| ChestError::Failed(format!("{}: {err}", lock_path.display())))?;
@@ -447,11 +483,11 @@ impl Project {
             .await
             .map_err(|err| ChestError::Failed(format!("{}: {err}", record_path.display())))?;
         self.prepare_folders()?;
+        let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         // `_work` holds the fetched items until they are placed.
         let (staged, _work) = self
-            .prepare(&mode, &old, npm, progress, &mut report)
+            .prepare(&mode, &old, &record, npm, progress, &mut report)
             .await?;
-        let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         let committed = self.commit(&staged, &old, &mut record, &record_path, &mut report);
         let occupied = match committed {
             Ok(occupied) => occupied,
@@ -490,7 +526,8 @@ impl Project {
     /// Before anything is placed: makes the folders of sections with
     /// entries, so that a folder linking to another resolves, refuses
     /// folders whose real paths nest or that two sections share, and removes
-    /// staging folders a stopped install left in them or in the store.
+    /// the staging and previous copies a stopped install left in them or in
+    /// the store, when they are inside [`Project::root`].
     fn prepare_folders(&self) -> Result<(), ChestError> {
         let root = self.root();
         let mut homes: Vec<PathBuf> = Vec::new();
@@ -532,9 +569,14 @@ impl Project {
             }
         }
         for home in &homes {
+            // A folder of a section without entries may link out of the root.
+            if place::within(&root, &home.join("item")).is_err() {
+                continue;
+            }
             for entry in std::fs::read_dir(home).into_iter().flatten().flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with('.') && name.ends_with("-staging") {
+                let stopped = name.ends_with("-staging") || name.ends_with("-old");
+                if name.starts_with('.') && stopped {
                     let path = entry.path();
                     npm::remove_path(&path).map_err(io(&path))?;
                 }
@@ -550,6 +592,7 @@ impl Project {
         &self,
         mode: &Mode,
         old: &Lock,
+        record: &Record,
         npm: &mut Npm,
         progress: &mut (dyn FnMut(&str) + Send),
         report: &mut Report,
@@ -579,6 +622,7 @@ impl Project {
             };
             let fresh = locked.is_some_and(|locked| fresh(entry, locked));
             let present = locked.is_some_and(|locked| self.present(section, locked));
+            let recorded = locked.is_some_and(|locked| self.recorded(section, locked, record));
             let local = target.patch.is_some() || entry.git.is_none() && entry.npm.is_none();
             let named = matches!(mode, Mode::Update(names)
                 if names.is_empty() || names.iter().any(|n| n == name));
@@ -595,7 +639,7 @@ impl Project {
                     }
                 }
                 Mode::Frozen if present => Some(Outcome::Unchanged),
-                _ if fresh && present && !local && !named => Some(Outcome::Unchanged),
+                _ if fresh && present && recorded && !local && !named => Some(Outcome::Unchanged),
                 _ => None,
             };
             if let Some(outcome) = keep {
@@ -705,6 +749,20 @@ impl Project {
                 let item = (fetch::placed_name(section, name), source);
                 (vec![item], Vec::new())
             };
+            // An item holding a folder chest installs to would copy itself.
+            let sections = [Section::Skills, Section::Agents].into_iter();
+            let mut installs: Vec<PathBuf> = sections.flat_map(|s| self.homes(s)).collect();
+            installs.push(real_path(&self.store()));
+            for (_, item) in &items {
+                let real = real_path(item);
+                if let Some(home) = installs.iter().find(|home| home.starts_with(&real)) {
+                    return Err(invalid(format!(
+                        "{} holds {}, where chest installs, so it cannot be installed",
+                        item.display(),
+                        home.display()
+                    )));
+                }
+            }
             let content = Content::Items(hashed(items)?);
             return Ok(staged(record, content, Outcome::Installed, warnings));
         }
@@ -754,7 +812,13 @@ impl Project {
                         npm::fetch_pinned(npm, &pin, &package).await?;
                         pin
                     }
-                    None => npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?,
+                    None => {
+                        let pin =
+                            npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?;
+                        // Refused now if replay would refuse it, not in every clone.
+                        npm.check_pin(&pin)?;
+                        pin
+                    }
                 };
                 record.version = Some(pin.version);
                 record.tarball = Some(pin.tarball);
@@ -808,6 +872,20 @@ impl Project {
     ) -> Result<(), ChestError> {
         match (&entry.npm, replay) {
             (_, Some(locked)) => {
+                // The extension loads from the package's own folder, so the
+                // lock must pin the package itself there, at its version.
+                if let Some(npm_name) = &entry.npm {
+                    let root = format!("node_modules/{npm_name}");
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let pinned = locked.packages.iter().any(|pin| {
+                        pin.path == root && pin.name == *npm_name && pin.version == version
+                    });
+                    if !pinned {
+                        return Err(invalid(format!(
+                            "the lock does not pin {npm_name}@{version} at {root}"
+                        )));
+                    }
+                }
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }
@@ -828,6 +906,11 @@ impl Project {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
             }
+        }
+        // A tree that replay would refuse fails this install, not every later
+        // one. A replayed tree records no pins: replay checked them.
+        for pin in &record.packages {
+            npm.check_pin(pin)?;
         }
         record.hash = Some(tree_hash(staging)?);
         Ok(())
@@ -1012,8 +1095,8 @@ impl Project {
     }
 
     /// Lists every `occupied` path in the root's `.gitignore` block, with the
-    /// staging folders a stopped install can leave beside the copies it
-    /// makes: in the first folder of each section and in the store.
+    /// staging and previous copies a stopped install can leave beside the
+    /// copies it makes: in the first folder of each section and in the store.
     fn write_ignore(&self, occupied: &[PathBuf]) -> Result<(), ChestError> {
         let root = self.root();
         let relative = |path: &Path| -> Result<String, ChestError> {
@@ -1037,7 +1120,9 @@ impl Project {
                 .iter()
                 .any(|path| path.parent() == Some(home.as_path()))
             {
-                entries.push(format!("{}/.*-staging", relative(&home)?));
+                let home = relative(&home)?;
+                entries.push(format!("{home}/.*-staging"));
+                entries.push(format!("{home}/.*-old"));
             }
         }
         place::write_ignore(&root, &self.file_name(), &entries)
