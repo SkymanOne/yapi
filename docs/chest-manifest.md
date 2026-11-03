@@ -8,6 +8,7 @@ This page lists every key of `chest.toml`, the rules chest checks, and the forma
 - `--manifest <path>` names another, and `CHEST_MANIFEST` sets the default for it.
 - An environment's manifest is a complete manifest of its own, such as `chest.dev.toml`. Its lock is the same name with `.lock` for `.toml`, here `chest.dev.lock`.
 - `-g` uses the global manifest, `~/.chest/chest.toml`.
+- A `chest.toml` or `chest.lock` that is a symbolic link is refused, so a cloned project cannot point chest at a file outside it.
 
 Paths in a manifest are relative to the manifest's folder. A project manifest keeps every folder inside the project. The global manifest may use `~` and absolute paths.
 
@@ -34,7 +35,7 @@ agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 ```
 
-Each folder must name a folder, so `.` is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without `..` or `~`. A section with entries needs its folders set.
+Each folder must name a folder, so `.` is refused. No folder may hold another or the store. A folder may not contain `*`, `?`, `[` or `\`, or start with `!` or `#`, because each one becomes a `.gitignore` line. In a project manifest a folder is a relative path without `..` or `~`. A section with entries needs its folders set.
 
 ## `[skills]`, `[agents]` and `[extensions]`
 
@@ -115,10 +116,11 @@ What a package says about itself. Every key is optional.
 | `net` | `fetch`, streamed fetch and DNS, model calls, reading provider credentials, HTTP MCP servers, and refreshing model catalogs over the network |
 | `env` | Reading environment variables, and the environment key fallback when calling a model |
 | `session` | Starting, steering and stopping turns, and changing the session, its files or the model's setup |
-| `all` | Everything above, plus running programs, stdio MCP servers, the `bash`, `grep` and `find` tools, and registering model providers |
+| `all` | Everything above, plus running programs, stdio MCP servers, the `bash`, `grep` and `find` tools, registering model providers, and registering terminal input listeners and autocomplete providers |
 | `none` | Nothing beyond the baseline. It cannot be combined with other values. |
 
 - Only `all` runs programs, because a program runs as you, outside the sandbox. `process` is not a capability.
+- Registering a terminal input listener with `ctx.ui.onTerminalInput`, or an autocomplete provider, needs `all`. What they return reaches yapi's own input, where `!` runs a shell command and `/` a slash command.
 - Calling a tool that is not built in needs `all`.
 - Always allowed: registering tools, commands, flags, shortcuts, renderers and providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package's own modules, and `pi.events` as its `events` allows.
 
