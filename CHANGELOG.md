@@ -10,7 +10,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
-- Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270), [#275](https://github.com/SkymanOne/yapi/pull/275)).
+- Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270), [#294](https://github.com/SkymanOne/yapi/pull/294)).
 
 ## [0.3.1] - 2026-10-22
 
