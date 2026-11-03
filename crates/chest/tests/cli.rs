@@ -673,12 +673,16 @@ fn add_prompts_capabilities() {
         "{:#?}",
         pty.rows()
     );
-    let http = "warning: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`.";
-    assert!(
-        pty.rows().iter().any(|row| row.contains(http)),
-        "{:#?}",
-        pty.rows()
-    );
+    for warning in [
+        "warning: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`.",
+        "warning: http.wasm declares the capability `exec:git`, which this version of chest does not know, so it is not checked",
+    ] {
+        assert!(
+            pty.rows().iter().any(|row| row.contains(warning)),
+            "{:#?}",
+            pty.rows()
+        );
+    }
     // Declining `all` leaves the capability the extension uses on offer.
     pty.write("n\r").unwrap();
     assert!(
@@ -723,14 +727,19 @@ fn fixture(name: &str) -> PathBuf {
     Path::new(dir).join(format!("{name}.wasm"))
 }
 
-/// An empty component that imports `wasi:http`, which yapi does not link.
+/// An empty component that imports `wasi:http`, which yapi does not link,
+/// and declares `exec:git`, a capability chest does not know.
 fn http_component() -> Vec<u8> {
     let name = b"wasi:http/outgoing-handler@0.2.6";
     let imports = [&[0x01, 0x00, name.len() as u8][..], name, &[0x05, 0x00]].concat();
     // The component header, a type section with one empty instance type,
     // and the id of the import section.
     let head = b"\0asm\x0d\x00\x01\x00\x07\x03\x01\x42\x00\x0a";
-    [&head[..], &[imports.len() as u8], &imports].concat()
+    let section = b"yapi:capabilities";
+    let lines = b"yapi-extension-api\nexec:git\n";
+    let custom = [&[section.len() as u8][..], section, lines].concat();
+    let custom = [&[0x00, custom.len() as u8][..], &custom].concat();
+    [&head[..], &[imports.len() as u8], &imports, &custom].concat()
 }
 
 #[test]
@@ -822,6 +831,11 @@ fn chest_check_mismatch() {
     assert_eq!(failed.status.code(), Some(1), "{}", text(&failed));
     assert!(
         text(&failed).contains("error: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`."),
+        "{}",
+        text(&failed)
+    );
+    assert!(
+        text(&failed).contains("warning: http.wasm declares the capability `exec:git`, which this version of chest does not know, so it is not checked"),
         "{}",
         text(&failed)
     );

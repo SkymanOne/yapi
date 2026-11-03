@@ -6,12 +6,12 @@ use std::process::ExitCode;
 
 use anyhow::bail;
 use yapi_core::chest::manifest::{PackageMeta, package_meta};
-use yapi_core::chest::wasm::{Capabilities, capabilities, covers};
+use yapi_core::chest::wasm::{Capabilities, capabilities};
 use yapi_core::extensions::Grants;
 use yapi_core::packages::resolve::{ResourceType, package_resources};
 use yapi_core::tools::path::relative;
 
-use crate::{capability_names, say};
+use crate::say;
 
 /// The extensions of a package item.
 pub struct Inspected {
@@ -42,6 +42,14 @@ impl Inspected {
 pub fn unsupported_import(file: &str, import: &str) -> String {
     format!(
         "{file} imports `{import}`, which yapi does not support. Network access goes through the SDK's `fetch`."
+    )
+}
+
+/// What line `line`, one of [`Capabilities::unknown`], of extension `file`
+/// means for its checks.
+pub fn unknown_capability(file: &str, line: &str) -> String {
+    format!(
+        "{file} declares the capability `{line}`, which this version of chest does not know, so it is not checked"
     )
 }
 
@@ -127,7 +135,7 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             ));
         }
         for used in &found.used {
-            if covers(&requested, used.capability) {
+            if requested.covers(used.capability) {
                 say(&format!(
                     "{file} uses `{}` ({})",
                     used.capability, used.source
@@ -145,6 +153,9 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             say(&format!("error: {}", unsupported_import(file, import)));
             errors += 1;
         }
+        for line in &found.unknown {
+            say(&format!("warning: {}", unknown_capability(file, line)));
+        }
     }
     for script in &inspected.scripts {
         say(&format!(
@@ -154,7 +165,8 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
     // A script may use what no component does, and `all` uses everything.
     let used = inspected.used();
     if inspected.scripts.is_empty() && !used.contains(&"all") {
-        let unused = capability_names(requested)
+        let unused = requested
+            .names()
             .into_iter()
             .filter(|capability| !used.contains(capability));
         for capability in unused {

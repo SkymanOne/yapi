@@ -15,7 +15,7 @@ pub mod tool_search;
 mod ui;
 
 pub use events::{EventPolicy, delivers};
-pub use grants::{Grants, receives, tool_granted};
+pub use grants::{CAPABILITIES, Grants, receives, tool_granted};
 pub use ui::{
     ComponentHost, CustomOptions, DialogOptions, ExtensionUi, NoUi, NotifyKind, Placement,
     RemoteComponent, TerminalState, Widget, WorkingIndicator,

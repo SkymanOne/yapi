@@ -972,7 +972,7 @@ async fn hook_results_need_grants() {
             assert!(host.errors().is_empty(), "{:?}", host.errors());
             extensions.extend(host.for_session());
         }
-        let granted = grants == Grants::default();
+        let granted = grants.is_all();
         let mut responses = vec![
             Response::tool_call("call-1", "bash", json!({"command": "echo original"})),
             Response::tool_call("call-2", "ls", json!({})),
