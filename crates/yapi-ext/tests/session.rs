@@ -776,7 +776,8 @@ async fn session_actions_need_grant() {
 /// applies, but a block's reason reaches the model only with the session
 /// grant, and an ignored result never replaces a granted one. Each ignored
 /// result is warned of once per event. Provider request events reach only
-/// extensions with the network grant.
+/// extensions with the network grant. With the session grant alone, an
+/// extension neither rewrites a bash call nor names files.
 #[tokio::test(flavor = "multi_thread")]
 async fn hook_results_need_grants() {
     yapi_ext::capture_output();
@@ -924,11 +925,13 @@ async fn hook_results_need_grants() {
         }
     };
     let mut paths = Vec::new();
+    let mut session_only = Vec::new();
     for (index, (grants, expected)) in cases.into_iter().enumerate() {
         let dir = scratch(&format!("hook-grants-{index}"));
         std::fs::write(dir.join("a.txt"), "alpha").unwrap();
         std::fs::write(dir.join("b.txt"), "beta").unwrap();
         std::fs::write(dir.join("extra.md"), "Extra $1\n").unwrap();
+        std::fs::write(dir.join("session.md"), "Session $1\n").unwrap();
         let mut extensions = Vec::new();
         for (name, source, grants) in [("hooks.ts", hooks, grants), ("observer.ts", observer, fs)] {
             let path = dir.join(name);
@@ -942,6 +945,13 @@ async fn hook_results_need_grants() {
             assert!(host.errors().is_empty(), "{:?}", host.errors());
             extensions.extend(host.for_session());
         }
+        // Its results come last, so neither replaces a granted one.
+        let only = Arc::new(SessionOnly {
+            path: dir.join("session.ts").display().to_string(),
+            warnings: std::sync::Mutex::default(),
+        });
+        extensions.push(only.clone());
+        session_only.push(only);
         let granted = grants == Grants::default();
         let mut responses = vec![
             Response::tool_call("call-1", "bash", json!({"command": "echo original"})),
@@ -1177,6 +1187,67 @@ async fn hook_results_need_grants() {
             warnings.len() == 1 && warnings[0].ends_with(&settle),
             "{warnings:#?}"
         );
+    }
+    for only in session_only {
+        let path = &only.path;
+        assert_eq!(
+            *only.warnings.lock().unwrap(),
+            [
+                format!(
+                    "Ignored a resources_discover result of extension {path}: it needs the session and file grants"
+                ),
+                format!(
+                    "Ignored a tool_call result of extension {path}: it needs the session grant and the grants to run the bash tool"
+                ),
+            ]
+        );
+    }
+}
+
+/// An extension with only the session grant, which no JS file loads with,
+/// since loading one needs the file grant. It rewrites bash calls to
+/// `echo session`, names the prompt file `session.md`, and keeps the
+/// warnings it gets.
+struct SessionOnly {
+    path: String,
+    warnings: std::sync::Mutex<Vec<String>>,
+}
+
+impl yapi_core::extensions::Extension for SessionOnly {
+    fn source(&self) -> yapi_types::rpc::SourceInfo {
+        cli_source(Path::new(&self.path))
+    }
+
+    fn grants(&self) -> Grants {
+        Grants {
+            session: true,
+            ..Grants::none()
+        }
+    }
+
+    fn warn(&self, message: &str) {
+        self.warnings.lock().unwrap().push(message.to_owned());
+    }
+
+    fn handles(&self, kind: &str) -> bool {
+        kind == "tool_call" || kind == "resources_discover"
+    }
+
+    fn handle<'a>(
+        &'a self,
+        _ctx: &'a yapi_core::extensions::Context,
+        event: &'a Value,
+    ) -> futures_util::future::BoxFuture<'a, Option<Value>> {
+        let result = match event["type"].as_str() {
+            Some("resources_discover") => Some(json!({"promptPaths": ["session.md"]})),
+            Some("tool_call") if event["toolName"] == "bash" => {
+                let mut input = event["input"].clone();
+                input["command"] = json!("echo session");
+                Some(json!({ "input": input }))
+            }
+            _ => None,
+        };
+        Box::pin(async move { result })
     }
 }
 
