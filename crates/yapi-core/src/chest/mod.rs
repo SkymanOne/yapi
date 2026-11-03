@@ -215,6 +215,18 @@ pub struct Project {
     home: PathBuf,
 }
 
+/// What startup does with an entry, as its lock and folders stand.
+enum AtStartup {
+    /// Not locked, or locked for another source: skipped.
+    Stale,
+    /// In place, or patched: kept.
+    Present,
+    /// Missing, and offline: skipped.
+    Missing,
+    /// Missing: put back from the lock.
+    Replay,
+}
+
 impl Project {
     /// The manifest at `path` and its lock, the file beside it named with
     /// `.lock` for `.toml`: `chest.dev.toml` locks in `chest.dev.lock`.
@@ -570,15 +582,17 @@ impl Project {
             let named = matches!(mode, Mode::Update(names)
                 if names.is_empty() || names.iter().any(|n| n == name));
             let keep = match mode {
-                Mode::Startup { .. } if !fresh && target.patch.is_none() => {
-                    stale = true;
-                    Some(Outcome::Skipped)
+                Mode::Startup { offline } => {
+                    match self.at_startup(section, name, entry, locked, *offline) {
+                        AtStartup::Stale => {
+                            stale = true;
+                            Some(Outcome::Skipped)
+                        }
+                        AtStartup::Present => Some(Outcome::Unchanged),
+                        AtStartup::Missing => Some(Outcome::Skipped),
+                        AtStartup::Replay => None,
+                    }
                 }
-                // A patched entry loads from its patch, as without the lock.
-                Mode::Startup { .. } if present || target.patch.is_some() => {
-                    Some(Outcome::Unchanged)
-                }
-                Mode::Startup { offline: true } => Some(Outcome::Skipped),
                 Mode::Frozen if present => Some(Outcome::Unchanged),
                 _ if fresh && present && !local && !named => Some(Outcome::Unchanged),
                 _ => None,
@@ -1195,23 +1209,18 @@ impl Project {
                 .section(section)
                 .iter()
                 .find(|locked| &locked.name == name);
-            let patched = self.manifest.patch.contains_key(name);
-            let current = patched || locked.is_some_and(|locked| fresh(entry, locked));
-            // A patched entry loads from its patch, or where `chest install`
-            // put it.
-            let present = patched || locked.is_some_and(|locked| self.present(section, locked));
             let id = format!("{}.{name}", section.key());
-            let outcome = match (current, present) {
-                (false, _) => {
+            let outcome = match self.at_startup(section, name, entry, locked, offline) {
+                AtStartup::Stale => {
                     stale = true;
                     Outcome::Skipped
                 }
-                (true, true) => Outcome::Unchanged,
-                (true, false) if offline => {
+                AtStartup::Present => Outcome::Unchanged,
+                AtStartup::Missing => {
                     missing.push(id.clone());
                     Outcome::Skipped
                 }
-                (true, false) => return Ok(false),
+                AtStartup::Replay => return Ok(false),
             };
             entries.push((id, outcome));
         }
@@ -1227,6 +1236,32 @@ impl Project {
             ));
         }
         Ok(true)
+    }
+
+    /// What startup does with entry `name` of `section`, locked as
+    /// `locked`: a stale or unlocked entry is skipped, a present or patched
+    /// one kept, and a missing one put back, unless `offline`.
+    fn at_startup(
+        &self,
+        section: Section,
+        name: &str,
+        entry: &Entry,
+        locked: Option<&Locked>,
+        offline: bool,
+    ) -> AtStartup {
+        let patched = self.manifest.patch.contains_key(name);
+        if !patched && !locked.is_some_and(|locked| fresh(entry, locked)) {
+            return AtStartup::Stale;
+        }
+        // A patched entry loads from its patch, or where `chest install` put it.
+        if patched || locked.is_some_and(|locked| self.present(section, locked)) {
+            return AtStartup::Present;
+        }
+        if offline {
+            AtStartup::Missing
+        } else {
+            AtStartup::Replay
+        }
     }
 
     fn stale_warning(&self) -> String {
