@@ -286,7 +286,8 @@ async fn untrusted_chest_ignored() {
 }
 
 /// An entry whose lock is stale is left out with a warning that names
-/// `chest install`, and the rest of the run goes on.
+/// `chest install`, and the rest of the run goes on. What a lock says
+/// reaches the terminal escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_lock_warns() {
     let home = common::scratch("chest-stale");
@@ -310,6 +311,16 @@ async fn stale_lock_warns() {
         "{stderr}"
     );
     assert!(!commands(&home, &["--approve"], &[]).contains_key("open"));
+    let lock =
+        "version = 1\n\n[[extension]]\nname = \"x\"\nnpm = \"x\"\nversion = \"\\u001b[2J\"\n";
+    std::fs::write(home.join("chest.lock"), lock).unwrap();
+    let output = common::yapi(&home)
+        .args(["--approve", "--help"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let escaped = stderr.contains("invalid version `\\u{1b}[2J`");
+    assert!(escaped && !stderr.contains('\x1b'), "{stderr:?}");
 }
 
 /// A project whose manifest only describes it as a package needs no trust,

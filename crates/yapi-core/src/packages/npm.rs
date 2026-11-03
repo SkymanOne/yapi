@@ -71,7 +71,7 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> NpmError + '_ {
 
 /// `text` with its unprintable characters escaped, as `escape_debug` writes
 /// them, so that it cannot drive the terminal an error is printed to.
-fn escaped(text: &str) -> String {
+pub(crate) fn escaped(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for c in text.chars() {
         match c {

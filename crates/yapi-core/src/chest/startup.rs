@@ -12,7 +12,7 @@ use super::lock::fresh;
 use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
 use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
-use crate::packages::npm::Npm;
+use crate::packages::npm::{Npm, escaped};
 use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
 use crate::settings::Scope;
 use crate::tools::path::home_dir;
@@ -226,6 +226,15 @@ pub struct Loaded {
     pub problems: Vec<(String, String)>,
 }
 
+impl Loaded {
+    /// Adds problem `message` under manifest `path`, both with their
+    /// unprintable characters escaped: they quote files a cloned project
+    /// holds, and reach the terminal.
+    fn warn(&mut self, (path, message): (String, String)) {
+        self.problems.push((escaped(&path), escaped(&message)));
+    }
+}
+
 /// The extensions and skills `project` has installed, locked and up to
 /// date, or patched, for a run in `project_root`: a stale or unlocked entry
 /// gives nothing until `chest install`. Entries left out for a reason the
@@ -392,9 +401,9 @@ fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
         .installed
         .extend(installed_inputs(project, project_root, &mut problems));
     let path = project.path.display().to_string();
-    loaded
-        .problems
-        .extend(problems.into_iter().map(|problem| (path.clone(), problem)));
+    for problem in problems {
+        loaded.warn((path.clone(), problem));
+    }
 }
 
 /// What chest gives a run in `project_root`, as [`load`] would, without
@@ -404,7 +413,7 @@ pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
     for project in manifests(project_root, trusted) {
         match project {
             Ok(project) => add(&mut loaded, &project, project_root),
-            Err(problem) => loaded.problems.push(problem),
+            Err(problem) => loaded.warn(problem),
         }
     }
     loaded
@@ -422,7 +431,7 @@ pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
         let mut project = match project {
             Ok(project) => project,
             Err(problem) => {
-                loaded.problems.push(problem);
+                loaded.warn(problem);
                 continue;
             }
         };
@@ -433,12 +442,11 @@ pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
             .await
         {
             Ok(report) => {
-                let messages = report.warnings.into_iter().chain(report.notices);
-                loaded
-                    .problems
-                    .extend(messages.map(|message| (path.clone(), message)));
+                for message in report.warnings.into_iter().chain(report.notices) {
+                    loaded.warn((path.clone(), message));
+                }
             }
-            Err(err) => loaded.problems.push((path.clone(), err.to_string())),
+            Err(err) => loaded.warn((path.clone(), err.to_string())),
         }
         add(&mut loaded, &project, project_root);
     }
