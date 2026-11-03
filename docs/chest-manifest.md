@@ -123,7 +123,7 @@ What a package says about itself. Every key is optional.
 - Registering a terminal input listener with `ctx.ui.onTerminalInput`, or an autocomplete provider, needs `all`. What they return reaches yapi's own input, where `!` runs a shell command and `/` a slash command.
 - Calling a tool that is not built in needs `all`.
 - A native extension declares the capabilities it uses with the [features of yapi-extension-api](native-extensions.md#declare-capabilities) of the same names.
-- Always allowed: registering tools, commands, flags, shortcuts, renderers and autocomplete providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package's own modules, and `pi.events` as its `events` allows.
+- Always allowed: registering tools, commands, flags, shortcuts and renderers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package's own modules, and `pi.events` as its `events` allows.
 
 ## Event bus
 

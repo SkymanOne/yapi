@@ -6,11 +6,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Additions
 
-- Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and let native extensions declare the capabilities they use ([#273](https://github.com/SkymanOne/yapi/pull/273), [#274](https://github.com/SkymanOne/yapi/pull/274), [#275](https://github.com/SkymanOne/yapi/pull/275), [#276](https://github.com/SkymanOne/yapi/pull/276), [#277](https://github.com/SkymanOne/yapi/pull/277), [#278](https://github.com/SkymanOne/yapi/pull/278), [#279](https://github.com/SkymanOne/yapi/pull/279), [#280](https://github.com/SkymanOne/yapi/pull/280), [#281](https://github.com/SkymanOne/yapi/pull/281), [#282](https://github.com/SkymanOne/yapi/pull/282), [#283](https://github.com/SkymanOne/yapi/pull/283), [#284](https://github.com/SkymanOne/yapi/pull/284)).
-
-### Changes
-
-- Change the native extension SDK to require capability features for the requests an extension makes. See [Move to capability features](https://skymanone.github.io/yapi/native-extensions.html#move-to-capability-features) ([#282](https://github.com/SkymanOne/yapi/pull/282)).
+- Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and require native extensions to declare the capabilities they use with SDK features, as [Move to capability features](https://skymanone.github.io/yapi/native-extensions.html#move-to-capability-features) describes ([#273](https://github.com/SkymanOne/yapi/pull/273), [#274](https://github.com/SkymanOne/yapi/pull/274), [#275](https://github.com/SkymanOne/yapi/pull/275), [#276](https://github.com/SkymanOne/yapi/pull/276), [#277](https://github.com/SkymanOne/yapi/pull/277), [#278](https://github.com/SkymanOne/yapi/pull/278), [#279](https://github.com/SkymanOne/yapi/pull/279), [#280](https://github.com/SkymanOne/yapi/pull/280), [#281](https://github.com/SkymanOne/yapi/pull/281), [#282](https://github.com/SkymanOne/yapi/pull/282), [#283](https://github.com/SkymanOne/yapi/pull/283), [#284](https://github.com/SkymanOne/yapi/pull/284)).
 
 ### Fixes
 

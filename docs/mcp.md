@@ -40,7 +40,7 @@ To send the token of a provider you signed in to with `/login` instead, add `"au
 
 An extension adds a server for the session with `pi.registerMcpServer(name, config)`, where `config` takes the same fields as an `mcp.json` entry, and removes it with `pi.unregisterMcpServer(name)`. A server of the same name in `mcp.json` takes precedence. Changes to a registered server in `/mcp` last for the session only.
 
-A stdio server needs the extension's process grant, and an HTTP server its network grant. Every package has both by default. As in Pi, `registerMcpServer` throws for a name that another extension registered, or one whose tool prefix would clash with it, such as `my_docs` after `my-docs`. During loading, the error fails the extension's load, and the extension that loaded first keeps the name.
+A stdio server needs the extension's process grant, and an HTTP server its network grant. Packages from `yapi install` have both. A chest entry needs `all` for a stdio server and `net` for an HTTP one. As in Pi, `registerMcpServer` throws for a name that another extension registered, or one whose tool prefix would clash with it, such as `my_docs` after `my-docs`. During loading, the error fails the extension's load, and the extension that loaded first keeps the name.
 
 ## Codemode
 
