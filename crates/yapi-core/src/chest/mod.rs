@@ -795,7 +795,13 @@ impl Project {
                         npm::fetch_pinned(npm, &pin, &package).await?;
                         pin
                     }
-                    None => npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?,
+                    None => {
+                        let pin =
+                            npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?;
+                        // Refused now if replay would refuse it, not in every clone.
+                        npm.check_pin(&pin)?;
+                        pin
+                    }
                 };
                 record.version = Some(pin.version);
                 record.tarball = Some(pin.tarball);
@@ -849,6 +855,20 @@ impl Project {
     ) -> Result<(), ChestError> {
         match (&entry.npm, replay) {
             (_, Some(locked)) => {
+                // The extension loads from the package's own folder, so the
+                // lock must pin the package itself there, at its version.
+                if let Some(npm_name) = &entry.npm {
+                    let root = format!("node_modules/{npm_name}");
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let pinned = locked.packages.iter().any(|pin| {
+                        pin.path == root && pin.name == *npm_name && pin.version == version
+                    });
+                    if !pinned {
+                        return Err(invalid(format!(
+                            "the lock does not pin {npm_name}@{version} at {root}"
+                        )));
+                    }
+                }
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }
@@ -869,6 +889,11 @@ impl Project {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
             }
+        }
+        // A tree that replay would refuse fails this install, not every later
+        // one. A replayed tree records no pins: replay checked them.
+        for pin in &record.packages {
+            npm.check_pin(pin)?;
         }
         record.hash = Some(tree_hash(staging)?);
         Ok(())

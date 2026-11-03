@@ -774,6 +774,9 @@ async fn npm_tree_replays() {
         ..app("node_modules/extra")
     };
     let secure = Npm::new([("registry".to_owned(), "https://registry.test/".to_owned())].into());
+    // The mirror's host and port, named as an https registry.
+    let https = format!("{}/", mirror_url.replacen("http://", "https://", 1));
+    let upgraded = Npm::new([("registry".to_owned(), https.clone())].into());
     // An http registry for the scope never lets plain http reach another
     // host that holds a token.
     let local = Npm::new(
@@ -846,6 +849,24 @@ async fn npm_tree_replays() {
             format!(
                 "Refusing to download @acme/lib@1.0.0 from {}: a pinned tarball must come from https://registry.test/, the registry for @acme/lib, over https unless that registry uses http",
                 tree[0].tarball
+            ),
+        ),
+        (
+            &upgraded,
+            tree.clone(),
+            format!(
+                "Refusing to download @acme/lib@1.0.0 from {}: a pinned tarball must come from {https}, the registry for @acme/lib, over https unless that registry uses http",
+                tree[0].tarball
+            ),
+        ),
+        (
+            &offline,
+            with(Pinned {
+                tarball: format!("{mirror_url}/evil/-/evil-1.0.0.tgz"),
+                ..app("node_modules/extra")
+            }),
+            format!(
+                "Refusing to download app@1.0.0 from {mirror_url}/evil/-/evil-1.0.0.tgz: a pinned tarball must be at /app/-/app-1.0.0.tgz. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock"
             ),
         ),
         (

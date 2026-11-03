@@ -17,8 +17,9 @@ use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use yapi_core::chest::hash::tree_hash;
+use yapi_core::chest::lock::Lock;
 use yapi_core::chest::{Mode, Outcome, Project, Report};
-use yapi_core::packages::npm::Npm;
+use yapi_core::packages::npm::{Npm, Pinned};
 use yapi_core::settings::Scope;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
@@ -635,15 +636,19 @@ fn body(text: String, base64: Option<String>) -> Response {
     }
 }
 
-/// The packument and the tarball of `name@1.0.0` with `dependencies`.
-fn publish(base: &str, name: &str, dependencies: Value) -> (Interaction, Interaction) {
-    let bytes = tarball(&[
-        (
-            "package.json",
-            &json!({"name": name, "version": "1.0.0"}).to_string(),
-        ),
-        ("index.js", &format!("module.exports = '{name}';\n")),
-    ]);
+/// The packument and the tarball of `name@1.0.0` with `dependencies`, and
+/// `files` beside its `package.json` and `index.js`.
+fn publish(
+    base: &str,
+    name: &str,
+    dependencies: Value,
+    files: &[(&str, &str)],
+) -> (Interaction, Interaction) {
+    let package = json!({"name": name, "version": "1.0.0"}).to_string();
+    let index = format!("module.exports = '{name}';\n");
+    let mut entries = vec![("package.json", package.as_str()), ("index.js", &index)];
+    entries.extend_from_slice(files);
+    let bytes = tarball(&entries);
     let manifest = json!({
         "name": name,
         "version": "1.0.0",
@@ -667,11 +672,13 @@ fn publish(base: &str, name: &str, dependencies: Value) -> (Interaction, Interac
 #[tokio::test(flavor = "multi_thread")]
 async fn npm_extension_locked() {
     let dir = scratch("npm");
+    let skill = [("skills/guide/SKILL.md", "# guide\n")];
     let server = MockServer::local_with(|base| {
-        let (ext, ext_tarball) = publish(base, "ext", json!({"dep": "^1"}));
-        let (dep, dep_tarball) = publish(base, "dep", json!({}));
+        let (guide, guide_tarball) = publish(base, "guide", json!({}), &skill);
+        let (ext, ext_tarball) = publish(base, "ext", json!({"dep": "^1"}), &[]);
+        let (dep, dep_tarball) = publish(base, "dep", json!({}), &[]);
         Cassette {
-            interactions: vec![ext, ext_tarball, dep, dep_tarball],
+            interactions: vec![guide, guide_tarball, ext, ext_tarball, dep, dep_tarball],
         }
     })
     .await
@@ -689,14 +696,25 @@ async fn npm_extension_locked() {
         assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
         std::fs::remove_file(dir.join("project/.yapi")).unwrap();
     }
+    // With an npm skill too, which places one folder of its package.
+    let guide_manifest = "[folders]\nskills = [\".agents/skills\"]\n\n[skills]\nguide = { npm = \"guide\", version = \"^1\", path = \"skills/guide\" }\n";
+    let manifest = &format!("{guide_manifest}\n{manifest}");
     let mut project = open(&dir, manifest);
     let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
     let report = project
         .sync(Mode::Resolve, &mut npm, &mut |_| {})
         .await
         .unwrap();
-    assert_eq!(outcomes(&report), [("extensions.ext", Outcome::Installed)]);
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("skills.guide", Outcome::Installed),
+            ("extensions.ext", Outcome::Installed)
+        ]
+    );
     server.finish().unwrap();
+    let guide = dir.join("project/.agents/skills/guide");
+    assert_eq!(read(&guide.join("SKILL.md")), "# guide\n");
     let store = dir.join("project/.yapi/chest/ext");
     let installed = tree_hash(&store).unwrap();
     let locked = project.lock.as_ref().unwrap().extensions[0].clone();
@@ -714,15 +732,26 @@ async fn npm_extension_locked() {
     // A mirror that serves only the tarballs rebuilds the same store. The
     // replay downloads them at once, so they may come in either order.
     let mirror = MockServer::local_any_order(|base| {
-        let (_, dep) = publish(base, "dep", json!({}));
-        let (_, ext) = publish(base, "ext", json!({"dep": "^1"}));
+        let (_, dep) = publish(base, "dep", json!({}), &[]);
+        let (_, ext) = publish(base, "ext", json!({"dep": "^1"}), &[]);
+        let (_, guide) = publish(base, "guide", json!({}), &skill);
         Cassette {
-            interactions: vec![dep, ext],
+            interactions: vec![dep, ext, guide],
         }
     })
     .await
     .unwrap();
     let lock_path = project.lock_path();
+    // The tree of a lock that pins dep in ext's place.
+    let swapped_tree = dir.join("swapped");
+    for folder in ["dep", "ext"] {
+        let to = swapped_tree.join("node_modules").join(folder);
+        std::fs::create_dir_all(&to).unwrap();
+        for file in ["package.json", "index.js"] {
+            let from = store.join("node_modules/dep").join(file);
+            std::fs::copy(from, to.join(file)).unwrap();
+        }
+    }
     std::fs::remove_dir_all(&store).unwrap();
     // A lock that points the package at another's tarball is refused.
     let npmjs = read(&lock_path).replace(&server.url(), "https://registry.npmjs.org");
@@ -743,17 +772,83 @@ async fn npm_extension_locked() {
             "{error}"
         );
     }
-    // Tarballs pinned on registry.npmjs.org come from the configured mirror.
+    // So is one that keeps ext@1.0.0 but pins dep, with the hash of its
+    // tree, in ext's folder, by install and frozen install alike.
+    let mut swapped = Lock::parse(&npmjs).unwrap();
+    let ext = &mut swapped.extensions[0];
+    ext.packages[1] = Pinned {
+        path: "node_modules/ext".into(),
+        ..ext.packages[0].clone()
+    };
+    ext.hash = Some(tree_hash(&swapped_tree).unwrap());
+    std::fs::write(&lock_path, swapped.to_toml().unwrap()).unwrap();
+    for mode in [Mode::Resolve, Mode::Frozen] {
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(mode, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("the lock does not pin ext@1.0.0 at node_modules/ext"),
+            "{error}"
+        );
+        assert!(!store.exists());
+    }
+    // Tarballs pinned on registry.npmjs.org come from the configured mirror,
+    // the skill's included.
     std::fs::write(&lock_path, npmjs).unwrap();
+    std::fs::remove_dir_all(&guide).unwrap();
     let mut project = open(&dir, manifest);
     let mut npm = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
     let report = project
         .sync(Mode::Startup { offline: false }, &mut npm, &mut |_| {})
         .await
         .unwrap();
-    assert_eq!(outcomes(&report), [("extensions.ext", Outcome::Replayed)]);
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("skills.guide", Outcome::Replayed),
+            ("extensions.ext", Outcome::Replayed)
+        ]
+    );
     mirror.finish().unwrap();
     assert_eq!(tree_hash(&store).unwrap(), installed);
+    assert_eq!(read(&guide.join("SKILL.md")), "# guide\n");
+
+    // A registry that keeps tarballs elsewhere fails the first install of a
+    // skill or an extension, rather than every replay of its lock.
+    let ext_manifest = "[extensions]\next = { npm = \"ext\", version = \"^1\" }\n";
+    for (name, files, manifest) in [
+        ("guide", &skill[..], guide_manifest),
+        ("ext", &[][..], ext_manifest),
+    ] {
+        let dir = scratch(&format!("npm-elsewhere-{name}"));
+        let server = MockServer::local_with(|base| {
+            let (mut packument, mut tarball) = publish(base, name, json!({}), files);
+            let (pinned, elsewhere) = (
+                format!("/{name}/-/{name}-1.0.0.tgz"),
+                format!("/files/{name}-1.0.0.tgz"),
+            );
+            packument.response.chunks[0] =
+                packument.response.chunks[0].replace(&pinned, &elsewhere);
+            tarball.request.path = elsewhere;
+            Cassette {
+                interactions: vec![packument, tarball],
+            }
+        })
+        .await
+        .unwrap();
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(Mode::Resolve, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        let expected = format!("a pinned tarball must be at /{name}/-/{name}-1.0.0.tgz");
+        assert!(error.contains(&expected), "{error}");
+        assert!(!dir.join("project/chest.lock").exists());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

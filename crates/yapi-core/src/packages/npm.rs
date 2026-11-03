@@ -197,7 +197,7 @@ pub(crate) fn swap<E: From<NpmError>>(
         let _ = remove_path(staging);
         return Err(err);
     }
-    swap_with(staging, dir, Ok(()), |from, to| std::fs::rename(from, to)).map_err(E::from)
+    swap_with(staging, dir, |from, to| std::fs::rename(from, to)).map_err(E::from)
 }
 
 /// [`swap`], renaming with `rename`. The previous `dir` is deleted only
@@ -206,14 +206,13 @@ pub(crate) fn swap<E: From<NpmError>>(
 fn swap_with(
     staging: &Path,
     dir: &Path,
-    built: Result<(), NpmError>,
     rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<(), NpmError> {
     let name = dir.file_name().unwrap_or_default().to_string_lossy();
     let old = dir.with_file_name(format!(".{name}-old"));
     let replacing = dir.symlink_metadata().is_ok();
-    let moved = built
-        .and_then(|()| remove_path(&old).map_err(io(&old)))
+    let moved = remove_path(&old)
+        .map_err(io(&old))
         .and_then(|()| match replacing {
             true => rename(dir, &old).map_err(io(dir)),
             false => Ok(()),
@@ -672,8 +671,9 @@ impl Npm {
     /// that is exactly one sha512 digest, and a tarball on the host and port
     /// of the registry configured for its name, over https unless that
     /// registry uses http. An edited lock can then neither send a download
-    /// elsewhere nor credentials in cleartext.
-    fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
+    /// elsewhere nor credentials in cleartext. chest also checks each pin
+    /// before it writes a lock, so that it never writes one replay refuses.
+    pub(crate) fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
         check_name(&pin.name)?;
         let id = format!("{}@{}", pin.name, pin.version);
         if sha512_digest(&pin.integrity).is_none() {
@@ -1565,7 +1565,7 @@ mod tests {
                 std::fs::rename(from, to)
             }
         };
-        let error = swap_with(&staging, &dir, Ok(()), rename).unwrap_err();
+        let error = swap_with(&staging, &dir, rename).unwrap_err();
         assert!(
             error
                 .to_string()
@@ -1583,7 +1583,7 @@ mod tests {
                 std::fs::rename(from, to)
             }
         };
-        assert!(swap_with(&staging, &dir, Ok(()), fail_new).is_err());
+        assert!(swap_with(&staging, &dir, fail_new).is_err());
         assert!(dir.join("a").exists() && !old.exists() && !staging.exists());
         std::fs::remove_dir_all(&parent).unwrap();
     }
