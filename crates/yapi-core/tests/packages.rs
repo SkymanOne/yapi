@@ -712,7 +712,8 @@ async fn npm_tree_replays() {
     // replay with a tampered download, then `fetch_pinned`.
     let mirror = Mirror::default();
     for (name, version, _, bytes) in &packages {
-        let path = format!("/{name}/-/{name}-{version}.tgz");
+        let file = name.rsplit('/').next().unwrap();
+        let path = format!("/{name}/-/{file}-{version}.tgz");
         mirror.files.lock().unwrap().insert(path, bytes.clone());
     }
     let mirror_url = mirror.serve();
