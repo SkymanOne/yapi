@@ -396,6 +396,24 @@ fn add_existing_entry() {
         text(&clash)
     );
     assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // Granting `all` says what it means, asked or not.
+    let all = ok(
+        &scratch,
+        &[
+            "add",
+            &format!("{}@v2", remote.source),
+            "--name",
+            "all",
+            "--grant",
+            "all",
+            "--yes",
+        ],
+    );
+    assert!(
+        text(&all).contains("`all` is full access"),
+        "{}",
+        text(&all)
+    );
 }
 
 #[test]
