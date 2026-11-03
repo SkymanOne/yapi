@@ -513,6 +513,15 @@ fn ci_implies_frozen() {
         read(&scratch.project.join(".agents/skills/pdf/SKILL.md")),
         "# pdf 2\n"
     );
+    // An error quoting the lock prints no control characters from it.
+    let lock =
+        "version = 1\n\n[[extension]]\nname = \"ext\"\nnpm = \"ext\"\nversion = \"1\\u001b[2J\"\n";
+    write(&scratch.project.join("chest.lock"), lock);
+    let output = chest(&scratch, &["install"], &[]);
+    assert_eq!(output.status.code(), Some(1));
+    let said = text(&output);
+    assert!(said.contains("invalid version `1[2J`"), "{said:?}");
+    assert!(!said.contains('\u{1b}'), "{said:?}");
 }
 
 #[test]

@@ -110,7 +110,9 @@ fn main() -> ExitCode {
         Err(err) => Err(err.into()),
     };
     result.unwrap_or_else(|err| {
-        let _ = writeln!(std::io::stderr(), "error: {err:#}");
+        // Errors quote the manifest and lock, and git's stderr keeps its lines.
+        let error = printable(&format!("{err:#}"), &['\t', '\n']);
+        let _ = writeln!(std::io::stderr(), "error: {error}");
         ExitCode::FAILURE
     })
 }
@@ -191,22 +193,22 @@ fn ci() -> bool {
     })
 }
 
-/// `line` without control characters other than tab, so text from a
-/// package cannot move the cursor or redraw the terminal.
-fn printable(line: &str) -> String {
-    line.chars()
-        .filter(|c| *c == '\t' || !c.is_control())
+/// `text` without control characters other than those in `keep`, so text
+/// from a package or project cannot move the cursor or redraw the terminal.
+fn printable(text: &str, keep: &[char]) -> String {
+    text.chars()
+        .filter(|c| keep.contains(c) || !c.is_control())
         .collect()
 }
 
 /// Prints `line` on stderr, without control characters.
 pub fn say(line: &str) {
-    let _ = writeln!(std::io::stderr(), "{}", printable(line));
+    let _ = writeln!(std::io::stderr(), "{}", printable(line, &['\t']));
 }
 
 /// Prints `line` on stdout, without control characters.
 pub fn out(line: &str) {
-    let _ = writeln!(std::io::stdout(), "{}", printable(line));
+    let _ = writeln!(std::io::stdout(), "{}", printable(line, &['\t']));
 }
 
 /// Refuses a manifest that is a symbolic link, which a cloned project could
