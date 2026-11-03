@@ -35,7 +35,7 @@ agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 ```
 
-Each folder must name a folder, so `.` is refused. No folder may hold another or the store. A folder may not contain `*`, `?`, `[` or `\`, or start with `!` or `#`, because each one becomes a `.gitignore` line. In a project manifest a folder is a relative path without `..` or `~`. A section with entries needs its folders set.
+Each folder must name a folder, so `.` is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without `..` or `~`. A section with entries needs its folders set.
 
 ## `[skills]`, `[agents]` and `[extensions]`
 
