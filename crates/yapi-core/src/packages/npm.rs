@@ -476,11 +476,14 @@ const PACKUMENT_ACCEPT: &str =
 /// npm's default `fetch-timeout`.
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// How much one tarball may take, so that a registry or a lock can neither
+/// How much one package may take, so that a registry or a lock can neither
 /// fill memory with a huge download nor the disk with a small gzip bomb.
 #[derive(Clone, Copy, Debug)]
 struct Caps {
-    /// The bytes downloaded, which are held in memory.
+    /// The bytes of its packument, which are held in memory, with headroom
+    /// over the largest full packuments on npm.
+    packument: usize,
+    /// The bytes of its tarball, which are held in memory.
     download: usize,
     /// The bytes it unpacks to, tar headers included.
     unpacked: u64,
@@ -490,6 +493,7 @@ struct Caps {
 
 // shortcut: fixed caps far above any npm package yapi installs, raise them when a real package hits one.
 const CAPS: Caps = Caps {
+    packument: 256 << 20,
     download: 512 << 20,
     unpacked: 2 << 30,
     entries: 200_000,
@@ -609,12 +613,9 @@ impl Npm {
         if !self.packuments.contains_key(name) {
             let registry = self.registry(name);
             let url = format!("{registry}{}", name.replace('/', "%2f"));
-            let body = self
-                .get(&url, PACKUMENT_ACCEPT, &registry)
-                .await?
-                .bytes()
-                .await
-                .map_err(|err| request_error(&url, &err))?;
+            let response = self.get(&url, PACKUMENT_ACCEPT, &registry).await?;
+            let what = format!("The packument of {name}");
+            let body = read_capped(response, &url, self.caps.packument, &what).await?;
             let packument: Value = serde_json::from_slice(&body)
                 .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
             self.packuments.insert(name.to_owned(), packument);
@@ -687,22 +688,9 @@ impl Npm {
     /// its registry. It is read in chunks, and the read stops at the cap.
     async fn download(&self, name: &str, url: &str) -> Result<Vec<u8>, NpmError> {
         let registry = self.registry(name);
-        let mut response = self.get(url, "*/*", &registry).await?;
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|err| request_error(url, &err))?
-        {
-            if bytes.len() + chunk.len() > self.caps.download {
-                return Err(NpmError::Refused(format!(
-                    "The tarball of {name} at {url} is over the download cap of {}",
-                    size(self.caps.download as u64)
-                )));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        Ok(bytes)
+        let response = self.get(url, "*/*", &registry).await?;
+        let what = format!("The tarball of {name}");
+        read_capped(response, url, self.caps.download, &what).await
     }
 
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
@@ -759,6 +747,31 @@ impl Npm {
             Err(NpmError::Integrity(format!("{}@{}", pin.name, pin.version)))
         }
     }
+}
+
+/// The body of `response` for `url`, read in chunks and refused, as `what`,
+/// once it passes `cap` bytes, which stops the read.
+async fn read_capped(
+    mut response: reqwest::Response,
+    url: &str,
+    cap: usize,
+    what: &str,
+) -> Result<Vec<u8>, NpmError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| request_error(url, &err))?
+    {
+        if bytes.len() + chunk.len() > cap {
+            return Err(NpmError::Refused(format!(
+                "{what} at {url} is over the download cap of {}",
+                size(cap as u64)
+            )));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 fn text(value: &Value) -> String {
@@ -1804,7 +1817,8 @@ mod tests {
 
     /// A tarball over any of the caps fails its replay, which then leaves
     /// the root as it was: one too large to download, one that unpacks to
-    /// too much, and one with too many entries.
+    /// too much, and one with too many entries. A packument too large to
+    /// download fails before it is parsed.
     #[tokio::test(flavor = "multi_thread")]
     async fn capped_tarballs_leave_nothing() {
         // Noise, so that the gzip stream stays as large as what it holds.
@@ -1906,6 +1920,18 @@ mod tests {
             assert_eq!(names, ["node_modules"]);
             assert!(root.join("node_modules/kept").exists());
         }
+        let mut npm = Npm {
+            caps: Caps {
+                packument: 1 << 20,
+                ..CAPS
+            },
+            ..npm
+        };
+        let error = npm.pick("app", "latest").await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("The packument of app at {base}/app is over the download cap of 1 MiB")
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
