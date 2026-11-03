@@ -15,7 +15,10 @@ pub fn is_native(path: &Path) -> bool {
 /// The entry points of extension directory `dir`: what its manifest declares,
 /// else `index.ts` or `index.js`.
 pub fn entries(dir: &Path) -> Option<Vec<PathBuf>> {
-    if let Some(manifest) = Manifest::read(dir) {
+    // shortcut: a chest.toml that does not parse counts as absent here, and
+    // the resolver reports only a package root's. Pass the problems through
+    // when a discovered extension folder's need reporting too.
+    if let Ok(Some(manifest)) = Manifest::read(dir) {
         let declared: Vec<PathBuf> = manifest
             .get(ResourceType::Extensions)
             .into_iter()

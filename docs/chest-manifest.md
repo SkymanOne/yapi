@@ -75,7 +75,7 @@ todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities 
 shout = { path = "ext/shout.wasm" }
 ```
 
-An extension from a path loads where it is. Others install into the store.
+An extension from a path loads where it is. Others install into the store. A git extension's `path` names the folder that holds it, and an npm extension takes no `path`, since it loads its whole package.
 
 ## `[patch]`
 
@@ -141,6 +141,8 @@ For each kind of resource, the first of these that lists it wins: the package's 
 
 Capabilities come from `[package]`, else `yapi.capabilities`, else none. Name, version, description and authors come from `[package]`, else from `package.json`.
 
+chest reports a package's `chest.toml` that does not parse, or a `[package]` with an unknown key, and `chest check` and `chest add` fail on it. yapi warns about it and resolves the package as if the file were absent.
+
 ## `chest.lock`
 
 chest writes the lock. Do not edit it. It holds `version = 1` and one table per entry, in `[[skill]]`, `[[agent]]` and `[[extension]]`, sorted by name:
@@ -164,7 +166,7 @@ The lock is up to date when every entry has a record with the same section and n
 
 The hash is `sha256-` followed by lowercase hex:
 
-1. List every regular file under the item's folder, skipping any folder named `.git` at any depth. A symbolic link anywhere fails the hash. An item that is one file is a list of that file with an empty path.
+1. List every regular file under the item's folder, skipping anything named `.git` at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that is one file is a list of that file with an empty path.
 2. Sort the files by the bytes of their paths, relative to the item, with `/` between parts.
 3. For each file, feed one SHA-256 with its path in UTF-8, a zero byte, `x` when any execute bit is set or `-` otherwise, and the 32-byte SHA-256 of its contents.
 4. The result is that SHA-256, in hex.

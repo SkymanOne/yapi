@@ -1,6 +1,7 @@
 //! Turning arguments into a session: settings, trust, session file, model, tools
 //! and prompt resources. Mirrors `main.ts` and `sdk.ts` in pi `v1.0.0`.
 
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
@@ -799,9 +800,8 @@ fn build(
         // pi runs its built-in extensions after the loaded ones: llama.cpp,
         // codemode, then tool_search and MCP.
         extensions: extensions
-            .hosts
-            .iter()
-            .flat_map(ExtensionHost::for_session)
+            .for_session()
+            .into_iter()
             .chain(
                 std::iter::once(Arc::new(yapi_core::llama::LlamaExtension)
                     as Arc<dyn yapi_core::extensions::Extension>)
@@ -1012,7 +1012,8 @@ fn ungranted_use(source: &SourceInfo, policies: &FilePolicies) -> Option<String>
     if !is_native(Path::new(&source.path)) {
         return None;
     }
-    let policy = policies.get(&canonical(&source.path))?;
+    let file = canonical(&source.path);
+    let policy = policies.manages(&file).then(|| policies.of(&file))?;
     // A file that does not read is reported when it loads.
     let bytes = std::fs::read(&source.path).ok()?;
     let used = yapi_core::chest::wasm::capabilities(&bytes).ok()?.used;
@@ -1048,10 +1049,7 @@ fn group_sources(sources: Vec<SourceInfo>, policies: &FilePolicies) -> Vec<Group
     let mut groups: Vec<Group> = Vec::new();
     let mut natives = Vec::new();
     for source in sources {
-        let policy = policies
-            .get(&canonical(&source.path))
-            .cloned()
-            .unwrap_or_default();
+        let policy = policies.of(&canonical(&source.path));
         if is_native(Path::new(&source.path)) {
             natives.push(Group {
                 native: true,
@@ -1190,6 +1188,9 @@ async fn start_extensions(
     let mut sources: Vec<SourceInfo> = Vec::new();
     for (root, local) in &requested {
         let found = yapi_core::packages::resolve::package_resources(root, None, *local);
+        for (folder, message) in &found.problems {
+            let _ = install_failed(folder, message.clone());
+        }
         let cli = |info: &SourceInfo| yapi_core::resources::cli_source(Path::new(&info.path));
         sources.extend(found.enabled(ResourceType::Extensions).map(cli));
         skills.extend(found.enabled(ResourceType::Skills).map(cli));
@@ -1207,13 +1208,13 @@ async fn start_extensions(
         &chest.installed.packages,
         &chest.installed.skills,
     );
+    for (folder, message) in &resolved.problems {
+        let _ = install_failed(folder, message.clone());
+    }
     // chest's grants follow the files the resolver gave its packages.
     let mut problems = Vec::new();
-    let chest_policies = yapi_core::chest::startup::file_policies(
-        &resolved,
-        &chest.installed.policies,
-        &mut problems,
-    );
+    let chest_policies =
+        yapi_core::chest::startup::file_policies(&resolved, &chest.installed, &mut problems);
     for (source, message) in problems {
         let _ = install_failed(&source, message);
     }
@@ -1231,11 +1232,17 @@ async fn start_extensions(
     for source in sources.iter().chain(shadowed) {
         let file = canonical(&source.path);
         let chest = source.source.starts_with("chest:");
-        if !chest && chest_policies.contains_key(&file) && warned.insert(file) {
-            let message = format!(
-                "{} is also loaded from {}; chest's grants apply",
-                source.path, source.source
-            );
+        if !chest && chest_policies.manages(&file) && warned.insert(file.clone()) {
+            let message = match chest_policies.closes(&file) {
+                true => format!(
+                    "{} is also loaded from {}, but its chest entry is not installed, so it runs with no capabilities",
+                    source.path, source.source
+                ),
+                false => format!(
+                    "{} is also loaded from {}; chest's grants apply",
+                    source.path, source.source
+                ),
+            };
             let _ = install_failed(&source.path, message);
         }
     }
@@ -1247,6 +1254,11 @@ async fn start_extensions(
             let _ = install_failed(&source.path, message);
         }
     }
+    let order = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| (source.path.clone(), index))
+        .collect();
     let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
     // The hosts started here, which need the flags.
@@ -1264,46 +1276,66 @@ async fn start_extensions(
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;
-        for group in group_sources(sources, &chest_policies) {
-            // A host of `previous` serves the same group again, keeping the
-            // modules it imported.
-            let reused = previous.and_then(|previous| {
-                previous
-                    .hosts
-                    .iter()
-                    .find(|host| serves(&host_group(host), &group))
-            });
-            if let Some(host) = reused {
-                host.reload(&group.sources).await;
-                hosts.push(Arc::clone(host));
-                continue;
-            }
-            let mut options = options.clone();
-            options.grants = group.grants;
-            options.events = group.events.clone();
-            options.module_roots = group.roots.clone();
-            let host = if group.native {
-                let Some(source) = group.sources.first() else {
-                    continue;
-                };
-                match ExtensionHost::load_native(&engine, options, source).await {
-                    Ok(host) => host,
-                    Err(err) => {
-                        issues.push((source.path.clone(), err.to_string()));
-                        continue;
+        /// What starting one group's host came to.
+        enum Start {
+            Reused(Arc<ExtensionHost>),
+            Started(Arc<ExtensionHost>),
+            Failed(String, String),
+        }
+        // Each host starts on its own thread, so they start together, and
+        // keep their groups' order.
+        let starts = group_sources(sources, &chest_policies)
+            .into_iter()
+            .map(|group| {
+                // A host of `previous` serves the same group again, keeping the
+                // modules it imported.
+                let reused = previous.and_then(|previous| {
+                    previous
+                        .hosts
+                        .iter()
+                        .find(|host| serves(&host_group(host), &group))
+                        .cloned()
+                });
+                let (mut options, engine) = (options.clone(), engine.clone());
+                async move {
+                    if let Some(host) = reused {
+                        host.reload(&group.sources).await;
+                        return Ok(Some(Start::Reused(host)));
                     }
+                    options.grants = group.grants;
+                    options.events = group.events.clone();
+                    options.module_roots = group.roots.clone();
+                    if !group.native {
+                        let host = ExtensionHost::load(&engine, options, &group.sources).await;
+                        return host
+                            .map(|host| Some(Start::Started(host)))
+                            .map_err(|err| err.to_string());
+                    }
+                    let Some(source) = group.sources.first() else {
+                        return Ok(None);
+                    };
+                    Ok(Some(
+                        match ExtensionHost::load_native(&engine, options, source).await {
+                            Ok(host) => Start::Started(host),
+                            Err(err) => Start::Failed(source.path.clone(), err.to_string()),
+                        },
+                    ))
                 }
-            } else {
-                ExtensionHost::load(&engine, options, &group.sources)
-                    .await
-                    .map_err(|err| err.to_string())?
-            };
-            started.push(Arc::clone(&host));
-            hosts.push(host);
+            });
+        for start in futures_util::future::join_all(starts).await {
+            match start? {
+                Some(Start::Reused(host)) => hosts.push(host),
+                Some(Start::Started(host)) => {
+                    started.push(Arc::clone(&host));
+                    hosts.push(host);
+                }
+                Some(Start::Failed(path, error)) => issues.push((path, error)),
+                None => {}
+            }
         }
     }
     issues.append(&mut missing);
-    issues.extend(conflicts(&hosts));
+    issues.extend(conflicts(&hosts, &order));
 
     // pi's applyExtensionFlagValues.
     let flags: Vec<yapi_ext::Flag> = hosts.iter().flat_map(|host| host.flags()).collect();
@@ -1350,17 +1382,24 @@ async fn start_extensions(
         resolved,
         cwd,
         engine,
+        order,
     };
     Ok((extensions, flag_errors))
 }
 
 /// pi's extension conflicts: each tool or flag that an extension registers
-/// after an earlier extension, in load order, registered the same name, by
-/// the later extension's path.
-fn conflicts(hosts: &[Arc<ExtensionHost>]) -> Vec<(String, String)> {
-    let mut owners = std::collections::HashMap::<(&str, String), String>::new();
+/// after an earlier extension, in load order across `hosts` by `order`,
+/// registered the same name, by the later extension's path.
+fn conflicts(
+    hosts: &[Arc<ExtensionHost>],
+    order: &HashMap<String, usize>,
+) -> Vec<(String, String)> {
+    let mut owners = HashMap::<(&str, String), String>::new();
     let mut messages = Vec::new();
-    for extension in hosts.iter().flat_map(|host| host.registrations()) {
+    let mut registrations: Vec<_> = hosts.iter().flat_map(|host| host.registrations()).collect();
+    registrations
+        .sort_by_key(|extension| rank(order, extension["path"].as_str().unwrap_or_default()));
+    for extension in registrations {
         let path = extension["path"].as_str().unwrap_or_default();
         for (kind, label) in [("tools", "Tool \""), ("flags", "Flag \"--")] {
             let names = extension[kind]
@@ -1442,9 +1481,31 @@ pub struct Extensions {
     cwd: PathBuf,
     /// The engine of the hosts, which later hosts share.
     engine: Option<Engine>,
+    /// Each extension file's place in the resolver's order, which pi loads
+    /// extensions in, by path.
+    order: HashMap<String, usize>,
+}
+
+/// The place of extension file `path` in `order`, after every listed file
+/// when it is not listed.
+fn rank(order: &HashMap<String, usize>, path: &str) -> usize {
+    order.get(path).copied().unwrap_or(usize::MAX)
 }
 
 impl Extensions {
+    /// The hosts' extensions for a session, in the resolver's order across
+    /// the hosts that run them, as pi runs their hooks and picks the tools
+    /// that win a name.
+    fn for_session(&self) -> Vec<Arc<dyn yapi_core::extensions::Extension>> {
+        let mut extensions: Vec<_> = self
+            .hosts
+            .iter()
+            .flat_map(|host| host.for_session())
+            .collect();
+        extensions.sort_by_key(|extension| rank(&self.order, &extension.source().path));
+        extensions
+    }
+
     /// The extensions that failed to load in the latest run of each host's
     /// factories, then the [`Extensions::issues`].
     fn failures(&self) -> Vec<(String, String)> {
@@ -1587,14 +1648,18 @@ mod tests {
             root: Some(PathBuf::from(root)),
         };
         // By file, as chest gives them, whichever source names the file.
-        let policies: FilePolicies = [
+        let files = [
             ("/a/one.ts", narrow("/a")),
             ("/a/four.ts", narrow("/a")),
             ("/b/three.ts", narrow("/b")),
             ("/n/ext.wasm", narrow("/n")),
-        ]
-        .map(|(file, policy)| (PathBuf::from(file), policy))
-        .into();
+        ];
+        let policies = FilePolicies {
+            files: files
+                .map(|(file, policy)| (PathBuf::from(file), policy))
+                .into(),
+            closed: Vec::new(),
+        };
         let sources = vec![
             source("/a/one.ts", "a"),
             source("/x/two.ts", "settings"),

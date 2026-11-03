@@ -462,6 +462,9 @@ impl Host {
             "tmpdir" => Ok(Value::String(
                 self.options.temp_dir.to_string_lossy().into_owned(),
             )),
+            // Without the file grant WASI reaches no folder, so the guest's
+            // `node:fs` asks why a path is missing.
+            "fs.granted" => Ok(Value::Bool(self.options.grants.filesystem)),
             // pi-ai's built-in catalog of `{ provider, type }`, which needs no session.
             "models.list" => {
                 let provider = text(payload, "provider");

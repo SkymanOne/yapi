@@ -20,13 +20,19 @@ pub(super) struct Work {
 
 impl Work {
     /// A new, empty work folder under `cache`, its own even within one
-    /// process.
+    /// process. Folders that processes no longer running left behind go.
     pub(super) fn new(cache: &Path) -> Result<Work, ChestError> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let dir = cache
-            .join("work")
-            .join(format!("{}-{id}", std::process::id()));
+        let work = cache.join("work");
+        for entry in std::fs::read_dir(&work).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let pid = name.split_once('-').and_then(|(pid, _)| pid.parse().ok());
+            if pid.is_some_and(|pid| !running(pid)) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+        let dir = work.join(format!("{}-{id}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(io(&dir))?;
         Ok(Work { dir, next: 0 })
@@ -36,6 +42,26 @@ impl Work {
     pub(super) fn path(&mut self) -> PathBuf {
         self.next += 1;
         self.dir.join(self.next.to_string())
+    }
+}
+
+/// Whether process `pid` is running, or may be: elsewhere than Unix, always.
+fn running(pid: i32) -> bool {
+    #[cfg(unix)]
+    {
+        let Some(pid) = rustix::process::Pid::from_raw(pid) else {
+            return false;
+        };
+        // A process of another user answers with a permission error.
+        !matches!(
+            rustix::process::test_kill_process(pid),
+            Err(rustix::io::Errno::SRCH)
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        true
     }
 }
 
@@ -74,8 +100,13 @@ fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Where a mirror keeps the commit its remote's default branch is at, as of
+/// the last fetch, so that a renamed default branch is followed.
+const HEAD: &str = "refs/chest/head";
+
 /// The bare clone of `repo` in `cache`, made on first use and fetched again
-/// when `refresh`. Only clones and fetches go to the network.
+/// when `refresh`, with [`HEAD`] where the remote's `HEAD` is. Only clones
+/// and fetches go to the network.
 async fn mirror(cache: &Path, repo: &str, refresh: bool) -> Result<PathBuf, ChestError> {
     let Source::Git {
         repo: url,
@@ -100,10 +131,13 @@ async fn mirror(cache: &Path, repo: &str, refresh: bool) -> Result<PathBuf, Ches
             None,
         )
         .await?;
+        // An empty repository has no `HEAD` commit to note.
+        let _ = git(&["update-ref", HEAD, "HEAD"], Some(&dir)).await;
     } else if refresh {
         let heads = "+refs/heads/*:refs/heads/*";
+        let head = format!("+HEAD:{HEAD}");
         let fetch = [
-            "fetch", "--quiet", "--prune", "--force", "--tags", "--", &url, heads,
+            "fetch", "--quiet", "--prune", "--force", "--tags", "--", &url, heads, &head,
         ];
         git(&fetch, Some(&dir)).await?;
     }
@@ -117,18 +151,21 @@ async fn commit_of(mirror: &Path, rev: &str) -> Option<String> {
     out.ok().map(|out| out.trim().to_owned())
 }
 
-/// The commit that `rev` of `repo` names now, the default branch's without
-/// one. The manifest refuses a `rev` that git could read as an option.
+/// The commit that `rev` of `repo` names now, the remote's default branch's
+/// without one. The manifest refuses a `rev` that git could read as an
+/// option.
 pub(super) async fn resolve(
     cache: &Path,
     repo: &str,
     rev: Option<&str>,
 ) -> Result<String, ChestError> {
     let mirror = mirror(cache, repo, true).await?;
-    let rev = rev.unwrap_or("HEAD");
-    commit_of(&mirror, rev)
+    commit_of(&mirror, rev.unwrap_or(HEAD))
         .await
-        .ok_or_else(|| invalid(format!("{repo} has no revision {rev}")))
+        .ok_or_else(|| {
+            let rev = rev.unwrap_or("HEAD");
+            invalid(format!("{repo} has no revision {rev}"))
+        })
 }
 
 /// Checks out `commit` of `repo` into `dest`, a path that does not exist yet,
@@ -165,6 +202,9 @@ pub(super) async fn checkout(
     std::fs::remove_dir_all(&dot_git).map_err(io(&dot_git))
 }
 
+/// An item of a package: the name it is placed under, and its folder or file.
+pub(super) type Item = (String, PathBuf);
+
 /// The name an entry's one item takes in its section's folders: a subagent
 /// is a `.md` file, a skill a folder.
 pub(super) fn placed_name(section: Section, name: &str) -> String {
@@ -179,21 +219,23 @@ pub(super) fn placed_name(section: Section, name: &str) -> String {
 /// name it is placed under. With `subpath`, the one item there, under
 /// [`placed_name`]. Without, every skill folder or subagent file the
 /// package provides, under its own name, as its manifest lists them or its
-/// `skills` or `agents` folder holds them.
+/// `skills` or `agents` folder holds them. Items whose names are not valid
+/// entry names, such as a `README.md`, or that another item already has,
+/// are left out, each with a warning, returned second.
 pub(super) fn items(
     package: &Path,
     section: Section,
     subpath: Option<&str>,
     name: &str,
-) -> Result<Vec<(String, PathBuf)>, ChestError> {
+) -> Result<(Vec<Item>, Vec<String>), ChestError> {
     if let Some(subpath) = subpath {
         let item = package.join(subpath);
         inside(package, &item)?;
         check_item(section, &item)?;
-        return Ok(vec![(placed_name(section, name), item)]);
+        return Ok((vec![(placed_name(section, name), item)], Vec::new()));
     }
     let key = section.key();
-    let meta = package_meta(package);
+    let meta = package_meta(package)?;
     let listed = meta.resources.get(key);
     let files = if meta.manifest && listed.is_none() {
         Vec::new()
@@ -217,19 +259,31 @@ pub(super) fn items(
         .collect();
     items.sort();
     items.dedup();
-    if items.is_empty() {
-        return Err(invalid(format!("the package provides no {key}")));
-    }
     for (_, item) in &items {
         inside(package, item)?;
     }
-    if let Some((item, _)) = items.iter().find(|(item, _)| !valid_name(item)) {
-        return Err(invalid(format!("the item `{item}` has an invalid name")));
+    let mut warnings = Vec::new();
+    let mut kept: Vec<Item> = Vec::new();
+    for (item, path) in items {
+        let shown = path
+            .strip_prefix(package)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
+        if !valid_name(&item) {
+            warnings.push(format!("{shown} was skipped: `{item}` is not a valid name"));
+        } else if kept.iter().any(|(other, _)| *other == item) {
+            warnings.push(format!(
+                "{shown} was skipped: another item is named `{item}`"
+            ));
+        } else {
+            kept.push((item, path));
+        }
     }
-    if let Some(pair) = items.windows(2).find(|pair| pair[0].0 == pair[1].0) {
-        return Err(invalid(format!("two items are named `{}`", pair[0].0)));
+    if kept.is_empty() {
+        return Err(invalid(format!("the package provides no {key}")));
     }
-    Ok(items)
+    Ok((kept, warnings))
 }
 
 /// Fails unless `path` resolves inside the package at `package`, links

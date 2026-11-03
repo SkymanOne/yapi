@@ -14,6 +14,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
+use yapi_ai::auth::lock::write_atomic;
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
@@ -54,8 +55,10 @@ enum Command {
     },
     /// Install what the manifest lists, as the lock pins it.
     Install {
-        /// Install nothing: fail unless the lock is current and every copy
-        /// matches it. The default when CI is set.
+        /// Install exactly what the lock pins, missing items included, and
+        /// fail when the lock is missing or out of date or a copy no longer
+        /// matches it. Never writes chest.toml or the lock. The default when
+        /// CI is set.
         #[arg(long)]
         frozen: bool,
     },
@@ -193,9 +196,10 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
         .with_context(|| format!("reading {}", target.path.display()))
 }
 
-/// Writes the manifest's new text.
+/// Writes the manifest's new text, whole or not at all.
 pub fn write(target: &Target, text: &str) -> anyhow::Result<()> {
-    std::fs::write(&target.path, text).with_context(|| format!("writing {}", target.path.display()))
+    write_atomic(&target.path, text.as_bytes(), 0o666)
+        .with_context(|| format!("writing {}", target.path.display()))
 }
 
 /// Opens the manifest and its lock.
@@ -231,16 +235,6 @@ pub fn print_report(report: &Report) {
     for warning in &report.warnings {
         say(&format!("warning: {warning}"));
     }
-}
-
-/// The skill, agent and extension entries of `manifest`, in order.
-pub fn entries(manifest: &Manifest) -> impl Iterator<Item = (Section, &String, &Entry)> {
-    [Section::Skills, Section::Agents, Section::Extensions]
-        .into_iter()
-        .flat_map(|section| {
-            let entries = manifest.section(section).iter();
-            entries.map(move |(name, entry)| (section, name, entry))
-        })
 }
 
 /// One line for an entry's source, such as `git <url> v1`.
@@ -296,8 +290,14 @@ async fn update(target: &Target, names: Vec<String>, npm: &mut Npm) -> anyhow::R
     let project = sync(target, Mode::Update(names), npm).await?;
     for (name, entry) in &project.manifest.extensions {
         if let Some(root) = project.installed_root(name) {
-            let warnings = requests(&project.manifest, entry, &package_meta(&root));
-            for warning in warnings {
+            let meta = match package_meta(&root) {
+                Ok(meta) => meta,
+                Err(err) => {
+                    say(&format!("warning: extensions.{name}: {err}"));
+                    continue;
+                }
+            };
+            for warning in requests(&project.manifest, entry, &meta) {
                 say(&format!("warning: extensions.{name} {warning}"));
             }
         }
@@ -352,7 +352,7 @@ pub fn requests(manifest: &Manifest, entry: &Entry, meta: &PackageMeta) -> Vec<S
 
 fn list(target: &Target) -> anyhow::Result<()> {
     let project = open(target)?;
-    for (section, name, entry) in entries(&project.manifest) {
+    for (section, name, entry) in project.manifest.entries() {
         let id = format!("{}.{name}", section.key());
         let locked = project.lock.as_ref().and_then(|lock| {
             let entries = lock.section(section).iter();
@@ -387,9 +387,14 @@ fn list(target: &Target) -> anyhow::Result<()> {
             };
             out(&format!("    capabilities: {shown}"));
         }
-        let root = project.installed_root(name);
-        if let Some(description) = root.and_then(|root| package_meta(&root).description) {
-            out(&format!("    {description}"));
+        match project.installed_root(name).map(|root| package_meta(&root)) {
+            Some(Ok(meta)) => {
+                if let Some(description) = meta.description {
+                    out(&format!("    {description}"));
+                }
+            }
+            Some(Err(err)) => say(&format!("warning: {id}: {err}")),
+            None => {}
         }
     }
     Ok(())

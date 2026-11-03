@@ -103,9 +103,11 @@ The template starts with `session`, which its `hello` code needs:
 yapi-extension-api = { version = "0.3.1", features = ["session"] }
 ```
 
+The capability features ship in the first release of `yapi-extension-api` after 0.3.1. Version 0.3.1 and earlier have none, so cargo reports that the feature does not exist.
+
 A request whose feature the build leaves out fails without reaching yapi, with a message such as ``request `session.appendEntry` needs the `session` feature of yapi-extension-api``. `exec`, `Process`, `send_message` and `append_entry` exist only with their features. Requests that need a grant only for some payloads, such as `tool.execute` and `ui.editorSubmit`, need no feature, and yapi checks them as they run.
 
-The build records its features in a `yapi:capabilities` custom section. `chest check` reads the section and the WASI interfaces the component imports, where `wasi:filesystem` means `fs` and `wasi:sockets` or `wasi:http` mean `net`. Then it compares them with the capabilities in the package's `chest.toml` or `package.json`:
+The build records its features in a `yapi:capabilities` custom section. `chest check` reads the section and the WASI interfaces the component imports, where `wasi:filesystem` means `fs`. Then it compares them with the capabilities in the package's `chest.toml` or `package.json`:
 
 ```sh
 cargo build --release
@@ -113,7 +115,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 ```
 
-`chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [chest](chest.md#publish-skills-subagents-and-extensions).
+`chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports `wasi:sockets` or `wasi:http`. yapi does not provide `wasi:http`, so such a component does not load, and it refuses every `wasi:sockets` call. Reach the network through the SDK's `fetch` with the `net` feature. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [chest](chest.md#publish-skills-subagents-and-extensions).
 
 Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.
 
@@ -160,7 +162,7 @@ Share a native extension as a package that contains the built `.wasm` file. A pr
 yapi install git:github.com/you/shout
 ```
 
-To publish on npm, run `npm publish`. Others then install it with `yapi install npm:shout`. The template's `package.json` publishes only the `extensions` folder.
+To publish on npm, run `npm publish`. Others then install it with `yapi install npm:shout`. The template's `package.json` publishes the `extensions` folder and `chest.toml`, which carries the capabilities the extension asks for.
 
 A package needs no manifest, because yapi loads every `.wasm` file in its `extensions` folder. A manifest can name the files instead. yapi reads its `yapi` key before the `pi` key, so one package can ship a native build for yapi and a JavaScript build for Pi:
 

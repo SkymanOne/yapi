@@ -642,8 +642,8 @@ async fn tool_execute_needs_grants() {
 }
 
 /// Requests and operations that need a grant fail without it: session
-/// actions need the session grant, and registering providers and editor
-/// input that runs shell or slash commands need every grant. Reading the
+/// actions need the session grant, and registering providers, editor input that runs shell or slash commands,
+/// and unknown kinds and editor actions need every grant. Reading the
 /// session needs none.
 #[tokio::test(flavor = "multi_thread")]
 async fn session_actions_need_grant() {
@@ -681,7 +681,14 @@ async fn session_actions_need_grant() {
         editor("ui.editorAction", "action", "app.message.followUp"),
         ("providers.register".to_owned(), json!({})),
         ("providers.unregister".to_owned(), json!({"name": "faux"})),
+        editor("ui.editorAction", "action", "app.made.up"),
     ];
+    // A kind yapi does not serve answers as unknown, and does nothing.
+    let unknown = (
+        json!(["request", "made.up", {}]),
+        "made.up is not available in yapi extensions yet".to_owned(),
+    );
+    let view = editor("ui.editorAction", "action", "app.tools.expand");
     let dir = scratch("session-grant");
     let path = dir.join("ext.ts");
     std::fs::write(
@@ -708,6 +715,8 @@ async fn session_actions_need_grant() {
     for (kind, payload) in session_editor.iter().chain(&all) {
         without_session.push((json!(["request", kind, payload]), denied(kind)));
     }
+    without_session.push((json!(["request", view.0, view.1]), "ok".to_owned()));
+    without_session.push(unknown.clone());
     // With the session grant alone missing another, only what needs every grant fails.
     let mut without_network = Vec::new();
     for (kind, payload) in &session_editor {
@@ -716,6 +725,7 @@ async fn session_actions_need_grant() {
     for (kind, payload) in &all {
         without_network.push((json!(["request", kind, payload]), denied(kind)));
     }
+    without_network.push(unknown);
     // Without file access, an extension loads from its module root, and
     // opens no session file outside the session directory.
     let outside = dir.parent().unwrap().join("session-grant-outside.jsonl");

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::bail;
-use yapi_core::chest::manifest::package_meta;
+use yapi_core::chest::manifest::{PackageMeta, package_meta};
 use yapi_core::chest::wasm::{Capabilities, capabilities, covers};
 use yapi_core::extensions::Grants;
 use yapi_core::packages::resolve::{ResourceType, package_resources};
@@ -35,6 +35,14 @@ impl Inspected {
         }
         used
     }
+}
+
+/// Why WASI import `import`, one of [`Capabilities::unsupported`], of
+/// extension `file` fails in yapi.
+pub fn unsupported_import(file: &str, import: &str) -> String {
+    format!(
+        "{file} imports `{import}`, which yapi does not support. Network access goes through the SDK's `fetch`."
+    )
 }
 
 /// The extensions of the package or extension file at `item`, as yapi
@@ -68,15 +76,31 @@ pub fn inspect(item: &Path) -> Inspected {
     inspected
 }
 
+/// The folder of the package that holds `item`: `item` itself when it is a
+/// folder, else the nearest folder above it with a `chest.toml` or
+/// `package.json`.
+fn package_root(item: &Path) -> Option<&Path> {
+    if item.is_dir() {
+        return Some(item);
+    }
+    let manifest =
+        |dir: &Path| dir.join("chest.toml").is_file() || dir.join("package.json").is_file();
+    item.ancestors().skip(1).find(|dir| manifest(dir))
+}
+
 /// Runs `chest check` on the package or extension file at `path`: an
 /// error for each capability an extension uses that the package does not
-/// request, a warning for each one requested that no extension uses.
+/// request and for each WASI import yapi does not support, a warning for
+/// each capability requested that no extension uses.
 pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
     let item = std::path::absolute(path)?;
     if !item.exists() {
         bail!("{} does not exist", path.display());
     }
-    let meta = package_meta(&item);
+    let meta = match package_root(&item) {
+        Some(root) => package_meta(root)?,
+        None => PackageMeta::default(),
+    };
     let requested = Grants::parse(&meta.capabilities)
         .map_err(|err| anyhow::anyhow!("the package's `capabilities`: {err}"))?;
     let inspected = inspect(&item);
@@ -87,6 +111,7 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
         );
     }
     let mut errors = 0;
+    let mut unrequested = false;
     for (file, found) in &inspected.components {
         let found = match found {
             Ok(found) => found,
@@ -113,7 +138,12 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
                     used.capability, used.source
                 ));
                 errors += 1;
+                unrequested = true;
             }
+        }
+        for import in &found.unsupported {
+            say(&format!("error: {}", unsupported_import(file, import)));
+            errors += 1;
         }
     }
     for script in &inspected.scripts {
@@ -133,10 +163,12 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             ));
         }
     }
-    if errors > 0 {
+    if unrequested {
         say(
             "Add what the extensions use to `capabilities` in chest.toml's [package], or package.json's `yapi.capabilities`.",
         );
+    }
+    if errors > 0 {
         return Ok(ExitCode::FAILURE);
     }
     Ok(ExitCode::SUCCESS)

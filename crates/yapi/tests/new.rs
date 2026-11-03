@@ -87,6 +87,11 @@ fn creates_package_from_template() {
     let manifest: serde_json::Value =
         serde_json::from_str(&read(project.join("package.json"))).unwrap();
     assert_eq!(manifest["name"], "my-ext");
+    // `npm publish` keeps the capability request.
+    assert_eq!(
+        manifest["files"],
+        serde_json::json!(["extensions", "chest.toml"])
+    );
     assert_eq!(
         manifest["yapi"]["extensions"],
         serde_json::json!(["./extensions/my_ext.wasm"])

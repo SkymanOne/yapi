@@ -15,9 +15,9 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect};
+use crate::check::{Inspected, inspect, unsupported_import};
 use crate::prompt::Prompt;
-use crate::{Target, entries, open, read, requests, say, source, sync, write};
+use crate::{Target, open, read, requests, say, source, sync, write};
 
 /// What `all` means, said before it is granted.
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
@@ -136,7 +136,7 @@ fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
     if item.join("SKILL.md").is_file() {
         return Ok(Section::Skills);
     }
-    let meta = package_meta(&item);
+    let meta = package_meta(&item)?;
     let lists = |kind: &str| {
         meta.resources.contains_key(kind) || !meta.manifest && item.join(kind).is_dir()
     };
@@ -211,6 +211,9 @@ fn show_used(inspected: &Inspected) {
             say(
                 "    it was built without capability metadata, so only its WASI imports show what it uses",
             );
+        }
+        for import in &found.unsupported {
+            say(&format!("  warning: {}", unsupported_import(file, import)));
         }
     }
 }
@@ -329,7 +332,8 @@ fn nested(root: &Path, name: &str) {
     let Ok(manifest) = Manifest::parse(&text, Scope::Project) else {
         return;
     };
-    let listed: Vec<String> = entries(&manifest)
+    let listed: Vec<String> = manifest
+        .entries()
         .map(|(section, name, _)| format!("{}.{name}", section.key()))
         .collect();
     if !listed.is_empty() {
@@ -395,7 +399,7 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
             Some(section) => section,
             None => infer(&fetched.root, &entry)?,
         };
-        let meta = package_meta(&fetched.root);
+        let meta = package_meta(&fetched.root)?;
         show(&meta);
         nested(&fetched.root, &name);
         if section == Section::Extensions {
