@@ -10,7 +10,7 @@ This page lists every key of `chest.toml`, the rules chest checks, and the forma
 - `-g` uses the global manifest, `~/.chest/chest.toml`.
 - A `chest.toml` or `chest.lock` that is a symbolic link is refused, so a cloned project cannot point chest at a file outside it.
 
-Paths in a manifest are relative to the manifest's folder. A project manifest keeps every folder inside the project. The global manifest may use `~` and absolute paths.
+Paths in a manifest are relative to the manifest's folder. A project manifest keeps every folder inside the project. The global manifest may use `~` and absolute paths, and installs only inside your home folder.
 
 ## `capabilities-defaults`
 
@@ -112,7 +112,7 @@ What a package says about itself. Every key is optional.
 
 | Capability | Allows |
 |---|---|
-| `fs` | File access, imports from outside the package's own folder, `context.files`, and the built-in `read`, `write`, `edit` and `ls` tools |
+| `fs` | File access, imports from outside the folders of the packages that share its instance, `context.files`, and the built-in `read`, `write`, `edit` and `ls` tools |
 | `net` | `fetch`, streamed fetch and DNS, model calls, reading provider credentials, HTTP MCP servers, and refreshing model catalogs over the network |
 | `env` | Reading environment variables, and the environment key fallback when calling a model |
 | `session` | Starting, steering and stopping turns, and changing the session, its files or the model's setup |
@@ -134,7 +134,7 @@ An event from extension S on channel C reaches extension R when S and R have ide
 | `"isolated"` | none | none |
 | `{ send = [...], receive = [...] }` | the channels in `send` | the channels in `receive` |
 
-A pattern is a channel name, a prefix ending in `*` such as `todo:*`, or `*` for every channel. Anything else, such as `*` inside a name or `?`, is an error. Extensions with the same grants and the same `events` run in one instance.
+A pattern is a channel name, a prefix ending in `*` such as `todo:*`, or `*` for every channel. Anything else, such as `*` inside a name or `?`, is an error. Pi extensions with the same grants and the same `events` run in one instance. Each native extension runs in its own.
 
 ## Package metadata
 

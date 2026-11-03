@@ -60,7 +60,7 @@ A folder can be a link to another one, such as `.claude/skills` linking to `../.
 
 The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the `.*-old` folders there too, which hold an item's previous copy when chest stops while replacing it.
 
-Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
+Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed, or a copy it did not record that already holds exactly what the lock pins, which it then takes over. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
 
 ## Grant capabilities
 
@@ -97,7 +97,7 @@ Extensions with identical grants always hear each other. Across different grants
 
 `chest.lock` records each entry's commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. Do not edit it.
 
-A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock.
+A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, are refused when `chest add` or `chest install` resolves the package, before chest writes a lock.
 
 - `chest install` keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
 - `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes `chest.toml` or `chest.lock`. It is the default when `CI` is set to anything but an empty value, `0` or `false`, so a fresh clone in CI gets every skill and extension.
