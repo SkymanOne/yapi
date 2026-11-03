@@ -491,8 +491,10 @@ impl Project {
     /// `mode` says, holding the lock file's lock and the project's record
     /// lock throughout. Every entry is fetched and checked before anything
     /// is put in place, so a failed download changes nothing. Nothing is
-    /// written outside [`Project::root`]. `progress` hears a line for each
-    /// entry fetched, and one while another chest command holds a lock.
+    /// installed outside [`Project::root`]. Only chest's cache and record,
+    /// under `~/.chest` unless set otherwise, are written elsewhere.
+    /// `progress` hears a line for each entry fetched, and one while another
+    /// chest command holds a lock.
     pub async fn sync(
         &mut self,
         mode: Mode,
