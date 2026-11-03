@@ -1012,7 +1012,8 @@ fn ungranted_use(source: &SourceInfo, policies: &FilePolicies) -> Option<String>
     if !is_native(Path::new(&source.path)) {
         return None;
     }
-    let policy = policies.get(&canonical(&source.path))?;
+    let file = canonical(&source.path);
+    let policy = policies.manages(&file).then(|| policies.of(&file))?;
     // A file that does not read is reported when it loads.
     let bytes = std::fs::read(&source.path).ok()?;
     let used = yapi_core::chest::wasm::capabilities(&bytes).ok()?.used;
