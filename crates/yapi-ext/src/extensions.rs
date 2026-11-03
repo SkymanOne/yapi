@@ -179,14 +179,17 @@ const REQUESTS: &[(&str, Need)] = &[
     ("ui.pasteToEditor", Need::Nothing),
     ("ui.requestRender", Need::Nothing),
     ("ui.select", Need::Nothing),
-    ("ui.setAutocomplete", Need::Nothing),
+    // Completions and raw keys can turn what a person types into a `!` or
+    // `/` command, which interactive mode runs.
+    ("ui.setAutocomplete", Need::All),
     ("ui.setEditor", Need::Nothing),
     ("ui.setEditorText", Need::Nothing),
     ("ui.setFooter", Need::Nothing),
     ("ui.setHeader", Need::Nothing),
     ("ui.setHiddenThinkingLabel", Need::Nothing),
     ("ui.setStatus", Need::Nothing),
-    ("ui.setTerminalInput", Need::Nothing),
+    // See `ui.setAutocomplete`.
+    ("ui.setTerminalInput", Need::All),
     ("ui.setTheme", Need::Nothing),
     ("ui.setTitle", Need::Nothing),
     ("ui.setToolsExpanded", Need::Nothing),
