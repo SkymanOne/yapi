@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-debe7d21.js";
+            window.path_to_searchindex_js = "searchindex-5589268c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -261,13 +261,14 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 <pre><code class="language-toml">[dependencies]
 yapi-extension-api = { version = "0.3.1", features = ["session"] }
 </code></pre>
+<p>The capability features ship in the first release of <code>yapi-extension-api</code> after 0.3.1. Version 0.3.1 and earlier have none, so cargo reports that the feature does not exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
-<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WASI interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code> and <code>wasi:sockets</code> or <code>wasi:http</code> mean <code>net</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
+<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WASI interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 </code></pre>
-<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="chest.html#publish-skills-subagents-and-extensions">chest</a>.</p>
+<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi does not provide <code>wasi:http</code>, so such a component does not load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="chest.html#publish-skills-subagents-and-extensions">chest</a>.</p>
 <p>Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.</p>
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>
@@ -294,7 +295,7 @@ yapi install . -l    # for this project only
 <p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/you/shout
 </code></pre>
-<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
+<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes the <code>extensions</code> folder and <code>chest.toml</code>, which carries the capabilities the extension asks for.</p>
 <p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
 <pre><code class="language-json">{
   "name": "shout",
