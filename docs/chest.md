@@ -115,7 +115,7 @@ A manifest's lock sits beside it with `.lock` for `.toml`. Keep an environment's
 chest --manifest chest.dev.toml install
 ```
 
-`CHEST_MANIFEST` sets the default for `--manifest`, as a file name or a path relative to the current folder:
+`CHEST_MANIFEST` sets the default for `--manifest`, as a file name or a path inside the current folder. A value that is absolute, starts with `~` or uses `..` is an error, because yapi reads the same variable and loads only a manifest inside the project:
 
 ```sh
 export CHEST_MANIFEST=chest.dev.toml
