@@ -268,6 +268,17 @@ fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
     }
 }
 
+/// Why `kind` is refused when the grants do not allow it. A kind the bridge
+/// does not serve answers as unknown, as it does with every grant, so a
+/// client can tell it from one it may not use. It still does nothing.
+fn refusal(kind: &str) -> String {
+    if REQUESTS.iter().any(|(name, _)| *name == kind) {
+        denied(kind)
+    } else {
+        format!("{kind} is not available in yapi extensions yet")
+    }
+}
+
 /// Session file `path` that a session action opens, resolved against `cwd`
 /// as pi resolves it, once, so the check and the action open the same file.
 /// Without file access, `Err` unless it lies inside session directory
@@ -2950,7 +2961,7 @@ impl Bridge for SessionBridge {
 
     fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {
         if !granted(&self.grants, kind, payload) {
-            return Err(denied(kind));
+            return Err(refusal(kind));
         }
         if kind == "events.emit" {
             self.publish(payload);
@@ -3371,7 +3382,7 @@ impl Bridge for SessionBridge {
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
         if !granted(&self.grants, kind, &payload) {
-            let message = denied(kind);
+            let message = refusal(kind);
             return Box::pin(async move { Err(message) });
         }
         if matches!(
@@ -3901,6 +3912,15 @@ mod tests {
         };
         assert!(!granted(&no_files, "file.lock", &json!({"path": "a.txt"})));
         assert!(!granted(&no_process, "made.up", &json!({})));
+        // Refused, an unknown kind still answers as unknown.
+        assert_eq!(
+            refusal("made.up"),
+            "made.up is not available in yapi extensions yet"
+        );
+        assert_eq!(
+            refusal("file.lock"),
+            "file.lock is not permitted for this extension"
+        );
         let action = |action: &str| json!({ "action": action });
         assert!(!granted(
             &no_process,

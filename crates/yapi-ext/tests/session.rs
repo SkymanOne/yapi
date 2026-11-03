@@ -682,8 +682,12 @@ async fn session_actions_need_grant() {
         ("providers.register".to_owned(), json!({})),
         ("providers.unregister".to_owned(), json!({"name": "faux"})),
         editor("ui.editorAction", "action", "app.made.up"),
-        ("made.up".to_owned(), json!({})),
     ];
+    // A kind yapi does not serve answers as unknown, and does nothing.
+    let unknown = (
+        json!(["request", "made.up", {}]),
+        "made.up is not available in yapi extensions yet".to_owned(),
+    );
     let view = editor("ui.editorAction", "action", "app.tools.expand");
     let dir = scratch("session-grant");
     let path = dir.join("ext.ts");
@@ -712,6 +716,7 @@ async fn session_actions_need_grant() {
         without_session.push((json!(["request", kind, payload]), denied(kind)));
     }
     without_session.push((json!(["request", view.0, view.1]), "ok".to_owned()));
+    without_session.push(unknown.clone());
     // With the session grant alone missing another, only what needs every grant fails.
     let mut without_network = Vec::new();
     for (kind, payload) in &session_editor {
@@ -720,6 +725,7 @@ async fn session_actions_need_grant() {
     for (kind, payload) in &all {
         without_network.push((json!(["request", kind, payload]), denied(kind)));
     }
+    without_network.push(unknown);
     // Without file access, an extension loads from its module root, and
     // opens no session file outside the session directory.
     let outside = dir.parent().unwrap().join("session-grant-outside.jsonl");
