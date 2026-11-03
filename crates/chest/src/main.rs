@@ -19,7 +19,6 @@ use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
 use yapi_core::chest::{Mode, Outcome, Project, Report};
-use yapi_core::extensions::Grants;
 use yapi_core::packages::npm::{self, Npm};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::home_dir;
@@ -254,24 +253,6 @@ pub fn source(entry: &Entry) -> String {
     line
 }
 
-/// The capabilities `grants` covers, as a manifest writes them.
-pub fn capability_names(grants: Grants) -> Vec<&'static str> {
-    if grants.process {
-        return vec!["all"];
-    }
-    let flags = [
-        ("fs", grants.filesystem),
-        ("net", grants.network),
-        ("env", grants.environment),
-        ("session", grants.session),
-    ];
-    flags
-        .into_iter()
-        .filter(|(_, on)| *on)
-        .map(|(name, _)| name)
-        .collect()
-}
-
 async fn remove(target: &Target, name: &str, npm: &mut Npm) -> anyhow::Result<()> {
     let mut document = ManifestDocument::parse(&read(target)?, target.scope)?;
     let mut found = false;
@@ -309,17 +290,8 @@ async fn update(target: &Target, names: Vec<String>, npm: &mut Npm) -> anyhow::R
 /// for capabilities, one for event channels.
 pub fn requests(manifest: &Manifest, entry: &Entry, meta: &PackageMeta) -> Vec<String> {
     let granted = manifest.grants(entry);
-    let covered = |capability: &str| {
-        granted.process
-            || match capability {
-                "fs" => granted.filesystem,
-                "net" => granted.network,
-                "env" => granted.environment,
-                "session" => granted.session,
-                "none" => true,
-                _ => false,
-            }
-    };
+    let covered =
+        |capability: &str| granted.is_all() || capability == "none" || granted.covers(capability);
     let mut warnings = Vec::new();
     let missing: Vec<&str> = meta
         .capabilities
@@ -379,13 +351,10 @@ fn list(target: &Target) -> anyhow::Result<()> {
         };
         out(&format!("{id}  {pinned}  {state}  {}", source(entry)));
         if section == Section::Extensions {
-            let names = capability_names(project.manifest.grants(entry));
-            let shown = if names.is_empty() {
-                "none".to_owned()
-            } else {
-                names.join(", ")
-            };
-            out(&format!("    capabilities: {shown}"));
+            out(&format!(
+                "    capabilities: {}",
+                project.manifest.grants(entry)
+            ));
         }
         match project.installed_root(name).map(|root| package_meta(&root)) {
             Some(Ok(meta)) => {

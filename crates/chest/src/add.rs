@@ -15,7 +15,7 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect, unsupported_import};
+use crate::check::{Inspected, inspect, unknown_capability, unsupported_import};
 use crate::prompt::Prompt;
 use crate::{Target, open, read, requests, say, source, sync, write};
 
@@ -215,6 +215,9 @@ fn show_used(inspected: &Inspected) {
         for import in &found.unsupported {
             say(&format!("  warning: {}", unsupported_import(file, import)));
         }
+        for line in &found.unknown {
+            say(&format!("  warning: {}", unknown_capability(file, line)));
+        }
     }
 }
 
@@ -226,7 +229,8 @@ fn channels(patterns: &[String]) -> String {
     }
 }
 
-/// What each capability allows, for its question.
+/// What each capability allows, for its question. Each of
+/// [`CAPABILITIES`](yapi_core::extensions::CAPABILITIES) has one.
 fn meaning(capability: &str) -> &'static str {
     match capability {
         "fs" => "read and write files",
@@ -425,4 +429,18 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         return Err(err);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn capabilities_have_meanings() {
+        for capability in yapi_core::extensions::CAPABILITIES {
+            assert_ne!(
+                super::meaning(capability),
+                "an unknown capability",
+                "{capability}"
+            );
+        }
+    }
 }

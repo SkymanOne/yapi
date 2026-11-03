@@ -23,8 +23,7 @@ use yapi_types::sync::{lock, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
 use crate::extensions::{
-    Context, Extension, ExtensionUi, Grants, Mode, SessionActions, ToolRenderers, receives,
-    tool_granted,
+    Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers, receives, tool_granted,
 };
 use crate::mcp::config::check_registration;
 use crate::messages::convert_to_llm;
@@ -369,9 +368,9 @@ impl AgentHooks for Hooks {
                 {
                     let grants = extension.grants();
                     let granted = grants.session
-                        && tool.as_ref().map_or(grants == Grants::default(), |tool| {
-                            tool_granted(&grants, tool)
-                        });
+                        && tool
+                            .as_ref()
+                            .map_or(grants.is_all(), |tool| tool_granted(&grants, tool));
                     let missing =
                         format!("the session grant and the grants to run the {name} tool");
                     if self

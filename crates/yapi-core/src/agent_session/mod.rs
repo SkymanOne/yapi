@@ -948,7 +948,7 @@ impl AgentSession {
                 && !self.applies(
                     extension,
                     "user_bash",
-                    extension.grants() == crate::extensions::Grants::default(),
+                    extension.grants().is_all(),
                     "every grant",
                 )
             {
