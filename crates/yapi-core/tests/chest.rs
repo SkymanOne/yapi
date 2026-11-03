@@ -206,9 +206,22 @@ async fn git_skill_locked_commit() {
     assert_eq!(read(&canonical.join("notes.txt")), "lower\n");
 
     // Without its record, chest adopts a copy that is exactly what it would
-    // install, but never one holding a `.git`, which the hash leaves out.
+    // install, but never one that differs, nor one holding a `.git`, which
+    // the hash leaves out.
     std::fs::remove_dir_all(dir.join("state")).unwrap();
     std::fs::remove_file(root.join(".claude/skills/pdf")).unwrap();
+    std::fs::write(canonical.join("SKILL.md"), "# mine\n").unwrap();
+    let error = failed(
+        &mut open(&dir, &skill_manifest(&remote, "v1")),
+        Mode::Resolve,
+    )
+    .await;
+    assert!(
+        error.contains("refusing to replace what chest did not install"),
+        "{error}"
+    );
+    assert_eq!(read(&canonical.join("SKILL.md")), "# mine\n");
+    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
     std::fs::create_dir_all(canonical.join(".git")).unwrap();
     let error = failed(
         &mut open(&dir, &skill_manifest(&remote, "v1")),
