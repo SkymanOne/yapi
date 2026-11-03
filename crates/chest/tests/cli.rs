@@ -571,7 +571,9 @@ fn import_settings_packages() {
     let scratch = scratch("import-settings");
     let settings = json!({"packages": [
         "npm:@acme/ext@^1",
-        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"], "extensions": ["x.ts"]},
+        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"]},
+        {"source": "npm:@acme/picky", "extensions": ["x.ts"]},
+        {"source": "npm:@acme/quiet", "autoload": false, "skills": ["+a"]},
         "../local-ext",
     ]});
     let path = scratch.project.join(".yapi/settings.json");
@@ -588,9 +590,16 @@ fn import_settings_packages() {
     }
     let said = text(&output);
     assert!(said.contains("yapi remove -l npm:@acme/ext@^1"), "{said}");
+    // A filter chest cannot express leaves the package in settings.json.
+    for spec in ["npm:@acme/picky", "npm:@acme/quiet"] {
+        let skipped = format!(
+            "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+        );
+        assert!(said.contains(&skipped), "{said}");
+    }
     assert!(
-        said.contains("no `extensions` or `autoload` filter"),
-        "{said}"
+        !manifest.contains("picky") && !manifest.contains("quiet"),
+        "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
 

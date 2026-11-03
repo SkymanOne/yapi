@@ -139,7 +139,7 @@ A path that points outside the project gets a notice on each install. A path sou
 
 ## Move from settings.json or skills.sh
 
-`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them, and keeps their filters. It leaves `settings.json` alone and prints the `yapi remove -l` command for each package, to run once chest installs it. `-g` imports the agent folder's `settings.json`.
+`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them, and keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`, so a package that sets either is left out with a warning and keeps loading from `settings.json`. Import leaves `settings.json` alone and prints the `yapi remove -l` command for each package it imports, to run once chest installs it. `-g` imports the agent folder's `settings.json` and prints `yapi remove` without `-l`.
 
 `chest import --skills-lock` turns the skills of a skills.sh `skills-lock.json` into skill entries. chest computes its own hashes, so the file's are dropped.
 

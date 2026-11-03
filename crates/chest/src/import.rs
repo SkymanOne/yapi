@@ -86,7 +86,8 @@ fn add(
 }
 
 /// The settings packages as extensions with every capability, as `yapi
-/// install` gives them, and their filters.
+/// install` gives them, and their `skills`, `prompts` and `themes` filters.
+/// A package with a filter chest cannot express is left out.
 fn settings(
     target: &Target,
     path: &Path,
@@ -128,14 +129,16 @@ fn settings(
             }
         }
         if let Some(filtered) = filtered {
+            // Importing without these filters would load more than settings.json does.
+            if filtered.extensions.is_some() || filtered.autoload == Some(false) {
+                say(&format!(
+                    "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+                ));
+                continue;
+            }
             entry.skills = filtered.skills.clone();
             entry.prompts = filtered.prompts.clone();
             entry.themes = filtered.themes.clone();
-            if filtered.extensions.is_some() || filtered.autoload.is_some() {
-                say(&format!(
-                    "warning: {spec}: chest has no `extensions` or `autoload` filter, so those were left out"
-                ));
-            }
         }
         let name = name_of(&entry);
         if !valid_name(&name) {
