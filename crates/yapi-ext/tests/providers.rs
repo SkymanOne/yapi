@@ -1127,12 +1127,24 @@ export default function (pi) {
 /// `getProviderAuth` resolves pi's `AuthResult` for a provider, without its
 /// models' headers, and nothing for an unknown provider or one without
 /// credentials. `getApiKeyAndHeaders` resolves what a request to a model
-/// sends. These, `getApiKey`, the session's classifiers, the providers an
-/// extension registers and refreshing models over the network need the
-/// network grant.
+/// sends. These, `getApiKey`, the session's classifiers and refreshing
+/// models over the network need the network grant. The providers an
+/// extension registers need every grant.
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_auth_needs_network() {
     yapi_ext::capture_output();
+    // Every grant but the process grant provides nothing.
+    let dir = scratch("provider-auth-process");
+    let path = dir.join("auth.ts");
+    std::fs::write(&path, AUTH_EXTENSION).unwrap();
+    let mut no_process = options(&dir);
+    no_process.grants.process = false;
+    let host = ExtensionHost::load(&engine(), no_process, &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    assert!(host.providers().is_empty());
+    assert!(host.apis().is_empty());
     let mut entries = Vec::new();
     let mut online = Vec::new();
     for network in [true, false] {
