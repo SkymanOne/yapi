@@ -171,7 +171,10 @@ enum Content {
 /// stale period. A holder that stopped stops refreshing, so its lock goes
 /// stale and is taken over. `waiting` hears once that the lock is held,
 /// when it is not free within a second.
-pub async fn hold_lock(file: &Path, waiting: &mut dyn FnMut()) -> Result<FileLock, ChestError> {
+pub async fn hold_lock(
+    file: &Path,
+    waiting: &mut (dyn FnMut() + Send),
+) -> Result<FileLock, ChestError> {
     let cancel = CancellationToken::new();
     let failed = |err: LockError| ChestError::Failed(format!("{}: {err}", file.display()));
     let first = tokio::time::timeout(Duration::from_secs(1), FileLock::acquire(file, &cancel));
@@ -325,8 +328,9 @@ impl Project {
     /// Whether `folder`, an extension's module root, holds far more than one
     /// package, so the extension could load any file there: it is, or holds,
     /// the home folder, the agent folder, the filesystem's root, the
-    /// manifest's folder, which is the project's for a project manifest, or
-    /// a folder in `also`.
+    /// manifest's folder, which is the project's for a project manifest, the
+    /// store, which holds the other extensions, or a folder in `also`. A
+    /// held folder that does not exist yet counts by the path it will have.
     pub fn too_wide(&self, folder: &Path, also: &[&Path]) -> bool {
         let Ok(folder) = folder.canonicalize() else {
             return false;
@@ -336,11 +340,11 @@ impl Project {
             crate::config::agent_dir(),
             PathBuf::from("/"),
             self.base.clone(),
+            self.store(),
         ];
         held.into_iter()
             .chain(also.iter().map(|path| path.to_path_buf()))
-            .filter_map(|held| held.canonicalize().ok())
-            .any(|held| held.starts_with(&folder))
+            .any(|held| real_path(&held).starts_with(&folder))
     }
 
     /// Refuses an extension whose path source, or `[patch]`, is a folder
@@ -494,7 +498,7 @@ impl Project {
         &mut self,
         mode: Mode,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
         // yapi's startup skips such an entry on its own, with a warning.
@@ -650,7 +654,7 @@ impl Project {
         old: &Lock,
         record: &Record,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
         report: &mut Report,
     ) -> Result<(Vec<Staged>, fetch::Work), ChestError> {
         if let Mode::Update(names) = mode
@@ -943,11 +947,26 @@ impl Project {
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }
+                // Replay reaches the package at the top of an npm extension's
+                // tree from a root package.json, as its install did.
+                let root = staging.join("package.json");
+                if let Some(npm_name) = &entry.npm {
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let manifest = serde_json::json!({"dependencies": {npm_name: version}});
+                    let text = yapi_types::json::to_string(&manifest).unwrap_or_default();
+                    std::fs::write(&root, text).map_err(io(&root))?;
+                }
                 npm::replay(npm, staging, &locked.packages).await?;
+                if entry.npm.is_some() {
+                    std::fs::remove_file(&root).map_err(io(&root))?;
+                }
             }
             (Some(npm_name), None) => {
                 let installed =
                     npm::install(npm, staging, npm_name, entry.version.as_deref()).await?;
+                // Checked as replay will check it, while the root package.json
+                // still names the package at the top.
+                npm::check_installed(staging, &installed.tree)?;
                 // The store keeps only what replay rebuilds, `node_modules`.
                 for file in ["package.json", ".gitignore"] {
                     let file = staging.join(file);
@@ -959,6 +978,7 @@ impl Project {
             (None, None) => {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
+                npm::check_installed(staging, &record.packages)?;
             }
         }
         // A tree that replay would refuse fails this install, not every later

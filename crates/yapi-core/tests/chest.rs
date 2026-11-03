@@ -596,12 +596,12 @@ async fn gitignore_block_managed() {
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",
     );
-    let heard = std::cell::RefCell::new(Vec::new());
-    let mut progress = |line: &str| heard.borrow_mut().push(line.to_owned());
+    let heard = std::sync::Mutex::new(Vec::new());
+    let mut progress = |line: &str| heard.lock().unwrap().push(line.to_owned());
     let mut npm = Npm::new(HashMap::new());
     let release = async {
         for _ in 0..100 {
-            if !heard.borrow().is_empty() {
+            if !heard.lock().unwrap().is_empty() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -613,7 +613,7 @@ async fn gitignore_block_managed() {
     synced.unwrap();
     let waiting = "Waiting for another chest command, which holds the lock of";
     assert_eq!(
-        heard.into_inner(),
+        heard.into_inner().unwrap(),
         [format!("{waiting} {}...", lock.display())]
     );
     assert_eq!(read(&root.join(".gitignore")), "target/\n");
@@ -688,7 +688,8 @@ fn publish(
     dependencies: Value,
     files: &[(&str, &str)],
 ) -> (Interaction, Interaction) {
-    let package = json!({"name": name, "version": "1.0.0"}).to_string();
+    let package = json!({"name": name, "version": "1.0.0", "dependencies": dependencies});
+    let package = package.to_string();
     let index = format!("module.exports = '{name}';\n");
     let mut entries = vec![("package.json", package.as_str()), ("index.js", &index)];
     entries.extend_from_slice(files);
@@ -890,6 +891,41 @@ async fn npm_extension_locked() {
             .unwrap_err()
             .to_string();
         let expected = format!("a pinned tarball must be at /{name}/-/{name}-1.0.0.tgz");
+        assert!(error.contains(&expected), "{error}");
+        assert!(!dir.join("project/chest.lock").exists());
+    }
+
+    // So does a tarball whose package.json disagrees with its packument, in
+    // an npm extension's tree or in a git extension's dependencies.
+    let dir = scratch("npm-disagrees");
+    let remote = Remote::new(&dir);
+    let gitext = json!({"name": "gitext", "dependencies": {"dep": "^1"}}).to_string();
+    remote.commit(&[("package.json", &gitext)], "v1");
+    let git_manifest = format!(
+        "[extensions]\ngitext = {{ git = \"{}\", rev = \"v1\" }}\n",
+        remote.source
+    );
+    for (name, manifest) in [("ext", ext_manifest), ("dep", git_manifest.as_str())] {
+        let server = MockServer::local_with(|base| {
+            // A second package.json, which unpacking writes over the first.
+            let relabeled = json!({"name": name, "version": "1.0.1"}).to_string();
+            let (packument, tarball) =
+                publish(base, name, json!({}), &[("package.json", &relabeled)]);
+            Cassette {
+                interactions: vec![packument, tarball],
+            }
+        })
+        .await
+        .unwrap();
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(Mode::Resolve, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        let expected = format!(
+            "The package.json in node_modules/{name} names {name}@1.0.1, not the pinned {name}@1.0.0"
+        );
         assert!(error.contains(&expected), "{error}");
         assert!(!dir.join("project/chest.lock").exists());
     }
@@ -1203,8 +1239,9 @@ async fn path_source_notice() {
         std::fs::remove_file(project.join(".claude/skills")).unwrap();
     }
 
-    // An extension whose folder holds the project, as a path source or as a
-    // patch, is refused before anything is written.
+    // An extension whose folder holds the project or the store, as a path
+    // source or as a patch, is refused before anything is written.
+    std::fs::create_dir_all(dir.join("project/.yapi")).unwrap();
     let lock = read(&dir.join("project/chest.lock"));
     let ext = "ext = { git = \"localhost/nowhere/repo\", rev = \"v1\" }";
     for (manifest, id, folder) in [
@@ -1217,6 +1254,11 @@ async fn path_source_notice() {
             format!("[extensions]\n{ext}\n\n[patch]\next = {{ path = \"x/../..\" }}\n"),
             "patch.ext",
             dir.clone(),
+        ),
+        (
+            "[extensions]\nwide = { path = \".yapi\" }\n".to_owned(),
+            "extensions.wide",
+            dir.join("project/.yapi"),
         ),
     ] {
         let error = failed(&mut open(&dir, &manifest), Mode::Resolve).await;
