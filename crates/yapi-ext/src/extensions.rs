@@ -107,6 +107,10 @@ const REQUESTS: &[(&str, Need)] = &[
     ("commands.list", Need::Nothing),
     // Routed by the instances' grants and event policies.
     ("events.emit", Need::Nothing),
+    // The channels the runtime's own listeners hear, for missed-event warnings.
+    ("events.listen", Need::Nothing),
+    ("events.reset", Need::Nothing),
+    ("events.unlisten", Need::Nothing),
     // Holds yapi's edit and write tools off the file until `file.unlock`.
     ("file.lock", Need::Files),
     ("file.unlock", Need::Nothing),
