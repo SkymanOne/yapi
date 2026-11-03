@@ -1275,6 +1275,14 @@ pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), Npm
     swap(&staging, dir, unpack(&bytes, &staging))
 }
 
+/// Fails unless the tree `pins` records, installed in `root/node_modules`
+/// and declared by `root/package.json`, is one that [`replay`] accepts once
+/// unpacked, so that a lock never pins a tree its replays refuse.
+pub(crate) fn check_installed(root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
+    let pins: Vec<&Pinned> = pins.iter().collect();
+    check_tree(root, &root.join("node_modules"), &pins)
+}
+
 /// How many tarballs [`replay`] downloads at once.
 const REPLAY_DOWNLOADS: usize = 8;
 
