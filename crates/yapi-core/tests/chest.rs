@@ -1134,8 +1134,9 @@ async fn path_source_notice() {
     }
     std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
 
-    // An extension whose folder holds the project, as a path source or as a
-    // patch, is refused before anything is written.
+    // An extension whose folder holds the project or the store, as a path
+    // source or as a patch, is refused before anything is written.
+    std::fs::create_dir_all(dir.join("project/.yapi")).unwrap();
     let lock = read(&dir.join("project/chest.lock"));
     let ext = "ext = { git = \"localhost/nowhere/repo\", rev = \"v1\" }";
     for (manifest, id, folder) in [
@@ -1148,6 +1149,11 @@ async fn path_source_notice() {
             format!("[extensions]\n{ext}\n\n[patch]\next = {{ path = \"x/../..\" }}\n"),
             "patch.ext",
             dir.clone(),
+        ),
+        (
+            "[extensions]\nwide = { path = \".yapi\" }\n".to_owned(),
+            "extensions.wide",
+            dir.join("project/.yapi"),
         ),
     ] {
         let error = failed(&mut open(&dir, &manifest), Mode::Resolve).await;

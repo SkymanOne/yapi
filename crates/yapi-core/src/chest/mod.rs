@@ -287,8 +287,9 @@ impl Project {
     /// Whether `folder`, an extension's module root, holds far more than one
     /// package, so the extension could load any file there: it is, or holds,
     /// the home folder, the agent folder, the filesystem's root, the
-    /// manifest's folder, which is the project's for a project manifest, or
-    /// a folder in `also`.
+    /// manifest's folder, which is the project's for a project manifest, the
+    /// store, which holds the other extensions, or a folder in `also`. A
+    /// held folder that does not exist yet counts by the path it will have.
     pub fn too_wide(&self, folder: &Path, also: &[&Path]) -> bool {
         let Ok(folder) = folder.canonicalize() else {
             return false;
@@ -298,11 +299,11 @@ impl Project {
             crate::config::agent_dir(),
             PathBuf::from("/"),
             self.base.clone(),
+            self.store(),
         ];
         held.into_iter()
             .chain(also.iter().map(|path| path.to_path_buf()))
-            .filter_map(|held| held.canonicalize().ok())
-            .any(|held| held.starts_with(&folder))
+            .any(|held| real_path(&held).starts_with(&folder))
     }
 
     /// Refuses an extension whose path source, or `[patch]`, is a folder
