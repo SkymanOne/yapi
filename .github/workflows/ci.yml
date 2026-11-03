@@ -19,6 +19,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Full debug info in every test binary filled the hosted Ubuntu runner's disk
+  # during `cargo test --workspace`. Line tables keep backtraces' files and lines.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   # Whether the change can affect the Rust build or tests. Changes only to
