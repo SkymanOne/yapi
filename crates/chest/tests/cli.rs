@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use aws_lc_rs::digest::{SHA512, digest};
 use base64::Engine as _;
@@ -768,6 +768,15 @@ fn add_prompts_capabilities() {
         "{:#?}",
         pty.rows()
     );
+    // While the question waits, chest keeps the manifest's lock fresh, which
+    // it refreshes every 15 seconds.
+    let lock = scratch.project.join(".chest.toml.lock");
+    let modified = || lock.metadata().and_then(|lock| lock.modified()).unwrap();
+    let (taken, deadline) = (modified(), Instant::now() + Duration::from_secs(25));
+    while modified() == taken && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    assert_ne!(modified(), taken, "the lock went stale");
     // `process` is not a capability, so it is skipped rather than asked about.
     let skipped = "not capabilities, which were skipped: process";
     assert!(
