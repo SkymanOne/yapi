@@ -12,6 +12,7 @@ use std::path::{Component, Path, PathBuf};
 use aws_lc_rs::digest::{SHA1_FOR_LEGACY_USE_ONLY as SHA1, SHA512, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use futures_util::StreamExt as _;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
@@ -1161,6 +1162,9 @@ pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), Npm
     swap(&staging, dir, unpack(&bytes, &staging))
 }
 
+/// How many tarballs [`replay`] downloads at once.
+const REPLAY_DOWNLOADS: usize = 8;
+
 /// Replaces `root/node_modules` with exactly the tree `pins` records, as
 /// [`Installed::tree`] lists it, without packuments or range resolution.
 ///
@@ -1170,7 +1174,9 @@ pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), Npm
 /// not exactly one sha512 digest, or whose tarball URL is plain http while
 /// its registry is not. It also refuses a `root` or `root/node_modules`
 /// that is a link. Each tarball is downloaded with the credentials of its
-/// name's registry and checked against its digest. The tree is built beside
+/// name's registry and checked against its digest, eight at a time, and
+/// unpacked only once it passes. The
+/// tree is built beside
 /// `root/node_modules` and swapped in only once complete, so a failure
 /// leaves `root` as it was. The caller holds the root's [`lock_root`].
 pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
@@ -1216,8 +1222,12 @@ pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmEr
     let modules = root.join("node_modules");
     let staging = stage(&modules)?;
     let built = async {
-        for (_, _, pin) in &pins {
-            let bytes = npm.pinned_tarball(pin).await?;
+        // Downloads overlap, and each tarball unpacks in order once checked.
+        let mut downloads = futures_util::stream::iter(&pins)
+            .map(|(_, _, pin)| async move { (*pin, npm.pinned_tarball(pin).await) })
+            .buffered(REPLAY_DOWNLOADS);
+        while let Some((pin, bytes)) = downloads.next().await {
+            let bytes = bytes?;
             // `pin_names` checked that the path starts so; `staging` stands for it.
             let relative = pin.path.strip_prefix("node_modules/").unwrap_or(&pin.path);
             let dir = staging.join(relative);
