@@ -1,6 +1,7 @@
 //! Turning arguments into a session: settings, trust, session file, model, tools
 //! and prompt resources. Mirrors `main.ts` and `sdk.ts` in pi `v1.0.0`.
 
+use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
@@ -799,9 +800,8 @@ fn build(
         // pi runs its built-in extensions after the loaded ones: llama.cpp,
         // codemode, then tool_search and MCP.
         extensions: extensions
-            .hosts
-            .iter()
-            .flat_map(ExtensionHost::for_session)
+            .for_session()
+            .into_iter()
             .chain(
                 std::iter::once(Arc::new(yapi_core::llama::LlamaExtension)
                     as Arc<dyn yapi_core::extensions::Extension>)
@@ -1218,6 +1218,11 @@ async fn start_extensions(
     // A file counts once, however its sources name it.
     let mut seen = std::collections::HashSet::new();
     sources.retain(|source| seen.insert(canonical(&source.path)));
+    let order = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| (source.path.clone(), index))
+        .collect();
     let mut engine = previous.and_then(|previous| previous.engine.clone());
     let mut hosts = Vec::new();
     // The hosts started here, which need the flags.
@@ -1235,46 +1240,66 @@ async fn start_extensions(
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;
-        for group in group_sources(sources, &chest_policies) {
-            // A host of `previous` serves the same group again, keeping the
-            // modules it imported.
-            let reused = previous.and_then(|previous| {
-                previous
-                    .hosts
-                    .iter()
-                    .find(|host| serves(&host_group(host), &group))
-            });
-            if let Some(host) = reused {
-                host.reload(&group.sources).await;
-                hosts.push(Arc::clone(host));
-                continue;
-            }
-            let mut options = options.clone();
-            options.grants = group.grants;
-            options.events = group.events.clone();
-            options.module_roots = group.roots.clone();
-            let host = if group.native {
-                let Some(source) = group.sources.first() else {
-                    continue;
-                };
-                match ExtensionHost::load_native(&engine, options, source).await {
-                    Ok(host) => host,
-                    Err(err) => {
-                        issues.push((source.path.clone(), err.to_string()));
-                        continue;
+        /// What starting one group's host came to.
+        enum Start {
+            Reused(Arc<ExtensionHost>),
+            Started(Arc<ExtensionHost>),
+            Failed(String, String),
+        }
+        // Each host starts on its own thread, so they start together, and
+        // keep their groups' order.
+        let starts = group_sources(sources, &chest_policies)
+            .into_iter()
+            .map(|group| {
+                // A host of `previous` serves the same group again, keeping the
+                // modules it imported.
+                let reused = previous.and_then(|previous| {
+                    previous
+                        .hosts
+                        .iter()
+                        .find(|host| serves(&host_group(host), &group))
+                        .cloned()
+                });
+                let (mut options, engine) = (options.clone(), engine.clone());
+                async move {
+                    if let Some(host) = reused {
+                        host.reload(&group.sources).await;
+                        return Ok(Some(Start::Reused(host)));
                     }
+                    options.grants = group.grants;
+                    options.events = group.events.clone();
+                    options.module_roots = group.roots.clone();
+                    if !group.native {
+                        let host = ExtensionHost::load(&engine, options, &group.sources).await;
+                        return host
+                            .map(|host| Some(Start::Started(host)))
+                            .map_err(|err| err.to_string());
+                    }
+                    let Some(source) = group.sources.first() else {
+                        return Ok(None);
+                    };
+                    Ok(Some(
+                        match ExtensionHost::load_native(&engine, options, source).await {
+                            Ok(host) => Start::Started(host),
+                            Err(err) => Start::Failed(source.path.clone(), err.to_string()),
+                        },
+                    ))
                 }
-            } else {
-                ExtensionHost::load(&engine, options, &group.sources)
-                    .await
-                    .map_err(|err| err.to_string())?
-            };
-            started.push(Arc::clone(&host));
-            hosts.push(host);
+            });
+        for start in futures_util::future::join_all(starts).await {
+            match start? {
+                Some(Start::Reused(host)) => hosts.push(host),
+                Some(Start::Started(host)) => {
+                    started.push(Arc::clone(&host));
+                    hosts.push(host);
+                }
+                Some(Start::Failed(path, error)) => issues.push((path, error)),
+                None => {}
+            }
         }
     }
     issues.append(&mut missing);
-    issues.extend(conflicts(&hosts));
+    issues.extend(conflicts(&hosts, &order));
 
     // pi's applyExtensionFlagValues.
     let flags: Vec<yapi_ext::Flag> = hosts.iter().flat_map(|host| host.flags()).collect();
@@ -1321,17 +1346,24 @@ async fn start_extensions(
         resolved,
         cwd,
         engine,
+        order,
     };
     Ok((extensions, flag_errors))
 }
 
 /// pi's extension conflicts: each tool or flag that an extension registers
-/// after an earlier extension, in load order, registered the same name, by
-/// the later extension's path.
-fn conflicts(hosts: &[Arc<ExtensionHost>]) -> Vec<(String, String)> {
-    let mut owners = std::collections::HashMap::<(&str, String), String>::new();
+/// after an earlier extension, in load order across `hosts` by `order`,
+/// registered the same name, by the later extension's path.
+fn conflicts(
+    hosts: &[Arc<ExtensionHost>],
+    order: &HashMap<String, usize>,
+) -> Vec<(String, String)> {
+    let mut owners = HashMap::<(&str, String), String>::new();
     let mut messages = Vec::new();
-    for extension in hosts.iter().flat_map(|host| host.registrations()) {
+    let mut registrations: Vec<_> = hosts.iter().flat_map(|host| host.registrations()).collect();
+    registrations
+        .sort_by_key(|extension| rank(order, extension["path"].as_str().unwrap_or_default()));
+    for extension in registrations {
         let path = extension["path"].as_str().unwrap_or_default();
         for (kind, label) in [("tools", "Tool \""), ("flags", "Flag \"--")] {
             let names = extension[kind]
@@ -1413,9 +1445,31 @@ pub struct Extensions {
     cwd: PathBuf,
     /// The engine of the hosts, which later hosts share.
     engine: Option<Engine>,
+    /// Each extension file's place in the resolver's order, which pi loads
+    /// extensions in, by path.
+    order: HashMap<String, usize>,
+}
+
+/// The place of extension file `path` in `order`, after every listed file
+/// when it is not listed.
+fn rank(order: &HashMap<String, usize>, path: &str) -> usize {
+    order.get(path).copied().unwrap_or(usize::MAX)
 }
 
 impl Extensions {
+    /// The hosts' extensions for a session, in the resolver's order across
+    /// the hosts that run them, as pi runs their hooks and picks the tools
+    /// that win a name.
+    fn for_session(&self) -> Vec<Arc<dyn yapi_core::extensions::Extension>> {
+        let mut extensions: Vec<_> = self
+            .hosts
+            .iter()
+            .flat_map(|host| host.for_session())
+            .collect();
+        extensions.sort_by_key(|extension| rank(&self.order, &extension.source().path));
+        extensions
+    }
+
     /// The extensions that failed to load in the latest run of each host's
     /// factories, then the [`Extensions::issues`].
     fn failures(&self) -> Vec<(String, String)> {

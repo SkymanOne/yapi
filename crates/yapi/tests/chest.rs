@@ -405,3 +405,80 @@ async fn chest_manifest_env() {
         "{stderr}"
     );
 }
+
+/// Extensions in different grant groups keep the resolver's order, which pi
+/// loads them in: their commands list in it, and when they all register one
+/// tool, the conflicts of the second and the third follow it too.
+#[tokio::test(flavor = "multi_thread")]
+async fn grant_groups_keep_order() {
+    let tool = "pi.registerTool({ name: \"probe\", label: \"probe\", description: \"\", parameters: { type: \"object\", properties: {} }, execute: async () => ({ content: [], details: {} }) });";
+    // `a` and `c` share a host, and `b` runs in another.
+    let manifest = "[extensions]\na = { path = \"a.js\" }\nb = { path = \"b.js\", capabilities = [\"fs\"] }\nc = { path = \"c.js\" }\n";
+    let setup = async |name: &str, extra: &str| {
+        let home = common::scratch(name);
+        let ext = |command: &str| {
+            format!(
+                "export default function (pi) {{ pi.registerCommand({command:?}, {{ description: \"\", handler: async () => {{}} }}); {extra} }}\n"
+            )
+        };
+        let (a, b, c) = (ext("first"), ext("second"), ext("third"));
+        let files = [
+            ("a.js", a.as_str()),
+            ("b.js", b.as_str()),
+            ("c.js", c.as_str()),
+        ];
+        install(&home, &files, "chest.toml", manifest).await;
+        home
+    };
+    let home = setup("chest-order", "").await;
+    let mut command = common::yapi(&home);
+    command.arg("--approve");
+    let listed = common::rpc_commands(&mut command);
+    let names: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|command| command["name"].as_str())
+        .filter(|name| ["first", "second", "third"].contains(name))
+        .collect();
+    assert_eq!(names, ["first", "second", "third"]);
+    // The conflicts stop the run, as in pi.
+    let home = setup("chest-order-tools", tool).await;
+    let output = common::yapi(&home)
+        .args(["--approve", "--mode", "rpc"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let conflict = |file: &str| stderr.find(&format!("{file}\": Tool \"probe\" conflicts"));
+    let (second, third) = (conflict("b.js"), conflict("c.js"));
+    assert!(second.is_some() && second < third, "{stderr}");
+}
+
+/// Hosts start together: an extension that waits as it loads for one in
+/// another host to load does not wait in vain.
+#[tokio::test(flavor = "multi_thread")]
+async fn hosts_start_together() {
+    let home = common::scratch("chest-together");
+    let marker = home.join("started");
+    let waiter = format!(
+        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (let tries = 0; tries < 250 && !(together = existsSync({marker:?})); tries++) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
+        marker = marker.display().to_string()
+    );
+    let starter = format!(
+        "import {{ writeFileSync }} from \"node:fs\";\nexport default function (pi) {{ writeFileSync({marker:?}, \"\"); pi.registerCommand(\"starter\", {{ description: \"\", handler: async () => {{}} }}); }}\n",
+        marker = marker.display().to_string()
+    );
+    let files = [
+        ("waiter.js", waiter.as_str()),
+        ("starter.js", starter.as_str()),
+    ];
+    let manifest = "[extensions]\nwaiter = { path = \"waiter.js\", capabilities = [\"fs\"] }\nstarter = { path = \"starter.js\", capabilities = [\"fs\", \"net\"] }\n";
+    install(&home, &files, "chest.toml", manifest).await;
+    let loaded = commands(&home, &["--approve"], &[]);
+    assert_eq!(
+        loaded.get("waiter").map(String::as_str),
+        Some("together"),
+        "{loaded:?}"
+    );
+}
