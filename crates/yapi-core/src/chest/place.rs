@@ -84,8 +84,15 @@ pub fn unplace(root: &Path, paths: &[PathBuf]) -> Result<(), ChestError> {
 }
 
 /// Copies `source` to `target` through a staged sibling, so that `target`
-/// holds the old copy or the new one, never part of either.
+/// holds the old copy or the new one, never part of either. A link at
+/// `target`, which the caller owns, goes first.
 fn put(source: &Path, target: &Path) -> Result<(), ChestError> {
+    if target
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_symlink())
+    {
+        remove(target)?;
+    }
     if source.symlink_metadata().map_err(io(source))?.is_dir() {
         let staging = npm::stage(target)?;
         let built = copy(source, &staging);

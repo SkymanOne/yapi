@@ -371,12 +371,19 @@ impl Project {
         pinned
     }
 
-    /// Whether everything `locked` occupies is there. An extension from a
-    /// path loads where it is, so it always is.
+    /// Whether everything `locked` occupies is there. A link in the first
+    /// folder, where the copy belongs, counts as missing, as after the
+    /// folders were reordered. An extension from a path loads where it is,
+    /// so it always is.
     pub fn present(&self, section: Section, locked: &Locked) -> bool {
         let placed = self.placed(section, locked);
         let in_place = section == Section::Extensions && placed.is_empty();
-        in_place || !placed.is_empty() && placed.iter().all(|path| path.symlink_metadata().is_ok())
+        let first = self.homes(section).into_iter().next();
+        let there = |path: &PathBuf| match path.symlink_metadata() {
+            Ok(metadata) => !metadata.is_symlink() || path.parent() != first.as_deref(),
+            Err(_) => false,
+        };
+        in_place || !placed.is_empty() && placed.iter().all(there)
     }
 
     /// Brings the installed entries in line with the manifest and lock as

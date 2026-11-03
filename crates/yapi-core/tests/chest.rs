@@ -746,6 +746,23 @@ async fn removed_entry_unplaced() {
     let mut project = open(&dir, &both);
     sync(&mut project, Mode::Resolve).await;
     assert!(root.join(".claude/skills/pdf").symlink_metadata().is_ok());
+    // Dropping the first folder, or swapping the two, puts the copies in the
+    // new first folder, and nothing is lost.
+    for (folders, first) in [
+        ("[\".claude/skills\"]", ".claude/skills"),
+        ("[\".claude/skills\", \".agents/skills\"]", ".claude/skills"),
+        ("[\".agents/skills\", \".claude/skills\"]", ".agents/skills"),
+    ] {
+        let moved = both.replace("[\".agents/skills\", \".claude/skills\"]", folders);
+        let mut project = open(&dir, &moved);
+        sync(&mut project, Mode::Resolve).await;
+        assert_eq!(project.verify().unwrap(), Vec::<String>::new());
+        for name in ["pdf", "notes"] {
+            let copy = root.join(first).join(name).symlink_metadata().unwrap();
+            assert!(copy.is_dir(), "{folders} {name}");
+        }
+        assert_eq!(read(&root.join(".claude/skills/pdf/SKILL.md")), "# pdf\n");
+    }
 
     let manifest = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n\n[skills]\nnotes = { path = \"notes\" }\n";
     let mut project = open(&dir, manifest);
