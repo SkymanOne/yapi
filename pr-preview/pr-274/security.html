@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-827ff9b3.js";
+            window.path_to_searchindex_js = "searchindex-506017ab.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -242,6 +242,7 @@
 <ul>
 <li>registering a provider or a wire API, because a provider’s replies drive the agent’s tools and its requests carry your credentials</li>
 <li>custom editor text that starts with <code>!</code> or <code>/</code>, after any leading spaces, because it runs a shell or slash command</li>
+<li>listening to raw terminal input with <code>ctx.ui.onTerminalInput</code>, or adding an autocomplete provider with <code>ctx.ui.addAutocompleteProvider</code>, because either can turn what you type into a shell or slash command. Without every grant, both calls throw in a Pi extension and do nothing in a native one.</li>
 <li>the editor actions that open the external editor, paste from the clipboard, or submit the editor’s text as a follow-up</li>
 <li>any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it</li>
 </ul>
