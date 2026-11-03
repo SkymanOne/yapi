@@ -624,6 +624,25 @@ fn import_settings_packages() {
             );
         }
         assert_eq!(read(&outside), manifest);
+        // So is a lock that is one, for every command that reads it.
+        std::fs::remove_file(&link).unwrap();
+        std::fs::rename(&outside, &link).unwrap();
+        let lock = scratch.project.join("chest.lock");
+        let moved = scratch.dir.join("outside.lock");
+        match lock.exists() {
+            true => std::fs::rename(&lock, &moved).unwrap(),
+            false => write(&moved, "version = 1\n"),
+        }
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        for args in [&["list"][..], &["verify"], &["install", "--frozen"]] {
+            let output = chest(&scratch, args, &[]);
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {}", text(&output));
+            assert!(
+                text(&output).contains("chest.lock is a symbolic link"),
+                "{}",
+                text(&output)
+            );
+        }
     }
 }
 
