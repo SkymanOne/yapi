@@ -133,7 +133,7 @@ Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so
 - Shims provide Node's `fs`, `path`, `os`, `child_process`, `events`, `stream`, `util`, `crypto` hashes, `buffer`, timers, `fetch`, `dns.lookup` and `Intl`. Native addons, `net` and `tls` servers and `worker_threads` fail when used, and the rest of the extension keeps working.
 - Dates use the local time zone, from `TZ` or the system, as in Node.
 - Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.
-- `pi.events` reaches extensions in other runtimes according to their grants and event policies, which share every channel for now, as in Pi. [Security](security.md#agent-sessions-and-events) describes the routing.
+- `pi.events` reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi. A chest entry can make it `isolated`, or list the channels it sends and hears, as the [event bus reference](chest-manifest.md#event-bus) describes. [Security](security.md#agent-sessions-and-events) describes the routing.
 
 [Differences from Pi](compat.md#extensions) lists where the behavior differs.
 
