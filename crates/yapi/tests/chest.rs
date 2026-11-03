@@ -436,7 +436,8 @@ async fn chest_manifest_env() {
 
 /// Extensions in different grant groups keep the resolver's order, which pi
 /// loads them in: their commands list in it, and when they all register one
-/// tool, the conflicts of the second and the third follow it too.
+/// tool, the conflicts of the second and the third follow it too. A group
+/// whose runtime fails to start fails alone.
 #[tokio::test(flavor = "multi_thread")]
 async fn grant_groups_keep_order() {
     let tool = "pi.registerTool({ name: \"probe\", label: \"probe\", description: \"\", parameters: { type: \"object\", properties: {} }, execute: async () => ({ content: [], details: {} }) });";
@@ -472,6 +473,11 @@ async fn grant_groups_keep_order() {
     assert_eq!(names, ["first", "second", "third"]);
     // The conflicts stop the run, as in pi.
     let home = setup("chest-order-tools", tool).await;
+    // Runaway recursion stops the runtime of `crash`'s group as it loads.
+    let crash = "const overflow = () => overflow();\noverflow();\nexport default function () {}\n";
+    let crashing =
+        format!("{manifest}crash = {{ path = \"crash.js\", capabilities = [\"net\"] }}\n");
+    install(&home, &[("crash.js", crash)], "chest.toml", &crashing).await;
     let output = common::yapi(&home)
         .args(["--approve", "--mode", "rpc"])
         .stdin(Stdio::null())
@@ -481,6 +487,8 @@ async fn grant_groups_keep_order() {
     let conflict = |file: &str| stderr.find(&format!("{file}\": Tool \"probe\" conflicts"));
     let (second, third) = (conflict("b.js"), conflict("c.js"));
     assert!(second.is_some() && second < third, "{stderr}");
+    let crashed = "crash.js\": extension runtime stopped";
+    assert_eq!(stderr.matches(crashed).count(), 1, "{stderr}");
 }
 
 /// Hosts start together: an extension that waits as it loads for one in

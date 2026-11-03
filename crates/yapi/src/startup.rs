@@ -1244,7 +1244,8 @@ async fn start_extensions(
         enum Start {
             Reused(Arc<ExtensionHost>),
             Started(Arc<ExtensionHost>),
-            Failed(String, String),
+            /// Each of the group's files, with why its host did not start.
+            Failed(Vec<(String, String)>),
         }
         // Each host starts on its own thread, so they start together, and
         // keep their groups' order.
@@ -1264,36 +1265,39 @@ async fn start_extensions(
                 async move {
                     if let Some(host) = reused {
                         host.reload(&group.sources).await;
-                        return Ok(Some(Start::Reused(host)));
+                        return Some(Start::Reused(host));
                     }
                     options.grants = group.grants;
                     options.events = group.events.clone();
                     options.module_roots = group.roots.clone();
-                    if !group.native {
-                        let host = ExtensionHost::load(&engine, options, &group.sources).await;
-                        return host
-                            .map(|host| Some(Start::Started(host)))
-                            .map_err(|err| err.to_string());
-                    }
-                    let Some(source) = group.sources.first() else {
-                        return Ok(None);
+                    let host = match group.native {
+                        false => ExtensionHost::load(&engine, options, &group.sources).await,
+                        true => {
+                            let source = group.sources.first()?;
+                            ExtensionHost::load_native(&engine, options, source).await
+                        }
                     };
-                    Ok(Some(
-                        match ExtensionHost::load_native(&engine, options, source).await {
-                            Ok(host) => Start::Started(host),
-                            Err(err) => Start::Failed(source.path.clone(), err.to_string()),
-                        },
-                    ))
+                    // A host that fails fails alone, as one extension would.
+                    Some(match host {
+                        Ok(host) => Start::Started(host),
+                        Err(err) => Start::Failed(
+                            group
+                                .sources
+                                .iter()
+                                .map(|source| (source.path.clone(), err.to_string()))
+                                .collect(),
+                        ),
+                    })
                 }
             });
         for start in futures_util::future::join_all(starts).await {
-            match start? {
+            match start {
                 Some(Start::Reused(host)) => hosts.push(host),
                 Some(Start::Started(host)) => {
                     started.push(Arc::clone(&host));
                     hosts.push(host);
                 }
-                Some(Start::Failed(path, error)) => issues.push((path, error)),
+                Some(Start::Failed(failed)) => issues.extend(failed),
                 None => {}
             }
         }
