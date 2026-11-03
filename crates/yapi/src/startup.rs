@@ -1542,6 +1542,13 @@ mod tests {
             (("project".into(), "a".into()), narrow("/a")),
             (("project".into(), "b".into()), narrow("/b")),
             (("project".into(), "native".into()), narrow("/n")),
+            (
+                ("project".into(), "c".into()),
+                Policy {
+                    events: yapi_core::extensions::EventPolicy::shared(),
+                    ..narrow("/c")
+                },
+            ),
         ]
         .into();
         let sources = vec![
@@ -1550,6 +1557,7 @@ mod tests {
             source("/n/ext.wasm", "native"),
             source("/b/three.ts", "b"),
             source("/a/four.ts", "a"),
+            source("/c/five.ts", "c"),
         ];
         let groups = group_sources(sources.clone(), &policies);
         let summary: Vec<(bool, Vec<&str>, Vec<&str>)> = groups
@@ -1577,6 +1585,8 @@ mod tests {
                     vec!["/a", "/b"]
                 ),
                 (false, vec!["/x/two.ts"], vec![]),
+                // The grants of `/a`, but another event policy.
+                (false, vec!["/c/five.ts"], vec!["/c"]),
                 (true, vec!["/n/ext.wasm"], vec!["/n"]),
             ]
         );
@@ -1648,7 +1658,7 @@ mod tests {
         }
         let native = Group {
             roots: vec![a.clone()],
-            ..groups[2].clone()
+            ..groups[3].clone()
         };
         let host = started(&native);
         let mut moved = native.clone();
