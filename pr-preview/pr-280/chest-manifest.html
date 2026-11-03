@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f163c0c7.js";
+            window.path_to_searchindex_js = "searchindex-67c72937.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -257,7 +257,7 @@ subagent = { npm = "@acme/pi-subagent", version = "^1.4", capabilities = ["all"]
 todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"], events = { send = ["todo:*"], receive = [] }, skills = ["!legacy/**"] }
 shout = { path = "ext/shout.wasm" }
 </code></pre>
-<p>An extension from a path loads where it is. Others install into the store.</p>
+<p>An extension from a path loads where it is. Others install into the store. A git extension’s <code>path</code> names the folder that holds it, and an npm extension takes no <code>path</code>, since it loads its whole package.</p>
 <h2 id="patch"><a class="header" href="#patch"><code>[patch]</code></a></h2>
 <p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry.</p>
 <pre><code class="language-toml">[patch]
@@ -351,7 +351,7 @@ todo = { path = "../pi-todo" }
 <h3 id="content-hash"><a class="header" href="#content-hash">Content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>
-<li>List every regular file under the item’s folder, skipping any folder named <code>.git</code> at any depth. A symbolic link anywhere fails the hash. An item that is one file is a list of that file with an empty path.</li>
+<li>List every regular file under the item’s folder, skipping anything named <code>.git</code> at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that is one file is a list of that file with an empty path.</li>
 <li>Sort the files by the bytes of their paths, relative to the item, with <code>/</code> between parts.</li>
 <li>For each file, feed one SHA-256 with its path in UTF-8, a zero byte, <code>x</code> when any execute bit is set or <code>-</code> otherwise, and the 32-byte SHA-256 of its contents.</li>
 <li>The result is that SHA-256, in hex.</li>

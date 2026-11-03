@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f163c0c7.js";
+            window.path_to_searchindex_js = "searchindex-67c72937.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -194,7 +194,7 @@
 <pre><code class="language-sh">cargo install --git https://github.com/SkymanOne/yapi chest-cli
 </code></pre>
 <h2 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h2>
-<p>In the project folder:</p>
+<p>In the project folder, with your own sources in place of the <code>acme</code> examples:</p>
 <pre><code class="language-sh">chest init
 chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
@@ -224,8 +224,9 @@ git commit -m "Add project packages"
 </tbody>
 </table>
 </div>
-<p>At a terminal, <code>init</code> lists the folders by number with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
-<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone.</p>
+<p>At a terminal, <code>init</code> lists the folders by number with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
+<p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path one of them drops stays while another still lists it.</p>
+<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> folders an interrupted install can leave where chest copies, and the next install removes them.</p>
 <p>Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in <code>~/.chest/state</code>, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.</p>
 <h2 id="grant-capabilities"><a class="header" href="#grant-capabilities">Grant capabilities</a></h2>
 <p>An extension entry lists what it may reach:</p>
@@ -259,7 +260,7 @@ scraper = { npm = "@acme/scraper", capabilities = ["net"], events = "isolated" }
 <p>A pinned tarball must come from the registry configured for its package, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock.</p>
 <ul>
 <li><code>chest install</code> keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
-<li><code>chest install --frozen</code> installs nothing. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It is the default when <code>CI</code> is set to anything but an empty value, <code>0</code> or <code>false</code>.</li>
+<li><code>chest install --frozen</code> installs exactly what the lock pins, including what is missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes <code>chest.toml</code> or <code>chest.lock</code>. It is the default when <code>CI</code> is set to anything but an empty value, <code>0</code> or <code>false</code>, so a fresh clone in CI gets every skill and extension.</li>
 <li><code>chest verify</code> checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.</li>
 </ul>
 <h2 id="update"><a class="header" href="#update">Update</a></h2>
@@ -308,7 +309,7 @@ extensions = ["extensions/index.ts"]
 <tr><td><code>chest init</code></td><td><code>--skills a,b</code>, <code>--agents a,b</code>, <code>--store &lt;dir&gt;</code>, <code>--package</code>, <code>--yes</code></td><td>Writes a manifest with folders for the agents found. Refuses an existing manifest unless <code>--package</code>, which adds <code>[package]</code>.</td></tr>
 <tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. Without a section flag, chest infers it from the package. The same name with the same source updates its version or rev and keeps its grants. The same name with another source is an error.</td></tr>
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it.</td></tr>
-<tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock.</td></tr>
+<tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
 <tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows.</td></tr>
 <tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, whether it is installed, its capabilities and description.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
