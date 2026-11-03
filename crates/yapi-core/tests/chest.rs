@@ -644,7 +644,8 @@ fn publish(
     dependencies: Value,
     files: &[(&str, &str)],
 ) -> (Interaction, Interaction) {
-    let package = json!({"name": name, "version": "1.0.0"}).to_string();
+    let package = json!({"name": name, "version": "1.0.0", "dependencies": dependencies});
+    let package = package.to_string();
     let index = format!("module.exports = '{name}';\n");
     let mut entries = vec![("package.json", package.as_str()), ("index.js", &index)];
     entries.extend_from_slice(files);
@@ -846,6 +847,41 @@ async fn npm_extension_locked() {
             .unwrap_err()
             .to_string();
         let expected = format!("a pinned tarball must be at /{name}/-/{name}-1.0.0.tgz");
+        assert!(error.contains(&expected), "{error}");
+        assert!(!dir.join("project/chest.lock").exists());
+    }
+
+    // So does a tarball whose package.json disagrees with its packument, in
+    // an npm extension's tree or in a git extension's dependencies.
+    let dir = scratch("npm-disagrees");
+    let remote = Remote::new(&dir);
+    let gitext = json!({"name": "gitext", "dependencies": {"dep": "^1"}}).to_string();
+    remote.commit(&[("package.json", &gitext)], "v1");
+    let git_manifest = format!(
+        "[extensions]\ngitext = {{ git = \"{}\", rev = \"v1\" }}\n",
+        remote.source
+    );
+    for (name, manifest) in [("ext", ext_manifest), ("dep", git_manifest.as_str())] {
+        let server = MockServer::local_with(|base| {
+            // A second package.json, which unpacking writes over the first.
+            let relabeled = json!({"name": name, "version": "1.0.1"}).to_string();
+            let (packument, tarball) =
+                publish(base, name, json!({}), &[("package.json", &relabeled)]);
+            Cassette {
+                interactions: vec![packument, tarball],
+            }
+        })
+        .await
+        .unwrap();
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(Mode::Resolve, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        let expected = format!(
+            "The package.json in node_modules/{name} names {name}@1.0.1, not the pinned {name}@1.0.0"
+        );
         assert!(error.contains(&expected), "{error}");
         assert!(!dir.join("project/chest.lock").exists());
     }

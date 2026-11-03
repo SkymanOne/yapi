@@ -922,11 +922,26 @@ impl Project {
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }
+                // Replay reaches the package at the top of an npm extension's
+                // tree from a root package.json, as its install did.
+                let root = staging.join("package.json");
+                if let Some(npm_name) = &entry.npm {
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let manifest = serde_json::json!({"dependencies": {npm_name: version}});
+                    let text = yapi_types::json::to_string(&manifest).unwrap_or_default();
+                    std::fs::write(&root, text).map_err(io(&root))?;
+                }
                 npm::replay(npm, staging, &locked.packages).await?;
+                if entry.npm.is_some() {
+                    std::fs::remove_file(&root).map_err(io(&root))?;
+                }
             }
             (Some(npm_name), None) => {
                 let installed =
                     npm::install(npm, staging, npm_name, entry.version.as_deref()).await?;
+                // Checked as replay will check it, while the root package.json
+                // still names the package at the top.
+                npm::check_installed(staging, &installed.tree)?;
                 // The store keeps only what replay rebuilds, `node_modules`.
                 for file in ["package.json", ".gitignore"] {
                     let file = staging.join(file);
@@ -938,6 +953,7 @@ impl Project {
             (None, None) => {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
+                npm::check_installed(staging, &record.packages)?;
             }
         }
         // A tree that replay would refuse fails this install, not every later
