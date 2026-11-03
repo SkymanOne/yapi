@@ -103,7 +103,7 @@ The template starts with `session`, which its `hello` code needs:
 yapi-extension-api = { version = "0.3.1", features = ["session"] }
 ```
 
-The capability features ship in the first release of `yapi-extension-api` after 0.3.1. Version 0.3.1 and earlier have none, so cargo reports that the feature does not exist.
+Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature does not exist.
 
 A request whose feature the build leaves out fails without reaching yapi, with a message such as ``request `session.appendEntry` needs the `session` feature of yapi-extension-api``. `exec`, `Process`, `send_message` and `append_entry` exist only with their features. Requests that need a grant only for some payloads, such as `tool.execute` and `ui.editorSubmit`, need no feature, and yapi checks them as they run.
 
@@ -261,7 +261,7 @@ A package can request capabilities and `pi.events` channels as a Pi package does
 - `Process::next` waits for the next `ProcessEvent`: output on standard output or standard error, then the exit. A dropped `next` future loses no output.
 - `write` waits while the process has not taken the previous write. `close_stdin` and `kill` act at once.
 
-Dropping a `Process` kills it, and so does stopping the extension. `Process` needs the `all` feature, and starting one needs the process grant, which every extension has by default.
+Dropping a `Process` kills it, and so does stopping the extension. `Process` needs the `all` feature, and starting one needs the process grant. Packages from `yapi install` have it, and a chest entry gets it only with `all`, since it has no capabilities by default.
 
 A process inherits yapi's environment, so `envAdd` is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits:
 

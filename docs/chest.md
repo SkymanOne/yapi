@@ -64,9 +64,9 @@ At a terminal, `init` lists the folders by number with the ones it found selecte
 
 A folder can be a link to another one, such as `.claude/skills` linking to `../.agents/skills`. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path one of them drops stays while another still lists it.
 
-The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the `.*-old` folders there too, which hold an item's previous copy when chest stops while replacing it.
+The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. Each line is escaped to match its own path alone, whatever characters a folder name holds. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the `.*-old` folders there too, which hold an item's previous copy when chest stops while replacing it.
 
-Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
+Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed, or a copy it did not record that already holds exactly what the lock pins, which it then takes over. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
 
 ## Grant capabilities
 
@@ -103,11 +103,13 @@ Extensions with identical grants always hear each other. Across different grants
 
 `chest.lock` records each entry's commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. Do not edit it.
 
-A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock.
+A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, are refused when `chest add` or `chest install` resolves the package, before chest writes a lock.
 
 - `chest install` keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
 - `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes `chest.toml` or `chest.lock`. It is the default when `CI` is set to anything but an empty value, `0` or `false`, so a fresh clone in CI gets every skill and extension.
 - `chest verify` checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.
+
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs and says once that it is waiting. A command that stopped without letting go of its lock holds it for 30 seconds at most.
 
 ## Update
 
@@ -145,7 +147,7 @@ A path that points outside the project gets a notice on each install. A path sou
 
 ## Move from settings.json or skills.sh
 
-`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them, and keeps their filters. It leaves `settings.json` alone and prints the `yapi remove -l` command for each package, to run once chest installs it. `-g` imports the agent folder's `settings.json`.
+`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them, and keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`, so a package that sets either is left out with a warning and keeps loading from `settings.json`. Import leaves `settings.json` alone and prints the `yapi remove -l` command for each package it imports, to run once chest installs it. `-g` imports the agent folder's `settings.json` and prints `yapi remove` without `-l`.
 
 `chest import --skills-lock` turns the skills of a skills.sh `skills-lock.json` into skill entries. chest computes its own hashes, so the file's are dropped.
 

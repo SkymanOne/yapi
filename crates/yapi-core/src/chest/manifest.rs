@@ -205,8 +205,9 @@ impl Manifest {
     /// `rev` only with `git` and `version` only with `npm`. A `[patch]` entry
     /// takes `path` alone. Capability lists must parse as [`Grants`]. In a
     /// project manifest, `[folders]` paths are relative, without `..` or a
-    /// leading `~`, so they stay inside the project; the user's global
-    /// manifest may name any folder.
+    /// leading `~`, so they stay inside the project. The user's global
+    /// manifest may name any folder here, but installs only under the home
+    /// folder.
     pub fn parse(text: &str, scope: Scope) -> Result<Manifest, ChestError> {
         let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
         Manifest::from_document(&document, scope)
@@ -303,18 +304,6 @@ impl Manifest {
             if scope == Scope::Project && !inside {
                 return Err(invalid(format!(
                     "folders.{key}: \"{path}\" must be a relative path inside the project, without `..` or `~`"
-                )));
-            }
-            // The `.gitignore` block lists paths in these folders, one per line.
-            let first = Path::new(path).components().find_map(|part| match part {
-                Component::Normal(part) => part.to_str(),
-                _ => None,
-            });
-            let pattern = path.contains(['*', '?', '[', '\\', '\n', '\r'])
-                || first.is_some_and(|part| part.starts_with(['!', '#']));
-            if scope == Scope::Project && pattern {
-                return Err(invalid(format!(
-                    "folders.{key}: \"{path}\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns"
                 )));
             }
         }
@@ -1002,18 +991,6 @@ extensions = ["extensions/index.ts"]
             (
                 "[folders]\nagents = [\"/abs\"]",
                 "folders.agents: \"/abs\" must be a relative path inside the project, without `..` or `~`",
-            ),
-            (
-                "[folders]\nskills = [\"skills[1]\"]",
-                "folders.skills: \"skills[1]\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
-            ),
-            (
-                "[folders]\nagents = [\"./!keep\"]",
-                "folders.agents: \"./!keep\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
-            ),
-            (
-                "[folders]\nextensions = \"s*\"",
-                "folders.extensions: \"s*\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
             ),
             (
                 "[folders]\nextensions = \"~/x\"",

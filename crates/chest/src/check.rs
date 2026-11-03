@@ -53,6 +53,21 @@ pub fn unknown_capability(file: &str, line: &str) -> String {
     )
 }
 
+/// How many lines of one of a component's lists chest prints.
+const SHOWN: usize = 10;
+
+/// Prints `line` of the first ten of `items` after `prefix`, then one line
+/// counting the rest as `rest`, so that a component cannot flood the
+/// terminal with lists it controls.
+pub fn say_capped(prefix: &str, items: &[String], rest: &str, line: impl Fn(&str) -> String) {
+    for item in items.iter().take(SHOWN) {
+        say(&format!("{prefix}{}", line(item)));
+    }
+    if items.len() > SHOWN {
+        say(&format!("{prefix}and {} more {rest}", items.len() - SHOWN));
+    }
+}
+
 /// The extensions of the package or extension file at `item`, as yapi
 /// resolves them when it loads `item` with `-e`.
 pub fn inspect(item: &Path) -> Inspected {
@@ -149,13 +164,15 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
                 unrequested = true;
             }
         }
-        for import in &found.unsupported {
-            say(&format!("error: {}", unsupported_import(file, import)));
-            errors += 1;
-        }
-        for line in &found.unknown {
-            say(&format!("warning: {}", unknown_capability(file, line)));
-        }
+        let rest = format!("unsupported imports in {file}");
+        say_capped("error: ", &found.unsupported, &rest, |import| {
+            unsupported_import(file, import)
+        });
+        errors += found.unsupported.len();
+        let rest = format!("unknown capability lines in {file}");
+        say_capped("warning: ", &found.unknown, &rest, |line| {
+            unknown_capability(file, line)
+        });
     }
     for script in &inspected.scripts {
         say(&format!(

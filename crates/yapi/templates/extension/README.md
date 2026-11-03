@@ -18,7 +18,7 @@ cp target/wasm32-wasip2/release/{{crate_name}}.wasm extensions/
 
 ## Declare capabilities
 
-The extension starts with the `session` capability, which `/hello`'s session entry needs. Each feature of `yapi-extension-api` in `Cargo.toml` declares one capability: `fs`, `net`, `env`, `session`, or `all` for everything, running processes included. A request that needs a capability the build leaves out fails with a message that names the feature. The capability features ship in the first release of `yapi-extension-api` after 0.3.1. Version 0.3.1 and earlier have none, so cargo reports that the feature does not exist.
+The extension starts with the `session` capability, which it needs to add a session entry when a session starts. Each feature of `yapi-extension-api` in `Cargo.toml` declares one capability: `fs`, `net`, `env`, `session`, or `all` for everything, running processes included. A request that needs a capability the build leaves out fails with a message that names the feature. Use the version the template pins or a newer one. Older releases may lack the capability features, and cargo then reports that the feature does not exist.
 
 List the same capabilities in `chest.toml`. After each build, [chest](https://skymanone.github.io/yapi/chest.html) checks that they match:
 

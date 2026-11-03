@@ -202,10 +202,10 @@ pub(super) fn copy(from: &Path, to: &Path) -> Result<(), ChestError> {
 /// runs from `# BEGIN chest (<manifest>)` to `# END chest`, and every line
 /// outside it stays as it was. With no entries the block goes.
 ///
-/// Each entry must be a path relative to `root` with no `.` or `..` part,
-/// and must not start with `#` or `!` or hold a line break, so it reads as
-/// that one path. Fails, writing nothing, on such an entry, when the block
-/// has no end, or when `root/.gitignore` is a link.
+/// Each entry must be a path relative to `root` with no `.` or `..` part
+/// and no line break. Its line matches that path alone, with `*` in its
+/// last part a wildcard. Fails, writing nothing, on another entry, when the
+/// block has no end, or when `root/.gitignore` is a link.
 pub fn write_ignore(root: &Path, manifest: &str, entries: &[String]) -> Result<(), ChestError> {
     let path = &root.join(".gitignore");
     if path
@@ -220,7 +220,6 @@ pub fn write_ignore(root: &Path, manifest: &str, entries: &[String]) -> Result<(
     let plain = |entry: &str| {
         let parts = Path::new(entry).components();
         !entry.is_empty()
-            && !entry.starts_with(['#', '!'])
             && !entry.contains(['\n', '\r'])
             && parts
                 .into_iter()
@@ -266,7 +265,7 @@ pub fn write_ignore(root: &Path, manifest: &str, entries: &[String]) -> Result<(
         out.push_str(&begin);
         out.push('\n');
         for entry in &entries {
-            out.push_str(entry);
+            out.push_str(&literal(entry));
             out.push('\n');
         }
         out.push_str("# END chest\n");
@@ -276,6 +275,25 @@ pub fn write_ignore(root: &Path, manifest: &str, entries: &[String]) -> Result<(
         return Ok(());
     }
     write_atomic(path, out.as_bytes(), 0o666).map_err(io(path))
+}
+
+/// `entry` as a `.gitignore` line that matches that path alone: `\`, `?`,
+/// `[`, a leading `!` or `#` and trailing spaces escaped, and `*` too
+/// outside the last part. A `*` in the last part stays a wildcard, so that
+/// `folder/.*-staging` names what stopped installs leave beside a folder's
+/// items. Item names never hold one.
+fn literal(entry: &str) -> String {
+    let last = entry.rfind('/').map_or(0, |slash| slash + 1);
+    let mut line = String::new();
+    for (index, c) in entry.char_indices() {
+        let special = matches!(c, '\\' | '?' | '[') || c == '*' && index < last;
+        if special || index == 0 && matches!(c, '!' | '#') {
+            line.push('\\');
+        }
+        line.push(c);
+    }
+    let kept = line.trim_end_matches(' ');
+    format!("{kept}{}", "\\ ".repeat(line.len() - kept.len()))
 }
 
 #[cfg(test)]
@@ -422,15 +440,57 @@ mod tests {
         );
         // Entries are plain paths inside the root, one per line.
         let before = std::fs::read_to_string(&ignore).unwrap();
-        for entry in [
-            "../x", "/abs", "./a", "a/../b", "!keep", "# note", "a\nb", "",
-        ] {
+        for entry in ["../x", "/abs", "./a", "a/../b", "a\nb", ""] {
             assert!(
                 write_ignore(&root, "chest.toml", &[entry.into()]).is_err(),
                 "{entry:?}"
             );
         }
         assert_eq!(std::fs::read_to_string(&ignore).unwrap(), before);
+        // Each line matches its path alone, as git reads it, whatever the
+        // path holds. A `*` in the last part names siblings.
+        #[cfg(unix)]
+        {
+            let repo = dir.join("repo");
+            std::fs::create_dir_all(&repo).unwrap();
+            let git = |args: &[&str]| {
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&repo)
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            };
+            assert!(git(&["init", "--quiet"]));
+            let paths = [
+                "s*[x]/pdf",
+                "!keep/pdf",
+                "#note/pdf",
+                "a\\b/pdf",
+                "tail/pdf ",
+            ];
+            let mut entries = paths.map(String::from).to_vec();
+            entries.push("s*[x]/.*-staging".into());
+            write_ignore(&repo, "chest.toml", &entries).unwrap();
+            let ignored = |path: &str| git(&["check-ignore", "--quiet", "--no-index", path]);
+            for path in paths.into_iter().chain(["s*[x]/.pdf-staging"]) {
+                assert!(ignored(path), "{path:?}");
+            }
+            let others = [
+                "sx/pdf",
+                "s*x/pdf",
+                "keep/pdf",
+                "ab/pdf",
+                "tail/pdf",
+                "sx/.pdf-staging",
+            ];
+            for path in others {
+                assert!(!ignored(path), "{path:?}");
+            }
+        }
         std::fs::write(&ignore, "# BEGIN chest (chest.toml)\nkept\n").unwrap();
         assert!(write_ignore(&root, "chest.toml", &[]).is_err());
         assert_eq!(

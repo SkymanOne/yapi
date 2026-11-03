@@ -29,7 +29,7 @@ Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` featu
 | Feature | Examples |
 |---|---|
 | `session` | `hello`, `message-renderer`, `entry-renderer` and `crash-recovery`, which add messages or entries to the session |
-| `all` | `repo-status`, `package-scripts` and `subagent`, which run processes |
+| `all` | `repo-status`, `package-scripts` and `subagent`, which run processes, and `input-hooks`, which adds a terminal input listener and an autocomplete provider |
 
 The others use no capability.
 
@@ -188,7 +188,7 @@ fn status(ctx: &Context) -> Option<(String, Vec<String>)> {
 }
 ```
 
-`exec` needs the process grant, which every extension has by default.
+`exec` needs the process grant. Packages from `yapi install` have it, and a chest entry gets it only with `all`, since it has no capabilities by default.
 
 ## event-bus
 
