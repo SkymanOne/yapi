@@ -15,7 +15,7 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect, unknown_capability, unsupported_import};
+use crate::check::{Inspected, inspect, say_capped, unknown_capability, unsupported_import};
 use crate::prompt::Prompt;
 use crate::{Target, open, read, requests, say, source, sync, write};
 
@@ -212,12 +212,14 @@ fn show_used(inspected: &Inspected) {
                 "    it was built without capability metadata, so only its WASI imports show what it uses",
             );
         }
-        for import in &found.unsupported {
-            say(&format!("  warning: {}", unsupported_import(file, import)));
-        }
-        for line in &found.unknown {
-            say(&format!("  warning: {}", unknown_capability(file, line)));
-        }
+        let rest = format!("unsupported imports in {file}");
+        say_capped("  warning: ", &found.unsupported, &rest, |import| {
+            unsupported_import(file, import)
+        });
+        let rest = format!("unknown capability lines in {file}");
+        say_capped("  warning: ", &found.unknown, &rest, |line| {
+            unknown_capability(file, line)
+        });
     }
 }
 

@@ -32,7 +32,7 @@ An error such as "Network access is not permitted for this extension" means the 
 
 ## An extension misses events
 
-A warning in the extension output that starts with `add "<channel>" to events.send of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
+A warning in the extension output that starts with `add "<channel>" to events.send of` or `add "<channel>" to events.receive of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
 
 ## Reporting a problem
 

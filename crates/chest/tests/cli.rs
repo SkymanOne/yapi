@@ -174,13 +174,19 @@ fn init_detects_agents() {
     ok(&scratch, &["init"]);
     let expected = "# Installed with `chest install`, pinned in the lock beside this file.\n\n[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\nextensions = \".yapi/chest\"\n";
     assert_eq!(read(&scratch.project.join("chest.toml")), expected);
-    let again = chest(&scratch, &["init", "--yes"], &[]);
+    // A command waits while another holds the manifest's lock, and says so
+    // once.
+    let held = scratch.project.join(".chest.toml.lock");
+    std::fs::create_dir(&held).unwrap();
+    let waiting = command(&scratch, &["init", "--yes"], &[]).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    std::fs::remove_dir(&held).unwrap();
+    let again = waiting.wait_with_output().unwrap();
     assert_eq!(again.status.code(), Some(1));
-    assert!(
-        text(&again).contains("chest.toml already exists"),
-        "{}",
-        text(&again)
-    );
+    let said = text(&again);
+    let wait = "Waiting for another chest command that changes";
+    assert_eq!(said.matches(wait).count(), 1, "{said}");
+    assert!(said.contains("chest.toml already exists"), "{said}");
     // CHEST_MANIFEST names the manifest when --manifest is absent.
     let dev = chest(
         &scratch,
@@ -571,7 +577,9 @@ fn import_settings_packages() {
     let scratch = scratch("import-settings");
     let settings = json!({"packages": [
         "npm:@acme/ext@^1",
-        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"], "extensions": ["x.ts"]},
+        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"]},
+        {"source": "npm:@acme/picky", "extensions": ["x.ts"]},
+        {"source": "npm:@acme/quiet", "autoload": false, "skills": ["+a"]},
         "../local-ext",
     ]});
     let path = scratch.project.join(".yapi/settings.json");
@@ -588,11 +596,31 @@ fn import_settings_packages() {
     }
     let said = text(&output);
     assert!(said.contains("yapi remove -l npm:@acme/ext@^1"), "{said}");
+    // A filter chest cannot express leaves the package in settings.json.
+    for spec in ["npm:@acme/picky", "npm:@acme/quiet"] {
+        let skipped = format!(
+            "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+        );
+        assert!(said.contains(&skipped), "{said}");
+    }
     assert!(
-        said.contains("no `extensions` or `autoload` filter"),
-        "{said}"
+        !manifest.contains("picky") && !manifest.contains("quiet"),
+        "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
+    // A path names another file for either flag, and one flag is required.
+    write(
+        &scratch.dir.join("other.json"),
+        r#"{"packages": ["npm:other"]}"#,
+    );
+    ok(&scratch, &["import", "--settings", "../other.json"]);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("other = { npm = \"other\", capabilities = [\"all\"] }"),
+        "{manifest}"
+    );
+    let flagless = chest(&scratch, &["import", "../other.json"], &[]);
+    assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 
     // A manifest that is a symbolic link is refused, so a cloned project
     // cannot point chest at a file outside it.
@@ -618,6 +646,25 @@ fn import_settings_packages() {
             );
         }
         assert_eq!(read(&outside), manifest);
+        // So is a lock that is one, for every command that reads it.
+        std::fs::remove_file(&link).unwrap();
+        std::fs::rename(&outside, &link).unwrap();
+        let lock = scratch.project.join("chest.lock");
+        let moved = scratch.dir.join("outside.lock");
+        match lock.exists() {
+            true => std::fs::rename(&lock, &moved).unwrap(),
+            false => write(&moved, "version = 1\n"),
+        }
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        for args in [&["list"][..], &["verify"], &["install", "--frozen"]] {
+            let output = chest(&scratch, args, &[]);
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {}", text(&output));
+            assert!(
+                text(&output).contains("chest.lock is a symbolic link"),
+                "{}",
+                text(&output)
+            );
+        }
     }
 }
 
@@ -739,7 +786,7 @@ fn add_prompts_capabilities() {
     });
     // It uses `session`, which the package does not request.
     std::fs::copy(fixture("hello"), remote.work.join("hello.wasm")).unwrap();
-    std::fs::write(remote.work.join("http.wasm"), http_component()).unwrap();
+    std::fs::write(remote.work.join("http.wasm"), http_component(0)).unwrap();
     remote.commit(
         &[
             ("package.json", &package.to_string()),
@@ -851,19 +898,38 @@ fn fixture(name: &str) -> PathBuf {
     Path::new(dir).join(format!("{name}.wasm"))
 }
 
+/// `bytes` after their LEB128 length.
+fn sized(bytes: &[u8]) -> Vec<u8> {
+    let (mut size, mut length) = (bytes.len(), Vec::new());
+    while size >= 0x80 {
+        length.push((size as u8) | 0x80);
+        size >>= 7;
+    }
+    length.push(size as u8);
+    [&length[..], bytes].concat()
+}
+
 /// An empty component that imports `wasi:http`, which yapi does not link,
-/// and declares `exec:git`, a capability chest does not know.
-fn http_component() -> Vec<u8> {
-    let name = b"wasi:http/outgoing-handler@0.2.6";
-    let imports = [&[0x01, 0x00, name.len() as u8][..], name, &[0x05, 0x00]].concat();
+/// and declares `exec:git`, a capability chest does not know, then `extra`
+/// more of each.
+fn http_component(extra: u8) -> Vec<u8> {
+    let mut imports = vec![extra + 1];
+    let mut lines = String::from("yapi-extension-api\nexec:git\n");
+    for n in 0..=extra {
+        let name = match n {
+            0 => "wasi:http/outgoing-handler@0.2.6".to_owned(),
+            n => format!("wasi:http/h{n}@0.2.6"),
+        };
+        imports.extend([&[0x00][..], &sized(name.as_bytes()), &[0x05, 0x00]].concat());
+        if n > 0 {
+            lines.push_str(&format!("exec:{n}\n"));
+        }
+    }
     // The component header, a type section with one empty instance type,
     // and the id of the import section.
     let head = b"\0asm\x0d\x00\x01\x00\x07\x03\x01\x42\x00\x0a";
-    let section = b"yapi:capabilities";
-    let lines = b"yapi-extension-api\nexec:git\n";
-    let custom = [&[section.len() as u8][..], section, lines].concat();
-    let custom = [&[0x00, custom.len() as u8][..], &custom].concat();
-    [&head[..], &[imports.len() as u8], &imports, &custom].concat()
+    let custom = [&sized(b"yapi:capabilities")[..], lines.as_bytes()].concat();
+    [&head[..], &sized(&imports), &[0x00], &sized(&custom)].concat()
 }
 
 #[test]
@@ -950,7 +1016,7 @@ fn chest_check_mismatch() {
         "{report}"
     );
     let http = scratch.dir.join("http.wasm");
-    std::fs::write(&http, http_component()).unwrap();
+    std::fs::write(&http, http_component(0)).unwrap();
     let failed = chest(&scratch, &["check", http.to_str().unwrap()], &[]);
     assert_eq!(failed.status.code(), Some(1), "{}", text(&failed));
     assert!(
@@ -963,6 +1029,22 @@ fn chest_check_mismatch() {
         "{}",
         text(&failed)
     );
+    // A component's own lists print ten lines each, then a count.
+    std::fs::write(&http, http_component(20)).unwrap();
+    let failed = text(&chest(&scratch, &["check", http.to_str().unwrap()], &[]));
+    for (line, more) in [
+        (
+            "which yapi does not support",
+            "and 11 more unsupported imports in http.wasm",
+        ),
+        (
+            "which this version of chest does not know",
+            "and 11 more unknown capability lines in http.wasm",
+        ),
+    ] {
+        assert_eq!(failed.matches(line).count(), 10, "{failed}");
+        assert!(failed.contains(more), "{failed}");
+    }
     let module = scratch.dir.join("module.wasm");
     std::fs::write(&module, b"\0asm\x01\x00\x00\x00").unwrap();
     let failed = chest(&scratch, &["check", module.to_str().unwrap()], &[]);

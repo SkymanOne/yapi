@@ -14,7 +14,6 @@ use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use tokio_util::sync::CancellationToken;
 use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
@@ -187,14 +186,21 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 }
 
 /// Locks the manifest against other chest commands that write it, waiting
-/// for them. The lock is an empty folder, which git does not list, named
-/// apart from the lock `sync` takes on the lock file, even for a manifest
-/// without an extension.
+/// for them for as long as they run, and saying once on stderr that it
+/// waits. The lock is an empty folder, which git does not list, named apart
+/// from the lock `sync` takes on the lock file, even for a manifest without
+/// an extension.
 async fn lock(target: &Target) -> anyhow::Result<FileLock> {
     let file = target.base().join(format!(".{}", target.name()));
-    FileLock::acquire(&file, &CancellationToken::new())
+    let path = target.path.display();
+    let mut waiting = || {
+        say(&format!(
+            "Waiting for another chest command that changes {path}..."
+        ))
+    };
+    yapi_core::chest::hold_lock(&file, &mut waiting)
         .await
-        .with_context(|| format!("locking {}", target.path.display()))
+        .with_context(|| format!("locking {path}"))
 }
 
 /// Whether `CI` asks for frozen installs: set, and not empty, `0` or
@@ -226,22 +232,9 @@ pub fn out(line: &str) {
     let _ = writeln!(std::io::stdout(), "{}", printable(line, &['\t']));
 }
 
-/// Refuses a manifest that is a symbolic link, which a cloned project could
-/// point at a file outside it.
-fn refuse_link(target: &Target) -> anyhow::Result<()> {
-    let metadata = std::fs::symlink_metadata(&target.path);
-    if metadata.is_ok_and(|metadata| metadata.is_symlink()) {
-        bail!(
-            "{} is a symbolic link, which chest does not follow: replace it with the file itself",
-            target.path.display()
-        );
-    }
-    Ok(())
-}
-
 /// The manifest's text, with a pointer to `chest init` when it is missing.
 pub fn read(target: &Target) -> anyhow::Result<String> {
-    refuse_link(target)?;
+    yapi_core::chest::refuse_link(&target.path)?;
     if !target.path.exists() {
         bail!(
             "{} does not exist: run `chest init` first",
@@ -254,7 +247,7 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
 
 /// Writes the manifest's new text, whole or not at all.
 pub fn write(target: &Target, text: &str) -> anyhow::Result<()> {
-    refuse_link(target)?;
+    yapi_core::chest::refuse_link(&target.path)?;
     write_atomic(&target.path, text.as_bytes(), 0o666)
         .with_context(|| format!("writing {}", target.path.display()))
 }

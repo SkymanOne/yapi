@@ -14,9 +14,10 @@ pub mod wasm;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_ai::auth::lock::{FileLock, LockError, write_atomic};
 
 use crate::packages::npm::{self, Npm, NpmError, Pinned};
 use crate::settings::Scope;
@@ -167,6 +168,44 @@ enum Content {
     Nothing,
 }
 
+/// Locks `file` as [`FileLock::acquire`] does, but waits for as long as
+/// another holder keeps the lock fresh, where `acquire` gives up after the
+/// stale period. A holder that stopped stops refreshing, so its lock goes
+/// stale and is taken over. `waiting` hears once that the lock is held,
+/// when it is not free within a second.
+pub async fn hold_lock(
+    file: &Path,
+    waiting: &mut (dyn FnMut() + Send),
+) -> Result<FileLock, ChestError> {
+    let cancel = CancellationToken::new();
+    let failed = |err: LockError| ChestError::Failed(format!("{}: {err}", file.display()));
+    let first = tokio::time::timeout(Duration::from_secs(1), FileLock::acquire(file, &cancel));
+    match first.await {
+        Ok(Ok(lock)) => return Ok(lock),
+        Ok(Err(LockError::Held)) | Err(_) => waiting(),
+        Ok(Err(err)) => return Err(failed(err)),
+    }
+    loop {
+        match FileLock::acquire(file, &cancel).await {
+            Err(LockError::Held) => {}
+            locked => return locked.map_err(failed),
+        }
+    }
+}
+
+/// Fails when `path` is a symbolic link. chest reads and writes a manifest
+/// and its lock only as plain files, since a cloned project could point a
+/// link anywhere.
+pub fn refuse_link(path: &Path) -> Result<(), ChestError> {
+    if path.symlink_metadata().is_ok_and(|meta| meta.is_symlink()) {
+        return Err(invalid(format!(
+            "{} is a symbolic link, which chest does not follow: replace it with the file itself",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Removes the extensions `staged` built and did not put in place.
 fn discard(staged: &[Staged]) {
     for staged in staged {
@@ -235,9 +274,11 @@ impl Project {
     ///
     /// The manifest's folder is resolved to its canonical path once, so a
     /// project opened through a link or another spelling of its path places,
-    /// records and removes the same paths.
+    /// records and removes the same paths. A manifest or lock that is itself
+    /// a link is refused, as [`refuse_link`] says.
     pub fn open(path: &Path, scope: Scope) -> Result<Project, ChestError> {
         let path = std::path::absolute(path).map_err(io(path))?;
+        refuse_link(&path)?;
         let text = std::fs::read_to_string(&path).map_err(io(&path))?;
         let manifest = Manifest::parse(&text, scope)
             .map_err(|err| invalid(format!("{}: {err}", path.display())))?;
@@ -301,8 +342,9 @@ impl Project {
     /// Whether `folder`, an extension's module root, holds far more than one
     /// package, so the extension could load any file there: it is, or holds,
     /// the home folder, the agent folder, the filesystem's root, the
-    /// manifest's folder, which is the project's for a project manifest, or
-    /// a folder in `also`.
+    /// manifest's folder, which is the project's for a project manifest, the
+    /// store, which holds the other extensions, or a folder in `also`. A
+    /// held folder that does not exist yet counts by the path it will have.
     pub fn too_wide(&self, folder: &Path, also: &[&Path]) -> bool {
         let Ok(folder) = folder.canonicalize() else {
             return false;
@@ -312,11 +354,11 @@ impl Project {
             crate::config::agent_dir(),
             PathBuf::from("/"),
             self.base.clone(),
+            self.store(),
         ];
         held.into_iter()
             .chain(also.iter().map(|path| path.to_path_buf()))
-            .filter_map(|held| held.canonicalize().ok())
-            .any(|held| held.starts_with(&folder))
+            .any(|held| real_path(&held).starts_with(&folder))
     }
 
     /// Refuses an extension whose path source, or `[patch]`, is a folder
@@ -369,6 +411,7 @@ impl Project {
 
     fn read_lock(&self) -> Result<Option<Lock>, ChestError> {
         let path = self.lock_path();
+        refuse_link(&path)?;
         match std::fs::read_to_string(&path) {
             Ok(text) => Lock::parse(&text)
                 .map(Some)
@@ -461,8 +504,10 @@ impl Project {
     /// `mode` says, holding the lock file's lock and the project's record
     /// lock throughout. Every entry is fetched and checked before anything
     /// is put in place, so a failed download changes nothing. Nothing is
-    /// written outside [`Project::root`]. `progress` hears a line for each
-    /// entry fetched.
+    /// installed outside [`Project::root`]. Only chest's cache and record,
+    /// under `~/.chest` unless set otherwise, are written elsewhere.
+    /// `progress` hears a line for each entry fetched, and one while another
+    /// chest command holds a lock.
     pub async fn sync(
         &mut self,
         mode: Mode,
@@ -491,21 +536,8 @@ impl Project {
             return Ok(report);
         }
         let lock_path = self.lock_path();
-        // `write_atomic` writes through a link, which may lead out of the root.
-        let writes = matches!(mode, Mode::Resolve | Mode::Update(_));
-        if writes
-            && lock_path
-                .symlink_metadata()
-                .is_ok_and(|meta| meta.is_symlink())
-        {
-            return Err(invalid(format!(
-                "Refusing to write {} through a link",
-                lock_path.display()
-            )));
-        }
-        let _held = FileLock::acquire(&lock_path, &CancellationToken::new())
-            .await
-            .map_err(|err| ChestError::Failed(format!("{}: {err}", lock_path.display())))?;
+        let mut waiting = || progress(&waiting_for(&lock_path));
+        let _held = hold_lock(&lock_path, &mut waiting).await?;
         self.lock = self.read_lock()?;
         // Another install may have changed the lock or put things back meanwhile.
         if frozen && !self.check_frozen(&mut report)? {
@@ -528,9 +560,8 @@ impl Project {
         let record_path = Record::path(&self.state, &self.root(), self.scope);
         let state = record_path.parent().unwrap_or(&record_path);
         std::fs::create_dir_all(state).map_err(io(state))?;
-        let _record_held = FileLock::acquire(&record_path, &CancellationToken::new())
-            .await
-            .map_err(|err| ChestError::Failed(format!("{}: {err}", record_path.display())))?;
+        let mut waiting = || progress(&waiting_for(&record_path));
+        let _record_held = hold_lock(&record_path, &mut waiting).await?;
         self.prepare_folders()?;
         let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         // `_work` holds the fetched items until they are placed.
@@ -938,11 +969,26 @@ impl Project {
                 if entry.git.is_some() {
                     copy_checkout(package, entry.path.as_deref(), staging)?;
                 }
+                // Replay reaches the package at the top of an npm extension's
+                // tree from a root package.json, as its install did.
+                let root = staging.join("package.json");
+                if let Some(npm_name) = &entry.npm {
+                    let version = locked.version.as_deref().unwrap_or_default();
+                    let manifest = serde_json::json!({"dependencies": {npm_name: version}});
+                    let text = yapi_types::json::to_string(&manifest).unwrap_or_default();
+                    std::fs::write(&root, text).map_err(io(&root))?;
+                }
                 npm::replay(npm, staging, &locked.packages).await?;
+                if entry.npm.is_some() {
+                    std::fs::remove_file(&root).map_err(io(&root))?;
+                }
             }
             (Some(npm_name), None) => {
                 let installed =
                     npm::install(npm, staging, npm_name, entry.version.as_deref()).await?;
+                // Checked as replay will check it, while the root package.json
+                // still names the package at the top.
+                npm::check_installed(staging, &installed.tree)?;
                 // The store keeps only what replay rebuilds, `node_modules`.
                 for file in ["package.json", ".gitignore"] {
                     let file = staging.join(file);
@@ -954,6 +1000,7 @@ impl Project {
             (None, None) => {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
+                npm::check_installed(staging, &record.packages)?;
             }
         }
         // A tree that replay would refuse fails this install, not every later
@@ -1506,6 +1553,14 @@ enum Problem {
     Mismatch,
     /// A link that does not point at the canonical copy, given.
     Link(PathBuf),
+}
+
+/// What `sync` says while another chest command holds the lock of `file`.
+fn waiting_for(file: &Path) -> String {
+    format!(
+        "Waiting for another chest command, which holds the lock of {}...",
+        file.display()
+    )
 }
 
 fn describe((id, path, problem): &(String, PathBuf, Problem)) -> String {

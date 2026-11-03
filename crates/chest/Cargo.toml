@@ -17,7 +17,6 @@ anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tokio-util.workspace = true
 yapi-ai.workspace = true
 yapi-core.workspace = true
 yapi-types.workspace = true

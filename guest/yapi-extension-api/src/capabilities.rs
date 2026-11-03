@@ -3,12 +3,14 @@
 //! records them for `chest check`.
 
 /// The feature each request or operation kind needs, for the kinds yapi
-/// refuses without the matching grant whatever their payload. Kinds whose
-/// grant depends on the payload, such as `tool.execute` and
+/// refuses without the matching grant whatever their payload, and for
+/// `env`, which yapi answers empty without the environment grant. Kinds
+/// whose grant depends on the payload, such as `tool.execute` and
 /// `ui.editorSubmit`, are left to yapi.
 #[doc(hidden)]
 pub const KIND_FEATURES: &[(&str, &str)] = &[
     ("context.files", "fs"),
+    ("file.lock", "fs"),
     ("fetch", "net"),
     ("fetch.stream", "net"),
     ("dns.lookup", "net"),
