@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fd2e6146.js";
+            window.path_to_searchindex_js = "searchindex-aedd5d3a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-2d1f0715.js"></script>
@@ -619,12 +619,20 @@ yapi --no-session            # do not save this run
 <li>text that a custom editor submits</li>
 <li>the editor actions that interrupt, exit or suspend yapi, clear the editor, cycle the model or the thinking level, show or hide thinking, restore queued messages, or start a new session</li>
 </ul>
-<p>Without the file grant, <code>switchSession</code> and the <code>parentSession</code> of <code>newSession</code> accept only session files in the session directory. Reading the session, such as its entries, name and model, needs no grant, and neither do dialogs, widgets and notifications. Pi has no session grant.</p>
+<p>Without the file grant, <code>switchSession</code> and the <code>parentSession</code> of <code>newSession</code> accept only session files in the session directory. Holding a file with <code>withFileMutationQueue</code> needs the file grant, because the model’s <code>edit</code> and <code>write</code> tools wait while an extension holds it. Pi has no session grant.</p>
+<p>Some requests need no grant:</p>
+<ul>
+<li>reading the session, such as its entries, name and model</li>
+<li>dialogs, widgets and notifications</li>
+<li>the editor actions that expand tool output, copy the last message, or open the model, tree, fork or resume selector, where you make the choice</li>
+<li><code>copyToClipboard</code>, which writes the system clipboard. A person may paste what it copies into a terminal or another program, so treat text an extension copies as untrusted, as you would text from a web page.</li>
+</ul>
 <p>Some actions need every grant, because they reach outside the sandbox or act with yapi’s own access:</p>
 <ul>
 <li>registering a provider or a wire API, because a provider’s replies drive the agent’s tools and its requests carry your credentials</li>
 <li>custom editor text that starts with <code>!</code> or <code>/</code>, after any leading spaces, because it runs a shell or slash command</li>
 <li>the editor actions that open the external editor, paste from the clipboard, or submit the editor’s text as a follow-up</li>
+<li>any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it</li>
 </ul>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
