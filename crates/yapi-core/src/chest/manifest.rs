@@ -305,6 +305,18 @@ impl Manifest {
                     "folders.{key}: \"{path}\" must be a relative path inside the project, without `..` or `~`"
                 )));
             }
+            // The `.gitignore` block lists paths in these folders, one per line.
+            let first = Path::new(path).components().find_map(|part| match part {
+                Component::Normal(part) => part.to_str(),
+                _ => None,
+            });
+            let pattern = path.contains(['*', '?', '[', '\\', '\n', '\r'])
+                || first.is_some_and(|part| part.starts_with(['!', '#']));
+            if scope == Scope::Project && pattern {
+                return Err(invalid(format!(
+                    "folders.{key}: \"{path}\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns"
+                )));
+            }
         }
         // No folder may hold another, or the store, or the store them.
         let default_store = match scope {
@@ -460,6 +472,33 @@ fn check_source(path: &str, scope: Scope) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// The environment variable that names a project's manifest, relative to
+/// the project's folder, for chest and yapi alike.
+pub const MANIFEST_ENV: &str = "CHEST_MANIFEST";
+
+/// The manifest file [`MANIFEST_ENV`] names, if any. `Err` when it names a
+/// file outside the project: an absolute path, one under `~`, or one with
+/// `..`.
+pub fn from_env() -> Result<Option<String>, String> {
+    let Some(name) = std::env::var(MANIFEST_ENV)
+        .ok()
+        .filter(|name| !name.is_empty())
+    else {
+        return Ok(None);
+    };
+    let inside = !name.starts_with('~')
+        && Path::new(&name)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
+    if inside {
+        Ok(Some(name))
+    } else {
+        Err(format!(
+            "{MANIFEST_ENV} must name a file inside the project, not \"{name}\""
+        ))
+    }
 }
 
 /// Whether `name` matches `[a-z0-9][a-z0-9._-]*`, the rule for entry and
@@ -680,18 +719,27 @@ pub struct PackageMeta {
 /// read, and a `package.json` that does not read or parse, count as absent,
 /// as pi treats a `package.json`.
 pub fn package_meta(root: &Path) -> Result<PackageMeta, ChestError> {
+    match read_package_meta(root) {
+        (meta, None) => Ok(meta),
+        (_, Some(err)) => Err(err),
+    }
+}
+
+/// What the package at `root` says about itself, as [`package_meta`], and
+/// why its `chest.toml` was left out when [`package_meta`] fails on it. The
+/// metadata then comes from `package.json` alone.
+pub(crate) fn read_package_meta(root: &Path) -> (PackageMeta, Option<ChestError>) {
     #[derive(Deserialize)]
     struct File {
         package: Option<Package>,
     }
     let path = root.join("chest.toml");
-    let package = match std::fs::read_to_string(&path) {
-        Ok(text) => {
-            toml_edit::de::from_str::<File>(&text)
-                .map_err(|err| invalid(format!("{}: {err}", path.display())))?
-                .package
-        }
-        Err(_) => None,
+    let (package, problem) = match std::fs::read_to_string(&path) {
+        Ok(text) => match toml_edit::de::from_str::<File>(&text) {
+            Ok(file) => (file.package, None),
+            Err(err) => (None, Some(invalid(format!("{}: {err}", path.display())))),
+        },
+        Err(_) => (None, None),
     };
     let json: Value = std::fs::read_to_string(root.join("package.json"))
         .ok()
@@ -723,7 +771,7 @@ pub fn package_meta(root: &Path) -> Result<PackageMeta, ChestError> {
         own.and_then(|package| pick(package).clone())
             .or_else(|| text(key))
     };
-    Ok(PackageMeta {
+    let meta = PackageMeta {
         name: field(|package| &package.name, "name"),
         version: field(|package| &package.version, "version"),
         description: field(|package| &package.description, "description"),
@@ -741,7 +789,8 @@ pub fn package_meta(root: &Path) -> Result<PackageMeta, ChestError> {
         }),
         resources,
         manifest: pi.is_some() || listed,
-    })
+    };
+    (meta, problem)
 }
 
 /// npm's `author`: `"Name <email> (url)"` as written, or `{ name, email }`.
@@ -953,6 +1002,18 @@ extensions = ["extensions/index.ts"]
             (
                 "[folders]\nagents = [\"/abs\"]",
                 "folders.agents: \"/abs\" must be a relative path inside the project, without `..` or `~`",
+            ),
+            (
+                "[folders]\nskills = [\"skills[1]\"]",
+                "folders.skills: \"skills[1]\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
+            ),
+            (
+                "[folders]\nagents = [\"./!keep\"]",
+                "folders.agents: \"./!keep\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
+            ),
+            (
+                "[folders]\nextensions = \"s*\"",
+                "folders.extensions: \"s*\" must not hold `*`, `?`, `[`, `\\` or a line break, or start with `!` or `#`, which .gitignore reads as patterns",
             ),
             (
                 "[folders]\nextensions = \"~/x\"",

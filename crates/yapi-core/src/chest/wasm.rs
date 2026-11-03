@@ -2,6 +2,8 @@
 //! component: the `yapi:capabilities` section that `yapi-extension-api`
 //! writes, and the WASI interfaces it imports.
 
+use std::collections::HashSet;
+
 use wasmparser::{Encoding, Parser, Payload};
 
 use super::{ChestError, invalid};
@@ -76,6 +78,7 @@ pub fn capabilities(bytes: &[u8]) -> Result<Capabilities, ChestError> {
     let mut found = Capabilities::default();
     let mut features = Vec::new();
     let mut imports = Vec::new();
+    let mut unknown = HashSet::new();
     let mut depth = 0usize;
     for payload in Parser::new(0).parse_all(bytes) {
         let payload =
@@ -99,7 +102,7 @@ pub fn capabilities(bytes: &[u8]) -> Result<Capabilities, ChestError> {
                 {
                     match feature(line) {
                         Some(capability) => features.push(capability),
-                        None if !found.unknown.iter().any(|known| known == line) => {
+                        None if unknown.insert(line.to_owned()) => {
                             found.unknown.push(line.to_owned());
                         }
                         None => {}
@@ -143,10 +146,15 @@ mod tests {
         std::fs::read(format!("{dir}/{name}.wasm")).unwrap()
     }
 
-    /// A component section: id, size, contents, all under 128 bytes.
+    /// A component section: id, LEB128 size, contents.
     fn section(id: u8, contents: &[u8]) -> Vec<u8> {
-        assert!(contents.len() < 128, "one LEB128 byte");
-        [&[id, contents.len() as u8], contents].concat()
+        let (mut bytes, mut size) = (vec![id], contents.len());
+        while size >= 0x80 {
+            bytes.push((size as u8) | 0x80);
+            size >>= 7;
+        }
+        bytes.push(size as u8);
+        [&bytes[..], contents].concat()
     }
 
     fn name(text: &str) -> Vec<u8> {
@@ -238,6 +246,12 @@ mod tests {
         );
         assert_eq!(declared.unsupported, ["wasi:sockets/tcp@0.2.6"]);
         assert_eq!(declared.unknown, ["exec:git"]);
+        // Many unknown lines are each kept once, in order, in linear time.
+        let lines: String = (0..100_000).map(|n| format!("x{n}\nx{n}\n")).collect();
+        let custom = section(0x00, &[&name(SECTION)[..], lines.as_bytes()].concat());
+        let many = capabilities(&[&EMPTY[..], &custom].concat()).unwrap();
+        assert_eq!(many.unknown.len(), 100_000);
+        assert_eq!(many.unknown[..2], ["x0", "x1"]);
 
         assert_eq!(capabilities(&EMPTY).unwrap(), Capabilities::default());
         let module = capabilities(b"\0asm\x01\x00\x00\x00").unwrap_err();

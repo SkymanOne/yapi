@@ -135,9 +135,11 @@ async fn mirror(cache: &Path, repo: &str, refresh: bool) -> Result<PathBuf, Ches
         let _ = git(&["update-ref", HEAD, "HEAD"], Some(&dir)).await;
     } else if refresh {
         let heads = "+refs/heads/*:refs/heads/*";
+        // Named, not `--tags`, so that `--prune` drops tags deleted upstream.
+        let tags = "+refs/tags/*:refs/tags/*";
         let head = format!("+HEAD:{HEAD}");
         let fetch = [
-            "fetch", "--quiet", "--prune", "--force", "--tags", "--", &url, heads, &head,
+            "fetch", "--quiet", "--prune", "--force", "--", &url, heads, tags, &head,
         ];
         git(&fetch, Some(&dir)).await?;
     }

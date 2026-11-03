@@ -221,6 +221,15 @@ fn package_lists_resolve() {
         enabled(&resources, ResourceType::Extensions),
         [mixed.join("pi.ts")]
     );
+    // A chest.toml that does not parse is reported and hides no package.json list.
+    std::fs::write(mixed.join("chest.toml"), "[package\n").unwrap();
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("pi.ts")]
+    );
+    assert_eq!(resources.problems.len(), 1, "{:?}", resources.problems);
+    std::fs::remove_file(mixed.join("chest.toml")).unwrap();
     // A `yapi` list still wins for its kind, and pi's lists fill the rest.
     std::fs::write(
         mixed.join("package.json"),

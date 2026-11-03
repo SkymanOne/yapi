@@ -1,8 +1,9 @@
 //! The content hash chest locks for each installed entry.
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
-use aws_lc_rs::digest::{Context, SHA256, digest};
+use aws_lc_rs::digest::{Context, SHA256};
 use yapi_types::time::hex;
 
 use super::{ChestError, invalid, io};
@@ -30,6 +31,7 @@ pub fn tree_hash(root: &Path) -> Result<String, ChestError> {
     }
     files.sort();
     let mut context = Context::new(&SHA256);
+    let mut buffer = vec![0; 64 * 1024];
     for (relative, path) in files {
         let metadata = path.symlink_metadata().map_err(io(&path))?;
         context.update(relative.as_bytes());
@@ -38,8 +40,17 @@ pub fn tree_hash(root: &Path) -> Result<String, ChestError> {
         // The raw 32-byte digest, not its hex form. The scheme is modelled on
         // APM's native-bundle hash, but chest does not aim to match APM's
         // output.
-        let contents = std::fs::read(&path).map_err(io(&path))?;
-        context.update(digest(&SHA256, &contents).as_ref());
+        let mut file = std::fs::File::open(&path).map_err(io(&path))?;
+        let mut contents = Context::new(&SHA256);
+        loop {
+            match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => contents.update(&buffer[..read]),
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(err) => return Err(io(&path)(err)),
+            }
+        }
+        context.update(contents.finish().as_ref());
     }
     Ok(format!("sha256-{}", hex(context.finish().as_ref())))
 }

@@ -240,9 +240,6 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
         }
         document.set_package(&scaffold(&base))?;
     }
-    if let Some(parent) = target.path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     write(target, &document.to_string())?;
     say(&format!("Wrote {}", target.path.display()));
     Ok(())
