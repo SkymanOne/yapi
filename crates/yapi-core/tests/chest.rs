@@ -487,13 +487,39 @@ async fn gitignore_block_managed() {
     ended.wait().unwrap();
     let work = dir.join(format!("cache/work/{}-0", ended.id()));
     std::fs::create_dir_all(&work).unwrap();
-    let mut project = open(&dir, &skill_manifest(&remote, "v1"));
+    // But not from a folder that links out of the project, here that of a
+    // section without entries.
+    let outside = dir.join("outside");
+    std::fs::create_dir_all(outside.join(".x-staging")).unwrap();
+    std::fs::create_dir_all(root.join(".claude")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, root.join(".claude/agents")).unwrap();
+    let agents = "[folders]\nagents = [\".claude/agents\"]\n";
+    let manifest = skill_manifest(&remote, "v1").replace("[folders]\n", agents);
+    let mut project = open(&dir, &manifest);
     sync(&mut project, Mode::Resolve).await;
     assert!(!staging.exists() && !work.exists());
+    assert!(outside.join(".x-staging").exists());
     assert_eq!(
         read(&root.join(".gitignore")),
         "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
+    // A lock that is a link is not written through.
+    #[cfg(unix)]
+    {
+        let lock = root.join("chest.lock");
+        let moved = outside.join("chest.lock");
+        std::fs::rename(&lock, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        let locked = read(&moved);
+        let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
+        let error = failed(&mut open(&dir, empty), Mode::Resolve).await;
+        assert!(error.ends_with("chest.lock through a link"), "{error}");
+        assert_eq!(read(&moved), locked);
+        assert!(root.join(".agents/skills/pdf").exists());
+        std::fs::remove_file(&lock).unwrap();
+        std::fs::rename(&moved, &lock).unwrap();
+    }
     let mut project = open(
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",

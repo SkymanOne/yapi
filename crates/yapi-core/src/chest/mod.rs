@@ -410,6 +410,18 @@ impl Project {
             }
         }
         let lock_path = self.lock_path();
+        // `write_atomic` writes through a link, which may lead out of the root.
+        let writes = matches!(mode, Mode::Resolve | Mode::Update(_));
+        if writes
+            && lock_path
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.is_symlink())
+        {
+            return Err(invalid(format!(
+                "Refusing to write {} through a link",
+                lock_path.display()
+            )));
+        }
         let _held = FileLock::acquire(&lock_path, &CancellationToken::new())
             .await
             .map_err(|err| ChestError::Failed(format!("{}: {err}", lock_path.display())))?;
@@ -482,7 +494,8 @@ impl Project {
     /// Before anything is placed: makes the folders of sections with
     /// entries, so that a folder linking to another resolves, refuses
     /// folders whose real paths nest or that two sections share, and removes
-    /// staging folders a stopped install left in them or in the store.
+    /// staging folders a stopped install left in them or in the store, when
+    /// they are inside [`Project::root`].
     fn prepare_folders(&self) -> Result<(), ChestError> {
         let root = self.root();
         let mut homes: Vec<PathBuf> = Vec::new();
@@ -524,6 +537,10 @@ impl Project {
             }
         }
         for home in &homes {
+            // A folder of a section without entries may link out of the root.
+            if place::within(&root, &home.join("item")).is_err() {
+                continue;
+            }
             for entry in std::fs::read_dir(home).into_iter().flatten().flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if name.starts_with('.') && name.ends_with("-staging") {
