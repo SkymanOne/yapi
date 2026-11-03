@@ -706,8 +706,9 @@ async fn npm_tree_replays() {
     assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
     server.finish().unwrap();
 
-    // A mirror of the tarballs: one replay, whose downloads overlap, a
-    // replay with a tampered download, then `fetch_pinned`.
+    // A mirror of the tarballs: one replay, one whose downloads overlap up
+    // to replay's cap, a replay with a tampered download, then
+    // `fetch_pinned`.
     let mirror = Mirror::default();
     for (name, version, _, bytes) in &packages {
         let path = format!("/{name}/-/{name}-{version}.tgz");
@@ -725,11 +726,7 @@ async fn npm_tree_replays() {
     std::fs::create_dir_all(&stale).unwrap();
     std::fs::write(stale.join("package.json"), "{}").unwrap();
     let reversed: Vec<Pinned> = tree.iter().rev().cloned().collect();
-    *mirror.gather.lock().unwrap() = true;
     npm::replay(&offline, &replayed, &reversed).await.unwrap();
-    *mirror.gather.lock().unwrap() = false;
-    let most = mirror.load.0.lock().unwrap().1;
-    assert!((2..=8).contains(&most), "{most} downloads at once");
     let modules = files(&root.join("node_modules"));
     assert_eq!(modules.len(), 8);
     // The unlisted package is gone, and nothing is left beside the tree.
@@ -741,6 +738,30 @@ async fn npm_tree_replays() {
             .collect()
     };
     assert_eq!(entries(&replayed), ["node_modules"]);
+
+    // Nine pins, one more than replay downloads at once, which the mirror
+    // holds until nine overlap, so that a higher cap shows.
+    let mut crowd = tree.clone();
+    for n in 0..5 {
+        let (name, version, _, bytes) = package(&format!("extra{n}"), "1.0.0", json!({}));
+        let path = format!("/{name}/-/{name}-{version}.tgz");
+        let integrity = format!("sha512-{}", STANDARD.encode(digest(&SHA512, &bytes)));
+        mirror.files.lock().unwrap().insert(path.clone(), bytes);
+        crowd.push(Pinned {
+            path: format!("node_modules/{name}"),
+            name,
+            version,
+            tarball: format!("{mirror_url}{path}"),
+            integrity,
+        });
+    }
+    *mirror.gather.lock().unwrap() = true;
+    npm::replay(&offline, &dir.join("crowd"), &crowd)
+        .await
+        .unwrap();
+    *mirror.gather.lock().unwrap() = false;
+    let most = mirror.load.0.lock().unwrap().1;
+    assert!((2..=8).contains(&most), "{most} downloads at once");
 
     // A download that fails partway leaves the root as it was.
     let fork = "/@acme/fork/-/@acme/fork-2.0.0.tgz".to_owned();
@@ -951,7 +972,9 @@ async fn npm_tree_replays() {
 /// Files served over HTTP by path, in any order and many at once, which
 /// remembers the most requests it held at the same time. While `gather` is
 /// set, each request waits up to 5 s for another before it is answered, so
-/// that downloads made one at a time show as one.
+/// that downloads made one at a time show as one, then up to 1 s more until
+/// nine are held, so that more than replay's eight at once show. A slow
+/// machine can only make fewer overlap.
 #[derive(Clone, Default)]
 struct Mirror {
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
@@ -994,6 +1017,11 @@ impl Mirror {
             let alone = |load: &mut (usize, usize)| load.1 < 2;
             load = wake
                 .wait_timeout_while(load, Duration::from_secs(5), alone)
+                .unwrap()
+                .0;
+            let fewer_than_nine = |load: &mut (usize, usize)| load.0 < 9;
+            load = wake
+                .wait_timeout_while(load, Duration::from_secs(1), fewer_than_nine)
                 .unwrap()
                 .0;
         }
