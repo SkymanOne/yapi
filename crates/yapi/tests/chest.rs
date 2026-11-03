@@ -144,15 +144,17 @@ impl Drop for Rpc {
 /// read a file, with it it can. Both load from their install root, and so
 /// do a global manifest's, a patched one's and a package's `index.js` that
 /// no manifest lists. The grants follow the file when `-e` or discovery
-/// loads it too, even by another path, with a warning. An entry whose folder holds the agent
-/// folder does not load.
+/// loads it too, even by another path, with a warning. An entry whose
+/// folder holds the agent folder does not load, and one left out for its
+/// lock runs with no grant when discovery loads it. A file two manifests
+/// give runs with what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
     let secret = home.join("secret.txt");
     std::fs::write(&secret, "s3cret").unwrap();
     let ext = |name: &str| reader(name, &secret);
-    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
+    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\nshared = { path = \"shared.js\" }\nwider = { path = \"wider.js\", capabilities = [\"all\"] }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
     let wide = r#"{"name": "wide", "pi": {"extensions": ["wide.js"]}}"#;
     let files = [
         ("closed.js", ext("closed")),
@@ -164,12 +166,18 @@ async fn chest_extensions_load() {
         ("index/package.json", r#"{"name": "index"}"#.to_owned()),
         ("index/index.js", ext("index")),
         ("linked/index.js", ext("linked")),
+        ("shared.js", ext("shared")),
+        ("wider.js", ext("wider")),
+        (".yapi/extensions/late.js", ext("late")),
     ];
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(path, text)| (*path, text.as_str()))
         .collect();
     install(&home, &files, "chest.toml", manifest).await;
+    // An entry added after the install is left out, and discovery finds its file.
+    let late = "late = { path = \".yapi/extensions/late.js\" }\n\n[patch]";
+    std::fs::write(home.join("chest.toml"), manifest.replace("\n[patch]", late)).unwrap();
     // Discovery names `linked` by another path, which takes precedence.
     #[cfg(unix)]
     std::os::unix::fs::symlink("../../linked", home.join(".yapi/extensions/linked")).unwrap();
@@ -178,12 +186,26 @@ async fn chest_extensions_load() {
         (".chest/global.js", global.as_str()),
         (".chest/granted.js", granted.as_str()),
     ];
-    let manifest = "[extensions]\nglobal = { path = \"global.js\" }\ngranted = { path = \"granted.js\", capabilities = [\"fs\"] }\n";
-    install(&home, &files, ".chest/chest.toml", manifest).await;
+    // The global manifest grants `shared` everything, which the project
+    // grants nothing, and `wider` nothing, which the project grants everything.
+    let shared = home.join("shared.js").display().to_string();
+    // `wider` names the project's path as is, and `shared` spells it otherwise.
+    let wider = home
+        .canonicalize()
+        .unwrap()
+        .join("wider.js")
+        .display()
+        .to_string();
+    let manifest = format!(
+        "[extensions]\nglobal = {{ path = \"global.js\" }}\ngranted = {{ path = \"granted.js\", capabilities = [\"fs\"] }}\nshared = {{ path = {shared:?}, capabilities = [\"all\"] }}\nwider = {{ path = {wider:?} }}\n"
+    );
+    install(&home, &files, ".chest/chest.toml", &manifest).await;
     let args = ["--approve", "-e", "closed.js"];
     let loaded = commands(&home, &args, &[]);
     let described = |name: &str| loaded.get(name).map(String::as_str);
-    let mut refused = vec!["closed", "found", "patched", "global", "index"];
+    let mut refused = vec![
+        "closed", "found", "patched", "global", "index", "late", "shared", "wider",
+    ];
     refused.extend(cfg!(unix).then_some("linked"));
     for name in refused {
         assert_eq!(described(name), Some("refused"), "{name}: {loaded:?}");
@@ -202,6 +224,7 @@ async fn chest_extensions_load() {
         "closed.js is also loaded from cli; chest's grants apply",
         "found.js is also loaded from auto; chest's grants apply",
         "agent holds more than the extension",
+        "late.js is also loaded from auto, but its chest entry is not installed, so it runs with no capabilities",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));
@@ -384,7 +407,8 @@ async fn chest_manifest_env() {
 }
 
 /// A native chest extension that uses a capability its entry does not grant
-/// is warned of once at startup, and one granted it is not.
+/// is warned of once at startup, and one granted it is not. So is a package
+/// whose `[package]` does not parse.
 #[tokio::test(flavor = "multi_thread")]
 async fn native_used_ungranted_warns() {
     let home = common::scratch("chest-native");
@@ -398,12 +422,97 @@ async fn native_used_ungranted_warns() {
     }
     let manifest = "[extensions]\ndenied = { path = \"denied.wasm\" }\ngranted = { path = \"granted.wasm\", capabilities = [\"session\"] }\n";
     install(&home, &[], "chest.toml", manifest).await;
+    let broken = home.join("broken");
+    std::fs::create_dir_all(&broken).unwrap();
+    std::fs::write(broken.join("chest.toml"), "[package]\nauthor = \"Ada\"\n").unwrap();
     let output = common::yapi(&home)
-        .args(["--approve", "--help"])
+        .args(["--approve", "-e", "broken", "--help"])
         .output()
         .unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     let warning = "denied.wasm uses `session` (SDK feature `session`), which its chest entry does not grant, so those calls will be denied";
     assert_eq!(stderr.matches(warning).count(), 1, "{stderr}");
     assert!(!stderr.contains("granted.wasm uses"), "{stderr}");
+    assert_eq!(
+        stderr.matches("unknown field `author`").count(),
+        1,
+        "{stderr}"
+    );
+}
+
+/// Extensions in different grant groups keep the resolver's order, which pi
+/// loads them in: their commands list in it, and when they all register one
+/// tool, the conflicts of the second and the third follow it too.
+#[tokio::test(flavor = "multi_thread")]
+async fn grant_groups_keep_order() {
+    let tool = "pi.registerTool({ name: \"probe\", label: \"probe\", description: \"\", parameters: { type: \"object\", properties: {} }, execute: async () => ({ content: [], details: {} }) });";
+    // `a` and `c` share a host, and `b` runs in another.
+    let manifest = "[extensions]\na = { path = \"a.js\" }\nb = { path = \"b.js\", capabilities = [\"fs\"] }\nc = { path = \"c.js\" }\n";
+    let setup = async |name: &str, extra: &str| {
+        let home = common::scratch(name);
+        let ext = |command: &str| {
+            format!(
+                "export default function (pi) {{ pi.registerCommand({command:?}, {{ description: \"\", handler: async () => {{}} }}); {extra} }}\n"
+            )
+        };
+        let (a, b, c) = (ext("first"), ext("second"), ext("third"));
+        let files = [
+            ("a.js", a.as_str()),
+            ("b.js", b.as_str()),
+            ("c.js", c.as_str()),
+        ];
+        install(&home, &files, "chest.toml", manifest).await;
+        home
+    };
+    let home = setup("chest-order", "").await;
+    let mut command = common::yapi(&home);
+    command.arg("--approve");
+    let listed = common::rpc_commands(&mut command);
+    let names: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|command| command["name"].as_str())
+        .filter(|name| ["first", "second", "third"].contains(name))
+        .collect();
+    assert_eq!(names, ["first", "second", "third"]);
+    // The conflicts stop the run, as in pi.
+    let home = setup("chest-order-tools", tool).await;
+    let output = common::yapi(&home)
+        .args(["--approve", "--mode", "rpc"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let conflict = |file: &str| stderr.find(&format!("{file}\": Tool \"probe\" conflicts"));
+    let (second, third) = (conflict("b.js"), conflict("c.js"));
+    assert!(second.is_some() && second < third, "{stderr}");
+}
+
+/// Hosts start together: an extension that waits as it loads for one in
+/// another host to load does not wait in vain.
+#[tokio::test(flavor = "multi_thread")]
+async fn hosts_start_together() {
+    let home = common::scratch("chest-together");
+    let marker = home.join("started");
+    let waiter = format!(
+        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (let tries = 0; tries < 250 && !(together = existsSync({marker:?})); tries++) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
+        marker = marker.display().to_string()
+    );
+    let starter = format!(
+        "import {{ writeFileSync }} from \"node:fs\";\nexport default function (pi) {{ writeFileSync({marker:?}, \"\"); pi.registerCommand(\"starter\", {{ description: \"\", handler: async () => {{}} }}); }}\n",
+        marker = marker.display().to_string()
+    );
+    let files = [
+        ("waiter.js", waiter.as_str()),
+        ("starter.js", starter.as_str()),
+    ];
+    let manifest = "[extensions]\nwaiter = { path = \"waiter.js\", capabilities = [\"fs\"] }\nstarter = { path = \"starter.js\", capabilities = [\"fs\", \"net\"] }\n";
+    install(&home, &files, "chest.toml", manifest).await;
+    let loaded = commands(&home, &["--approve"], &[]);
+    assert_eq!(
+        loaded.get("waiter").map(String::as_str),
+        Some("together"),
+        "{loaded:?}"
+    );
 }

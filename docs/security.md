@@ -36,7 +36,7 @@ Each call into an instance may compute for 60 seconds, not counting time spent w
 
 ### Grants
 
-The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. A path that leads out of a package through a symlink is refused, and so is a path with `.` or `..` in it. Packages from `yapi install` and `-e` receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants. Without the file grant it still loads the files of the other packages in its instance, which have the same grants and event policy. Every extension file yapi finds in a chest package, including an `index.ts` or `index.js` that no manifest lists, runs with its entry's capabilities. The file keeps them when `-e` or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but cannot match to an entry runs with no capabilities, with a warning. yapi does not load a chest extension whose folder holds the project, the home folder or the agent folder, because it could load any file there. The [capability table](chest-manifest.md#capabilities) lists what each one allows.
+The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. A path that leads out of a package through a symlink is refused, and so is a path with `.` or `..` in it. Packages from `yapi install` and `-e` receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants. Without the file grant it still loads the files of the other packages in its instance, which have the same grants and event policy. Every extension file yapi finds in a chest package, including an `index.ts` or `index.js` that no manifest lists, runs with its entry's capabilities. The file keeps them when `-e` or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but cannot match to an entry runs with no capabilities, with a warning. So does a file of an entry that chest leaves out because its lock is stale or missing, when pi's discovery, settings or `-e` loads it. When two manifests give the same file, it runs with only what both allow. yapi does not load a chest extension whose folder holds the project, the home folder or the agent folder, because it could load any file there. The [capability table](chest-manifest.md#capabilities) lists what each one allows.
 
 A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with the user's installed packages.
 
@@ -58,13 +58,21 @@ The session grant covers actions that start, steer or stop turns, or change the 
 - text that a custom editor submits
 - the editor actions that interrupt, exit or suspend yapi, clear the editor, cycle the model or the thinking level, show or hide thinking, restore queued messages, or start a new session
 
-Without the file grant, `switchSession` and the `parentSession` of `newSession` accept only session files in the session directory. Reading the session, such as its entries, name and model, needs no grant, and neither do dialogs, widgets and notifications. Pi has no session grant.
+Without the file grant, `switchSession` and the `parentSession` of `newSession` accept only session files in the session directory. Holding a file with `withFileMutationQueue` needs the file grant, because the model's `edit` and `write` tools wait while an extension holds it. Pi has no session grant.
+
+Some requests need no grant:
+
+- reading the session, such as its entries, name and model
+- dialogs, widgets and notifications
+- the editor actions that expand tool output, copy the last message, or open the model, tree, fork or resume selector, where you make the choice
+- `copyToClipboard`, which writes the system clipboard. A person may paste what it copies into a terminal or another program, so treat text an extension copies as untrusted, as you would text from a web page.
 
 Some actions need every grant, because they reach outside the sandbox or act with yapi's own access:
 
 - registering a provider or a wire API, because a provider's replies drive the agent's tools and its requests carry your credentials
 - custom editor text that starts with `!` or `/`, after any leading spaces, because it runs a shell or slash command
 - the editor actions that open the external editor, paste from the clipboard, or submit the editor's text as a follow-up
+- any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it
 
 A provider or wire API that an extension without every grant registers stays unused, and yapi logs a warning for each one in the extension output.
 

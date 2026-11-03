@@ -73,58 +73,77 @@ async fn native_register_and_run() {
     assert_eq!(session.extensions()[0].commands()[0].name, "hello");
 }
 
-/// Each kind the SDK gates behind a feature is one yapi refuses without the
-/// grant: the capability probe, built with every feature, sends them all
-/// from an extension granted nothing. `env` answers no variables instead.
-/// Kinds that need no grant still answer.
+/// Each kind the SDK gates behind a feature is one yapi refuses without that
+/// feature's grant, and serves with it: the capability probe, built with
+/// every feature, sends them all from an extension granted nothing, each
+/// single capability, then everything. Without its grant, `env` answers no
+/// variables instead. Kinds that need no grant always answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn gated_kinds_denied() {
-    let dir = scratch("native-capability-probe");
-    let mut options = options(&dir);
-    options.grants = Grants::none();
     let probe = cli_source(&fixture("capability-probe"));
-    let host = ExtensionHost::load_native(&engine(), options, &probe)
-        .await
-        .unwrap();
-    assert!(host.errors().is_empty(), "{:?}", host.errors());
-    let faux = Faux::new([
-        Response::tool_call("call-1", "probe", json!({})),
-        Response::text("done"),
-    ]);
-    let session = session(&faux, &dir, host.for_session());
-    session
-        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
-        .await;
-    session.prompt("probe", Vec::new()).await.unwrap();
-    let results = tool_results(&session);
-    let answers: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&results[0]).unwrap();
-    let (allowed, denied): (Vec<_>, Vec<_>) = answers
-        .iter()
-        .partition(|(_, answer)| answer.get("ok").is_some());
-    let denied: Vec<&str> = denied
-        .iter()
-        .map(|(kind, answer)| {
-            let message = answer["err"].as_str().unwrap();
+    for capability in ["none", "fs", "net", "env", "session", "all"] {
+        let dir = scratch(&format!("native-capability-probe-{capability}"));
+        let mut options = options(&dir);
+        options.grants = Grants::parse(&[capability.to_owned()]).unwrap();
+        let host = ExtensionHost::load_native(&engine(), options, &probe)
+            .await
+            .unwrap();
+        assert!(host.errors().is_empty(), "{:?}", host.errors());
+        let session = session(&Faux::new([]), &dir, host.for_session());
+        let notes = Arc::new(Notes::default());
+        session
+            .bind_extensions(notes.clone(), Mode::Print, None, None)
+            .await;
+        session.prompt("/probe", Vec::new()).await.unwrap();
+        let notes = notes.all();
+        let answers: serde_json::Map<String, serde_json::Value> = notes
+            .iter()
+            .find_map(|note| serde_json::from_str(note).ok())
+            .unwrap_or_else(|| panic!("{capability}: {notes:?}"));
+        let refused = |answer: &serde_json::Value| {
+            answer["err"]
+                .as_str()
+                .is_some_and(|err| err.ends_with("is not permitted for this extension"))
+        };
+        let denied: Vec<&str> = answers
+            .iter()
+            .filter(|(_, answer)| refused(answer))
+            .map(|(kind, _)| kind.as_str())
+            .collect();
+        // The kinds of the table, but those of the granted capability. With
+        // `session` alone, `session.switch` still opens no file outside the
+        // session directory, which its empty path is.
+        let expected: Vec<&str> = answers
+            .iter()
+            .filter(|(kind, answer)| {
+                let feature = answer["feature"].as_str();
+                let gated = capability != "all"
+                    && *kind != "env"
+                    && feature.is_some_and(|feature| feature != capability);
+                gated || capability == "session" && *kind == "session.switch"
+            })
+            .map(|(kind, _)| kind.as_str())
+            .collect();
+        assert_eq!(denied, expected, "{capability}: {answers:?}");
+        let env = &answers["env"]["ok"];
+        assert_eq!(
+            env == &json!({}),
+            capability != "env" && capability != "all",
+            "{capability}: {env}"
+        );
+        assert_eq!(
+            answers["timer"]["ok"],
+            serde_json::Value::Null,
+            "{capability}"
+        );
+        for kind in ["cwd", "session.read"] {
             assert!(
-                message.ends_with("is not permitted for this extension"),
-                "{kind}: {message}"
+                answers[kind].get("ok").is_some(),
+                "{capability}: {kind}: {}",
+                answers[kind]
             );
-            kind.as_str()
-        })
-        .collect();
-    let allowed: Vec<(&str, &serde_json::Value)> = allowed
-        .iter()
-        .map(|(kind, answer)| (kind.as_str(), &answer["ok"]))
-        .collect();
-    assert_eq!(denied.len(), 35, "{allowed:?}");
-    assert!(allowed.contains(&("env", &json!({}))), "{allowed:?}");
-    assert!(
-        allowed.contains(&("timer", &serde_json::Value::Null)),
-        "{allowed:?}"
-    );
-    let names: Vec<&str> = allowed.iter().map(|(kind, _)| *kind).collect();
-    assert_eq!(names, ["cwd", "env", "session.read", "timer"]);
+        }
+    }
 }
 
 /// A UI whose theme colors keywords magenta.

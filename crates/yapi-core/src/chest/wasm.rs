@@ -31,6 +31,10 @@ pub struct Capabilities {
     /// A build with the SDK's `all` feature lists `all` alone from the
     /// section.
     pub used: Vec<Use>,
+    /// The WASI network interfaces it imports, which yapi does not provide:
+    /// it links no `wasi:http`, and refuses every `wasi:sockets` call. An
+    /// extension reaches the network through the SDK's `fetch`.
+    pub unsupported: Vec<String>,
 }
 
 impl Capabilities {
@@ -52,13 +56,13 @@ fn feature(line: &str) -> Option<&'static str> {
 /// none: every Rust component imports it, and yapi gives WASI no
 /// environment variables, so an extension reads them through the SDK.
 fn import(name: &str) -> Option<&'static str> {
-    if name.starts_with("wasi:filesystem/") {
-        Some("fs")
-    } else if name.starts_with("wasi:sockets/") || name.starts_with("wasi:http/") {
-        Some("net")
-    } else {
-        None
-    }
+    name.starts_with("wasi:filesystem/").then_some("fs")
+}
+
+/// Whether yapi leaves WASI import `name` out, as [`Capabilities::unsupported`]
+/// describes.
+fn unsupported(name: &str) -> bool {
+    name.starts_with("wasi:sockets/") || name.starts_with("wasi:http/")
 }
 
 /// Whether `grants` cover using `capability`, one of [`Use::capability`].
@@ -121,6 +125,8 @@ pub fn capabilities(bytes: &[u8]) -> Result<Capabilities, ChestError> {
     for name in imports {
         if let Some(capability) = import(&name) {
             found.add(capability, format!("WASI import `{name}`"));
+        } else if unsupported(&name) {
+            found.unsupported.push(name);
         }
     }
     Ok(found)
@@ -185,11 +191,9 @@ mod tests {
         assert!(!wasi.metadata);
         assert_eq!(
             used(&wasi),
-            [
-                ("fs", "WASI import `wasi:filesystem/types@0.2.6`"),
-                ("net", "WASI import `wasi:http/outgoing-handler@0.2.6`"),
-            ]
+            [("fs", "WASI import `wasi:filesystem/types@0.2.6`")]
         );
+        assert_eq!(wasi.unsupported, ["wasi:http/outgoing-handler@0.2.6"]);
         let custom = section(0x00, &[&name(SECTION)[..], b"marker\nnet\nfs\n"].concat());
         let declared =
             capabilities(&[&importing(&["wasi:sockets/tcp@0.2.6"])[..], &custom].concat());
@@ -199,6 +203,7 @@ mod tests {
             used(&declared),
             [("net", "SDK feature `net`"), ("fs", "SDK feature `fs`")]
         );
+        assert_eq!(declared.unsupported, ["wasi:sockets/tcp@0.2.6"]);
 
         assert_eq!(capabilities(&EMPTY).unwrap(), Capabilities::default());
         let module = capabilities(b"\0asm\x01\x00\x00\x00").unwrap_err();

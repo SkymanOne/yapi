@@ -5,9 +5,12 @@
     reason = "test helpers; a panic is a test failure"
 )]
 
-use std::io::Write as _;
+use std::collections::HashMap;
+use std::io::{BufRead as _, BufReader, Write as _};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use aws_lc_rs::digest::{SHA512, digest};
 use base64::Engine as _;
@@ -705,31 +708,31 @@ async fn npm_tree_replays() {
     assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
     server.finish().unwrap();
 
-    // A mirror of the tarballs: one replay, a replay whose second download
-    // is tampered, then `fetch_pinned`.
-    let mirror = registry(|base| {
-        let tarball = |name: &str| published(base, name).remove(1);
-        let mut all: Vec<Interaction> = tree.iter().map(|pin| tarball(&pin.name)).collect();
-        all.push(tarball("@acme/lib"));
-        let mut tampered = tarball("@acme/fork");
-        tampered.response.body_base64 = Some(STANDARD.encode(b"tampered"));
-        all.push(tampered);
-        all.push(tarball("app"));
-        all
-    })
-    .await;
+    // A mirror of the tarballs: one replay, whose downloads overlap, a
+    // replay with a tampered download, then `fetch_pinned`.
+    let mirror = Mirror::default();
+    for (name, version, _, bytes) in &packages {
+        let file = name.rsplit('/').next().unwrap();
+        let path = format!("/{name}/-/{file}-{version}.tgz");
+        mirror.files.lock().unwrap().insert(path, bytes.clone());
+    }
+    let mirror_url = mirror.serve();
     for pin in &mut tree {
-        pin.tarball = pin.tarball.replace(&server.url(), &mirror.url());
+        pin.tarball = pin.tarball.replace(&server.url(), &mirror_url);
     }
     // The registry is the http mirror, so its http tarballs pass, and a
     // packument request would break the mirror's cassette.
-    let offline = Npm::new([("registry".to_owned(), format!("{}/", mirror.url()))].into());
+    let offline = Npm::new([("registry".to_owned(), format!("{mirror_url}/"))].into());
     let replayed = dir.join("replayed");
     let stale = replayed.join("node_modules/stale");
     std::fs::create_dir_all(&stale).unwrap();
     std::fs::write(stale.join("package.json"), "{}").unwrap();
     let reversed: Vec<Pinned> = tree.iter().rev().cloned().collect();
+    *mirror.gather.lock().unwrap() = true;
     npm::replay(&offline, &replayed, &reversed).await.unwrap();
+    *mirror.gather.lock().unwrap() = false;
+    let most = mirror.load.0.lock().unwrap().1;
+    assert!((2..=8).contains(&most), "{most} downloads at once");
     let modules = files(&root.join("node_modules"));
     assert_eq!(modules.len(), 8);
     // The unlisted package is gone, and nothing is left beside the tree.
@@ -743,6 +746,12 @@ async fn npm_tree_replays() {
     assert_eq!(entries(&replayed), ["node_modules"]);
 
     // A download that fails partway leaves the root as it was.
+    let fork = "/@acme/fork/-/fork-2.0.0.tgz".to_owned();
+    let original = mirror
+        .files
+        .lock()
+        .unwrap()
+        .insert(fork.clone(), b"tampered".to_vec());
     let before = files(&replayed);
     let error = npm::replay(&offline, &replayed, &tree).await.unwrap_err();
     assert_eq!(
@@ -751,6 +760,7 @@ async fn npm_tree_replays() {
     );
     assert_eq!(files(&replayed), before);
     assert_eq!(entries(&replayed), ["node_modules"]);
+    mirror.files.lock().unwrap().insert(fork, original.unwrap());
 
     // Refused before any request: the tree plus one more pin, last so that a
     // lazy check would download the others first.
@@ -871,14 +881,80 @@ async fn npm_tree_replays() {
     // `fetch_pinned` reinstalls what `fetch` pinned, dropping stray files.
     std::fs::write(fetched.join("stray.js"), "").unwrap();
     let pinned = Pinned {
-        tarball: pin.tarball.replace(&server.url(), &mirror.url()),
+        tarball: pin.tarball.replace(&server.url(), &mirror_url),
         ..pin
     };
     npm::fetch_pinned(&offline, &pinned, &fetched)
         .await
         .unwrap();
     assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
-    mirror.finish().unwrap();
+}
+
+/// Files served over HTTP by path, in any order and many at once, which
+/// remembers the most requests it held at the same time. While `gather` is
+/// set, each request waits up to 5 s for another before it is answered, so
+/// that downloads made one at a time show as one.
+#[derive(Clone, Default)]
+struct Mirror {
+    files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    gather: Arc<Mutex<bool>>,
+    /// The requests held now and the most held at once.
+    load: Arc<(Mutex<(usize, usize)>, Condvar)>,
+}
+
+impl Mirror {
+    /// Serves until the process exits; the base URL.
+    fn serve(&self) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let mirror = self.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mirror = mirror.clone();
+                std::thread::spawn(move || mirror.answer(stream.unwrap()));
+            }
+        });
+        base
+    }
+
+    fn answer(&self, mut stream: std::net::TcpStream) {
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut request = String::new();
+        reader.read_line(&mut request).unwrap();
+        let mut header = String::new();
+        while reader.read_line(&mut header).unwrap() > 2 {
+            header.clear();
+        }
+        let path = request.split(' ').nth(1).unwrap_or("/").replace("%2f", "/");
+        let (lock, wake) = &*self.load;
+        let mut load = lock.lock().unwrap();
+        load.0 += 1;
+        load.1 = load.1.max(load.0);
+        wake.notify_all();
+        if *self.gather.lock().unwrap() {
+            // Only until two requests have overlapped once.
+            let alone = |load: &mut (usize, usize)| load.1 < 2;
+            load = wake
+                .wait_timeout_while(load, Duration::from_secs(5), alone)
+                .unwrap()
+                .0;
+        }
+        load.0 -= 1;
+        drop(load);
+        let body = self.files.lock().unwrap().get(&path).cloned();
+        let status = if body.is_some() {
+            "200 OK"
+        } else {
+            "404 Not Found"
+        };
+        let body = body.unwrap_or_default();
+        let head = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(head.as_bytes());
+        let _ = stream.write_all(&body);
+    }
 }
 
 /// An `npm:` alias installs the package it names under the alias, and

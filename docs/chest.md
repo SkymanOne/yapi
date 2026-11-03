@@ -27,7 +27,7 @@ cargo install --locked --git https://github.com/SkymanOne/yapi chest-cli
 
 ## Quickstart
 
-In the project folder:
+In the project folder, with your own sources in place of the `acme` examples:
 
 ```sh
 chest init
@@ -60,9 +60,11 @@ chest install
 | OpenCode | `.opencode` | `.agents/skills` | `.opencode/agent` |
 | yapi | `.yapi` | `.agents/skills` | `.yapi/agents` |
 
-At a terminal, `init` lists the folders by number with the ones it found selected. Without a terminal, or with `--yes`, it takes those. `--skills`, `--agents` and `--store` set the folders directly.
+At a terminal, `init` lists the folders by number with the ones it found selected. Without a terminal, or with `--yes`, it takes those. When it finds no agent, skills go to `.agents/skills` and subagents to `.yapi/agents`. `--skills`, `--agents` and `--store` set the folders directly.
 
-The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone.
+A folder can be a link to another one, such as `.claude/skills` linking to `../.agents/skills`. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path one of them drops stays while another still lists it.
+
+The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`, which chest rebuilds on each install and leaves every other line alone. The block also ignores the `.*-staging` folders an interrupted install can leave where chest copies, and the next install removes them.
 
 Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in `~/.chest/state`, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.
 
@@ -104,7 +106,7 @@ Extensions with identical grants always hear each other. Across different grants
 A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock.
 
 - `chest install` keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
-- `chest install --frozen` installs nothing. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It is the default when `CI` is set to anything but an empty value, `0` or `false`.
+- `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes `chest.toml` or `chest.lock`. It is the default when `CI` is set to anything but an empty value, `0` or `false`, so a fresh clone in CI gets every skill and extension.
 - `chest verify` checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.
 
 ## Update
@@ -173,7 +175,7 @@ Before you publish a native extension, run `chest check` in the package folder. 
 chest check
 ```
 
-It reads the [capability features](native-extensions.md#declare-capabilities) the extension was built with, and the WASI interfaces it imports, where `wasi:filesystem` means `fs` and `wasi:sockets` or `wasi:http` mean `net`. A capability the extension uses that the package does not request is an error, and chest exits with 1. A capability the package requests that no extension uses is a warning. An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime. Entries in the package's own `[skills]`, `[agents]` or `[extensions]` sections are not installed for its consumers. `chest add` lists them so the consumer can add the ones they want.
+It reads the [capability features](native-extensions.md#declare-capabilities) the extension was built with, and the WASI interfaces it imports, where `wasi:filesystem` means `fs`. A capability the extension uses that the package does not request is an error, and chest exits with 1. So is an import of `wasi:sockets` or `wasi:http`, which yapi does not support, because extensions reach the network through the SDK's `fetch`. `chest add` warns about such an import. A capability the package requests that no extension uses is a warning. An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime. Entries in the package's own `[skills]`, `[agents]` or `[extensions]` sections are not installed for its consumers. `chest add` lists them so the consumer can add the ones they want.
 
 ## Command reference
 
@@ -184,12 +186,12 @@ Every command takes `-g` (the global manifest) and `--manifest <path>`. Without 
 | `chest init` | `--skills a,b`, `--agents a,b`, `--store <dir>`, `--package`, `--yes` | Writes a manifest with folders for the agents found. Refuses an existing manifest unless `--package`, which adds `[package]`. |
 | `chest add <source>` | `--skill`, `--agent`, `--extension`, `--name <name>`, `--path <path>`, `--rev <rev>`, `--version <range>`, `--grant a,b`, `--yes` | Adds an entry and installs it. The source is `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL or a path. Without a section flag, chest infers it from the package. The same name with the same source updates its version or rev and keeps its grants. The same name with another source is an error. |
 | `chest remove <name>` | | Removes the entry and what chest installed for it. |
-| `chest install` | `--frozen` | Installs what the manifest lists, as the lock pins it, and writes the lock. |
+| `chest install` | `--frozen` | Installs what the manifest lists, as the lock pins it, and writes the lock. With `--frozen`, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither. |
 | `chest update [names]` | | Moves the entries, or all, to the newest version or commit their source allows. |
 | `chest list` | | Lists each entry with its locked version or commit, whether it is installed, its capabilities and description. |
 | `chest outdated` | | Lists entries whose source has something newer. |
 | `chest verify` | | Checks installed copies against the lock. |
 | `chest import` | `--settings` or `--skills-lock`, `[path]` | Turns settings.json packages or a skills-lock.json into entries. |
-| `chest check [path]` | | Compares the capabilities the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests. `path` is the current folder by default. Reads no manifest. |
+| `chest check [path]` | | Compares the capabilities the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests in its `chest.toml` or `package.json`. `path` is the current folder by default. A `.wasm` file belongs to the nearest folder above it with either file. Fails when the package's `[package]` does not parse. |
 
 chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error. Questions go to stderr and are asked only at a terminal.

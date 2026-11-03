@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use yapi_types::rpc::SourceInfo;
 use yapi_types::settings::FilteredPackage;
 
+use crate::chest::ChestError;
 use crate::chest::manifest::package_meta;
 use crate::glob;
 use crate::tools::path::{relative, resolve_lexically};
@@ -85,6 +86,9 @@ pub struct ResolvedPaths {
     /// which does not load them: by the same path, or by another path to
     /// the same file.
     pub shadowed: Vec<SourceInfo>,
+    /// Packages whose `chest.toml` does not parse, each by its folder with
+    /// why. Their resources resolve as if it were absent.
+    pub problems: Vec<(String, String)>,
 }
 
 impl ResolvedPaths {
@@ -119,7 +123,8 @@ impl ResolvedPaths {
         };
         let list = self.of_mut(kind);
         if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
-            if kind == ResourceType::Extensions && listed.info.source != info.source {
+            let other = (&listed.info.source, &listed.info.scope) != (&info.source, &info.scope);
+            if kind == ResourceType::Extensions && other {
                 self.shadowed.push(info);
             }
             return;
@@ -612,11 +617,12 @@ pub(crate) struct Manifest {
 
 impl Manifest {
     /// The manifest of the package at `root`; `None` when no source decides
-    /// its resources, so the conventional folders apply.
-    pub(crate) fn read(root: &Path) -> Option<Manifest> {
-        let meta = package_meta(root);
+    /// its resources, so the conventional folders apply. `Err` as
+    /// [`package_meta`] says.
+    pub(crate) fn read(root: &Path) -> Result<Option<Manifest>, ChestError> {
+        let meta = package_meta(root)?;
         let lists = ResourceType::ALL.map(|kind| meta.resources.get(kind.key()).cloned());
-        meta.manifest.then_some(Manifest { lists })
+        Ok(meta.manifest.then_some(Manifest { lists }))
     }
 
     /// The entries of `kind`, when listed.
@@ -682,7 +688,11 @@ fn collect_package_resources(
     filter: Option<&FilteredPackage>,
     meta: &SourceInfo,
 ) -> bool {
-    let manifest = Manifest::read(root);
+    let manifest = Manifest::read(root).unwrap_or_else(|err| {
+        let folder = root.to_string_lossy().into_owned();
+        acc.problems.push((folder, err.to_string()));
+        None
+    });
     if let Some(filter) = filter {
         for kind in ResourceType::ALL {
             let patterns = match kind {
