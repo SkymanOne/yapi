@@ -63,75 +63,228 @@ const CHANNEL_BYTES: usize = 256;
 /// in a session, before one more says the rest are suppressed.
 const MISSED_WARNINGS: usize = 8;
 
-/// Requests and operations that start, steer or stop turns, or change the
-/// session, its files or the model's setup, which need the session grant.
-const SESSION_ACTIONS: &[&str] = &[
-    "session.sendMessage",
-    "session.sendUserMessage",
-    "session.appendEntry",
-    "session.setName",
-    "session.setLabel",
-    "session.write",
-    "session.new",
-    "session.fork",
-    "session.navigateTree",
-    "session.switch",
-    "session.reload",
-    "session.replaced",
-    "agent.compact",
-    "agent.setSystemPromptOptions",
-    "agent.abort",
-    "agent.shutdown",
-    "model.set",
-    "thinking.set",
-    "tools.setActive",
+/// What a request or operation needs from an extension's grants.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Need {
+    /// No grant: reading what any extension may see, its own UI, dialogs
+    /// and operations.
+    Nothing,
+    /// The session grant: starting, steering or stopping turns, or changing
+    /// the session, its files or the model's setup.
+    Session,
+    /// The file grant.
+    Files,
+    /// The network grant: credentials, which are only good for requests,
+    /// and models called for the extension. The host checks it first.
+    Network,
+    /// Every grant: reaching outside the sandbox or acting with yapi's own
+    /// access.
+    All,
+}
+
+/// What each request and operation the session bridge dispatches needs. A
+/// kind missing here needs every grant. `ui.editorSubmit` text that runs a
+/// command, and `ui.editorAction` actions, need what [`editor_action`] says.
+const REQUESTS: &[(&str, Need)] = &[
+    ("agent.abort", Need::Session),
+    ("agent.compact", Need::Session),
+    ("agent.contextUsage", Need::Nothing),
+    ("agent.hasPendingMessages", Need::Nothing),
+    ("agent.isIdle", Need::Nothing),
+    ("agent.renderSystemPrompt", Need::Nothing),
+    ("agent.setSystemPromptOptions", Need::Session),
+    ("agent.shutdown", Need::Session),
+    ("agent.signal", Need::Nothing),
+    ("agent.systemPrompt", Need::Nothing),
+    ("agent.systemPromptOptions", Need::Nothing),
+    ("agent.waitForIdle", Need::Nothing),
+    // Data for a `bash` operation the extension itself provides.
+    ("bash.data", Need::Nothing),
+    // Writes the system clipboard, which a person may paste anywhere.
+    ("clipboard.copy", Need::Nothing),
+    // Runs only the tools the grants allow, in an instance with none.
+    ("codemode.execute", Need::Nothing),
+    ("commands.list", Need::Nothing),
+    // Routed by the instances' grants and event policies.
+    ("events.emit", Need::Nothing),
+    // Holds yapi's edit and write tools off the file until `file.unlock`.
+    ("file.lock", Need::Files),
+    ("file.unlock", Need::Nothing),
+    ("mcp.servers", Need::Nothing),
+    ("model.set", Need::Session),
+    ("models.all", Need::Nothing),
+    ("models.apiKey", Need::Network),
+    ("models.auth", Need::Network),
+    ("models.authStatus", Need::Nothing),
+    ("models.available", Need::Nothing),
+    ("models.availableOfType", Need::Nothing),
+    ("models.classify", Need::Network),
+    ("models.error", Need::Nothing),
+    ("models.find", Need::Nothing),
+    ("models.generateImages", Need::Network),
+    ("models.hasAuth", Need::Nothing),
+    ("models.ofType", Need::Nothing),
+    ("models.providerName", Need::Nothing),
+    // Refreshes offline without the network grant.
+    ("models.refresh", Need::Nothing),
+    ("models.requestAuth", Need::Network),
+    ("models.usingOAuth", Need::Nothing),
+    // Steps of a login or a stream of a provider, which only a provider
+    // registered with every grant starts.
+    ("oauth.notify", Need::Nothing),
+    ("oauth.prompt", Need::Nothing),
+    ("op.cancel", Need::Nothing),
+    ("projectDir", Need::Nothing),
+    ("provider.event", Need::Nothing),
+    ("provider.payload", Need::Nothing),
+    ("provider.response", Need::Nothing),
+    ("provider.streamEvent", Need::Nothing),
+    // A provider's replies drive the agent's tools, and its streams get credentials.
+    ("providers.register", Need::All),
+    ("providers.unregister", Need::All),
+    ("renderers.refresh", Need::Nothing),
+    ("session.appendEntry", Need::Session),
+    ("session.boundaryContext", Need::Nothing),
+    ("session.context", Need::Nothing),
+    ("session.fork", Need::Session),
+    ("session.getName", Need::Nothing),
+    ("session.navigateTree", Need::Session),
+    ("session.new", Need::Session),
+    ("session.read", Need::Nothing),
+    ("session.reload", Need::Session),
+    ("session.replaced", Need::Session),
+    ("session.sendMessage", Need::Session),
+    ("session.sendUserMessage", Need::Session),
+    ("session.setLabel", Need::Session),
+    ("session.setName", Need::Session),
+    ("session.switch", Need::Session),
+    ("session.write", Need::Session),
+    ("settings.get", Need::Nothing),
+    ("thinking.get", Need::Nothing),
+    ("thinking.set", Need::Session),
+    // Runs only a tool the grants allow.
+    ("tool.execute", Need::Nothing),
+    ("tool.update", Need::Nothing),
+    ("tools.getActive", Need::Nothing),
+    ("tools.getAll", Need::Nothing),
+    ("tools.refresh", Need::Nothing),
+    ("tools.setActive", Need::Session),
+    ("ui.applyCompletion", Need::Nothing),
+    ("ui.close", Need::Nothing),
+    ("ui.confirm", Need::Nothing),
+    ("ui.custom", Need::Nothing),
+    ("ui.editor", Need::Nothing),
+    ("ui.editorAction", Need::All),
+    ("ui.editorChange", Need::Nothing),
+    ("ui.editorShortcut", Need::Nothing),
+    ("ui.editorSubmit", Need::Session),
+    ("ui.footerData", Need::Nothing),
+    ("ui.getAllThemes", Need::Nothing),
+    ("ui.getEditorText", Need::Nothing),
+    ("ui.getTheme", Need::Nothing),
+    ("ui.getToolsExpanded", Need::Nothing),
+    ("ui.input", Need::Nothing),
+    ("ui.keybindings", Need::Nothing),
+    ("ui.notify", Need::Nothing),
+    ("ui.pasteToEditor", Need::Nothing),
+    ("ui.requestRender", Need::Nothing),
+    ("ui.select", Need::Nothing),
+    ("ui.setAutocomplete", Need::Nothing),
+    ("ui.setEditor", Need::Nothing),
+    ("ui.setEditorText", Need::Nothing),
+    ("ui.setFooter", Need::Nothing),
+    ("ui.setHeader", Need::Nothing),
+    ("ui.setHiddenThinkingLabel", Need::Nothing),
+    ("ui.setStatus", Need::Nothing),
+    ("ui.setTerminalInput", Need::Nothing),
+    ("ui.setTheme", Need::Nothing),
+    ("ui.setTitle", Need::Nothing),
+    ("ui.setToolsExpanded", Need::Nothing),
+    ("ui.setWidget", Need::Nothing),
+    ("ui.setWorkingIndicator", Need::Nothing),
+    ("ui.setWorkingMessage", Need::Nothing),
+    ("ui.setWorkingVisible", Need::Nothing),
+    ("ui.suggestions", Need::Nothing),
+    ("ui.terminalSize", Need::Nothing),
+    ("ui.theme", Need::Nothing),
+    ("util.convertToLlm", Need::Nothing),
+    ("util.serializeConversation", Need::Nothing),
 ];
 
-/// Whether `grants` allow request or operation `kind` with `payload`: session
-/// actions need the session grant. Registering providers, editor input that
-/// runs shell or slash commands, and editor actions that reach outside the
-/// sandbox need every grant.
-fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
-    let all = *grants == Grants::default();
-    match kind {
-        _ if SESSION_ACTIONS.contains(&kind) => grants.session,
-        // A provider's replies drive the agent's tools, and its streams get credentials.
-        "providers.register" | "providers.unregister" => all,
-        // Interactive mode runs `!` and `/` input as shell and slash commands.
-        "ui.editorSubmit" => {
-            let input = payload["text"].as_str().unwrap_or_default().trim_start();
-            if input.starts_with(['!', '/']) {
-                all
-            } else {
-                grants.session
-            }
-        }
-        "ui.editorAction" => match payload["action"].as_str().unwrap_or_default() {
-            // `$EDITOR`, the system clipboard, and the editor's text submitted as input.
-            "app.editor.external" | "app.clipboard.pasteImage" | "app.message.followUp" => all,
-            "app.interrupt"
-            | "app.clear"
-            | "app.exit"
-            | "app.suspend"
-            | "app.thinking.cycle"
-            | "app.thinking.toggle"
-            | "app.model.cycleForward"
-            | "app.model.cycleBackward"
-            | "app.message.dequeue"
-            | "app.session.new" => grants.session,
-            _ => true,
-        },
-        _ => true,
+/// What editor action `action`, a key binding id, needs. An action not
+/// listed needs every grant.
+fn editor_action(action: &str) -> Need {
+    match action {
+        // They change only the view, copy to the clipboard, or open a
+        // selector whose choice a person makes.
+        "app.tools.expand" | "app.message.copy" | "app.model.select" | "app.session.tree"
+        | "app.session.fork" | "app.session.resume" => Need::Nothing,
+        "app.interrupt"
+        | "app.clear"
+        | "app.exit"
+        | "app.suspend"
+        | "app.thinking.cycle"
+        | "app.thinking.toggle"
+        | "app.model.cycleForward"
+        | "app.model.cycleBackward"
+        | "app.message.dequeue"
+        | "app.session.new" => Need::Session,
+        // `$EDITOR`, the system clipboard, the editor's text submitted as
+        // input, and actions yapi does not know.
+        _ => Need::All,
     }
 }
 
-/// Whether session file `path`, relative to the process's directory as
-/// session actions resolve it, lies inside session directory `dir`.
-fn in_session_dir(dir: &std::path::Path, path: &str) -> bool {
-    let path = std::env::current_dir().map_or_else(|_| PathBuf::from(path), |cwd| cwd.join(path));
-    match (path.canonicalize(), dir.canonicalize()) {
+/// Whether `grants` allow request or operation `kind` with `payload`, as
+/// [`REQUESTS`] classifies it.
+fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
+    let need = match kind {
+        // Interactive mode runs `!` and `/` input as shell and slash commands.
+        "ui.editorSubmit"
+            if payload["text"]
+                .as_str()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with(['!', '/']) =>
+        {
+            Need::All
+        }
+        "ui.editorAction" => editor_action(payload["action"].as_str().unwrap_or_default()),
+        _ => REQUESTS
+            .iter()
+            .find(|(name, _)| *name == kind)
+            .map_or(Need::All, |(_, need)| *need),
+    };
+    match need {
+        Need::Nothing => true,
+        Need::Session => grants.session,
+        Need::Files => grants.filesystem,
+        Need::Network => grants.network,
+        Need::All => *grants == Grants::default(),
+    }
+}
+
+/// Session file `path` that a session action opens, resolved against `cwd`
+/// as pi resolves it, once, so the check and the action open the same file.
+/// Without file access, `Err` unless it lies inside session directory
+/// `dir`.
+fn session_file(
+    cwd: &std::path::Path,
+    dir: &std::path::Path,
+    path: &str,
+    files: bool,
+) -> Result<String, String> {
+    let path = cwd.join(path);
+    let inside = match (path.canonicalize(), dir.canonicalize()) {
         (Ok(path), Ok(dir)) => path.starts_with(dir),
         _ => false,
+    };
+    if files || inside {
+        Ok(path.to_string_lossy().into_owned())
+    } else {
+        Err(denied(
+            "Opening a session file outside the session directory",
+        ))
     }
 }
 
@@ -3533,9 +3686,14 @@ impl Bridge for SessionBridge {
                 | "session.switch"
                 | "session.reload"
                 | "session.replaced" => {
+                    let open = |path: &str| {
+                        let cwd = std::env::current_dir().unwrap_or_default();
+                        let dir = session.with_session(|file| file.dir().to_path_buf());
+                        session_file(&cwd, &dir, path, grants.filesystem)
+                    };
                     let action = match kind.as_str() {
                         "session.new" => SessionAction::New {
-                            parent: payload["parentSession"].as_str().map(str::to_owned),
+                            parent: payload["parentSession"].as_str().map(open).transpose()?,
                             setup: payload["setup"].as_u64().map(|id| setup(owner, id)),
                         },
                         "session.fork" => SessionAction::Fork {
@@ -3554,26 +3712,11 @@ impl Bridge for SessionBridge {
                             },
                         },
                         "session.switch" => SessionAction::Switch {
-                            path: text(&payload["sessionPath"]),
+                            path: open(&text(&payload["sessionPath"]))?,
                         },
                         "session.reload" => SessionAction::Reload,
                         _ => SessionAction::Replaced,
                     };
-                    // Without file access, only session files in the session directory open.
-                    if let SessionAction::New {
-                        parent: Some(path), ..
-                    }
-                    | SessionAction::Switch { path } = &action
-                        && !grants.filesystem
-                        && !in_session_dir(
-                            &session.with_session(|file| file.dir().to_path_buf()),
-                            path,
-                        )
-                    {
-                        return Err(denied(
-                            "Opening a session file outside the session directory",
-                        ));
-                    }
                     let cancelled = session.session_action(action).await?;
                     Ok(json!({ "cancelled": cancelled }))
                 }
@@ -3658,6 +3801,103 @@ mod tests {
         assert_eq!(*lock(&ran), ["call"]);
     }
 
+    /// The kinds the session bridge dispatches, read from its source: every
+    /// `"area.name"` literal, and every literal `kind` is compared with, in
+    /// its `request`, `ui_request` and `start`.
+    fn dispatched() -> std::collections::BTreeSet<&'static str> {
+        let source = include_str!("extensions.rs");
+        let mut kinds = std::collections::BTreeSet::new();
+        for start in [
+            "    fn request(&self, kind: &str",
+            "    fn ui_request(&self",
+            "    fn start(&self, kind: &str",
+        ] {
+            let at = source.find(start).unwrap();
+            let body = &source[at..at + source[at..].find("\n    }\n").unwrap()];
+            for (index, _) in body.match_indices('"') {
+                let rest = &body[index + 1..];
+                let Some(end) = rest.find('"') else { continue };
+                let literal = &rest[..end];
+                let kind_like = literal.split_once('.').is_some_and(|(area, name)| {
+                    !area.is_empty()
+                        && area.chars().all(|c| c.is_ascii_lowercase())
+                        && !name.is_empty()
+                        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+                });
+                if kind_like || body[..index].ends_with("kind == ") {
+                    kinds.insert(literal);
+                }
+            }
+        }
+        kinds
+    }
+
+    /// Every kind the bridge dispatches is classified, and nothing else, and
+    /// each needs exactly its grant. Kinds and editor actions yapi does not
+    /// know need every grant.
+    #[test]
+    fn requests_all_classified() {
+        let classified: std::collections::BTreeSet<&str> =
+            REQUESTS.iter().map(|(kind, _)| *kind).collect();
+        assert_eq!(dispatched(), classified);
+        let only = |need: Need| Grants {
+            filesystem: need == Need::Files,
+            network: need == Need::Network,
+            session: need == Need::Session,
+            ..Grants::none()
+        };
+        let no_process = Grants {
+            process: false,
+            ..Grants::default()
+        };
+        for (kind, need) in REQUESTS {
+            let payload = json!({});
+            assert_eq!(
+                granted(&Grants::none(), kind, &payload),
+                *need == Need::Nothing,
+                "{kind}"
+            );
+            assert_eq!(
+                granted(&only(*need), kind, &payload),
+                *need != Need::All,
+                "{kind}"
+            );
+            assert_eq!(
+                granted(&no_process, kind, &payload),
+                *need != Need::All,
+                "{kind}"
+            );
+        }
+        // Holding a file holds off the model's edits, so it needs the file grant.
+        let no_files = Grants {
+            filesystem: false,
+            ..Grants::default()
+        };
+        assert!(!granted(&no_files, "file.lock", &json!({"path": "a.txt"})));
+        assert!(!granted(&no_process, "made.up", &json!({})));
+        let action = |action: &str| json!({ "action": action });
+        assert!(!granted(
+            &no_process,
+            "ui.editorAction",
+            &action("app.made.up")
+        ));
+        assert!(granted(
+            &Grants::none(),
+            "ui.editorAction",
+            &action("app.tools.expand")
+        ));
+        assert!(granted(
+            &only(Need::Session),
+            "ui.editorAction",
+            &action("app.session.new")
+        ));
+        assert!(!granted(
+            &no_process,
+            "ui.editorSubmit",
+            &json!({"text": " !ls"})
+        ));
+    }
+
     /// Without file access, session actions open only session files inside
     /// the session directory, however the path leaves it.
     #[test]
@@ -3667,15 +3907,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.jsonl"), "").unwrap();
         std::fs::write(root.join("secret.jsonl"), "").unwrap();
-        let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
-        assert!(in_session_dir(&dir, &path("a.jsonl")));
-        assert!(!in_session_dir(&dir, &path("../secret.jsonl")));
-        assert!(!in_session_dir(&dir, &path("missing.jsonl")));
+        let inside = |name: &str| session_file(&dir, &dir, name, false).is_ok();
+        assert!(inside("a.jsonl"));
+        assert!(!inside("../secret.jsonl"));
+        assert!(!inside("missing.jsonl"));
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(root.join("secret.jsonl"), dir.join("link.jsonl")).unwrap();
-            assert!(!in_session_dir(&dir, &path("link.jsonl")));
+            assert!(!inside("link.jsonl"));
         }
+        // The action opens the path the check resolved, wherever it was named from.
+        let opened = session_file(&root, &dir, "sessions/a.jsonl", false);
+        assert_eq!(
+            opened,
+            Ok(dir.join("a.jsonl").to_string_lossy().into_owned())
+        );
+        let anywhere = session_file(&root, &dir, "secret.jsonl", true);
+        assert_eq!(
+            anywhere,
+            Ok(root.join("secret.jsonl").to_string_lossy().into_owned())
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
