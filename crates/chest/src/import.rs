@@ -14,16 +14,16 @@ use yapi_types::settings::PackageSource;
 
 use crate::{Target, out, say, write};
 
-/// `chest import` options.
+/// `chest import` options: one of the two sources, and its file.
 #[derive(Args)]
-#[group(required = true, multiple = false, id = "from")]
+#[command(group(clap::ArgGroup::new("from").required(true).args(["settings", "skills_lock"])))]
 pub struct ImportArgs {
     /// Import the packages of settings.json: the project's `.yapi`, or the
     /// agent folder's with `-g`.
-    #[arg(long, group = "from")]
+    #[arg(long)]
     settings: bool,
     /// Import the skills of a skills.sh `skills-lock.json`.
-    #[arg(long, group = "from")]
+    #[arg(long)]
     skills_lock: bool,
     /// The file to read instead of the default.
     path: Option<PathBuf>,

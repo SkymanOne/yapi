@@ -602,6 +602,19 @@ fn import_settings_packages() {
         "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
+    // A path names another file for either flag, and one flag is required.
+    write(
+        &scratch.dir.join("other.json"),
+        r#"{"packages": ["npm:other"]}"#,
+    );
+    ok(&scratch, &["import", "--settings", "../other.json"]);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("other = { npm = \"other\", capabilities = [\"all\"] }"),
+        "{manifest}"
+    );
+    let flagless = chest(&scratch, &["import", "../other.json"], &[]);
+    assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 
     // A manifest that is a symbolic link is refused, so a cloned project
     // cannot point chest at a file outside it.
