@@ -1133,6 +1133,31 @@ async fn path_source_notice() {
         }
     }
     std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
+    // So is one that holds it through a folder linking there.
+    #[cfg(unix)]
+    {
+        let project = dir.join("project");
+        std::fs::create_dir_all(project.join(".claude")).unwrap();
+        std::os::unix::fs::symlink("../.agents/skills", project.join(".claude/skills")).unwrap();
+        std::fs::write(project.join(".agents/SKILL.md"), "# agents\n").unwrap();
+        let linked =
+            "[folders]\nskills = [\".claude/skills\"]\n\n[skills]\nme = { path = \".agents\" }\n";
+        let error = failed(&mut open(&dir, linked), Mode::Resolve).await;
+        let holds = format!(
+            "{} holds {}, where chest installs",
+            project.join(".agents").display(),
+            project.join(".agents/skills").display()
+        );
+        assert!(error.contains(&holds), "{error}");
+        assert!(
+            project
+                .join(".agents/skills/me")
+                .symlink_metadata()
+                .is_err()
+        );
+        std::fs::remove_file(project.join(".agents/SKILL.md")).unwrap();
+        std::fs::remove_file(project.join(".claude/skills")).unwrap();
+    }
 
     // An extension whose folder holds the project, as a path source or as a
     // patch, is refused before anything is written.
