@@ -971,14 +971,33 @@ fn wanted(name: &str, spec: &str) -> Option<(String, String)> {
     })
 }
 
+/// Whether `version` of package `found` satisfies a dependency on `package`
+/// at `range`. A dist-tag, which names no version, takes any version of the
+/// package, as npm's arborist judges it, and an empty range is `latest`.
+fn satisfied(found: &str, version: &str, package: &str, range: &str) -> bool {
+    let tag = |range: &str| {
+        range
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-._".contains(&byte))
+    };
+    found == package
+        && match range {
+            "" => true,
+            _ if is_range(range) => satisfies(version, range),
+            _ => tag(range),
+        }
+}
+
 /// Fails unless the tree `pins` records, unpacked in `staging` to stand for
-/// `root/node_modules`, is what its dependents ask for. Each package's own
-/// `package.json` must name its pin's name and version. Each pinned folder
-/// that a dependency of a pinned package, or of `root/package.json`, reaches
-/// by Node's lookup must have the name and a version in the range of one of
-/// the dependencies that reach it. A dependency that yapi skipped, as an
-/// optional one that failed or one for another platform, still reaches the
-/// folder another dependency put there, so that alone is no mismatch.
+/// `root/node_modules`, is what its dependents ask for, as npm keeps a tree.
+/// Each package's own `package.json` must name its pin's name and version.
+/// Each required dependency, of a pinned package or of `root/package.json`,
+/// that reaches a pinned folder by Node's lookup must be satisfied by it,
+/// and each pinned folder must be reached by a dependency it satisfies. An
+/// optional dependency counts where it is satisfied and is otherwise
+/// ignored, as yapi skips one that fails. The dependencies yapi never
+/// installs are not checked: host packages, `file:` and `workspace:` specs,
+/// and those for another platform, which reach no folder.
 fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmError> {
     let modules = Path::new("node_modules");
     // Pin paths start with `node_modules`, which `staging` stands for.
@@ -1004,11 +1023,9 @@ fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmEr
         dependents.push((PathBuf::from(&pin.path), manifest));
     }
     dependents.extend(read_manifest(root).map(|manifest| (PathBuf::new(), manifest)));
-    // For each pin, `Ok` once a dependency it satisfies reaches it, else the
-    // first one it does not satisfy.
-    let mut reached: Vec<Option<Result<(), String>>> = vec![None; pins.len()];
+    let mut reached = vec![false; pins.len()];
     for (dependent, manifest) in &dependents {
-        for (name, spec, _) in dependencies(manifest) {
+        for (name, spec, optional) in dependencies(manifest) {
             // As `place` reads it; an invalid name installs nothing.
             let Some((package, range)) = check_name(name).ok().and_then(|()| wanted(name, spec))
             else {
@@ -1026,27 +1043,25 @@ fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmEr
                 continue;
             };
             let pin = pins[index];
-            // `pick` reads an empty range as `latest`, and a dist-tag names
-            // no version to check.
-            let range = if range.is_empty() { "latest" } else { &range };
-            if pin.name == package && (!is_range(range) || satisfies(&pin.version, range)) {
-                reached[index] = Some(Ok(()));
-            } else if reached[index].is_none() {
+            if satisfied(&pin.name, &pin.version, &package, &range) {
+                reached[index] = true;
+            } else if !optional {
                 let by = match dependent.as_os_str().is_empty() {
                     true => "package.json".to_owned(),
                     false => dependent.to_string_lossy().replace('\\', "/"),
                 };
-                reached[index] = Some(Err(format!("{by} needs {package}@{range}")));
+                return Err(NpmError::Refused(format!(
+                    "{} holds {}@{}, but {by} needs {package}@{range} there",
+                    pin.path, pin.name, pin.version
+                )));
             }
         }
     }
-    for (pin, reached) in pins.iter().zip(reached) {
-        if let Some(Err(need)) = reached {
-            return Err(NpmError::Refused(format!(
-                "{} holds {}@{}, but {need} there",
-                pin.path, pin.name, pin.version
-            )));
-        }
+    if let Some((pin, _)) = pins.iter().zip(reached).find(|(_, reached)| !reached) {
+        return Err(NpmError::Refused(format!(
+            "{} holds {}@{}, which nothing depends on",
+            pin.path, pin.name, pin.version
+        )));
     }
     Ok(())
 }
@@ -1056,9 +1071,9 @@ fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmEr
 struct Installer<'a> {
     npm: &'a mut Npm,
     root_modules: PathBuf,
-    /// The packages whose dependencies are being installed, which count as
-    /// installed so that cycles end.
-    installing: Vec<PathBuf>,
+    /// The packages whose dependencies are being installed, with their
+    /// manifests. They count as installed so that cycles end.
+    installing: Vec<(PathBuf, Value)>,
     /// A pin for each package installed so far.
     tree: Vec<Pinned>,
 }
@@ -1074,6 +1089,7 @@ impl Installer<'_> {
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
             let bytes = self.npm.tarball(&manifest).await?;
+            let start = self.tree.len();
             // Every package folder is below `root_modules`: `install` and `place` put it there.
             let relative = dir.strip_prefix(&self.root_modules).unwrap_or(&dir);
             let path = format!(
@@ -1098,7 +1114,7 @@ impl Installer<'_> {
                 std::fs::write(&marker, "").map_err(io(&marker))?;
                 let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
                 unpack(&bytes, &dir, &id, self.npm.caps)?;
-                self.installing.push(dir.clone());
+                self.installing.push((dir.clone(), manifest.clone()));
                 let dependencies = self.dependencies(&dir, &manifest).await;
                 self.installing.pop();
                 dependencies?;
@@ -1109,9 +1125,14 @@ impl Installer<'_> {
                 let _ = std::fs::remove_dir_all(&old);
                 self.tree.push(pin);
             } else {
-                // The packages nested in `dir` go with it.
-                self.tree
-                    .retain(|nested| !Path::new(&nested.path).starts_with(&pin.path));
+                // So do the packages its install put elsewhere, such as at the
+                // root, which only it needed, along with those nested in `dir`.
+                for installed in self.tree.drain(start..) {
+                    // Every pin's path starts so, as above.
+                    if let Some(relative) = installed.path.strip_prefix("node_modules/") {
+                        let _ = std::fs::remove_dir_all(self.root_modules.join(relative));
+                    }
+                }
                 let _ = std::fs::remove_dir_all(&dir);
                 if replacing {
                     let _ = std::fs::rename(&old, &dir);
@@ -1134,7 +1155,11 @@ impl Installer<'_> {
     }
 
     /// Makes dependency `name@range` of the package in `dependent` resolvable
-    /// from it.
+    /// from it. The copy it finds first by Node's lookup is kept when it is
+    /// the package at a version in the range, and a new copy is hoisted to
+    /// the root when nothing is in the way, else nested in `dependent`. Either
+    /// needs every package that would see the copy to accept it, so that none
+    /// of them nests another over it later and shadows it for `dependent`.
     fn place<'b>(
         &'b mut self,
         dependent: &'b Path,
@@ -1146,26 +1171,65 @@ impl Installer<'_> {
             let Some((package, range)) = wanted(name, range) else {
                 return Ok(());
             };
-            let resolved = lookup_path(dependent, &self.root_modules).find_map(|modules| {
+            let levels: Vec<PathBuf> = lookup_path(dependent, &self.root_modules).collect();
+            let resolved = levels.iter().enumerate().find_map(|(level, modules)| {
                 let dir = modules.join(name);
-                if self.installing.contains(&dir) {
-                    manifest_version(&dir)
-                } else {
-                    installed_version(&dir)
+                let installing = self.installing.iter().any(|(path, _)| *path == dir);
+                if !installing && dir.join(INCOMPLETE).exists() {
+                    return None;
                 }
+                let manifest = read_manifest(&dir)?;
+                let version = manifest["version"].as_str()?.to_owned();
+                Some((level, text(&manifest["name"]), version))
             });
-            let target = match resolved {
-                Some(version) if satisfies(&version, &range) => return Ok(()),
-                // Nested, it shadows the other version for `dependent` alone.
-                Some(_) => dependent.join("node_modules").join(name),
-                None => self.root_modules.join(name),
-            };
+            if let Some((level, found, version)) = &resolved
+                && satisfied(found, version, &package, &range)
+                && self.accepted(&levels[..=*level], name, found, version)
+            {
+                return Ok(());
+            }
             let manifest = self.npm.pick(&package, &range).await?;
             if manifest.get("os").is_some() || manifest.get("cpu").is_some() {
                 // Platform packages carry prebuilt binaries, never JS.
                 return Ok(());
             }
+            let (found, version) = (text(&manifest["name"]), text(&manifest["version"]));
+            let target = match resolved {
+                None if self.accepted(&levels, name, &found, &version) => {
+                    self.root_modules.join(name)
+                }
+                // Nested, it shadows the other version for `dependent` alone.
+                _ => dependent.join("node_modules").join(name),
+            };
             self.unpack_package(target, manifest).await
+        })
+    }
+
+    /// Whether each package that owns one of the `node_modules` folders
+    /// `levels` accepts `version` of package `found` as its dependency
+    /// `name`, when it has one.
+    fn accepted(&self, levels: &[PathBuf], name: &str, found: &str, version: &str) -> bool {
+        levels.iter().all(|modules| {
+            let Some(owner) = modules.parent() else {
+                return true;
+            };
+            let read;
+            let manifest = match self.installing.iter().find(|(dir, _)| dir == owner) {
+                Some((_, manifest)) => manifest,
+                None => match read_manifest(owner) {
+                    Some(manifest) => {
+                        read = manifest;
+                        &read
+                    }
+                    None => return true,
+                },
+            };
+            dependencies(manifest)
+                .filter(|(dependency, ..)| *dependency == name)
+                .all(|(dependency, spec, _)| {
+                    wanted(dependency, spec)
+                        .is_none_or(|(package, range)| satisfied(found, version, &package, &range))
+                })
         })
     }
 }
@@ -1342,12 +1406,14 @@ const REPLAY_DOWNLOADS: usize = 8;
 /// that is a link. Each tarball is downloaded with the credentials of its
 /// name's registry and checked against its digest, eight at a time, and
 /// unpacked only once it passes. Then each package's `package.json` must
-/// name its pin, and each pinned folder that the dependencies of the
-/// packages and of `root/package.json` reach must be what one of them asks
-/// for, so that a lock cannot put one package in another's place. The tree
-/// is built beside `root/node_modules` and swapped in only once complete,
-/// so a failure leaves `root` as it was. The caller holds the root's
-/// [`lock_root`].
+/// name its pin, each required dependency, of the packages and of
+/// `root/package.json`, that reaches a pinned folder must be satisfied by
+/// it, and each pinned folder must be reached by a dependency it
+/// satisfies, so that a lock can neither put one package in another's
+/// place nor add one. A tree with a package at its top therefore needs a
+/// `root/package.json` that depends on it. The tree is built beside
+/// `root/node_modules` and swapped in only once complete, so a failure
+/// leaves `root` as it was. The caller holds the root's [`lock_root`].
 pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
     let mut pins = pins
         .iter()
