@@ -248,6 +248,15 @@ impl Manifest {
         }
     }
 
+    /// The skill, agent and extension entries, in manifest order.
+    pub fn entries(&self) -> impl Iterator<Item = (Section, &String, &Entry)> {
+        let sections = [Section::Skills, Section::Agents, Section::Extensions];
+        sections.into_iter().flat_map(move |section| {
+            let entries = self.section(section).iter();
+            entries.map(move |(name, entry)| (section, name, entry))
+        })
+    }
+
     fn section_mut(&mut self, section: Section) -> &mut IndexMap<String, Entry> {
         match section {
             Section::Skills => &mut self.skills,

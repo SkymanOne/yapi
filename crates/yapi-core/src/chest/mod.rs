@@ -281,12 +281,7 @@ impl Project {
 
     /// The skill, agent and extension entries, in manifest order.
     fn entries(&self) -> impl Iterator<Item = (Section, &String, &Entry)> {
-        [Section::Skills, Section::Agents, Section::Extensions]
-            .into_iter()
-            .flat_map(|section| {
-                let entries = self.manifest.section(section).iter();
-                entries.map(move |(name, entry)| (section, name, entry))
-            })
+        self.manifest.entries()
     }
 
     /// The folders a section's items go in: its configured folders, or the

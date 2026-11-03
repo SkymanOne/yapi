@@ -202,7 +202,20 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
                 Scope::Project => agent.agents,
                 Scope::Global => agent.home_agents,
             });
-            choose(&prompt, "subagents", &folders, &found)
+            // Without an agent found, subagents go where yapi reads them.
+            let yapi = match target.scope {
+                Scope::Project => ".yapi/agents",
+                Scope::Global => "~/.yapi/agent/agents",
+            };
+            let defaults = match found.is_empty() {
+                true => folders
+                    .iter()
+                    .position(|folder| folder == yapi)
+                    .into_iter()
+                    .collect(),
+                false => found,
+            };
+            choose(&prompt, "subagents", &folders, &defaults)
         });
         let store = args.store.clone().unwrap_or_else(|| match target.scope {
             Scope::Project => ".yapi/chest".into(),
