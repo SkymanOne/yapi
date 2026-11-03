@@ -638,8 +638,8 @@ async fn npm_extension_locked() {
     assert!(!store.join("package.json").exists());
     // Its index file, which no manifest lists, runs with the entry's
     // grants and loads modules from the whole store folder.
-    let inputs = installed_inputs(&project, &mut Vec::new());
     let (root, agent) = (dir.join("project"), dir.join("agent"));
+    let inputs = installed_inputs(&project, &root, &mut Vec::new());
     let settings = SettingsManager::load(&agent, &root, false);
     let packages = (&inputs.packages, &inputs.skills);
     let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);

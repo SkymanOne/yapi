@@ -99,7 +99,8 @@ impl Policy {
     }
 
     /// What a file chest cannot vouch for runs with: no grant, the
-    /// isolated event policy, and modules only from `root`.
+    /// isolated event policy, and modules only from `root`, a folder or
+    /// the file itself.
     pub fn closed(root: &Path) -> Policy {
         Policy {
             grants: Grants::none(),
@@ -148,13 +149,14 @@ pub struct FilePolicies {
 }
 
 impl FilePolicies {
-    /// What extension file `file`, a canonical path, runs with: nothing in
-    /// an entry chest left out, its entries' policy, and for a file chest
-    /// does not know, every grant, as packages from `yapi install` keep
-    /// pi's grants.
+    /// What extension file `file`, a canonical path, runs with: no grant
+    /// and no module but itself in an entry chest left out, else its
+    /// entries' policy, and for a file chest does not know, every grant, as
+    /// packages from `yapi install` keep pi's grants.
     pub fn of(&self, file: &Path) -> Policy {
-        if let Some(root) = self.closer(file) {
-            return Policy::closed(root);
+        // Not the entry's folder as the root, which may hold far more.
+        if self.closes(file) {
+            return Policy::closed(file);
         }
         self.files
             .get(file)
@@ -169,15 +171,7 @@ impl FilePolicies {
 
     /// Whether `file` belongs to an entry chest left out.
     pub fn closes(&self, file: &Path) -> bool {
-        self.closer(file).is_some()
-    }
-
-    /// The folder or file of the entry chest left out that holds `file`.
-    fn closer(&self, file: &Path) -> Option<&Path> {
-        self.closed
-            .iter()
-            .find(|root| file.starts_with(root))
-            .map(PathBuf::as_path)
+        self.closed.iter().any(|root| file.starts_with(root))
     }
 }
 
@@ -232,8 +226,8 @@ pub struct Installed {
     /// The packages' policies.
     pub policies: Policies,
     /// The canonical folders and files of extension entries left out
-    /// because their lock is stale or missing, which run with no grant if
-    /// something else loads them.
+    /// because their lock is stale or missing, or their folder holds too
+    /// much, which run with no grant if something else loads them.
     pub closed: Vec<PathBuf>,
 }
 
@@ -258,14 +252,16 @@ pub struct Loaded {
 }
 
 /// Whether `root` is, or holds, a folder no extension may load modules
-/// from because it holds far more than one package: `project`'s folder, the
-/// home folder, the agent folder or the filesystem's root.
-fn too_wide(project: &Project, root: &Path) -> bool {
+/// from because it holds far more than one package: `project`'s folder,
+/// `project_root`, the home folder, the agent folder or the filesystem's
+/// root.
+fn too_wide(project: &Project, project_root: &Path, root: &Path) -> bool {
     let Ok(root) = root.canonicalize() else {
         return false;
     };
     let held = [
         project.base.clone(),
+        project_root.to_path_buf(),
         home_dir(),
         crate::config::agent_dir(),
         PathBuf::from("/"),
@@ -276,10 +272,14 @@ fn too_wide(project: &Project, root: &Path) -> bool {
 }
 
 /// The extensions and skills `project` has installed, locked and up to
-/// date, or patched: a stale or unlocked entry gives nothing until `chest
-/// install`. Entries left out for a reason the user should see add a line
-/// to `problems`.
-pub fn installed_inputs(project: &Project, problems: &mut Vec<String>) -> Installed {
+/// date, or patched, for a run in `project_root`: a stale or unlocked entry
+/// gives nothing until `chest install`. Entries left out for a reason the
+/// user should see add a line to `problems`.
+pub fn installed_inputs(
+    project: &Project,
+    project_root: &Path,
+    problems: &mut Vec<String>,
+) -> Installed {
     let scope = match project.scope {
         Scope::Project => "project",
         Scope::Global => "user",
@@ -318,11 +318,12 @@ pub fn installed_inputs(project: &Project, problems: &mut Vec<String>) -> Instal
             }
             continue;
         }
-        if too_wide(project, &module_root) {
+        if too_wide(project, project_root, &module_root) {
             problems.push(format!(
                 "extensions.{name}: {} holds more than the extension, such as the project, the home or the agent folder, so it does not load",
                 module_root.display()
             ));
+            installed.closed.extend(module_root.canonicalize().ok());
             continue;
         }
         let source = format!("chest:{name}");
@@ -417,13 +418,13 @@ fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String,
     found
 }
 
-/// Adds the inputs of `project` to `loaded`, with its problems under its
-/// path.
-fn add(loaded: &mut Loaded, project: &Project) {
+/// Adds the inputs of `project` for a run in `project_root` to `loaded`,
+/// with its problems under its path.
+fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
     let mut problems = Vec::new();
     loaded
         .installed
-        .extend(installed_inputs(project, &mut problems));
+        .extend(installed_inputs(project, project_root, &mut problems));
     let path = project.path.display().to_string();
     loaded
         .problems
@@ -436,7 +437,7 @@ pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
     let mut loaded = Loaded::default();
     for project in manifests(project_root, trusted) {
         match project {
-            Ok(project) => add(&mut loaded, &project),
+            Ok(project) => add(&mut loaded, &project, project_root),
             Err(problem) => loaded.problems.push(problem),
         }
     }
@@ -473,7 +474,7 @@ pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
             }
             Err(err) => loaded.problems.push((path.clone(), err.to_string())),
         }
-        add(&mut loaded, &project);
+        add(&mut loaded, &project, project_root);
     }
     loaded
 }
@@ -492,28 +493,64 @@ mod tests {
     }
 
     /// A chest file whose package has no policy runs with none, with a
-    /// warning, while other sources' files get no policy at all.
+    /// warning, while other sources' files get no policy at all. A file
+    /// that two entries give loads modules from the narrower root, and one
+    /// in an entry chest left out from itself alone.
     #[test]
     fn chest_files_fail_closed() {
-        let file = |path: &str, source: &str| Resolved {
-            info: SourceInfo {
-                path: path.into(),
-                source: source.into(),
-                scope: "project".into(),
-                origin: "package".into(),
-                base_dir: None,
-            },
+        let file = |path: &str, source: &str, scope: &str| SourceInfo {
+            path: path.into(),
+            source: source.into(),
+            scope: scope.into(),
+            origin: "package".into(),
+            base_dir: None,
+        };
+        let enabled = |info| Resolved {
+            info,
             enabled: true,
         };
         let resolved = ResolvedPaths {
-            extensions: vec![file("/p/a.js", "chest:a"), file("/p/b.js", "npm:b")],
+            extensions: vec![
+                enabled(file("/p/a.js", "chest:a", "project")),
+                enabled(file("/p/b.js", "npm:b", "project")),
+            ],
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
         let policies = file_policies(&resolved, &Installed::default(), &mut problems);
-        let file = PathBuf::from("/p/a.js");
-        let files = HashMap::from([(file.clone(), Policy::closed(&file))]);
+        let file_a = PathBuf::from("/p/a.js");
+        let files = HashMap::from([(file_a.clone(), Policy::closed(&file_a))]);
         assert_eq!(policies.files, files);
         assert_eq!(problems.len(), 1, "{problems:?}");
+        let rooted = |root: &str| Policy {
+            root: Some(root.into()),
+            ..Policy::unrestricted()
+        };
+        let key = |scope: &str| (scope.to_owned(), "chest:s".to_owned());
+        let installed = Installed {
+            policies: HashMap::from([
+                (key("project"), rooted("/p")),
+                (key("user"), rooted("/p/sub")),
+            ]),
+            closed: vec!["/q".into()],
+            ..Installed::default()
+        };
+        let resolved = ResolvedPaths {
+            extensions: vec![
+                enabled(file("/p/sub/a.js", "chest:s", "project")),
+                enabled(file("/p/sub/b.js", "chest:s", "user")),
+            ],
+            shadowed: vec![
+                file("/p/sub/a.js", "chest:s", "user"),
+                file("/p/sub/b.js", "chest:s", "project"),
+            ],
+            ..ResolvedPaths::default()
+        };
+        let policies = file_policies(&resolved, &installed, &mut problems);
+        let root = |path: &str| policies.of(Path::new(path)).root;
+        for file in ["/p/sub/a.js", "/p/sub/b.js"] {
+            assert_eq!(root(file), Some("/p/sub".into()), "{file}");
+        }
+        assert_eq!(root("/q/a.js"), Some("/q/a.js".into()));
     }
 }
