@@ -497,8 +497,10 @@ async fn grant_groups_keep_order() {
 async fn hosts_start_together() {
     let home = common::scratch("chest-together");
     let marker = home.join("started");
+    // Only hosts that start one after another wait out the minute, however
+    // loaded the machine.
     let waiter = format!(
-        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (let tries = 0; tries < 250 && !(together = existsSync({marker:?})); tries++) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
+        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (const end = Date.now() + 60000; !(together = existsSync({marker:?})) && Date.now() < end; ) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
         marker = marker.display().to_string()
     );
     let starter = format!(
