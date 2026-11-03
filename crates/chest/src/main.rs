@@ -123,11 +123,15 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
     } else {
         Scope::Project
     };
-    // Without --manifest, CHEST_MANIFEST names the project's manifest.
-    let manifest = cli.manifest.clone().or_else(|| {
-        let named = std::env::var_os("CHEST_MANIFEST").filter(|name| !name.is_empty());
-        named.filter(|_| !cli.global).map(PathBuf::from)
-    });
+    // Without --manifest, CHEST_MANIFEST names the project's manifest, by
+    // the rule yapi reads it with.
+    let manifest = match &cli.manifest {
+        Some(path) => Some(path.clone()),
+        None if cli.global => None,
+        None => yapi_core::chest::manifest::from_env()
+            .map_err(anyhow::Error::msg)?
+            .map(PathBuf::from),
+    };
     let path = match (&manifest, cli.global) {
         (Some(path), _) => std::path::absolute(path)?,
         (None, true) => home_dir().join(".chest/chest.toml"),
