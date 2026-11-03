@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36fe8a34.js";
+            window.path_to_searchindex_js = "searchindex-20d37ca2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -585,7 +585,7 @@ yapi --no-session            # do not save this run
 </thead>
 <tbody>
 <tr><td>Built-in tools and <code>!</code> commands</td><td>yapi’s process and its child processes</td><td>Everything the user can access</td></tr>
-<tr><td>Extensions</td><td>WebAssembly instances</td><td>What their grants allow. For now, every grant, so as much as in Pi: files, processes, network, environment and session actions.</td></tr>
+<tr><td>Extensions</td><td>WebAssembly instances</td><td>What their grants allow. Extensions from <code>yapi install</code>, settings and <code>-e</code> get every grant, so as much as in Pi: files, processes, network, environment and session actions. <a href="#manage-project-packages-with-chest">chest</a> extensions get the capabilities their manifest entry grants.</td></tr>
 <tr><td>Processes that extensions start, including subagents</td><td>Child processes, outside the sandbox</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over stdio</td><td>Child processes</td><td>Everything the user can access</td></tr>
 <tr><td>MCP servers over HTTP</td><td>Remote services</td><td>What the server allows</td></tr>
@@ -606,7 +606,7 @@ yapi --no-session            # do not save this run
 <p>An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because grants cannot be enforced between packages that share a JavaScript realm. Pi extensions whose grants or event policy differ run in separate instances, and each extra instance costs a thread and its own memory limit of 1 GiB. Packages from <code>yapi install</code> share one instance, and <a href="#project-packages-with-chest">chest</a> extensions with other grants or another event policy run in instances of their own. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
 <p>Each call into an instance may compute for 60 seconds, not counting time spent waiting on yapi. Each extension instance may use 1 GiB of memory, and each codemode instance 384 MiB. An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. An instance that traps, for example by exceeding a limit, is restarted and its extensions are reloaded. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.</p>
 <h3 id="grants"><a class="header" href="#grants">Grants</a></h3>
-<p>The host checks an extension’s file, process, network, environment and session access against its grants, and routes <code>pi.events</code> by them, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. A path that leads out of a package through a symlink is refused, and so is a path with <code>.</code> or <code>..</code> in it. Packages from <code>yapi install</code> and <code>-e</code> receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants. Without the file grant it still loads the files of the other packages in its instance, which have the same grants and event policy. Every extension file yapi finds in a chest package, including an <code>index.ts</code> or <code>index.js</code> that no manifest lists, runs with its entry’s capabilities. The file keeps them when <code>-e</code> or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but cannot match to an entry runs with no capabilities, with a warning. yapi does not load a chest extension whose folder holds the project, the home folder or the agent folder, because it could load any file there. The <a href="#capabilities">capability table</a> lists what each one allows.</p>
+<p>The host checks an extension’s file, process, network, environment and session access against its grants, and routes <code>pi.events</code> by them, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. A path that leads out of a package through a symlink is refused, and so is a path with <code>.</code> or <code>..</code> in it. Packages from <code>yapi install</code> and <code>-e</code> receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants. Without the file grant it still loads the files of the other packages in its instance, which have the same grants and event policy. Every extension file yapi finds in a chest package, including an <code>index.ts</code> or <code>index.js</code> that no manifest lists, runs with its entry’s capabilities. The file keeps them when <code>-e</code> or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but cannot match to an entry runs with no capabilities, with a warning. So does a file of an entry that chest leaves out because its lock is stale or missing, when pi’s discovery, settings or <code>-e</code> loads it. When two manifests give the same file, it runs with only what both allow. yapi does not load a chest extension whose folder holds the project, the home folder or the agent folder, because it could load any file there. The <a href="#capabilities">capability table</a> lists what each one allows.</p>
 <p>A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as the user, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with the user’s installed packages.</p>
 <p>An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code>, <code>getApiKey</code>, <code>getApiKeyForProvider</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code>, <code>streamSimple</code>, <code>classify</code> or <code>generateImages</code>, only with the network grant. Without the network grant, <code>ctx.modelRegistry.refresh</code> refreshes model lists offline.</p>
 <p>Running a tool needs grants too, whether an extension creates a built-in tool such as <code>createBashTool</code> or calls a tool with <code>ctx.executeTool</code>:</p>
@@ -624,12 +624,20 @@ yapi --no-session            # do not save this run
 <li>text that a custom editor submits</li>
 <li>the editor actions that interrupt, exit or suspend yapi, clear the editor, cycle the model or the thinking level, show or hide thinking, restore queued messages, or start a new session</li>
 </ul>
-<p>Without the file grant, <code>switchSession</code> and the <code>parentSession</code> of <code>newSession</code> accept only session files in the session directory. Reading the session, such as its entries, name and model, needs no grant, and neither do dialogs, widgets and notifications. Pi has no session grant.</p>
+<p>Without the file grant, <code>switchSession</code> and the <code>parentSession</code> of <code>newSession</code> accept only session files in the session directory. Holding a file with <code>withFileMutationQueue</code> needs the file grant, because the model’s <code>edit</code> and <code>write</code> tools wait while an extension holds it. Pi has no session grant.</p>
+<p>Some requests need no grant:</p>
+<ul>
+<li>reading the session, such as its entries, name and model</li>
+<li>dialogs, widgets and notifications</li>
+<li>the editor actions that expand tool output, copy the last message, or open the model, tree, fork or resume selector, where you make the choice</li>
+<li><code>copyToClipboard</code>, which writes the system clipboard. A person may paste what it copies into a terminal or another program, so treat text an extension copies as untrusted, as you would text from a web page.</li>
+</ul>
 <p>Some actions need every grant, because they reach outside the sandbox or act with yapi’s own access:</p>
 <ul>
 <li>registering a provider or a wire API, because a provider’s replies drive the agent’s tools and its requests carry your credentials</li>
 <li>custom editor text that starts with <code>!</code> or <code>/</code>, after any leading spaces, because it runs a shell or slash command</li>
 <li>the editor actions that open the external editor, paste from the clipboard, or submit the editor’s text as a follow-up</li>
+<li>any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it</li>
 </ul>
 <p>A provider or wire API that an extension without every grant registers stays unused, and yapi logs a warning for each one in the extension output.</p>
 <p>A custom editor that passes a key on to extension shortcuts runs only extension shortcuts, never yapi’s own key actions, which go through the editor actions above. Each shortcut runs under the grants of the extension that registered it, as a <code>pi.events</code> listener does.</p>
@@ -834,7 +842,7 @@ yapi -e git:github.com/user/repo
 <pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi chest-cli
 </code></pre>
 <h2 id="quickstart-1"><a class="header" href="#quickstart-1">Quickstart</a></h2>
-<p>In the project folder:</p>
+<p>In the project folder, with your own sources in place of the <code>acme</code> examples:</p>
 <pre><code class="language-sh">chest init
 chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
@@ -864,8 +872,9 @@ git commit -m "Add project packages"
 </tbody>
 </table>
 </div>
-<p>At a terminal, <code>init</code> lists the folders by number with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
-<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone.</p>
+<p>At a terminal, <code>init</code> lists the folders by number with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
+<p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path one of them drops stays while another still lists it.</p>
+<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> folders an interrupted install can leave where chest copies, and the next install removes them.</p>
 <p>Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in <code>~/.chest/state</code>, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.</p>
 <h2 id="grant-capabilities"><a class="header" href="#grant-capabilities">Grant capabilities</a></h2>
 <p>An extension entry lists what it may reach:</p>
@@ -899,7 +908,7 @@ scraper = { npm = "@acme/scraper", capabilities = ["net"], events = "isolated" }
 <p>A pinned tarball must come from the registry configured for its package, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from your registry when it is a mirror. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock.</p>
 <ul>
 <li><code>chest install</code> keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
-<li><code>chest install --frozen</code> installs nothing. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It is the default when <code>CI</code> is set to anything but an empty value, <code>0</code> or <code>false</code>.</li>
+<li><code>chest install --frozen</code> installs exactly what the lock pins, including what is missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes <code>chest.toml</code> or <code>chest.lock</code>. It is the default when <code>CI</code> is set to anything but an empty value, <code>0</code> or <code>false</code>, so a fresh clone in CI gets every skill and extension.</li>
 <li><code>chest verify</code> checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.</li>
 </ul>
 <h2 id="update"><a class="header" href="#update">Update</a></h2>
@@ -940,7 +949,7 @@ extensions = ["extensions/index.ts"]
 <p>Before you publish a native extension, run <code>chest check</code> in the package folder. It compares the capabilities each <code>.wasm</code> extension uses with the ones the package requests:</p>
 <pre><code class="language-sh">chest check
 </code></pre>
-<p>It reads the <a href="#declare-capabilities">capability features</a> the extension was built with, and the WASI interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code> and <code>wasi:sockets</code> or <code>wasi:http</code> mean <code>net</code>. A capability the extension uses that the package does not request is an error, and chest exits with 1. A capability the package requests that no extension uses is a warning. An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime. Entries in the package’s own <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code> sections are not installed for its consumers. <code>chest add</code> lists them so the consumer can add the ones they want.</p>
+<p>It reads the <a href="#declare-capabilities">capability features</a> the extension was built with, and the WASI interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. A capability the extension uses that the package does not request is an error, and chest exits with 1. So is an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi does not support, because extensions reach the network through the SDK’s <code>fetch</code>. <code>chest add</code> warns about such an import. A capability the package requests that no extension uses is a warning. So is a capability the build records that this version of chest does not know, such as one a newer SDK adds, which chest does not check. An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime. Entries in the package’s own <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code> sections are not installed for its consumers. <code>chest add</code> lists them so the consumer can add the ones they want.</p>
 <h2 id="command-reference"><a class="header" href="#command-reference">Command reference</a></h2>
 <p>Every command takes <code>-g</code> (the global manifest) and <code>--manifest &lt;path&gt;</code>. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
 <div class="table-wrapper">
@@ -952,13 +961,13 @@ extensions = ["extensions/index.ts"]
 <tr><td><code>chest init</code></td><td><code>--skills a,b</code>, <code>--agents a,b</code>, <code>--store &lt;dir&gt;</code>, <code>--package</code>, <code>--yes</code></td><td>Writes a manifest with folders for the agents found. Refuses an existing manifest unless <code>--package</code>, which adds <code>[package]</code>.</td></tr>
 <tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. Without a section flag, chest infers it from the package. The same name with the same source updates its version or rev and keeps its grants. The same name with another source is an error.</td></tr>
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it.</td></tr>
-<tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock.</td></tr>
+<tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
 <tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows.</td></tr>
 <tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, whether it is installed, its capabilities and description.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
 <tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock.</td></tr>
 <tr><td><code>chest import</code></td><td><code>--settings</code> or <code>--skills-lock</code>, <code>[path]</code></td><td>Turns settings.json packages or a skills-lock.json into entries.</td></tr>
-<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests. <code>path</code> is the current folder by default. Reads no manifest.</td></tr>
+<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> does not parse.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1121,7 +1130,7 @@ export default function (pi: ExtensionAPI) {
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
 <li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
-<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies, which share every channel for now, as in Pi. <a href="#agent-sessions-and-events">Security</a> describes the routing.</li>
+<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi. A chest entry can make it <code>isolated</code>, or list the channels it sends and hears, as the <a href="#event-bus-1">event bus reference</a> describes. <a href="#agent-sessions-and-events">Security</a> describes the routing.</li>
 </ul>
 <p><a href="#extensions-1">Differences from Pi</a> lists where the behavior differs.</p>
 <h2 id="crashes"><a class="header" href="#crashes">Crashes</a></h2>
@@ -1222,13 +1231,14 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 <pre><code class="language-toml">[dependencies]
 yapi-extension-api = { version = "0.3.1", features = ["session"] }
 </code></pre>
+<p>The capability features ship in the first release of <code>yapi-extension-api</code> after 0.3.1. Version 0.3.1 and earlier have none, so cargo reports that the feature does not exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
-<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WASI interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code> and <code>wasi:sockets</code> or <code>wasi:http</code> mean <code>net</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
+<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WASI interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 </code></pre>
-<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="#publish-skills-subagents-and-extensions">chest</a>.</p>
+<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi does not provide <code>wasi:http</code>, so such a component does not load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="#publish-skills-subagents-and-extensions">chest</a>.</p>
 <p>Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.</p>
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>
@@ -1255,7 +1265,7 @@ yapi install . -l    # for this project only
 <p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/you/shout
 </code></pre>
-<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes only the <code>extensions</code> folder.</p>
+<p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes the <code>extensions</code> folder and <code>chest.toml</code>, which carries the capabilities the extension asks for.</p>
 <p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
 <pre><code class="language-json">{
   "name": "shout",
@@ -2086,7 +2096,7 @@ subagent = { npm = "@acme/pi-subagent", version = "^1.4", capabilities = ["all"]
 todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"], events = { send = ["todo:*"], receive = [] }, skills = ["!legacy/**"] }
 shout = { path = "ext/shout.wasm" }
 </code></pre>
-<p>An extension from a path loads where it is. Others install into the store.</p>
+<p>An extension from a path loads where it is. Others install into the store. A git extension’s <code>path</code> names the folder that holds it, and an npm extension takes no <code>path</code>, since it loads its whole package.</p>
 <h2 id="patch"><a class="header" href="#patch"><code>[patch]</code></a></h2>
 <p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry.</p>
 <pre><code class="language-toml">[patch]
@@ -2137,7 +2147,7 @@ todo = { path = "../pi-todo" }
 <li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> is not a capability.</li>
 <li>Calling a tool that is not built in needs <code>all</code>.</li>
 <li>A native extension declares the capabilities it uses with the <a href="#declare-capabilities">features of yapi-extension-api</a> of the same names.</li>
-<li>Always allowed: registering tools, commands, flags, shortcuts, renderers and providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
+<li>Always allowed: registering tools, commands, flags, shortcuts, renderers and autocomplete providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
 </ul>
 <h2 id="event-bus-1"><a class="header" href="#event-bus-1">Event bus</a></h2>
 <p>An event from extension S on channel C reaches extension R when S and R have identical grants, or when S may send C and R may hear C.</p>
@@ -2157,6 +2167,7 @@ todo = { path = "../pi-todo" }
 <h2 id="package-metadata"><a class="header" href="#package-metadata">Package metadata</a></h2>
 <p>For each kind of resource, the first of these that lists it wins: the package’s <code>chest.toml</code> <code>[package]</code>, then <code>package.json</code>’s <code>yapi</code> key, then its <code>pi</code> key. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: <code>skills</code>, <code>agents</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code>.</p>
 <p>Capabilities come from <code>[package]</code>, else <code>yapi.capabilities</code>, else none. Name, version, description and authors come from <code>[package]</code>, else from <code>package.json</code>.</p>
+<p>chest reports a package’s <code>chest.toml</code> that does not parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
 <h2 id="chestlock"><a class="header" href="#chestlock"><code>chest.lock</code></a></h2>
 <p>chest writes the lock. Do not edit it. It holds <code>version = 1</code> and one table per entry, in <code>[[skill]]</code>, <code>[[agent]]</code> and <code>[[extension]]</code>, sorted by name:</p>
 <div class="table-wrapper">
@@ -2181,7 +2192,7 @@ todo = { path = "../pi-todo" }
 <h3 id="content-hash"><a class="header" href="#content-hash">Content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>
-<li>List every regular file under the item’s folder, skipping any folder named <code>.git</code> at any depth. A symbolic link anywhere fails the hash. An item that is one file is a list of that file with an empty path.</li>
+<li>List every regular file under the item’s folder, skipping anything named <code>.git</code> at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that is one file is a list of that file with an empty path.</li>
 <li>Sort the files by the bytes of their paths, relative to the item, with <code>/</code> between parts.</li>
 <li>For each file, feed one SHA-256 with its path in UTF-8, a zero byte, <code>x</code> when any execute bit is set or <code>-</code> otherwise, and the 32-byte SHA-256 of its contents.</li>
 <li>The result is that SHA-256, in hex.</li>
@@ -2328,7 +2339,7 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <h2 id="a-chest-lock-is-stale"><a class="header" href="#a-chest-lock-is-stale">A chest lock is stale</a></h2>
 <p>chest warns that entries are not locked, or that their lock is stale, when <code>chest.toml</code> lists entries that <code>chest.lock</code> does not pin, or pins for another source, revision or version range. Run <code>chest install</code> to resolve them and update the lock, then commit <code>chest.lock</code>. <code>chest install --frozen</code>, the default under CI, fails instead, so update the lock before you push. See <a href="#lock-and-reproduce">Lock and reproduce</a>.</p>
 <h2 id="an-extensions-call-is-refused"><a class="header" href="#an-extensions-call-is-refused">An extension’s call is refused</a></h2>
-<p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. Packages from <code>yapi install</code> have every grant. For an extension from a <a href="#project-packages-with-chest">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="#grants">Security</a> lists what each capability allows.</p>
+<p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant. Packages from <code>yapi install</code> have every grant. For an extension from a <a href="#project-packages-with-chest">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="#grants">Security</a> lists what each capability allows.</p>
 <h2 id="an-extension-misses-events"><a class="header" href="#an-extension-misses-events">An extension misses events</a></h2>
 <p>A warning in the extension output that starts with <code>add "&lt;channel&gt;" to events.send of</code> means routing kept a <code>pi.events</code> event from an extension that listens on its channel. Add the channel to the lists the warning names, in the <code>events</code> of those chest entries.</p>
 <h2 id="reporting-a-problem"><a class="header" href="#reporting-a-problem">Reporting a problem</a></h2>

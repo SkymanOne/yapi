@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36fe8a34.js";
+            window.path_to_searchindex_js = "searchindex-20d37ca2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -299,7 +299,7 @@ export default function (pi: ExtensionAPI) {
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
 <li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
-<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies, which share every channel for now, as in Pi. <a href="security.html#agent-sessions-and-events">Security</a> describes the routing.</li>
+<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi. A chest entry can make it <code>isolated</code>, or list the channels it sends and hears, as the <a href="chest-manifest.html#event-bus">event bus reference</a> describes. <a href="security.html#agent-sessions-and-events">Security</a> describes the routing.</li>
 </ul>
 <p><a href="compat.html#extensions">Differences from Pi</a> lists where the behavior differs.</p>
 <h2 id="crashes"><a class="header" href="#crashes">Crashes</a></h2>

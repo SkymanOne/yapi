@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36fe8a34.js";
+            window.path_to_searchindex_js = "searchindex-20d37ca2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -257,7 +257,7 @@ subagent = { npm = "@acme/pi-subagent", version = "^1.4", capabilities = ["all"]
 todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"], events = { send = ["todo:*"], receive = [] }, skills = ["!legacy/**"] }
 shout = { path = "ext/shout.wasm" }
 </code></pre>
-<p>An extension from a path loads where it is. Others install into the store.</p>
+<p>An extension from a path loads where it is. Others install into the store. A git extension’s <code>path</code> names the folder that holds it, and an npm extension takes no <code>path</code>, since it loads its whole package.</p>
 <h2 id="patch"><a class="header" href="#patch"><code>[patch]</code></a></h2>
 <p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry.</p>
 <pre><code class="language-toml">[patch]
@@ -308,7 +308,7 @@ todo = { path = "../pi-todo" }
 <li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> is not a capability.</li>
 <li>Calling a tool that is not built in needs <code>all</code>.</li>
 <li>A native extension declares the capabilities it uses with the <a href="native-extensions.html#declare-capabilities">features of yapi-extension-api</a> of the same names.</li>
-<li>Always allowed: registering tools, commands, flags, shortcuts, renderers and providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
+<li>Always allowed: registering tools, commands, flags, shortcuts, renderers and autocomplete providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
 </ul>
 <h2 id="event-bus"><a class="header" href="#event-bus">Event bus</a></h2>
 <p>An event from extension S on channel C reaches extension R when S and R have identical grants, or when S may send C and R may hear C.</p>
@@ -328,6 +328,7 @@ todo = { path = "../pi-todo" }
 <h2 id="package-metadata"><a class="header" href="#package-metadata">Package metadata</a></h2>
 <p>For each kind of resource, the first of these that lists it wins: the package’s <code>chest.toml</code> <code>[package]</code>, then <code>package.json</code>’s <code>yapi</code> key, then its <code>pi</code> key. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: <code>skills</code>, <code>agents</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code>.</p>
 <p>Capabilities come from <code>[package]</code>, else <code>yapi.capabilities</code>, else none. Name, version, description and authors come from <code>[package]</code>, else from <code>package.json</code>.</p>
+<p>chest reports a package’s <code>chest.toml</code> that does not parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
 <h2 id="chestlock"><a class="header" href="#chestlock"><code>chest.lock</code></a></h2>
 <p>chest writes the lock. Do not edit it. It holds <code>version = 1</code> and one table per entry, in <code>[[skill]]</code>, <code>[[agent]]</code> and <code>[[extension]]</code>, sorted by name:</p>
 <div class="table-wrapper">
@@ -352,7 +353,7 @@ todo = { path = "../pi-todo" }
 <h3 id="content-hash"><a class="header" href="#content-hash">Content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>
-<li>List every regular file under the item’s folder, skipping any folder named <code>.git</code> at any depth. A symbolic link anywhere fails the hash. An item that is one file is a list of that file with an empty path.</li>
+<li>List every regular file under the item’s folder, skipping anything named <code>.git</code> at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that is one file is a list of that file with an empty path.</li>
 <li>Sort the files by the bytes of their paths, relative to the item, with <code>/</code> between parts.</li>
 <li>For each file, feed one SHA-256 with its path in UTF-8, a zero byte, <code>x</code> when any execute bit is set or <code>-</code> otherwise, and the 32-byte SHA-256 of its contents.</li>
 <li>The result is that SHA-256, in hex.</li>
