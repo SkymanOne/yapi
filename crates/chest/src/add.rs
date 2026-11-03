@@ -16,7 +16,7 @@ use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
 use crate::prompt::Prompt;
-use crate::{Target, entries, open, read, requests, say, source, sync, write};
+use crate::{Target, open, read, requests, say, source, sync, write};
 
 /// What `all` means, said before it is granted.
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
@@ -277,7 +277,8 @@ fn nested(root: &Path, name: &str) {
     let Ok(manifest) = Manifest::parse(&text, Scope::Project) else {
         return;
     };
-    let listed: Vec<String> = entries(&manifest)
+    let listed: Vec<String> = manifest
+        .entries()
         .map(|(section, name, _)| format!("{}.{name}", section.key()))
         .collect();
     if !listed.is_empty() {

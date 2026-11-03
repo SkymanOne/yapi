@@ -5,6 +5,8 @@
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
+use yapi_ai::auth::lock::write_atomic;
+
 use super::manifest::valid_name;
 use super::{ChestError, invalid, io};
 use crate::packages::npm;
@@ -46,12 +48,20 @@ pub fn place_with(
     let canonical = first.join(name);
     put(source, &canonical)?;
     let mut placed = vec![canonical.clone()];
+    // Real paths, so the link holds when a folder is itself a link.
+    let real = |path: &Path| path.canonicalize().map_err(io(path));
+    let first_real = real(first)?;
     for folder in others {
         let path = folder.join(name);
+        // A folder that is the first one under another name already holds it.
+        if folder
+            .canonicalize()
+            .is_ok_and(|folder| folder == first_real)
+        {
+            continue;
+        }
         remove(&path)?;
         std::fs::create_dir_all(folder).map_err(io(folder))?;
-        // Real paths, so the link holds when a folder is itself a link.
-        let real = |path: &Path| path.canonicalize().map_err(io(path));
         let target = relative(&real(folder)?, &real(&canonical)?);
         if link(Path::new(&target), &path).is_err() {
             copy(&canonical, &path)?;
@@ -151,13 +161,7 @@ fn link(_: &Path, _: &Path) -> io::Result<()> {
 }
 
 fn remove(path: &Path) -> Result<(), ChestError> {
-    let removed = match path.symlink_metadata() {
-        Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(path),
-        Ok(_) => std::fs::remove_file(path),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err),
-    };
-    removed.map_err(io(path))
+    npm::remove_path(path).map_err(io(path))
 }
 
 /// Copies the folder or file `from` to `to`, leaving out `.git` folders and
@@ -264,7 +268,7 @@ pub fn write_ignore(root: &Path, manifest: &str, entries: &[String]) -> Result<(
     if out == text {
         return Ok(());
     }
-    std::fs::write(path, out).map_err(io(path))
+    write_atomic(path, out.as_bytes(), 0o666).map_err(io(path))
 }
 
 #[cfg(test)]

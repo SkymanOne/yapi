@@ -146,15 +146,51 @@ struct Staged {
     record: Option<Locked>,
     content: Content,
     outcome: Outcome,
+    /// Items of the package left out, with why.
+    warnings: Vec<String>,
 }
 
 enum Content {
-    /// Skills or agents: each placed name with the folder or file it copies.
-    Items(Vec<(String, PathBuf)>),
-    /// An extension built in `staging`, beside its store folder `dir`.
-    Store { staging: PathBuf, dir: PathBuf },
+    /// Skills or agents: each placed name with the folder or file it copies
+    /// and its hash.
+    Items(Vec<(String, PathBuf, String)>),
+    /// An extension built in `staging`, beside its store folder `dir`, with
+    /// its hash.
+    Store {
+        staging: PathBuf,
+        dir: PathBuf,
+        hash: String,
+    },
     /// Nothing to put in place.
     Nothing,
+}
+
+/// Removes the extensions `staged` built and did not put in place.
+fn discard(staged: &[Staged]) {
+    for staged in staged {
+        if let Content::Store { staging, .. } = &staged.content {
+            let _ = std::fs::remove_dir_all(staging);
+        }
+    }
+}
+
+/// `path` with its deepest existing part resolved to its real path, links
+/// followed and, where the file system ignores case, as the disk spells it.
+fn real_path(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut current = path;
+    loop {
+        if let Ok(real) = current.canonicalize() {
+            return rest.iter().rev().fold(real, |real, part| real.join(part));
+        }
+        match (current.parent(), current.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                current = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
 }
 
 /// A `chest.toml` with its lock, and the folders its entries go to.
@@ -248,7 +284,9 @@ impl Project {
         resolve_lexically(&self.base, &path)
     }
 
-    /// The folders of skill or agent entries, the canonical one first.
+    /// The folders of skill or agent entries, the canonical one first, by
+    /// real path. A folder that links to an earlier one, or spells it
+    /// another way, is left out, so nothing is placed there twice.
     fn folders(&self, section: Section) -> Result<Vec<PathBuf>, ChestError> {
         let folders = match section {
             Section::Skills => &self.manifest.folders.skills,
@@ -260,7 +298,14 @@ impl Project {
                 "Set `{key}` in [folders] to say where {key} go"
             )));
         }
-        Ok(folders.iter().map(|folder| self.resolve(folder)).collect())
+        let mut real: Vec<PathBuf> = Vec::new();
+        for folder in folders {
+            let path = real_path(&self.resolve(folder));
+            if !real.contains(&path) {
+                real.push(path);
+            }
+        }
+        Ok(real)
     }
 
     fn read_lock(&self) -> Result<Option<Lock>, ChestError> {
@@ -282,12 +327,7 @@ impl Project {
 
     /// The skill, agent and extension entries, in manifest order.
     fn entries(&self) -> impl Iterator<Item = (Section, &String, &Entry)> {
-        [Section::Skills, Section::Agents, Section::Extensions]
-            .into_iter()
-            .flat_map(|section| {
-                let entries = self.manifest.section(section).iter();
-                entries.map(move |(name, entry)| (section, name, entry))
-            })
+        self.manifest.entries()
     }
 
     /// The folders a section's items go in: its configured folders, or the
@@ -336,10 +376,11 @@ impl Project {
     }
 
     /// Brings the installed entries in line with the manifest and lock as
-    /// `mode` says, holding the lock file's lock throughout. Every entry is
-    /// fetched and checked before anything is put in place, so a failed
-    /// download changes nothing. Nothing is written outside [`Project::root`].
-    /// `progress` hears a line for each entry fetched.
+    /// `mode` says, holding the lock file's lock and the project's record
+    /// lock throughout. Every entry is fetched and checked before anything
+    /// is put in place, so a failed download changes nothing. Nothing is
+    /// written outside [`Project::root`]. `progress` hears a line for each
+    /// entry fetched.
     pub async fn sync(
         &mut self,
         mode: Mode,
@@ -348,11 +389,14 @@ impl Project {
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
         self.path_notices(&mut report);
-        if mode == Mode::Frozen {
-            // Frozen writes nothing, not even the lock's lock.
+        let frozen = mode == Mode::Frozen;
+        // Frozen with everything in place writes nothing, not even the
+        // lock's lock.
+        if frozen {
             self.lock = self.read_lock()?;
-            self.check_frozen(&mut report)?;
-            return Ok(report);
+            if !self.check_frozen(&mut report)? {
+                return Ok(report);
+            }
         }
         // Startup takes the lock's lock only to put something back.
         if let Mode::Startup { offline } = mode
@@ -365,6 +409,10 @@ impl Project {
             .await
             .map_err(|err| ChestError::Failed(format!("{}: {err}", lock_path.display())))?;
         self.lock = self.read_lock()?;
+        // Another install may have changed the lock or put things back meanwhile.
+        if frozen && !self.check_frozen(&mut report)? {
+            return Ok(report);
+        }
         let startup = matches!(mode, Mode::Startup { .. });
         let old = match (&self.lock, startup) {
             (Some(lock), _) => lock.clone(),
@@ -377,21 +425,25 @@ impl Project {
                 return Ok(report);
             }
         };
+        // Every manifest of the project shares its record, so one install at
+        // a time places and removes.
+        let record_path = Record::path(&self.state, &self.root(), self.scope);
+        let state = record_path.parent().unwrap_or(&record_path);
+        std::fs::create_dir_all(state).map_err(io(state))?;
+        let _record_held = FileLock::acquire(&record_path, &CancellationToken::new())
+            .await
+            .map_err(|err| ChestError::Failed(format!("{}: {err}", record_path.display())))?;
+        self.prepare_folders()?;
         // `_work` holds the fetched items until they are placed.
         let (staged, _work) = self
             .prepare(&mode, &old, npm, progress, &mut report)
             .await?;
-        let record_path = Record::path(&self.state, &self.path, self.scope);
-        let mut record = Record::load(&record_path, &self.root());
+        let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         let committed = self.commit(&staged, &old, &mut record, &record_path, &mut report);
         let occupied = match committed {
             Ok(occupied) => occupied,
             Err(err) => {
-                for staged in &staged {
-                    if let Content::Store { staging, .. } = &staged.content {
-                        let _ = std::fs::remove_dir_all(staging);
-                    }
-                }
+                discard(&staged);
                 return Err(err);
             }
         };
@@ -411,7 +463,8 @@ impl Project {
         }
         self.remove_dropped(&old, &occupied, &mut record, &record_path, &mut report)?;
         let text = lock.to_toml()?;
-        if std::fs::read_to_string(&lock_path).ok().as_deref() != Some(text.as_str()) {
+        // Frozen installs what the lock pins and never writes it.
+        if !frozen && std::fs::read_to_string(&lock_path).ok().as_deref() != Some(text.as_str()) {
             write_atomic(&lock_path, text.as_bytes(), 0o666).map_err(io(&lock_path))?;
         }
         if self.scope == Scope::Project {
@@ -419,6 +472,62 @@ impl Project {
         }
         self.lock = Some(lock);
         Ok(report)
+    }
+
+    /// Before anything is placed: makes the folders of sections with
+    /// entries, so that a folder linking to another resolves, refuses
+    /// folders whose real paths nest or that two sections share, and removes
+    /// staging folders a stopped install left in them or in the store.
+    fn prepare_folders(&self) -> Result<(), ChestError> {
+        let root = self.root();
+        let mut homes: Vec<PathBuf> = Vec::new();
+        for section in [Section::Skills, Section::Agents] {
+            let configured = match section {
+                Section::Skills => &self.manifest.folders.skills,
+                _ => &self.manifest.folders.agents,
+            };
+            if !self.manifest.section(section).is_empty() {
+                for folder in configured {
+                    let path = self.resolve(folder);
+                    // `within` judges an item by its folder.
+                    place::within(&root, &path.join("item"))?;
+                    // A folder that is a link stays one.
+                    if path.symlink_metadata().is_err() {
+                        std::fs::create_dir_all(&path).map_err(io(&path))?;
+                    }
+                }
+            }
+            let mut reals: Vec<PathBuf> = Vec::new();
+            for folder in configured {
+                let real = real_path(&self.resolve(folder));
+                if !reals.contains(&real) {
+                    reals.push(real);
+                }
+            }
+            homes.extend(reals);
+        }
+        homes.push(real_path(&self.store()));
+        for (index, first) in homes.iter().enumerate() {
+            for second in &homes[index + 1..] {
+                if first.starts_with(second) || second.starts_with(first) {
+                    return Err(invalid(format!(
+                        "folders: {} and {} overlap",
+                        first.display(),
+                        second.display()
+                    )));
+                }
+            }
+        }
+        for home in &homes {
+            for entry in std::fs::read_dir(home).into_iter().flatten().flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') && name.ends_with("-staging") {
+                    let path = entry.path();
+                    npm::remove_path(&path).map_err(io(&path))?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Fetches and stages each entry that needs it, and keeps the others as
@@ -470,6 +579,7 @@ impl Project {
                     Some(Outcome::Unchanged)
                 }
                 Mode::Startup { offline: true } => Some(Outcome::Skipped),
+                Mode::Frozen if present => Some(Outcome::Unchanged),
                 _ if fresh && present && !local && !named => Some(Outcome::Unchanged),
                 _ => None,
             };
@@ -480,6 +590,7 @@ impl Project {
                     record: locked.cloned(),
                     content: Content::Nothing,
                     outcome,
+                    warnings: Vec::new(),
                 });
                 continue;
             }
@@ -487,13 +598,16 @@ impl Project {
             let resolve = !fresh || named;
             progress(&format!("Installing {}...", target.id));
             match self.stage(&target, resolve, npm, &mut work).await {
-                Ok(next) => staged.push(next),
+                Ok(mut next) => {
+                    let id = &next.id;
+                    let warnings = next.warnings.drain(..);
+                    report
+                        .warnings
+                        .extend(warnings.map(|warning| format!("{id}: {warning}")));
+                    staged.push(next);
+                }
                 Err(err) => {
-                    for staged in &staged {
-                        if let Content::Store { staging, .. } = &staged.content {
-                            let _ = std::fs::remove_dir_all(staging);
-                        }
-                    }
+                    discard(&staged);
                     return Err(match err {
                         ChestError::Invalid(message) => {
                             invalid(format!("{}: {message}", target.id))
@@ -525,12 +639,19 @@ impl Project {
             locked,
             ..
         } = *target;
-        let staged = |record, content, outcome| Staged {
+        let staged = |record, content, outcome, warnings| Staged {
             id: target.id.clone(),
             section,
             record,
             content,
             outcome,
+            warnings,
+        };
+        let hashed = |items: Vec<(String, PathBuf)>| -> Result<Vec<_>, ChestError> {
+            let hash = |(name, source): (String, PathBuf)| {
+                tree_hash(&source).map(|hash| (name, source, hash))
+            };
+            items.into_iter().map(hash).collect()
         };
         let path_source = match (&entry.git, &entry.npm) {
             (None, None) => entry.path.as_deref(),
@@ -555,12 +676,22 @@ impl Project {
                     true => Outcome::Installed,
                     false => Outcome::Unchanged,
                 };
-                return Ok(staged(record, Content::Nothing, outcome));
+                return Ok(staged(record, Content::Nothing, outcome, Vec::new()));
             }
             let source = self.resolve(path);
-            fetch::check_item(section, &source)?;
-            let items = vec![(fetch::placed_name(section, name), source)];
-            return Ok(staged(record, Content::Items(items), Outcome::Installed));
+            // A patch for a package's items, an entry without `path`, is
+            // such a package too.
+            let patched_package =
+                target.patch.is_some() && path_source.is_none() && entry.path.is_none();
+            let (items, warnings) = if patched_package {
+                fetch::items(&source, section, None, name)?
+            } else {
+                fetch::check_item(section, &source)?;
+                let item = (fetch::placed_name(section, name), source);
+                (vec![item], Vec::new())
+            };
+            let content = Content::Items(hashed(items)?);
+            return Ok(staged(record, content, Outcome::Installed, warnings));
         }
         let replay = locked.filter(|_| !resolve);
         let mut record = Locked {
@@ -580,6 +711,7 @@ impl Project {
             fetch::checkout(&self.cache, repo, &commit, &package).await?;
             record.commit = Some(commit);
         }
+        let mut warnings = Vec::new();
         let content = if section == Section::Extensions {
             let dir = self.store().join(name);
             place::within(&self.root(), &dir)?;
@@ -591,7 +723,8 @@ impl Project {
                 let _ = std::fs::remove_dir_all(&staging);
                 return Err(err);
             }
-            Content::Store { staging, dir }
+            let hash = record.hash.clone().unwrap_or_default();
+            Content::Store { staging, dir, hash }
         } else {
             if let Some(npm_name) = &entry.npm {
                 let pin = match replay {
@@ -612,22 +745,23 @@ impl Project {
                 record.tarball = Some(pin.tarball);
                 record.integrity = Some(pin.integrity);
             }
-            let items = fetch::items(&package, section, entry.path.as_deref(), name)?;
+            let (items, skipped) = fetch::items(&package, section, entry.path.as_deref(), name)?;
+            warnings = skipped;
+            let items = hashed(items)?;
             if entry.path.is_some() {
-                record.hash = Some(tree_hash(&items[0].1)?);
+                record.hash = Some(items[0].2.clone());
             } else {
-                for (item, source) in &items {
-                    let hash = tree_hash(source)?;
+                for (item, _, hash) in &items {
                     record.items.push(lock::Item {
                         name: item.clone(),
-                        hash,
+                        hash: hash.clone(),
                     });
                 }
             }
             Content::Items(items)
         };
         let Some(locked) = replay else {
-            return Ok(staged(Some(record), content, Outcome::Installed));
+            return Ok(staged(Some(record), content, Outcome::Installed, warnings));
         };
         if record.hash != locked.hash || record.items != locked.items {
             if let Content::Store { staging, .. } = &content {
@@ -637,7 +771,12 @@ impl Project {
                 "what was fetched does not match the lock: run `chest update` to take it",
             ));
         }
-        Ok(staged(Some(locked.clone()), content, Outcome::Replayed))
+        Ok(staged(
+            Some(locked.clone()),
+            content,
+            Outcome::Replayed,
+            warnings,
+        ))
     }
 
     /// Builds extension `entry` in `staging`: an npm package installed into
@@ -709,15 +848,14 @@ impl Project {
             let planned = match &staged.content {
                 Content::Items(items) => {
                     let folders = self.folders(staged.section)?;
-                    let mut planned = Vec::new();
-                    for (name, source) in items {
+                    let plan = |(name, source, hash): &(String, PathBuf, String)| {
                         let targets = folders.iter().map(|folder| folder.join(name)).collect();
-                        planned.push((source.clone(), targets, tree_hash(source)?));
-                    }
-                    planned
+                        (source.clone(), targets, hash.clone())
+                    };
+                    items.iter().map(plan).collect()
                 }
-                Content::Store { staging, dir } => {
-                    vec![(staging.clone(), vec![dir.clone()], tree_hash(staging)?)]
+                Content::Store { staging, dir, hash } => {
+                    vec![(staging.clone(), vec![dir.clone()], hash.clone())]
                 }
                 Content::Nothing => Vec::new(),
             };
@@ -752,7 +890,7 @@ impl Project {
                                     "refusing to replace what chest did not install at",
                                 ));
                             }
-                            record.set(target, Some(hash));
+                            record.adopt(target, hash);
                         }
                     }
                 }
@@ -762,10 +900,10 @@ impl Project {
         record.save(record_path)?;
         for (staged, planned) in staged.iter().zip(placements) {
             for (source, targets, hash) in planned {
-                let before: Vec<Option<String>> =
-                    targets.iter().map(|target| record.get(target)).collect();
+                let before: Vec<_> = targets.iter().map(|target| record.get(target)).collect();
+                // Until it is noted, a target is chest's with the old or the new content.
                 for target in &targets {
-                    record.set(target, Some(&hash));
+                    record.expect(target, &hash);
                 }
                 record.save(record_path)?;
                 let placed = match &staged.content {
@@ -776,13 +914,13 @@ impl Project {
                         place::place(&source, &root, &folders, &name).map(drop)
                     }
                 };
-                // What now holds the new content is noted as placed, links by
-                // their target. What was not written goes back to its record.
+                // Placed targets hold the new content, links by their target.
+                // After a failure, what was not written goes back to its record.
                 for (target, before) in targets.iter().zip(before) {
-                    if content_hash(target).as_ref() == Some(&hash) {
-                        record.note(target);
+                    if placed.is_ok() || content_hash(target).as_ref() == Some(&hash) {
+                        record.noted(target, &hash);
                     } else {
-                        record.set(target, before.as_deref());
+                        record.restore(target, before);
                     }
                 }
                 record.save(record_path)?;
@@ -793,10 +931,13 @@ impl Project {
         Ok(occupied.into_iter().collect())
     }
 
-    /// Removes what the record lists that no entry occupies any more, when it
-    /// still holds what chest put there. A path changed since is left with a
-    /// warning, and one chest cannot remove is forgotten with a warning.
-    /// Reports the entries the manifest dropped.
+    /// Removes what the record lists for this manifest that none of its
+    /// entries occupies any more, when it still holds what chest put there.
+    /// A path another manifest of the project still occupies stays theirs,
+    /// and so does one that is, by its real path, a path an entry occupies.
+    /// A path changed since is left with a warning, and one chest cannot
+    /// remove is forgotten with a warning. Reports the entries the manifest
+    /// dropped.
     fn remove_dropped(
         &self,
         old: &Lock,
@@ -805,9 +946,20 @@ impl Project {
         record_path: &Path,
         report: &mut Report,
     ) -> Result<(), ChestError> {
+        // The real path of a placed path: its folder resolved, itself not.
+        let real = |path: &Path| match (path.parent(), path.file_name()) {
+            (Some(parent), Some(name)) => real_path(parent).join(name),
+            _ => path.to_path_buf(),
+        };
+        let really: HashSet<PathBuf> = occupied.iter().map(|path| real(path)).collect();
         let occupied: HashSet<&PathBuf> = occupied.iter().collect();
         for path in record.paths() {
             if occupied.contains(&path) {
+                continue;
+            }
+            if record.shared(&path) || really.contains(&real(&path)) {
+                record.release(&path);
+                record.save(record_path)?;
                 continue;
             }
             if path.symlink_metadata().is_ok() {
@@ -830,7 +982,7 @@ impl Project {
                     }
                 }
             }
-            record.set(&path, None);
+            record.forget(&path);
             record.save(record_path)?;
         }
         for section in [Section::Skills, Section::Agents, Section::Extensions] {
@@ -844,15 +996,34 @@ impl Project {
         Ok(())
     }
 
-    /// Lists every `occupied` path in the root's `.gitignore` block.
+    /// Lists every `occupied` path in the root's `.gitignore` block, with the
+    /// staging folders a stopped install can leave beside the copies it
+    /// makes: in the first folder of each section and in the store.
     fn write_ignore(&self, occupied: &[PathBuf]) -> Result<(), ChestError> {
         let root = self.root();
-        let mut entries = Vec::new();
-        for path in occupied {
+        let relative = |path: &Path| -> Result<String, ChestError> {
             let relative = path.strip_prefix(&root).map_err(|_| {
                 invalid(format!("{} is outside {}", path.display(), root.display()))
             })?;
-            entries.push(relative.to_string_lossy().replace('\\', "/"));
+            Ok(relative.to_string_lossy().replace('\\', "/"))
+        };
+        let mut entries = Vec::new();
+        for path in occupied {
+            entries.push(relative(path)?);
+        }
+        let first = |section| self.folders(section).ok()?.into_iter().next();
+        let copies = [
+            first(Section::Skills),
+            first(Section::Agents),
+            Some(self.store()),
+        ];
+        for home in copies.into_iter().flatten() {
+            if occupied
+                .iter()
+                .any(|path| path.parent() == Some(home.as_path()))
+            {
+                entries.push(format!("{}/.*-staging", relative(&home)?));
+            }
         }
         place::write_ignore(&root, &self.file_name(), &entries)
     }
@@ -887,9 +1058,10 @@ impl Project {
     }
 
     /// Fails on a missing or stale lock, or on an installed copy, copy
-    /// fallback or link that does not match the lock. Entries not installed
-    /// are reported, not installed.
-    fn check_frozen(&self, report: &mut Report) -> Result<(), ChestError> {
+    /// fallback or link that does not match the lock. Whether something the
+    /// lock pins is missing, to be put back. When nothing is, every entry is
+    /// reported unchanged.
+    fn check_frozen(&self, report: &mut Report) -> Result<bool, ChestError> {
         let name = self.file_name();
         let lock = self
             .lock
@@ -911,16 +1083,18 @@ impl Project {
         if !wrong.is_empty() {
             return Err(invalid(wrong.join("\n")));
         }
-        for (section, entry_name, _) in self.entries() {
-            let id = format!("{}.{entry_name}", section.key());
-            if problems.iter().any(|(entry, ..)| *entry == id) {
-                report.warnings.push(format!("{id} is not installed"));
-                report.entries.push((id, Outcome::Skipped));
-            } else {
+        let missing = self.entries().any(|(section, entry_name, _)| {
+            let locked = lock.section(section).iter();
+            let mut found = locked.filter(|locked| &locked.name == entry_name);
+            found.any(|locked| !self.present(section, locked))
+        });
+        if !missing {
+            for (section, entry_name, _) in self.entries() {
+                let id = format!("{}.{entry_name}", section.key());
                 report.entries.push((id, Outcome::Unchanged));
             }
         }
-        Ok(())
+        Ok(missing)
     }
 
     /// Each installed copy of a locked git or npm entry that does not match
@@ -1218,9 +1392,16 @@ fn has_git(path: &Path) -> bool {
 /// Copies the checkout `package`, or its `subpath`, into `staging`, without
 /// a committed `node_modules`, which the dependency install or replay
 /// rebuilds so that the hash does not depend on what the repository commits.
+/// The subpath must be a folder: an extension is installed as a package.
 fn copy_checkout(package: &Path, subpath: Option<&str>, staging: &Path) -> Result<(), ChestError> {
     let source = package.join(subpath.unwrap_or_default());
     fetch::inside(package, &source)?;
+    if !source.is_dir() {
+        return Err(invalid(format!(
+            "`path` must name the folder that holds the extension, not a file: {}",
+            subpath.unwrap_or_default()
+        )));
+    }
     place::copy(&source, staging)?;
     let modules = staging.join("node_modules");
     if modules.symlink_metadata().is_ok() {

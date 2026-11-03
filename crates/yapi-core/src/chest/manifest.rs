@@ -248,6 +248,15 @@ impl Manifest {
         }
     }
 
+    /// The skill, agent and extension entries, in manifest order.
+    pub fn entries(&self) -> impl Iterator<Item = (Section, &String, &Entry)> {
+        let sections = [Section::Skills, Section::Agents, Section::Extensions];
+        sections.into_iter().flat_map(move |section| {
+            let entries = self.section(section).iter();
+            entries.map(move |(name, entry)| (section, name, entry))
+        })
+    }
+
     fn section_mut(&mut self, section: Section) -> &mut IndexMap<String, Entry> {
         match section {
             Section::Skills => &mut self.skills,
@@ -415,6 +424,12 @@ impl Entry {
             }
         }
         if section == Section::Extensions {
+            if self.npm.is_some() && self.path.is_some() {
+                return fail(
+                    "`path` cannot be combined with `npm` for an extension, which loads its whole npm package"
+                        .into(),
+                );
+            }
             if let Some(Err(err)) = self.capabilities.as_deref().map(Grants::parse) {
                 return fail(format!("`capabilities`: {err}"));
             }
@@ -890,6 +905,10 @@ extensions = ["extensions/index.ts"]
             (
                 "[agents]\nx = { path = \"a\", events = \"isolated\" }",
                 "agents.x: `events` belongs to [extensions] entries",
+            ),
+            (
+                "[extensions]\nx = { npm = \"a\", path = \"b\" }",
+                "extensions.x: `path` cannot be combined with `npm` for an extension, which loads its whole npm package",
             ),
             (
                 "[extensions]\nx = { path = \"a\", capabilities = [\"process\"] }",
