@@ -5,7 +5,7 @@
 //! starts run on the tokio runtime and come back as commands, so host code
 //! never calls into the guest while the guest is running.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,7 +31,12 @@ use crate::requests::{AiStreams, Host};
 
 /// How long one guest export may compute, not counting time spent in host
 /// calls, before the instance is stopped.
-const CALL_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 60 });
+const CALL_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 2 } else { 60 });
+
+/// [`CALL_LIMIT`] while the instance starts and while a call that loads or
+/// reloads its extensions is unanswered, so one that spins as it loads
+/// stops startup soon.
+const LOAD_LIMIT: Duration = Duration::from_secs(if cfg!(test) { 1 } else { 10 });
 
 /// The canonical paths of `roots` that exist: a symlink inside a root that
 /// leads out then lies outside it, and a root moved elsewhere changes.
@@ -181,6 +186,8 @@ pub(crate) struct State {
     host: Arc<Host>,
     started: Vec<(u64, String, String)>,
     call_started: Instant,
+    /// Whether the export runs under [`LOAD_LIMIT`].
+    loading: bool,
     /// When the guest's outermost open host call began, how many host calls
     /// are open, and the time the guest spent in closed ones since the
     /// export began.
@@ -439,6 +446,8 @@ struct Actor {
     generation: u64,
     next_id: u64,
     pending: HashMap<u64, oneshot::Sender<Result<Value, Error>>>,
+    /// The calls that load or reload extensions and are not answered yet.
+    loading: HashSet<u64>,
     /// Calls that shape the instance's state, replayed after a restart.
     replay: Vec<(String, String)>,
     /// Set while a restart replays `replay`.
@@ -467,6 +476,7 @@ impl Actor {
             generation: 0,
             next_id: 1,
             pending: HashMap::new(),
+            loading: HashSet::new(),
             replay: Vec::new(),
             replaying: false,
             interrupt,
@@ -484,6 +494,7 @@ impl Actor {
                     let id = self.next_id;
                     self.next_id += 1;
                     self.pending.insert(id, reply);
+                    self.track_load(id, &kind);
                     // A call that stops the instance is not replayed.
                     if self.guest(|bindings, store| {
                         bindings
@@ -535,9 +546,19 @@ impl Actor {
         }
     }
 
+    /// Counts call `id` as loading extensions when `kind` loads or reloads
+    /// them.
+    fn track_load(&mut self, id: u64, kind: &str) {
+        if matches!(kind, "load" | "reload") {
+            self.loading.insert(id);
+        }
+    }
+
     /// Starts the clock and the epoch deadline of a guest call.
     fn start_call(&mut self) {
+        let loading = !self.loading.is_empty();
         let state = self.store.data_mut();
+        state.loading = loading;
         state.call_started = Instant::now();
         state.host_depth = 0;
         state.host_time = Duration::ZERO;
@@ -588,6 +609,7 @@ impl Actor {
                             (id, Err(Error::Call(message)))
                         }
                     };
+                    self.loading.remove(&id);
                     if let Some(reply) = self.pending.remove(&id) {
                         let _ = reply.send(result);
                     }
@@ -621,6 +643,7 @@ impl Actor {
     /// fail. An instance that the replay stops stays stopped until the next
     /// call, which restarts it again.
     fn restart(&mut self, trap: &wasmtime::Error) {
+        self.loading.clear();
         if self.interrupt.load(Ordering::Relaxed) {
             for (_, reply) in self.pending.drain() {
                 let _ = reply.send(Err(Error::Stopped));
@@ -661,6 +684,7 @@ impl Actor {
         for (kind, payload) in self.replay.clone() {
             let id = self.next_id;
             self.next_id += 1;
+            self.track_load(id, &kind);
             if !self.guest(|bindings, store| {
                 bindings
                     .yapi_extension_guest()
@@ -710,6 +734,8 @@ fn instantiate(
         host: host.clone(),
         started: Vec::new(),
         call_started: Instant::now(),
+        // Instantiation runs the runtime's own start-up code.
+        loading: true,
         host_called: Instant::now(),
         host_depth: 0,
         host_time: Duration::ZERO,
@@ -752,10 +778,14 @@ fn instantiate(
             .call_started
             .elapsed()
             .saturating_sub(state.host_time + open);
-        if busy > CALL_LIMIT {
+        let (limit, task) = match state.loading {
+            true => (LOAD_LIMIT, " as it loaded"),
+            false => (CALL_LIMIT, ""),
+        };
+        if busy > limit {
             Err(wasmtime::Error::msg(format!(
-                "an extension computed for more than {} seconds without yielding",
-                CALL_LIMIT.as_secs()
+                "an extension computed for more than {} seconds without yielding{task}",
+                limit.as_secs()
             )))
         } else {
             Ok(UpdateDeadline::Continue(1))
@@ -834,6 +864,51 @@ mod tests {
             .await;
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(loaded.unwrap()["extensions"][0].get("error"), None);
+    }
+
+    /// A load that computes without yielding stops at the load budget,
+    /// while a later call computes up to the call limit.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn load_budget_stops_spin() {
+        use serde_json::json;
+        let dir = std::env::temp_dir().join(format!("yapi-load-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (spin, command) = (dir.join("spin.js"), dir.join("command.js"));
+        std::fs::write(&spin, "while (true) {}\nexport default function () {}\n").unwrap();
+        let handler = "pi.registerCommand(\"spin\", { handler: async () => { while (true) {} } });";
+        let source = format!("export default function (pi) {{ {handler} }}\n");
+        std::fs::write(&command, source).unwrap();
+        let engine = Engine::new(None).unwrap();
+        let mut errors = Vec::new();
+        for (path, spins) in [(spin, false), (command, true)] {
+            let options = Options::new(dir.clone());
+            let instance = Instance::start(&engine, options, Arc::new(NoBridge))
+                .await
+                .unwrap();
+            let extensions = json!([{"id": 1, "path": path}]);
+            let loaded = instance
+                .call("load", &json!({"cwd": dir, "extensions": extensions}))
+                .await;
+            let result = match spins {
+                false => loaded,
+                true => {
+                    assert_eq!(loaded.unwrap()["extensions"][0].get("error"), None);
+                    let spin = json!({"extension": 1, "name": "spin"});
+                    instance.call("command", &spin).await
+                }
+            };
+            errors.push(result.unwrap_err().to_string());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        let stopped = |limit: Duration, task: &str| {
+            let secs = limit.as_secs();
+            format!("computed for more than {secs} seconds without yielding{task}")
+        };
+        assert!(
+            errors[0].ends_with(&stopped(LOAD_LIMIT, " as it loaded")),
+            "{errors:?}"
+        );
+        assert!(errors[1].ends_with(&stopped(CALL_LIMIT, "")), "{errors:?}");
     }
 
     /// A long process reloads and binds once per session; a restart replays
