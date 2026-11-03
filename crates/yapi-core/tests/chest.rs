@@ -635,8 +635,9 @@ async fn npm_extension_locked() {
     assert!(store.join("node_modules/ext/index.js").exists());
     assert!(!store.join("package.json").exists());
 
-    // A mirror that serves only the tarballs rebuilds the same store.
-    let mirror = MockServer::local_with(|base| {
+    // A mirror that serves only the tarballs rebuilds the same store. The
+    // replay downloads them at once, so they may come in either order.
+    let mirror = MockServer::local_any_order(|base| {
         let (_, dep) = publish(base, "dep", json!({}));
         let (_, ext) = publish(base, "ext", json!({"dep": "^1"}));
         Cassette {
