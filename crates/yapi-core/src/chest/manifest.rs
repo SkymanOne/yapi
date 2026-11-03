@@ -204,8 +204,9 @@ impl Manifest {
     /// `rev` only with `git` and `version` only with `npm`. A `[patch]` entry
     /// takes `path` alone. Capability lists must parse as [`Grants`]. In a
     /// project manifest, `[folders]` paths are relative, without `..` or a
-    /// leading `~`, so they stay inside the project; the user's global
-    /// manifest may name any folder.
+    /// leading `~`, so they stay inside the project. The user's global
+    /// manifest may name any folder here, but installs only under the home
+    /// folder.
     pub fn parse(text: &str, scope: Scope) -> Result<Manifest, ChestError> {
         let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
         Manifest::from_document(&document, scope)
