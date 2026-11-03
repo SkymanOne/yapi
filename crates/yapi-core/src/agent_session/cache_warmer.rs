@@ -1371,6 +1371,98 @@ mod tests {
         assert!(session.settled_turn().is_none(), "settling stayed true");
     }
 
+    /// A follow-up queued after the run last looked at its queues, as it
+    /// would end, runs in that run, as one queued earlier does.
+    #[tokio::test]
+    async fn late_follow_up_runs() {
+        let provider = Cached::default();
+        let session = warming_session(cached_model(), &provider, Vec::new(), CacheWarming::Off);
+        let late = session.clone();
+        *lock(&session.inner.races.before_end) = Some(Box::new(move || {
+            let message = yapi_types::message::CustomMessage {
+                custom_type: "late".into(),
+                content: yapi_types::message::Content::Text("late".into()),
+                display: true,
+                details: None,
+                timestamp: 1,
+            };
+            let run = late.deliver_custom_message(message, Some(true), Some("followUp"));
+            assert!(run.is_none(), "the run had ended");
+        }));
+        let run = tokio::time::timeout(Duration::from_secs(5), session.prompt("hi", Vec::new()));
+        run.await.unwrap().unwrap();
+        // The prompt's request, then the follow-up's.
+        assert_eq!(provider.caps().len(), 2);
+        assert!(!session.has_queued());
+    }
+
+    /// Holds its `agent_settled` handler until `release` is notified, and
+    /// tells `entered` as it starts.
+    struct GateSettled {
+        entered: tokio::sync::mpsc::UnboundedSender<()>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    impl Extension for GateSettled {
+        fn source(&self) -> SourceInfo {
+            builtin_source("gate")
+        }
+
+        fn handles(&self, kind: &str) -> bool {
+            kind == "agent_settled"
+        }
+
+        fn handle<'a>(
+            &'a self,
+            _ctx: &'a Context,
+            _event: &'a Value,
+        ) -> BoxFuture<'a, Option<Value>> {
+            let _ = self.entered.send(());
+            let release = self.release.clone();
+            Box::pin(async move {
+                release.notified().await;
+                None
+            })
+        }
+    }
+
+    /// A prompt that asks to wait for the `agent_settled` handlers as they
+    /// finish either takes its place before the run starts the deferred
+    /// prompts, or starts at once: it never waits for a run that ended.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn late_deferral_starts() {
+        let provider = Cached::default();
+        let (entered, mut handlers) = tokio::sync::mpsc::unbounded_channel();
+        let release = Arc::new(tokio::sync::Notify::new());
+        let ext: Arc<dyn Extension> = Arc::new(GateSettled {
+            entered,
+            release: release.clone(),
+        });
+        let session = warming_session(cached_model(), &provider, vec![ext], CacheWarming::Off);
+        let run = tokio::spawn({
+            let session = session.clone();
+            async move { session.prompt("hi", Vec::new()).await }
+        });
+        handlers.recv().await.unwrap();
+        // The handlers finish and the run ends meanwhile.
+        let (ended, run_ended) = std::sync::mpsc::channel();
+        *lock(&session.inner.races.before_defer) = Some(Box::new(move || {
+            release.notify_one();
+            run_ended.recv().unwrap();
+        }));
+        let asking = session.clone();
+        // Whether the deferred prompt started, if it was deferred.
+        let started = tokio::task::spawn_blocking(move || {
+            let turn = asking.settled_turn()?;
+            let wait = tokio::time::timeout(Duration::from_secs(5), turn);
+            Some(tokio::runtime::Handle::current().block_on(wait).is_ok())
+        });
+        run.await.unwrap().unwrap();
+        ended.send(()).unwrap();
+        let started = started.await.unwrap();
+        assert_ne!(started, Some(false), "the deferred prompt never started");
+    }
+
     /// Records whether the context of each `before_provider_headers` is cancelled.
     struct SeesCancel(Arc<Mutex<Vec<bool>>>);
 

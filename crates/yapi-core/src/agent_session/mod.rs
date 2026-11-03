@@ -7,7 +7,7 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use futures_util::future::BoxFuture;
@@ -262,7 +262,14 @@ struct State {
     session: SessionManager,
     model: Option<Model>,
     thinking_level: ThinkingLevel,
+    /// A run is active, as pi's `isStreaming`. Queueing a message while it
+    /// is and the run's last look at the queues before it ends hold this
+    /// lock, so the run takes every message queued meanwhile.
     streaming: bool,
+    /// `agent_settled` handlers are running. A prompt deferred while they
+    /// do and the run's taking of the deferred prompts hold this lock, so
+    /// the run starts every prompt deferred meanwhile.
+    settling: bool,
 }
 
 struct Inner {
@@ -314,8 +321,6 @@ struct Inner {
     docs: crate::docs::Locations,
     /// Woken when a run ends.
     idle: tokio::sync::Notify,
-    /// `agent_settled` handlers are running.
-    settling: std::sync::atomic::AtomicBool,
     /// Prompts started while `agent_settled` handlers ran, in order, as pi's
     /// `_deferredSettledActions`: each learns when it may start, with a guard
     /// it drops as it ends.
@@ -351,6 +356,8 @@ struct Inner {
     extension_warnings: Mutex<Vec<(String, String)>>,
     /// Keeps the latest request's prompt cache entry warm.
     cache_warmer: Mutex<cache_warmer::CacheWarmer>,
+    #[cfg(test)]
+    races: RacePoints,
 }
 
 /// A blocking extension dialog's kind and title.
@@ -375,20 +382,45 @@ impl Drop for Compacting<'_> {
     }
 }
 
-/// Holds [`Inner::settling`] set while alive, so a run dropped while
-/// extensions hear `agent_settled` clears it, as pi's `finally` does.
-struct Settling<'a>(&'a AtomicBool);
+/// Code a test runs where a message may meet the end of a run.
+#[cfg(test)]
+#[derive(Default)]
+struct RacePoints {
+    /// After the run's last look at the queues, before it ends.
+    before_end: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// As a prompt asks to wait for `agent_settled` handlers, before it
+    /// takes its place among the deferred prompts.
+    before_defer: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
 
-impl<'a> Settling<'a> {
-    fn start(flag: &'a AtomicBool) -> Settling<'a> {
-        flag.store(true, Ordering::SeqCst);
-        Settling(flag)
+/// Runs the code a test set at `point`, once.
+#[cfg(test)]
+fn race(point: &Mutex<Option<Box<dyn FnOnce() + Send>>>) {
+    let hook = lock(point).take();
+    if let Some(hook) = hook {
+        hook();
+    }
+}
+
+/// Holds [`State::settling`], which the run set as it ended, until the run
+/// takes the prompts deferred meanwhile, so a run dropped while extensions
+/// hear `agent_settled` clears it, as pi's `finally` does.
+struct Settling<'a>(&'a Inner);
+
+impl Settling<'_> {
+    /// Ends it: the prompts deferred meanwhile, in order.
+    fn finish(self) -> Vec<tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>> {
+        let mut state = lock(&self.0.state);
+        state.settling = false;
+        let deferred = std::mem::take(&mut *lock(&self.0.deferred));
+        drop(state);
+        deferred
     }
 }
 
 impl Drop for Settling<'_> {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
+        lock(&self.0.state).settling = false;
     }
 }
 
@@ -543,6 +575,7 @@ impl AgentSession {
                     model,
                     thinking_level,
                     streaming: false,
+                    settling: false,
                 }),
                 scoped_models: Mutex::new(Vec::new()),
                 tools: tool_registry,
@@ -568,8 +601,9 @@ impl AgentSession {
                 docs,
                 agent_dir,
                 idle: tokio::sync::Notify::new(),
-                settling: std::sync::atomic::AtomicBool::new(false),
                 deferred: Mutex::new(Vec::new()),
+                #[cfg(test)]
+                races: RacePoints::default(),
                 compacting: AtomicUsize::new(0),
                 manual_compaction: std::sync::atomic::AtomicBool::new(false),
                 retry_cancel: Mutex::new(None),
@@ -1078,7 +1112,11 @@ impl AgentSession {
         let message = Message::Custom(message);
         if deliver_as == Some("nextTurn") {
             lock(&self.inner.next_turn).push(message);
-        } else if self.is_streaming() && trigger_turn != Some(false) {
+            return None;
+        }
+        // Queued in one step with the check; see [`State::streaming`].
+        let state = lock(&self.inner.state);
+        if state.streaming && trigger_turn != Some(false) {
             let queue = if deliver_as == Some("followUp") {
                 &self.inner.follow_up
             } else {
@@ -1086,13 +1124,15 @@ impl AgentSession {
             };
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
+            drop(state);
             let session = self.clone();
             return Some(async move {
                 let _ = session.run(vec![message]).await;
             });
-        } else if self.is_streaming() {
+        } else if state.streaming {
             lock(&self.inner.pending_custom).push(message);
         } else {
+            drop(state);
             self.append_custom_message(&message);
         }
         None
@@ -1107,11 +1147,15 @@ impl AgentSession {
         &self,
     ) -> Option<impl Future<Output = Option<tokio::sync::oneshot::Sender<()>>> + Send + 'static>
     {
-        if !self.inner.settling.load(Ordering::SeqCst) {
+        #[cfg(test)]
+        race(&self.inner.races.before_defer);
+        let state = lock(&self.inner.state);
+        if !state.settling {
             return None;
         }
         let (turn, start) = tokio::sync::oneshot::channel();
         lock(&self.inner.deferred).push(turn);
+        drop(state);
         Some(async move { start.await.ok() })
     }
 
@@ -1210,16 +1254,36 @@ impl AgentSession {
     }
 
     fn queue(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>) {
-        {
-            let mut queued = lock(&self.inner.queued);
-            let (texts, queue) = match behavior {
-                StreamingBehavior::Steer => (&mut queued.0, &self.inner.steering),
-                StreamingBehavior::FollowUp => (&mut queued.1, &self.inner.follow_up),
-            };
-            texts.push(text.clone());
-            lock(queue).push_back(Self::user_message(text, images));
-        }
+        self.push_queued(behavior, text, images);
         self.emit_queue_update();
+    }
+
+    /// [`AgentSession::queue`] while a run is active, in one step with the
+    /// check (see [`State::streaming`]); otherwise the message back.
+    fn queue_streaming(
+        &self,
+        behavior: StreamingBehavior,
+        text: String,
+        images: Vec<ImageContent>,
+    ) -> Result<(), (String, Vec<ImageContent>)> {
+        let state = lock(&self.inner.state);
+        if !state.streaming {
+            return Err((text, images));
+        }
+        self.push_queued(behavior, text, images);
+        drop(state);
+        self.emit_queue_update();
+        Ok(())
+    }
+
+    fn push_queued(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>) {
+        let mut queued = lock(&self.inner.queued);
+        let (texts, queue) = match behavior {
+            StreamingBehavior::Steer => (&mut queued.0, &self.inner.steering),
+            StreamingBehavior::FollowUp => (&mut queued.1, &self.inner.follow_up),
+        };
+        texts.push(text.clone());
+        lock(queue).push_back(Self::user_message(text, images));
     }
 
     fn expand(&self, text: &str) -> String {
@@ -1495,8 +1559,8 @@ impl AgentSession {
         } else {
             text.to_owned()
         };
-        self.queue(behavior, text, options.images.clone());
-        true
+        self.queue_streaming(behavior, text, options.images.clone())
+            .is_ok()
     }
 
     /// Sends a user prompt and runs until the agent settles. Templates and
@@ -1544,12 +1608,19 @@ impl AgentSession {
             return Ok(());
         };
         let expanded = if expand { self.expand(&text) } else { text };
-        if self.is_streaming() {
-            let behavior = behavior.ok_or("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.")?;
-            self.queue(behavior, expanded, images);
-            preflight(PromptDisposition::Queued);
-            return Ok(());
-        }
+        let (expanded, images) = match behavior {
+            Some(behavior) => match self.queue_streaming(behavior, expanded, images) {
+                Ok(()) => {
+                    preflight(PromptDisposition::Queued);
+                    return Ok(());
+                }
+                Err(message) => message,
+            },
+            None if self.is_streaming() => {
+                return Err("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.".into());
+            }
+            None => (expanded, images),
+        };
         self.flush_pending_bash();
         self.flush_pending_custom();
         // Without a model pi's agent holds a placeholder from provider
@@ -1641,45 +1712,32 @@ impl AgentSession {
         lock(&self.inner.state).streaming = true;
         self.run_agent(Some(prompts), &cancel).await;
         let mut result = Ok(());
-        while !cancel.is_cancelled() {
-            let again = match self.handle_post_run(&cancel).await {
-                Ok(again) => again,
-                Err(error) => {
-                    result = Err(error);
-                    break;
-                }
-            };
-            if again {
-                if cancel.is_cancelled() {
-                    break;
-                }
-                self.run_agent(None, &cancel).await;
-                continue;
+        loop {
+            self.settle_run(&cancel, &mut result).await;
+            if cancel.is_cancelled() {
+                self.finish_cancelled_retry();
             }
-            if cancel.is_cancelled() || !self.before_settle(&cancel).await {
+            #[cfg(test)]
+            race(&self.inner.races.before_end);
+            if self.end_run(cancel.is_cancelled() || result.is_err()) {
                 break;
             }
+            // A message queued since the last look at the queues.
             self.run_agent(None, &cancel).await;
         }
-        if cancel.is_cancelled() {
-            self.finish_cancelled_retry();
-        }
-        lock(&self.inner.state).streaming = false;
+        let settling = Settling(&self.inner);
         self.flush_pending_bash();
         self.flush_pending_custom();
         *lock(&self.inner.cancel) = None;
         self.cache_warming_settled();
         // Extensions hear it first, as in pi.
-        let settling = Settling::start(&self.inner.settling);
         self.emit_extension_event(
             &ExtensionEvent::AgentSettled.to_value(),
             CancellationToken::new(),
         )
         .await;
         self.emit(&AgentEvent::AgentSettled);
-        drop(settling);
-        let deferred = std::mem::take(&mut *lock(&self.inner.deferred));
-        for turn in deferred {
+        for turn in settling.finish() {
             let (guard, ended) = tokio::sync::oneshot::channel();
             if turn.send(guard).is_ok() {
                 // Fails once the prompt drops the guard as it ends.
@@ -1688,6 +1746,47 @@ impl AgentSession {
         }
         self.inner.idle.notify_waiters();
         result
+    }
+
+    /// pi's post-run loop until the agent would settle: retries, overflow
+    /// recovery and compaction, the queued messages, and the
+    /// `agent_before_settle` boundary. An invalid compaction setting ends
+    /// it with its error in `result`.
+    async fn settle_run(&self, cancel: &CancellationToken, result: &mut Result<(), String>) {
+        while !cancel.is_cancelled() {
+            let again = match self.handle_post_run(cancel).await {
+                Ok(again) => again,
+                Err(error) => {
+                    *result = Err(error);
+                    break;
+                }
+            };
+            if again {
+                if cancel.is_cancelled() {
+                    break;
+                }
+                self.run_agent(None, cancel).await;
+                continue;
+            }
+            if cancel.is_cancelled() || !self.before_settle(cancel).await {
+                break;
+            }
+            self.run_agent(None, cancel).await;
+        }
+    }
+
+    /// Ends the run, as pi's `_emitAgentSettled` starts: no longer active,
+    /// and settling. Unless `stopped`, only when no message was queued since
+    /// the run last looked, in one step with queueing (see
+    /// [`State::streaming`]). Whether it ended.
+    fn end_run(&self, stopped: bool) -> bool {
+        let mut state = lock(&self.inner.state);
+        if !stopped && self.has_queued() {
+            return false;
+        }
+        state.streaming = false;
+        state.settling = true;
+        true
     }
 
     fn has_queued(&self) -> bool {
