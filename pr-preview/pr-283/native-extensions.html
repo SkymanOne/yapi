@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5589268c.js";
+            window.path_to_searchindex_js = "searchindex-8e7f8bd7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -253,7 +253,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 <tr><td><code>net</code></td><td><code>fetch</code>, <code>fetch.stream</code>, <code>dns.lookup</code>, and the model and credential operations such as <code>ai.stream</code> and <code>models.apiKey</code></td></tr>
 <tr><td><code>env</code></td><td><code>env</code>, which reads environment variables</td></tr>
 <tr><td><code>session</code></td><td><code>send_message</code>, <code>append_entry</code>, and the requests that change the session, such as <code>session.sendMessage</code>, <code>session.reload</code> and <code>model.set</code></td></tr>
-<tr><td><code>all</code></td><td>Everything above, plus <code>exec</code>, <code>Process</code> and registering providers</td></tr>
+<tr><td><code>all</code></td><td>Everything above, plus <code>exec</code>, <code>Process</code>, registering providers, terminal input listeners and autocomplete providers</td></tr>
 </tbody>
 </table>
 </div>
@@ -273,7 +273,7 @@ chest check
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>
 <ol>
-<li>Enable the features of the requests it sends: <code>session</code> for session changes, <code>net</code> for <code>fetch</code> and models, <code>env</code> for environment variables, <code>fs</code> for context files, and <code>all</code> for processes and providers.</li>
+<li>Enable the features of the requests it sends: <code>session</code> for session changes, <code>net</code> for <code>fetch</code> and models, <code>env</code> for environment variables, <code>fs</code> for context files, and <code>all</code> for processes, providers, terminal input listeners and autocomplete providers.</li>
 <li>List the same capabilities in <code>capabilities</code> under <code>[package]</code> in <code>chest.toml</code>, or <code>yapi.capabilities</code> in <code>package.json</code>.</li>
 <li>Build it and run <code>chest check</code>.</li>
 </ol>
@@ -511,6 +511,7 @@ yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 </ul>
 <p>A built extension without the feature is about 210 KB. The six examples that use widgets are 280 to 490 KB.</p>
 <h3 id="terminal-input-and-completion"><a class="header" href="#terminal-input-and-completion">Terminal input and completion</a></h3>
+<p>Terminal input listeners and autocomplete providers need the <code>all</code> feature. What they return reaches yapi’s own input, where <code>!</code> runs a shell command and <code>/</code> a slash command.</p>
 <p><code>Context::on_terminal_input</code> adds a listener for raw terminal input, as Pi’s <code>ctx.ui.onTerminalInput</code> does.</p>
 <ul>
 <li>A listener sees each key before the editor, in the order listeners were added.</li>
