@@ -151,7 +151,7 @@ fn sha512_digest(integrity: &str) -> Option<Vec<u8>> {
 }
 
 /// Removes the file, link or folder at `path`, never following a link.
-fn remove_path(path: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_path(path: &Path) -> std::io::Result<()> {
     match path.symlink_metadata() {
         Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(path),
         Ok(_) => std::fs::remove_file(path),
