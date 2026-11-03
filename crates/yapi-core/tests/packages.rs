@@ -601,11 +601,11 @@ fn files(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 async fn npm_tree_replays() {
     let dir = scratch("replay");
     let package = |name: &str, version: &str, dependencies: Value| {
+        let mut manifest = dependencies.clone();
+        manifest["name"] = json!(name);
+        manifest["version"] = json!(version);
         let bytes = tarball(&[
-            (
-                "package.json",
-                &json!({"name": name, "version": version}).to_string(),
-            ),
+            ("package.json", &manifest.to_string()),
             (
                 "index.js",
                 &format!("module.exports = '{name}@{version}';\n"),
@@ -758,6 +758,45 @@ async fn npm_tree_replays() {
     assert_eq!(files(&replayed), before);
     assert_eq!(entries(&replayed), ["node_modules"]);
     mirror.files.lock().unwrap().insert(fork, original.unwrap());
+
+    // A pin that names another package than its folder's dependents ask
+    // for, or than its own package.json, is refused once unpacked, though
+    // its tarball matches its digest.
+    let util = tree[3].clone();
+    let relabeled = format!("{mirror_url}/util/-/util-1.0.1.tgz");
+    let bytes = mirror.files.lock().unwrap()["/util/-/util-1.0.0.tgz"].clone();
+    mirror
+        .files
+        .lock()
+        .unwrap()
+        .insert("/util/-/util-1.0.1.tgz".into(), bytes);
+    let swapped = [
+        (
+            1,
+            Pinned {
+                path: tree[1].path.clone(),
+                ..util.clone()
+            },
+            "node_modules/@acme/lib/node_modules/util holds util@1.0.0, but node_modules/@acme/lib needs @acme/fork@^2 there",
+        ),
+        (
+            3,
+            Pinned {
+                version: "1.0.1".into(),
+                tarball: relabeled,
+                ..util
+            },
+            "The package.json in node_modules/util names util@1.0.0, not the pinned util@1.0.1",
+        ),
+    ];
+    for (index, pin, message) in swapped {
+        let mut pins = tree.clone();
+        pins[index] = pin;
+        let error = npm::replay(&offline, &replayed, &pins).await.unwrap_err();
+        assert_eq!(error.to_string(), message);
+        assert_eq!(files(&replayed), before);
+        assert_eq!(entries(&replayed), ["node_modules"]);
+    }
 
     // Refused before any request: the tree plus one more pin, last so that a
     // lazy check would download the others first.
