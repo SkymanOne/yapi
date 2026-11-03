@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-20d37ca2.js";
+            window.path_to_searchindex_js = "searchindex-e51382c9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -456,7 +456,7 @@ api.on("session_start", |_event, ctx| async move {
 }
 <span class="boring">}</span></code></pre>
 <h2 id="input-hooks"><a class="header" href="#input-hooks">input-hooks</a></h2>
-<p>A terminal input listener sees every key before the editor does. In an empty prompt editor <code>?</code> shows help instead of being typed, and <code>editor_focused()</code> leaves it to dialogs and selectors. <code>a</code> becomes <code>A</code>, and Ctrl+G reports how many keys the listener saw and what the editor holds. <code>/quiet</code> drops the listener’s <code>Subscription</code>, which stops it. An autocomplete provider completes environment variable names after <code>$</code> and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi.</p>
+<p>A terminal input listener sees every key before the editor does. In an empty prompt editor <code>?</code> shows help instead of being typed, and <code>editor_focused()</code> leaves it to dialogs and selectors. <code>a</code> becomes <code>A</code>, and Ctrl+G reports how many keys the listener saw and what the editor holds. <code>/quiet</code> drops the listener’s <code>Subscription</code>, which stops it. An autocomplete provider completes environment variable names after <code>$</code> and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi. It builds with the <code>all</code> feature, which terminal input listeners and autocomplete providers need.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn listen(data: &amp;str) -&gt; TerminalInput {
