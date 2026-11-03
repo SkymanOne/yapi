@@ -11,7 +11,7 @@ Treat the commands and code the model generates as untrusted. Files, comments an
 | Component | Runs as | Access |
 |---|---|---|
 | Built-in tools and `!` commands | yapi's process and its child processes | Everything the user can access |
-| Extensions | WebAssembly instances | What their grants allow. For now, every grant, so as much as in Pi: files, processes, network, environment and session actions. |
+| Extensions | WebAssembly instances | What their grants allow. Extensions from `yapi install`, settings and `-e` get every grant, so as much as in Pi: files, processes, network, environment and session actions. [chest](chest.md) extensions get the capabilities their manifest entry grants. |
 | Processes that extensions start, including subagents | Child processes, outside the sandbox | Everything the user can access |
 | MCP servers over stdio | Child processes | Everything the user can access |
 | MCP servers over HTTP | Remote services | What the server allows |
