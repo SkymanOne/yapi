@@ -174,8 +174,22 @@ pub fn out(line: &str) {
     let _ = writeln!(std::io::stdout(), "{line}");
 }
 
+/// Refuses a manifest that is a symbolic link, which a cloned project could
+/// point at a file outside it.
+fn refuse_link(target: &Target) -> anyhow::Result<()> {
+    let metadata = std::fs::symlink_metadata(&target.path);
+    if metadata.is_ok_and(|metadata| metadata.is_symlink()) {
+        bail!(
+            "{} is a symbolic link, which chest does not follow: replace it with the file itself",
+            target.path.display()
+        );
+    }
+    Ok(())
+}
+
 /// The manifest's text, with a pointer to `chest init` when it is missing.
 pub fn read(target: &Target) -> anyhow::Result<String> {
+    refuse_link(target)?;
     if !target.path.exists() {
         bail!(
             "{} does not exist: run `chest init` first",
@@ -188,6 +202,7 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
 
 /// Writes the manifest's new text, whole or not at all.
 pub fn write(target: &Target, text: &str) -> anyhow::Result<()> {
+    refuse_link(target)?;
     write_atomic(&target.path, text.as_bytes(), 0o666)
         .with_context(|| format!("writing {}", target.path.display()))
 }

@@ -544,6 +544,32 @@ fn import_settings_packages() {
         "{said}"
     );
     assert_eq!(read(&path), settings.to_string());
+
+    // A manifest that is a symbolic link is refused, so a cloned project
+    // cannot point chest at a file outside it.
+    #[cfg(unix)]
+    {
+        let (link, outside) = (
+            scratch.project.join("chest.toml"),
+            scratch.dir.join("outside.toml"),
+        );
+        std::fs::rename(&link, &outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        for args in [
+            &["import", "--settings"][..],
+            &["add", "../local-ext"],
+            &["list"],
+        ] {
+            let output = chest(&scratch, args, &[]);
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {}", text(&output));
+            assert!(
+                text(&output).contains("chest.toml is a symbolic link"),
+                "{}",
+                text(&output)
+            );
+        }
+        assert_eq!(read(&outside), manifest);
+    }
 }
 
 #[test]
