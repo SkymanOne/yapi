@@ -1168,6 +1168,28 @@ async fn path_source_notice() {
     }
     std::fs::remove_file(dir.join("project/SKILL.md")).unwrap();
 
+    // An extension whose folder holds the project, as a path source or as a
+    // patch, is refused before anything is written.
+    let lock = read(&dir.join("project/chest.lock"));
+    let ext = "ext = { git = \"localhost/nowhere/repo\", rev = \"v1\" }";
+    for (manifest, id, folder) in [
+        (
+            "[extensions]\nwide = { path = \"x/..\" }\n".to_owned(),
+            "extensions.wide",
+            dir.join("project"),
+        ),
+        (
+            format!("[extensions]\n{ext}\n\n[patch]\next = {{ path = \"x/../..\" }}\n"),
+            "patch.ext",
+            dir.clone(),
+        ),
+    ] {
+        let error = failed(&mut open(&dir, &manifest), Mode::Resolve).await;
+        let refused = format!("{id}: {} holds more than the extension", folder.display());
+        assert!(error.contains(&refused), "{error}");
+        assert_eq!(read(&dir.join("project/chest.lock")), lock);
+    }
+
     // A patched entry installs from its patch, again and again, and is
     // ignored by git, while the lock stays as it was.
     std::fs::create_dir_all(dir.join("project/local/pdf")).unwrap();

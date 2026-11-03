@@ -10,7 +10,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js.
 
 | Area | Pi | yapi |
 |---|---|---|
-| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See [Sandboxing](security.md#sandboxing). |
+| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly: 60 seconds of computing per call and 10 while loading, 1 GiB per instance, restart after a crash. See [Sandboxing](security.md#sandboxing). |
 | Node APIs | All of Node | [Shims](extensions.md#how-pi-extensions-run). Sockets, servers, `http` requests, `worker_threads`, `node:sqlite`, `zlib`, `vm` and `child_process.fork` throw when used. `require()` of an ES module fails. |
 | Native addons | Loaded | Installed, never built. Loading one fails. |
 | Pi internals | Every export of Pi's packages | The extension API and its helpers. The other exports of `pi-agent-core` and `pi-coding-agent` behave as in Pi, except those listed under agent sessions and under Pi internals that bypass the host. `pi-ai` has its own row. Built-in tool factories return yapi's tools, or Pi's own when given custom `operations`, a `spawnHook` or a `commandPrefix`. |

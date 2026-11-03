@@ -141,7 +141,7 @@ chest install
 todo = { path = "../pi-todo" }
 ```
 
-A path that points outside the project gets a notice on each install. A path source or patch whose folder holds one of chest's install folders or the store is refused, because chest would copy it into itself.
+A path that points outside the project gets a notice on each install. A path source or patch whose folder holds one of chest's install folders or the store is refused, because chest would copy it into itself. So is an extension's path source or patch whose folder is or holds the home folder, the agent folder, the filesystem's root or the project, because the extension could load any file there.
 
 ## Move from settings.json or skills.sh
 

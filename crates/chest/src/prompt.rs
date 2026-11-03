@@ -33,7 +33,8 @@ impl Prompt {
         let _ = write!(stderr, "{question} ");
         let _ = stderr.flush();
         let mut line = String::new();
-        let _ = std::io::stdin().lock().read_line(&mut line);
+        let read = || std::io::stdin().lock().read_line(&mut line);
+        let _ = tokio::task::block_in_place(read);
         line.trim().to_owned()
     }
 

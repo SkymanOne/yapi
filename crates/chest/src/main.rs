@@ -108,7 +108,9 @@ impl Target {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    // A worker of its own keeps held locks fresh while a question waits.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
         .enable_all()
         .build();
     let result = match runtime {
