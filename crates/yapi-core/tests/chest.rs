@@ -271,6 +271,19 @@ async fn git_skill_locked_commit() {
         assert!(error.starts_with(expected), "{error}");
         assert!(!canonical.exists());
     }
+
+    // Without `rev`, an entry follows the remote's default branch, also
+    // once it is renamed.
+    let headless = skill_manifest(&remote, "v1").replace(", rev = \"v1\"", "");
+    sync(&mut open(&dir, &headless), Mode::Update(Vec::new())).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
+    git(&dir.join("remote.git"), &["branch", "-m", "main", "trunk"]);
+    git(&remote.work, &["branch", "-m", "main", "trunk"]);
+    std::fs::write(remote.work.join("skills/pdf/SKILL.md"), "# pdf 3\n").unwrap();
+    git(&remote.work, &["commit", "--quiet", "-am", "v3"]);
+    git(&remote.work, &["push", "--quiet", "origin", "trunk"]);
+    sync(&mut open(&dir, &headless), Mode::Update(Vec::new())).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 3\n");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -283,6 +296,7 @@ async fn skills_without_path() {
             ("skills/xlsx/SKILL.md", "# xlsx\n"),
             ("skills/xlsx/data/table.csv", "a,b\n"),
             ("agents/reviewer.md", "# reviewer\n"),
+            ("agents/README.md", "# about\n"),
             ("README.md", "# skills\n"),
         ],
         "v1",
@@ -292,7 +306,12 @@ async fn skills_without_path() {
         remote.source
     );
     let mut project = open(&dir, &manifest);
-    sync(&mut project, Mode::Resolve).await;
+    let report = sync(&mut project, Mode::Resolve).await;
+    // An item whose name is not an entry name is skipped, not the package.
+    assert_eq!(
+        report.warnings,
+        ["agents.team: agents/README.md was skipped: `README.md` is not a valid name"]
+    );
     let root = dir.join("project");
     let lock = project.lock.clone().unwrap();
     let items: Vec<(&str, &str)> = lock.skills[0]
@@ -364,6 +383,17 @@ async fn skills_without_path() {
     let error = failed(&mut open(&dir, &clash), Mode::Resolve).await;
     assert!(error.contains("another entry also installs"), "{error}");
     assert_eq!(read(&root.join(".agents/skills/pdf/SKILL.md")), "# pdf\n");
+
+    // A git extension installs a folder, never one file of the package.
+    let single = format!(
+        "[extensions]\nsolo = {{ git = \"{}\", rev = \"v1\", path = \"agents/reviewer.md\" }}\n",
+        remote.source
+    );
+    let error = failed(&mut open(&dir, &single), Mode::Resolve).await;
+    assert!(
+        error.contains("`path` must name the folder that holds the extension, not a file"),
+        "{error}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -385,8 +415,20 @@ async fn frozen_rejects_drift() {
     );
     assert_eq!(read(&lock_path), locked);
 
+    // A fresh clone gets exactly what the lock pins, which stays as it is.
     let mut project = open(&dir, &skill_manifest(&remote, "v1"));
-    // Frozen writes nothing at all, so a read-only project passes.
+    let root = dir.join("project");
+    std::fs::remove_dir_all(root.join(".agents")).unwrap();
+    std::fs::remove_dir_all(root.join(".claude")).unwrap();
+    std::fs::remove_file(root.join(".gitignore")).unwrap();
+    std::fs::remove_dir_all(dir.join("state")).unwrap();
+    let report = sync(&mut project, Mode::Frozen).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&root.join(".claude/skills/pdf/SKILL.md")), "# pdf\n");
+    assert!(read(&root.join(".gitignore")).contains("\n.agents/skills/pdf\n"));
+    assert_eq!(read(&lock_path), locked);
+    // With everything in place, frozen writes nothing at all, so a
+    // read-only project passes.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -435,11 +477,20 @@ async fn gitignore_block_managed() {
     remote.commit(&[("skills/pdf/SKILL.md", "# pdf\n")], "v1");
     let root = dir.join("project");
     std::fs::write(root.join(".gitignore"), "target/\n").unwrap();
+    // What a stopped install left goes: a staging folder, and the work
+    // folder of a process that has ended.
+    let staging = root.join(".agents/skills/.gone-staging");
+    std::fs::create_dir_all(&staging).unwrap();
+    let mut ended = Command::new("true").spawn().unwrap();
+    ended.wait().unwrap();
+    let work = dir.join(format!("cache/work/{}-0", ended.id()));
+    std::fs::create_dir_all(&work).unwrap();
     let mut project = open(&dir, &skill_manifest(&remote, "v1"));
     sync(&mut project, Mode::Resolve).await;
+    assert!(!staging.exists() && !work.exists());
     assert_eq!(
         read(&root.join(".gitignore")),
-        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
+        "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
     let mut project = open(
         &dir,
@@ -447,6 +498,29 @@ async fn gitignore_block_managed() {
     );
     sync(&mut project, Mode::Resolve).await;
     assert_eq!(read(&root.join(".gitignore")), "target/\n");
+
+    // `.claude/skills` linking to `.agents/skills`, which does not exist
+    // yet: the copy is placed once, and a second install keeps it.
+    #[cfg(unix)]
+    {
+        std::fs::remove_dir_all(root.join(".agents")).unwrap();
+        std::fs::remove_dir_all(root.join(".claude")).unwrap();
+        std::fs::create_dir_all(root.join(".claude")).unwrap();
+        std::os::unix::fs::symlink("../.agents/skills", root.join(".claude/skills")).unwrap();
+        for outcome in [Outcome::Installed, Outcome::Unchanged] {
+            let report = sync(
+                &mut open(&dir, &skill_manifest(&remote, "v1")),
+                Mode::Resolve,
+            )
+            .await;
+            assert_eq!(outcomes(&report), [("skills.pdf", outcome)]);
+            assert_eq!(read(&root.join(".agents/skills/pdf/SKILL.md")), "# pdf\n");
+        }
+        assert_eq!(
+            read(&root.join(".gitignore")),
+            "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
+        );
+    }
 }
 
 /// An npm tarball with `files` under `package/`.
@@ -569,8 +643,8 @@ async fn npm_extension_locked() {
     let settings = SettingsManager::load(&agent, &root, false);
     let packages = (&inputs.packages, &inputs.skills);
     let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
-    let policies = file_policies(&resolved, &inputs.policies, &mut Vec::new());
-    let policy = &policies[&store.join("node_modules/ext/index.js")];
+    let policies = file_policies(&resolved, &inputs, &mut Vec::new());
+    let policy = &policies.files[&store.join("node_modules/ext/index.js")];
     assert!(
         policy.grants.filesystem && !policy.grants.network,
         "{policy:?}"
@@ -726,6 +800,33 @@ async fn removed_entry_unplaced() {
         .collect();
     assert_eq!(names, ["notes"]);
 
+    // Another manifest of the project shares the folders and their record:
+    // it places what chest.toml placed, and what it drops stays while
+    // chest.toml still lists it.
+    let dev = root.join("chest.dev.toml");
+    let open_dev = |text: &str| {
+        std::fs::write(&dev, text).unwrap();
+        let mut project = Project::open(&dev, Scope::Project).unwrap();
+        project.cache = dir.join("cache");
+        project.state = dir.join("state");
+        project
+    };
+    let report = sync(&mut open_dev(manifest), Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.notes", Outcome::Installed)]);
+    let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
+    sync(&mut open_dev(empty), Mode::Resolve).await;
+    assert_eq!(
+        read(&root.join(".claude/skills/notes/SKILL.md")),
+        "# notes\n"
+    );
+    sync(&mut open(&dir, empty), Mode::Resolve).await;
+    assert!(
+        root.join(".agents/skills/notes")
+            .symlink_metadata()
+            .is_err()
+    );
+    sync(&mut open(&dir, manifest), Mode::Resolve).await;
+
     // A committed lock naming a hand-written skill does not get it removed.
     let lock_path = root.join("chest.lock");
     let zeros = "0".repeat(40);
@@ -877,11 +978,27 @@ async fn path_source_notice() {
     assert!(read(&dir.join("project/.gitignore")).contains("\n.agents/skills/pdf\n"));
     assert!(!read(&dir.join("project/chest.lock")).contains("pdf"));
 
-    // A git or npm extension loads modules from its store folder, whatever
-    // its `path`.
+    // A patch for an entry that takes a package's items installs the items
+    // its folder provides, as the package would.
+    for skill in ["one", "two"] {
+        let folder = dir.join(format!("project/local/pack/skills/{skill}"));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("SKILL.md"), format!("# {skill}\n")).unwrap();
+    }
+    let package = format!(
+        "{folders}team = {{ git = \"localhost/nowhere/repo\", rev = \"v1\" }}\n\n[patch]\nteam = {{ path = \"local/pack\" }}\n"
+    );
+    sync(&mut open(&dir, &package), Mode::Resolve).await;
+    for skill in ["one", "two"] {
+        let placed = dir.join(format!("project/.agents/skills/{skill}/SKILL.md"));
+        assert_eq!(read(&placed), format!("# {skill}\n"));
+    }
+
+    // A git extension loads modules from its store folder, whatever its
+    // `path`, and an npm one from its store folder too.
     let project = open(
         &dir,
-        "[extensions]\ngit = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"ext\" }\nnpm = { npm = \"ext\", path = \"ext\" }\n",
+        "[extensions]\ngit = { git = \"localhost/nowhere/repo\", rev = \"v1\", path = \"ext\" }\nnpm = { npm = \"ext\" }\n",
     );
     let store = dir.join("project/.yapi/chest");
     assert_eq!(

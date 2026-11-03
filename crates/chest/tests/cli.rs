@@ -195,6 +195,11 @@ fn init_package_scaffold() {
         manifest.ends_with("\n[package]\nname = \"project\"\nversion = \"0.1.0\"\ncapabilities = []\nskills = [\"skills/*\"]\nagents = [\"agents/*.md\"]\n"),
         "{manifest}"
     );
+    // With no agent found, skills and subagents still get a folder.
+    assert!(
+        manifest.contains("\nskills = [\".agents/skills\"]\nagents = [\".yapi/agents\"]\n"),
+        "{manifest}"
+    );
     let again = chest(&scratch, &["init", "--package", "--yes"], &[]);
     assert!(text(&again).contains("already has a [package] table"));
 }

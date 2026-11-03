@@ -41,7 +41,7 @@ repos:
         stages: [commit-msg]
         args:
           - --multiline
-          - '\A((feat|fix|docs|refactor|test|chore)(\((yapi(-(agent|ai|core|ext|extension-api|js|mock|tui|types))?|xtask)\))?!?: \S|Merge |(Revert|Reapply) "|(amend|fixup|squash)! )'
+          - '\A((feat|fix|docs|refactor|test|chore)(\((yapi(-(agent|ai|core|ext|extension-api|js|mock|tui|types))?|xtask|chest-cli)\))?!?: \S|Merge |(Revert|Reapply) "|(amend|fixup|squash)! )'
 
   - repo: local
     hooks:
