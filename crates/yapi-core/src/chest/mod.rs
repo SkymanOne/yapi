@@ -171,7 +171,10 @@ enum Content {
 /// stale period. A holder that stopped stops refreshing, so its lock goes
 /// stale and is taken over. `waiting` hears once that the lock is held,
 /// when it is not free within a second.
-pub async fn hold_lock(file: &Path, waiting: &mut dyn FnMut()) -> Result<FileLock, ChestError> {
+pub async fn hold_lock(
+    file: &Path,
+    waiting: &mut (dyn FnMut() + Send),
+) -> Result<FileLock, ChestError> {
     let cancel = CancellationToken::new();
     let failed = |err: LockError| ChestError::Failed(format!("{}: {err}", file.display()));
     let first = tokio::time::timeout(Duration::from_secs(1), FileLock::acquire(file, &cancel));
@@ -499,7 +502,7 @@ impl Project {
         &mut self,
         mode: Mode,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
         // yapi's startup skips such an entry on its own, with a warning.
@@ -655,7 +658,7 @@ impl Project {
         old: &Lock,
         record: &Record,
         npm: &mut Npm,
-        progress: &mut dyn FnMut(&str),
+        progress: &mut (dyn FnMut(&str) + Send),
         report: &mut Report,
     ) -> Result<(Vec<Staged>, fetch::Work), ChestError> {
         if let Mode::Update(names) = mode

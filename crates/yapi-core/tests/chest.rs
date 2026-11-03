@@ -596,12 +596,12 @@ async fn gitignore_block_managed() {
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",
     );
-    let heard = std::cell::RefCell::new(Vec::new());
-    let mut progress = |line: &str| heard.borrow_mut().push(line.to_owned());
+    let heard = std::sync::Mutex::new(Vec::new());
+    let mut progress = |line: &str| heard.lock().unwrap().push(line.to_owned());
     let mut npm = Npm::new(HashMap::new());
     let release = async {
         for _ in 0..100 {
-            if !heard.borrow().is_empty() {
+            if !heard.lock().unwrap().is_empty() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -613,7 +613,7 @@ async fn gitignore_block_managed() {
     synced.unwrap();
     let waiting = "Waiting for another chest command, which holds the lock of";
     assert_eq!(
-        heard.into_inner(),
+        heard.into_inner().unwrap(),
         [format!("{waiting} {}...", lock.display())]
     );
     assert_eq!(read(&root.join(".gitignore")), "target/\n");
