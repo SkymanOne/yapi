@@ -205,8 +205,9 @@ enum Event {
     TerminalInput(Vec<String>),
     /// The external editor exited, with the edited text when it succeeded.
     EditorClosed(Option<String>),
-    /// Lines of the extension component with this key, rendered at a width.
-    Rendered(u64, (u64, u32), usize, Vec<String>),
+    /// Lines of the extension component with this key, rendered at a width
+    /// for the request with this id.
+    Rendered(u64, (u64, u32), u64, usize, Vec<String>),
     /// The extensions of the session with this epoch started, after a
     /// change `Reply` waits on.
     Bound(u64, Reply),
@@ -4987,8 +4988,8 @@ impl App {
                 self.starting = false;
                 self.send_held();
             }
-            Event::Rendered(epoch, key, width, lines) if epoch == self.epoch => {
-                self.on_rendered(key, width, &lines);
+            Event::Rendered(epoch, key, request, width, lines) if epoch == self.epoch => {
+                self.on_rendered(key, request, width, &lines);
             }
             Event::Component(epoch, slot, sequence, component) if epoch == self.epoch => {
                 self.on_component(*slot, sequence, component);
@@ -6112,7 +6113,7 @@ mod tests {
         let mut restarts = 0;
         loop {
             let event = next(events).await;
-            let drew = matches!(&event, Event::Rendered(_, _, _, lines) if *lines == rows);
+            let drew = matches!(&event, Event::Rendered(_, _, _, _, lines) if *lines == rows);
             restarts += usize::from(is_restart(&event));
             app.on_event(event);
             assert_eq!(transcript_rows(app)[0], rows);
@@ -6124,7 +6125,8 @@ mod tests {
     }
 
     /// A runtime that restarts draws the transcript items it drew again, and
-    /// they show their last rows meanwhile. A note whose component never
+    /// they show their last rows meanwhile, whatever the stopped runtime
+    /// answered for their handles. A note whose component never
     /// drew is not drawn again, so a renderer that panics as it draws stops
     /// its runtime once.
     #[tokio::test(flavor = "multi_thread")]
@@ -6177,6 +6179,11 @@ mod tests {
         editor.render(20);
         assert_eq!(redrawn(&mut app, &mut events, &kept).await, 1);
         assert!(app.ext.editor.is_none());
+        // A render the stopped runtime answered may carry the key of the
+        // note's new component, as handles start over. The note keeps its rows.
+        let key = app.transcript_views()[0].1.key();
+        app.on_event(Event::Rendered(app.epoch, key, u64::MAX, 20, Vec::new()));
+        assert_eq!(transcript_rows(&app)[0], kept);
 
         // So does a note, which stops the runtime once and draws nothing.
         app.push_custom(note("panic"));
