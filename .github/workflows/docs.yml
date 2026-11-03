@@ -61,8 +61,31 @@ jobs:
           branch: gh-pages
           clean-exclude: pr-preview/
           force: false
+      # Parallel previews race to push gh-pages, and the action's deploy stops after three tries.
       - name: Publish or remove the preview
+        id: preview
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9 # v1.8.1
+        with:
+          source-dir: target/book
+          qr-code: "false"
+      - name: Wait before the second attempt
+        if: steps.preview.outcome == 'failure'
+        run: sleep $((RANDOM % 46 + 15))
+      - name: Publish or remove the preview, second attempt
+        id: preview-second
+        if: steps.preview.outcome == 'failure'
+        continue-on-error: true
+        uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9 # v1.8.1
+        with:
+          source-dir: target/book
+          qr-code: "false"
+      - name: Wait before the third attempt
+        if: steps.preview-second.outcome == 'failure'
+        run: sleep $((RANDOM % 46 + 15))
+      - name: Publish or remove the preview, third attempt
+        if: steps.preview-second.outcome == 'failure'
         uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9 # v1.8.1
         with:
           source-dir: target/book
