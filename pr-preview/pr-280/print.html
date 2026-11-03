@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-67c72937.js";
+            window.path_to_searchindex_js = "searchindex-b7058d62.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -632,6 +632,7 @@ yapi --no-session            # do not save this run
 <ul>
 <li>registering a provider or a wire API, because a provider’s replies drive the agent’s tools and its requests carry your credentials</li>
 <li>custom editor text that starts with <code>!</code> or <code>/</code>, after any leading spaces, because it runs a shell or slash command</li>
+<li>listening to raw terminal input with <code>ctx.ui.onTerminalInput</code>, or adding an autocomplete provider with <code>ctx.ui.addAutocompleteProvider</code>, because either can turn what you type into a shell or slash command. Without every grant, both calls throw in a Pi extension and do nothing in a native one.</li>
 <li>the editor actions that open the external editor, paste from the clipboard, or submit the editor’s text as a follow-up</li>
 <li>any request or editor action that yapi does not know, so a new one stays denied until yapi classifies it</li>
 </ul>
@@ -805,7 +806,7 @@ yapi -e git:github.com/user/repo
 <p>This lets one package ship a <a href="#native-extensions-in-rust">native build</a> for yapi and JavaScript for Pi, and lets a package without <code>package.json</code> list its resources in <code>chest.toml</code>. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind that no source lists provides nothing, as in Pi. Otherwise the package uses the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. A <code>yapi</code> key that holds only <code>capabilities</code> therefore hides neither the <code>pi</code> lists nor the folders. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
 <h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
-<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It accepts only the package names npm allows, and no name or scope that starts with a dot. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
 <p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names. A request that takes longer than <code>fetch-timeout</code> milliseconds, five minutes by default, fails the install. <code>0</code> sets no limit.</p>
 <pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
 //npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
@@ -859,7 +860,7 @@ git commit -m "Add project packages"
 </div>
 <p>At a terminal, <code>init</code> lists the folders by number with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
 <p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to. Several manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path one of them drops stays while another still lists it.</p>
-<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> folders an interrupted install can leave where chest copies, and the next install removes them.</p>
+<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made. Every installed path is listed in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>, which chest rebuilds on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> folders an interrupted install can leave where chest copies, and the next install removes them. It ignores the <code>.*-old</code> folders there too, which hold an item’s previous copy when chest stops while replacing it.</p>
 <p>Hand-written skills can live in the same folders. chest replaces or removes only what it installed itself on this machine and that still holds what it installed. It keeps that record in <code>~/.chest/state</code>, outside the project. An item that someone edited after chest installed it stays as it is, and chest asks you to remove or restore it.</p>
 <h2 id="grant-capabilities"><a class="header" href="#grant-capabilities">Grant capabilities</a></h2>
 <p>An extension entry lists what it may reach:</p>
@@ -902,7 +903,7 @@ scraper = { npm = "@acme/scraper", capabilities = ["net"], events = "isolated" }
 <p>A manifest’s lock sits beside it with <code>.lock</code> for <code>.toml</code>. Keep an environment’s entries in a separate complete manifest, such as <code>chest.dev.toml</code>, which locks in <code>chest.dev.lock</code>, and select it with <code>--manifest</code>:</p>
 <pre><code class="language-sh">chest --manifest chest.dev.toml install
 </code></pre>
-<p><code>CHEST_MANIFEST</code> sets the default for <code>--manifest</code>, as a file name or a path relative to the current folder:</p>
+<p><code>CHEST_MANIFEST</code> sets the default for <code>--manifest</code>, as a file name or a path inside the current folder. A value that is absolute, starts with <code>~</code> or uses <code>..</code> is an error, because yapi reads the same variable and loads only a manifest inside the project:</p>
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
@@ -913,7 +914,7 @@ chest install
 <pre><code class="language-toml">[patch]
 todo = { path = "../pi-todo" }
 </code></pre>
-<p>A path that points outside the project gets a notice on each install.</p>
+<p>A path that points outside the project gets a notice on each install. A path source or patch whose folder holds one of chest’s install folders or the store is refused, because chest would copy it into itself.</p>
 <h2 id="move-from-settingsjson-or-skillssh"><a class="header" href="#move-from-settingsjson-or-skillssh">Move from settings.json or skills.sh</a></h2>
 <p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code> into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them, and keeps their filters. It leaves <code>settings.json</code> alone and prints the <code>yapi remove -l</code> command for each package, to run once chest installs it. <code>-g</code> imports the agent folder’s <code>settings.json</code>.</p>
 <p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. chest computes its own hashes, so the file’s are dropped.</p>
@@ -1947,6 +1948,7 @@ api.on("session_start", |_event, ctx| async move {
 <li><code>--manifest &lt;path&gt;</code> names another, and <code>CHEST_MANIFEST</code> sets the default for it.</li>
 <li>An environment’s manifest is a complete manifest of its own, such as <code>chest.dev.toml</code>. Its lock is the same name with <code>.lock</code> for <code>.toml</code>, here <code>chest.dev.lock</code>.</li>
 <li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>.</li>
+<li>A <code>chest.toml</code> or <code>chest.lock</code> that is a symbolic link is refused, so a cloned project cannot point chest at a file outside it.</li>
 </ul>
 <p>Paths in a manifest are relative to the manifest’s folder. A project manifest keeps every folder inside the project. The global manifest may use <code>~</code> and absolute paths.</p>
 <h2 id="capabilities-defaults"><a class="header" href="#capabilities-defaults"><code>capabilities-defaults</code></a></h2>
@@ -1971,7 +1973,7 @@ skills = [".agents/skills", ".claude/skills"]
 agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 </code></pre>
-<p>Each folder must name a folder, so <code>.</code> is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
+<p>Each folder must name a folder, so <code>.</code> is refused. No folder may hold another or the store. A folder may not contain <code>*</code>, <code>?</code>, <code>[</code> or <code>\</code>, or start with <code>!</code> or <code>#</code>, because each one becomes a <code>.gitignore</code> line. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
 <h2 id="skills-agents-and-extensions"><a class="header" href="#skills-agents-and-extensions"><code>[skills]</code>, <code>[agents]</code> and <code>[extensions]</code></a></h2>
 <p>Each entry is a name with an inline table, or a <code>[section.name]</code> table. The source is one of these:</p>
 <div class="table-wrapper">
@@ -2059,13 +2061,14 @@ todo = { path = "../pi-todo" }
 <tr><td><code>net</code></td><td><code>fetch</code>, streamed fetch and DNS, model calls, reading provider credentials, HTTP MCP servers, and refreshing model catalogs over the network</td></tr>
 <tr><td><code>env</code></td><td>Reading environment variables, and the environment key fallback when calling a model</td></tr>
 <tr><td><code>session</code></td><td>Starting, steering and stopping turns, and changing the session, its files or the model’s setup</td></tr>
-<tr><td><code>all</code></td><td>Everything above, plus running programs, stdio MCP servers, the <code>bash</code>, <code>grep</code> and <code>find</code> tools, and registering model providers</td></tr>
+<tr><td><code>all</code></td><td>Everything above, plus running programs, stdio MCP servers, the <code>bash</code>, <code>grep</code> and <code>find</code> tools, registering model providers, and registering terminal input listeners and autocomplete providers</td></tr>
 <tr><td><code>none</code></td><td>Nothing beyond the baseline. It cannot be combined with other values.</td></tr>
 </tbody>
 </table>
 </div>
 <ul>
 <li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> is not a capability.</li>
+<li>Registering a terminal input listener with <code>ctx.ui.onTerminalInput</code>, or an autocomplete provider, needs <code>all</code>. What they return reaches yapi’s own input, where <code>!</code> runs a shell command and <code>/</code> a slash command.</li>
 <li>Calling a tool that is not built in needs <code>all</code>.</li>
 <li>Always allowed: registering tools, commands, flags, shortcuts, renderers and providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
 </ul>
