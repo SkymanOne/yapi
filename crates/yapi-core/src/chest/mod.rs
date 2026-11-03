@@ -12,9 +12,10 @@ mod record;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_ai::auth::lock::{FileLock, LockError, write_atomic};
 
 use crate::packages::npm::{self, Npm, NpmError, Pinned};
 use crate::settings::Scope;
@@ -163,6 +164,28 @@ enum Content {
     },
     /// Nothing to put in place.
     Nothing,
+}
+
+/// Locks `file` as [`FileLock::acquire`] does, but waits for as long as
+/// another holder keeps the lock fresh, where `acquire` gives up after the
+/// stale period. A holder that stopped stops refreshing, so its lock goes
+/// stale and is taken over. `waiting` hears once that the lock is held,
+/// when it is not free within a second.
+pub async fn hold_lock(file: &Path, waiting: &mut dyn FnMut()) -> Result<FileLock, ChestError> {
+    let cancel = CancellationToken::new();
+    let failed = |err: LockError| ChestError::Failed(format!("{}: {err}", file.display()));
+    let first = tokio::time::timeout(Duration::from_secs(1), FileLock::acquire(file, &cancel));
+    match first.await {
+        Ok(Ok(lock)) => return Ok(lock),
+        Ok(Err(LockError::Held)) | Err(_) => waiting(),
+        Ok(Err(err)) => return Err(failed(err)),
+    }
+    loop {
+        match FileLock::acquire(file, &cancel).await {
+            Err(LockError::Held) => {}
+            locked => return locked.map_err(failed),
+        }
+    }
 }
 
 /// Removes the extensions `staged` built and did not put in place.
@@ -453,7 +476,7 @@ impl Project {
     /// lock throughout. Every entry is fetched and checked before anything
     /// is put in place, so a failed download changes nothing. Nothing is
     /// written outside [`Project::root`]. `progress` hears a line for each
-    /// entry fetched.
+    /// entry fetched, and one while another chest command holds a lock.
     pub async fn sync(
         &mut self,
         mode: Mode,
@@ -488,9 +511,8 @@ impl Project {
                 lock_path.display()
             )));
         }
-        let _held = FileLock::acquire(&lock_path, &CancellationToken::new())
-            .await
-            .map_err(|err| ChestError::Failed(format!("{}: {err}", lock_path.display())))?;
+        let mut waiting = || progress(&waiting_for(&lock_path));
+        let _held = hold_lock(&lock_path, &mut waiting).await?;
         self.lock = self.read_lock()?;
         // Another install may have changed the lock or put things back meanwhile.
         if frozen && !self.check_frozen(&mut report)? {
@@ -513,9 +535,8 @@ impl Project {
         let record_path = Record::path(&self.state, &self.root(), self.scope);
         let state = record_path.parent().unwrap_or(&record_path);
         std::fs::create_dir_all(state).map_err(io(state))?;
-        let _record_held = FileLock::acquire(&record_path, &CancellationToken::new())
-            .await
-            .map_err(|err| ChestError::Failed(format!("{}: {err}", record_path.display())))?;
+        let mut waiting = || progress(&waiting_for(&record_path));
+        let _record_held = hold_lock(&record_path, &mut waiting).await?;
         self.prepare_folders()?;
         let mut record = Record::load(&record_path, &self.root(), &self.file_name());
         // `_work` holds the fetched items until they are placed.
@@ -1382,6 +1403,14 @@ enum Problem {
     Mismatch,
     /// A link that does not point at the canonical copy, given.
     Link(PathBuf),
+}
+
+/// What `sync` says while another chest command holds the lock of `file`.
+fn waiting_for(file: &Path) -> String {
+    format!(
+        "Waiting for another chest command, which holds the lock of {}...",
+        file.display()
+    )
 }
 
 fn describe((id, path, problem): &(String, PathBuf, Problem)) -> String {

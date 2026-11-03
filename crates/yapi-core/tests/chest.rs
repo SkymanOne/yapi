@@ -16,6 +16,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+use yapi_ai::auth::lock::FileLock;
 use yapi_core::chest::hash::tree_hash;
 use yapi_core::chest::lock::Lock;
 use yapi_core::chest::{Mode, Outcome, Project, Report};
@@ -567,11 +568,34 @@ async fn gitignore_block_managed() {
         std::fs::remove_file(&lock).unwrap();
         std::fs::rename(&moved, &lock).unwrap();
     }
+    // An install waits while another chest command holds the lock, and says
+    // so once.
+    let lock = root.join("chest.lock");
+    let held = FileLock::acquire(&lock, &Default::default()).await.unwrap();
     let mut project = open(
         &dir,
         "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n",
     );
-    sync(&mut project, Mode::Resolve).await;
+    let heard = std::cell::RefCell::new(Vec::new());
+    let mut progress = |line: &str| heard.borrow_mut().push(line.to_owned());
+    let mut npm = Npm::new(HashMap::new());
+    let release = async {
+        for _ in 0..100 {
+            if !heard.borrow().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        drop(held);
+    };
+    let synced = project.sync(Mode::Resolve, &mut npm, &mut progress);
+    let (synced, ()) = tokio::join!(synced, release);
+    synced.unwrap();
+    let waiting = "Waiting for another chest command, which holds the lock of";
+    assert_eq!(
+        heard.into_inner(),
+        [format!("{waiting} {}...", lock.display())]
+    );
     assert_eq!(read(&root.join(".gitignore")), "target/\n");
 
     // `.claude/skills` linking to `.agents/skills`, which does not exist
