@@ -45,6 +45,14 @@ pub fn unsupported_import(file: &str, import: &str) -> String {
     )
 }
 
+/// What line `line`, one of [`Capabilities::unknown`], of extension `file`
+/// means for its checks.
+pub fn unknown_capability(file: &str, line: &str) -> String {
+    format!(
+        "{file} declares the capability `{line}`, which this version of chest does not know, so it is not checked"
+    )
+}
+
 /// The extensions of the package or extension file at `item`, as yapi
 /// resolves them when it loads `item` with `-e`.
 pub fn inspect(item: &Path) -> Inspected {
@@ -144,6 +152,9 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
         for import in &found.unsupported {
             say(&format!("error: {}", unsupported_import(file, import)));
             errors += 1;
+        }
+        for line in &found.unknown {
+            say(&format!("warning: {}", unknown_capability(file, line)));
         }
     }
     for script in &inspected.scripts {

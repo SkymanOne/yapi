@@ -15,7 +15,7 @@ use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect, unsupported_import};
+use crate::check::{Inspected, inspect, unknown_capability, unsupported_import};
 use crate::prompt::Prompt;
 use crate::{Target, open, read, requests, say, source, sync, write};
 
@@ -214,6 +214,9 @@ fn show_used(inspected: &Inspected) {
         }
         for import in &found.unsupported {
             say(&format!("  warning: {}", unsupported_import(file, import)));
+        }
+        for line in &found.unknown {
+            say(&format!("  warning: {}", unknown_capability(file, line)));
         }
     }
 }

@@ -9,6 +9,8 @@ use crate::extensions::CAPABILITIES;
 
 /// The custom section that lists the SDK features of a build.
 const SECTION: &str = "yapi:capabilities";
+/// The section's line that says the SDK wrote it.
+const MARKER: &str = "yapi-extension-api";
 
 /// A capability a component uses, and what shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +37,9 @@ pub struct Capabilities {
     /// it links no `wasi:http`, and refuses every `wasi:sockets` call. An
     /// extension reaches the network through the SDK's `fetch`.
     pub unsupported: Vec<String>,
+    /// The lines of its section that name no capability yapi knows, each
+    /// once, such as one a newer SDK writes.
+    pub unknown: Vec<String>,
 }
 
 impl Capabilities {
@@ -88,7 +93,18 @@ pub fn capabilities(bytes: &[u8]) -> Result<Capabilities, ChestError> {
             Payload::CustomSection(section) if section.name() == SECTION => {
                 found.metadata = true;
                 let text = String::from_utf8_lossy(section.data());
-                features.extend(text.lines().filter_map(feature));
+                for line in text
+                    .lines()
+                    .filter(|line| !line.is_empty() && *line != MARKER)
+                {
+                    match feature(line) {
+                        Some(capability) => features.push(capability),
+                        None if !found.unknown.iter().any(|known| known == line) => {
+                            found.unknown.push(line.to_owned());
+                        }
+                        None => {}
+                    }
+                }
             }
             // A nested component's imports are met inside the component.
             Payload::ComponentImportSection(reader) if depth == 1 => {
@@ -190,7 +206,7 @@ mod tests {
     #[test]
     fn capabilities_from_component() {
         let hello = capabilities(&fixture("hello")).unwrap();
-        assert!(hello.metadata);
+        assert!(hello.metadata && hello.unknown.is_empty());
         assert_eq!(used(&hello), [("session", "SDK feature `session`")]);
         let probe = capabilities(&fixture("capability-probe")).unwrap();
         assert_eq!(used(&probe), [("all", "SDK feature `all`")]);
@@ -210,7 +226,8 @@ mod tests {
             [("fs", "WASI import `wasi:filesystem/types@0.2.6`")]
         );
         assert_eq!(wasi.unsupported, ["wasi:http/outgoing-handler@0.2.6"]);
-        let custom = section(0x00, &[&name(SECTION)[..], b"marker\nnet\nfs\n"].concat());
+        let lines = b"yapi-extension-api\nnet\nexec:git\nfs\nexec:git\n";
+        let custom = section(0x00, &[&name(SECTION)[..], lines].concat());
         let declared =
             capabilities(&[&importing(&["wasi:sockets/tcp@0.2.6"])[..], &custom].concat());
         let declared = declared.unwrap();
@@ -220,6 +237,7 @@ mod tests {
             [("net", "SDK feature `net`"), ("fs", "SDK feature `fs`")]
         );
         assert_eq!(declared.unsupported, ["wasi:sockets/tcp@0.2.6"]);
+        assert_eq!(declared.unknown, ["exec:git"]);
 
         assert_eq!(capabilities(&EMPTY).unwrap(), Capabilities::default());
         let module = capabilities(b"\0asm\x01\x00\x00\x00").unwrap_err();
