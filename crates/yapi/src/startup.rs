@@ -1209,18 +1209,12 @@ async fn start_extensions(
     for source in sources.iter().chain(shadowed) {
         let file = canonical(&source.path);
         let chest = source.source.starts_with("chest:");
-        if !chest && chest_policies.manages(&file) && warned.insert(file.clone()) {
-            let message = match chest_policies.closes(&file) {
-                true => format!(
-                    "{} is also loaded from {}, but its chest entry does not load, so it runs with no capabilities",
-                    source.path, source.source
-                ),
-                false => format!(
-                    "{} is also loaded from {}; chest's grants apply",
-                    source.path, source.source
-                ),
-            };
-            let _ = install_failed(&source.path, message);
+        if !chest
+            && let Some((path, message)) =
+                chest_policies.also_loaded(&file, &source.path, &source.source)
+            && warned.insert(file.clone())
+        {
+            let _ = install_failed(&path, message);
         }
     }
     // A file counts once, however its sources name it.

@@ -147,6 +147,23 @@ impl FilePolicies {
     pub fn closes(&self, file: &Path) -> bool {
         self.closed.iter().any(|root| file.starts_with(root))
     }
+
+    /// The warning for extension file `file`, a canonical path, that
+    /// `source` names by `path` though chest decides what it runs with, as
+    /// the path and message to show, or `None` when chest does not. Both are
+    /// escaped, since a cloned project's file names can hold anything.
+    pub fn also_loaded(&self, file: &Path, path: &str, source: &str) -> Option<(String, String)> {
+        if !self.manages(file) {
+            return None;
+        }
+        let message = match self.closes(file) {
+            true => format!(
+                "{path} is also loaded from {source}, but its chest entry does not load, so it runs with no capabilities"
+            ),
+            false => format!("{path} is also loaded from {source}; chest's grants apply"),
+        };
+        Some((escaped(path), escaped(&message)))
+    }
 }
 
 /// The policy of each extension file the resolver gave a `chest:` source in
@@ -171,13 +188,11 @@ pub fn file_policies(
         let file = Path::new(&info.path);
         let file = file.canonicalize().unwrap_or_else(|_| file.into());
         let policy = installed.policies.get(&key).cloned().unwrap_or_else(|| {
-            problems.push((
-                info.source.clone(),
-                format!(
-                    "{}: no chest entry grants this file, so it runs with no capabilities",
-                    info.path
-                ),
-            ));
+            let message = format!(
+                "{}: no chest entry grants this file, so it runs with no capabilities",
+                info.path
+            );
+            problems.push((escaped(&info.source), escaped(&message)));
             Policy::closed(&file)
         });
         let policy = match found.files.get(&file) {
@@ -467,7 +482,8 @@ mod tests {
     }
 
     /// A chest file whose package has no policy runs with none, with a
-    /// warning, while other sources' files get no policy at all. A file
+    /// warning, while other sources' files get no policy at all. Warnings
+    /// escape a file name's control characters. A file
     /// that two entries give loads modules from the narrower root, and one
     /// in an entry chest left out from itself alone.
     #[test]
@@ -483,19 +499,38 @@ mod tests {
             info,
             enabled: true,
         };
+        // A cloned project's file name may hold a terminal escape.
+        let spoof = "/p/\x1b[2J.js";
         let resolved = ResolvedPaths {
             extensions: vec![
                 enabled(file("/p/a.js", "chest:a", "project")),
                 enabled(file("/p/b.js", "npm:b", "project")),
+                enabled(file(spoof, "chest:a", "project")),
             ],
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
         let policies = file_policies(&resolved, &Installed::default(), &mut problems);
-        let file_a = PathBuf::from("/p/a.js");
-        let files = HashMap::from([(file_a.clone(), Policy::closed(&file_a))]);
+        let (file_a, file_spoof) = (PathBuf::from("/p/a.js"), PathBuf::from(spoof));
+        let files = HashMap::from([
+            (file_a.clone(), Policy::closed(&file_a)),
+            (file_spoof.clone(), Policy::closed(&file_spoof)),
+        ]);
         assert_eq!(policies.files, files);
-        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        let warned = policies.also_loaded(&file_spoof, spoof, "cli");
+        let warned = warned
+            .into_iter()
+            .flat_map(|(path, message)| [path, message]);
+        let texts: Vec<String> = problems
+            .iter()
+            .flat_map(|(source, message)| [source.clone(), message.clone()])
+            .chain(warned)
+            .collect();
+        assert!(
+            texts.len() == 6 && texts.iter().all(|text| !text.contains('\x1b')),
+            "{texts:?}"
+        );
         let rooted = |root: &str| Policy {
             root: Some(root.into()),
             ..Policy::unrestricted()
