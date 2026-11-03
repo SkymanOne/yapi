@@ -126,6 +126,11 @@ async fn gated_kinds_denied() {
             .map(|(kind, _)| kind.as_str())
             .collect();
         assert_eq!(denied, expected, "{capability}: {answers:?}");
+        // Raw keys and completions reach yapi's own input, so they need `all`.
+        for kind in ["ui.setTerminalInput", "ui.setAutocomplete"] {
+            let feature = answers.get(kind).map(|answer| &answer["feature"]);
+            assert_eq!(feature, Some(&json!("all")), "{capability}: {kind}");
+        }
         for (kind, answer) in &answers {
             let feature = answer["feature"].as_str();
             assert!(

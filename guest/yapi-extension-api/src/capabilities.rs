@@ -44,6 +44,10 @@ pub const KIND_FEATURES: &[(&str, &str)] = &[
     ("process.spawn", "all"),
     ("providers.register", "all"),
     ("providers.unregister", "all"),
+    // Raw keys and completions reach yapi's own input, where `!` and `/` run
+    // commands.
+    ("ui.setTerminalInput", "all"),
+    ("ui.setAutocomplete", "all"),
 ];
 
 fn enabled(feature: &str) -> bool {

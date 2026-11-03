@@ -39,6 +39,8 @@ async fn install(home: &Path, files: &[(&str, &str)], name: &str, text: &str) {
         _ => Scope::Project,
     };
     let mut project = Project::open(&path, scope).unwrap();
+    // The test's home, not the developer's, for `~` and the global store.
+    project.home = home.canonicalize().unwrap();
     project.cache = home.join(".chest/cache");
     project.state = home.join(".chest/state");
     let mut npm = Npm::new(HashMap::new());
@@ -145,17 +147,20 @@ impl Drop for Rpc {
 /// do a global manifest's, a patched one's and a package's `index.js` that
 /// no manifest lists. The grants follow the file when `-e` or discovery
 /// loads it too, even by another path, with a warning. An entry whose
-/// folder holds the agent folder does not load, and one left out for its
-/// lock runs with no grant when discovery loads it. A file two manifests
-/// give runs with what both allow.
+/// folder holds the agent folder does not load, nor does a global entry for
+/// the project yapi runs in, or one that holds home by another name. Their
+/// files, and those of entries left out for their lock, run with no grant
+/// when something else loads them, and load no module but themselves. A
+/// file two manifests give runs with what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
     let secret = home.join("secret.txt");
     std::fs::write(&secret, "s3cret").unwrap();
     let ext = |name: &str| reader(name, &secret);
-    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\nshared = { path = \"shared.js\" }\nwider = { path = \"wider.js\", capabilities = [\"all\"] }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
+    let manifest = "[extensions]\nclosed = { path = \"closed.js\" }\nopen = { path = \"open.js\", capabilities = [\"fs\"] }\nfound = { path = \".yapi/extensions/found.js\" }\npatched = { git = \"localhost/nowhere/repo\", rev = \"v1\" }\nwide = { path = \"agent\" }\nindex = { path = \"index\" }\nlinked = { path = \"linked\" }\nshared = { path = \"shared.js\" }\nwider = { path = \"wider.js\", capabilities = [\"all\"] }\nprobe = { path = \"vault/probe.js\" }\n\n[patch]\npatched = { path = \"patched.js\" }\n";
     let wide = r#"{"name": "wide", "pi": {"extensions": ["wide.js"]}}"#;
+    let probe = "export default async function (pi) { const result = await import(\"./secret.js\").then(() => \"read\", () => \"refused\"); pi.registerCommand(\"probe\", { description: result, handler: async () => {} }); }\n";
     let files = [
         ("closed.js", ext("closed")),
         ("open.js", ext("open")),
@@ -169,14 +174,18 @@ async fn chest_extensions_load() {
         ("shared.js", ext("shared")),
         ("wider.js", ext("wider")),
         (".yapi/extensions/late.js", ext("late")),
+        ("vault/probe.js", probe.to_owned()),
+        ("vault/secret.js", "export default \"s3cret\";\n".to_owned()),
     ];
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(path, text)| (*path, text.as_str()))
         .collect();
     install(&home, &files, "chest.toml", manifest).await;
-    // An entry added after the install is left out, and discovery finds its file.
-    let late = "late = { path = \".yapi/extensions/late.js\" }\n\n[patch]";
+    // Entries added after the install are left out: discovery finds `late`'s
+    // file, and `vault` holds `probe`'s.
+    let late =
+        "late = { path = \".yapi/extensions/late.js\" }\nvault = { path = \"vault\" }\n\n[patch]";
     std::fs::write(home.join("chest.toml"), manifest.replace("\n[patch]", late)).unwrap();
     // Discovery names `linked` by another path, which takes precedence.
     #[cfg(unix)]
@@ -197,14 +206,20 @@ async fn chest_extensions_load() {
         .display()
         .to_string();
     let manifest = format!(
-        "[extensions]\nglobal = {{ path = \"global.js\" }}\ngranted = {{ path = \"granted.js\", capabilities = [\"fs\"] }}\nshared = {{ path = {shared:?}, capabilities = [\"all\"] }}\nwider = {{ path = {wider:?} }}\n"
+        "[extensions]\nglobal = {{ path = \"global.js\" }}\ngranted = {{ path = \"granted.js\", capabilities = [\"fs\"] }}\nshared = {{ path = {shared:?}, capabilities = [\"all\"] }}\nwider = {{ path = {wider:?} }}\nmine = {{ path = \"~/proj\" }}\n"
     );
+    // The global install cleans the test's store, not the developer's.
+    let leftover = home.join(".chest/store/.left-staging");
+    std::fs::create_dir_all(&leftover).unwrap();
     install(&home, &files, ".chest/chest.toml", &manifest).await;
-    let args = ["--approve", "-e", "closed.js"];
+    assert!(!leftover.exists());
+    let up = "[extensions]\nup = { path = \"agent/../../..\" }\n";
+    install(&home, &[], "proj/chest.toml", up).await;
+    let args = ["--approve", "-e", "closed.js", "-e", "agent/wide.js"];
     let loaded = commands(&home, &args, &[]);
     let described = |name: &str| loaded.get(name).map(String::as_str);
     let mut refused = vec![
-        "closed", "found", "patched", "global", "index", "late", "shared", "wider",
+        "closed", "found", "patched", "global", "index", "late", "shared", "wider", "probe", "wide",
     ];
     refused.extend(cfg!(unix).then_some("linked"));
     for name in refused {
@@ -213,7 +228,6 @@ async fn chest_extensions_load() {
     for name in ["open", "granted"] {
         assert_eq!(described(name), Some("read"), "{name}: {loaded:?}");
     }
-    assert_eq!(described("wide"), None, "{loaded:?}");
     let output = common::yapi(&home)
         .args(args)
         .arg("--help")
@@ -225,11 +239,25 @@ async fn chest_extensions_load() {
         "found.js is also loaded from auto; chest's grants apply",
         "agent holds more than the extension",
         "late.js is also loaded from auto, but its chest entry is not installed, so it runs with no capabilities",
+        "agent/wide.js is also loaded from cli, but its chest entry is not installed",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));
     for warning in warnings {
         assert_eq!(stderr.matches(warning).count(), 1, "{warning}: {stderr}");
+    }
+    // In project `proj`, the global `mine` is the project, and `up` holds home.
+    let output = common::yapi(&home)
+        .args(["--approve", "--help", "--project-dir"])
+        .arg(home.join("proj"))
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let parent = home.canonicalize().unwrap();
+    let parent = parent.parent().unwrap().display();
+    for wide in ["/proj".to_owned(), parent.to_string()] {
+        let warning = format!("{wide} holds more than the extension");
+        assert_eq!(stderr.matches(&warning).count(), 1, "{warning}: {stderr}");
     }
 }
 
@@ -361,7 +389,7 @@ async fn chest_skills_loaded() {
 }
 
 /// `CHEST_MANIFEST` names the project manifest yapi reads, inside the
-/// project.
+/// project, and one outside it loads none.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_manifest_env() {
     let home = common::scratch("chest-env");
@@ -391,19 +419,17 @@ async fn chest_manifest_env() {
     };
     assert_eq!(names(&[]), ["main"]);
     assert_eq!(names(&[("CHEST_MANIFEST", "chest.dev.toml")]), ["dev"]);
-    // A name outside the project falls back to `chest.toml`, with a warning.
+    // A name outside the project loads no project manifest, with a warning.
     let outside = home.join("chest.dev.toml").display().to_string();
-    assert_eq!(names(&[("CHEST_MANIFEST", &outside)]), ["main"]);
+    assert!(names(&[("CHEST_MANIFEST", &outside)]).is_empty());
     let output = common::yapi(&home)
         .args(["--approve", "--help"])
         .env("CHEST_MANIFEST", &outside)
         .output()
         .unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("CHEST_MANIFEST must name a file inside the project"),
-        "{stderr}"
-    );
+    let warning = format!("not \"{outside}\", so no project manifest loads");
+    assert!(stderr.contains(&warning), "{stderr}");
 }
 
 /// A native chest extension that uses a capability its entry does not grant
@@ -442,7 +468,8 @@ async fn native_used_ungranted_warns() {
 
 /// Extensions in different grant groups keep the resolver's order, which pi
 /// loads them in: their commands list in it, and when they all register one
-/// tool, the conflicts of the second and the third follow it too.
+/// tool, the conflicts of the second and the third follow it too. A group
+/// whose runtime fails to start fails alone.
 #[tokio::test(flavor = "multi_thread")]
 async fn grant_groups_keep_order() {
     let tool = "pi.registerTool({ name: \"probe\", label: \"probe\", description: \"\", parameters: { type: \"object\", properties: {} }, execute: async () => ({ content: [], details: {} }) });";
@@ -478,6 +505,11 @@ async fn grant_groups_keep_order() {
     assert_eq!(names, ["first", "second", "third"]);
     // The conflicts stop the run, as in pi.
     let home = setup("chest-order-tools", tool).await;
+    // Runaway recursion stops the runtime of `crash`'s group as it loads.
+    let crash = "const overflow = () => overflow();\noverflow();\nexport default function () {}\n";
+    let crashing =
+        format!("{manifest}crash = {{ path = \"crash.js\", capabilities = [\"net\"] }}\n");
+    install(&home, &[("crash.js", crash)], "chest.toml", &crashing).await;
     let output = common::yapi(&home)
         .args(["--approve", "--mode", "rpc"])
         .stdin(Stdio::null())
@@ -487,6 +519,8 @@ async fn grant_groups_keep_order() {
     let conflict = |file: &str| stderr.find(&format!("{file}\": Tool \"probe\" conflicts"));
     let (second, third) = (conflict("b.js"), conflict("c.js"));
     assert!(second.is_some() && second < third, "{stderr}");
+    let crashed = "crash.js\": extension runtime stopped";
+    assert_eq!(stderr.matches(crashed).count(), 1, "{stderr}");
 }
 
 /// Hosts start together: an extension that waits as it loads for one in
@@ -495,8 +529,10 @@ async fn grant_groups_keep_order() {
 async fn hosts_start_together() {
     let home = common::scratch("chest-together");
     let marker = home.join("started");
+    // Only hosts that start one after another wait out the minute, however
+    // loaded the machine.
     let waiter = format!(
-        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (let tries = 0; tries < 250 && !(together = existsSync({marker:?})); tries++) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
+        "import {{ existsSync }} from \"node:fs\";\nexport default async function (pi) {{\n\tlet together = false;\n\tfor (const end = Date.now() + 60000; !(together = existsSync({marker:?})) && Date.now() < end; ) await new Promise((wake) => setTimeout(wake, 20));\n\tpi.registerCommand(\"waiter\", {{ description: together ? \"together\" : \"alone\", handler: async () => {{}} }});\n}}\n",
         marker = marker.display().to_string()
     );
     let starter = format!(

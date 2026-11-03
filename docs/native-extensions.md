@@ -94,7 +94,7 @@ The features of `yapi-extension-api` declare the capabilities an extension uses,
 | `net` | `fetch`, `fetch.stream`, `dns.lookup`, and the model and credential operations such as `ai.stream` and `models.apiKey` |
 | `env` | `env`, which reads environment variables |
 | `session` | `send_message`, `append_entry`, and the requests that change the session, such as `session.sendMessage`, `session.reload` and `model.set` |
-| `all` | Everything above, plus `exec`, `Process` and registering providers |
+| `all` | Everything above, plus `exec`, `Process`, registering providers, terminal input listeners and autocomplete providers |
 
 The template starts with `session`, which its `hello` code needs:
 
@@ -123,7 +123,7 @@ Features declare what an extension uses. They grant nothing: yapi grants capabil
 
 Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls `exec`, `Process`, `send_message` or `append_entry`, and its other requests that need a grant fail at runtime. To move it:
 
-1. Enable the features of the requests it sends: `session` for session changes, `net` for `fetch` and models, `env` for environment variables, `fs` for context files, and `all` for processes and providers.
+1. Enable the features of the requests it sends: `session` for session changes, `net` for `fetch` and models, `env` for environment variables, `fs` for context files, and `all` for processes, providers, terminal input listeners and autocomplete providers.
 2. List the same capabilities in `capabilities` under `[package]` in `chest.toml`, or `yapi.capabilities` in `package.json`.
 3. Build it and run `chest check`.
 
@@ -407,6 +407,8 @@ yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
 A built extension without the feature is about 210 KB. The six examples that use widgets are 280 to 490 KB.
 
 ### Terminal input and completion
+
+Terminal input listeners and autocomplete providers need the `all` feature. What they return reaches yapi's own input, where `!` runs a shell command and `/` a slash command.
 
 `Context::on_terminal_input` adds a listener for raw terminal input, as Pi's `ctx.ui.onTerminalInput` does.
 

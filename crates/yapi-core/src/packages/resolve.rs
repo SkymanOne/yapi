@@ -12,7 +12,7 @@ use yapi_types::rpc::SourceInfo;
 use yapi_types::settings::FilteredPackage;
 
 use crate::chest::ChestError;
-use crate::chest::manifest::package_meta;
+use crate::chest::manifest::read_package_meta;
 use crate::glob;
 use crate::tools::path::{relative, resolve_lexically};
 
@@ -608,7 +608,7 @@ fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceType) -> Vec<PathBu
 
 /// pi's `readPiManifest`, extended kind by kind: each resource list comes
 /// from the package's `chest.toml` `[package]`, else its `package.json`
-/// `yapi` key, else its `pi` key, as [`package_meta`] reads them. A list is
+/// `yapi` key, else its `pi` key, as [`read_package_meta`] reads them. A list is
 /// `None` when no source lists the kind.
 #[derive(Default)]
 pub(crate) struct Manifest {
@@ -617,12 +617,12 @@ pub(crate) struct Manifest {
 
 impl Manifest {
     /// The manifest of the package at `root`; `None` when no source decides
-    /// its resources, so the conventional folders apply. `Err` as
-    /// [`package_meta`] says.
-    pub(crate) fn read(root: &Path) -> Result<Option<Manifest>, ChestError> {
-        let meta = package_meta(root)?;
+    /// its resources, so the conventional folders apply. With it, why its
+    /// `chest.toml` was left out, as [`read_package_meta`] says.
+    pub(crate) fn read(root: &Path) -> (Option<Manifest>, Option<ChestError>) {
+        let (meta, problem) = read_package_meta(root);
         let lists = ResourceType::ALL.map(|kind| meta.resources.get(kind.key()).cloned());
-        Ok(meta.manifest.then_some(Manifest { lists }))
+        (meta.manifest.then_some(Manifest { lists }), problem)
     }
 
     /// The entries of `kind`, when listed.
@@ -688,11 +688,11 @@ fn collect_package_resources(
     filter: Option<&FilteredPackage>,
     meta: &SourceInfo,
 ) -> bool {
-    let manifest = Manifest::read(root).unwrap_or_else(|err| {
+    let (manifest, problem) = Manifest::read(root);
+    if let Some(err) = problem {
         let folder = root.to_string_lossy().into_owned();
         acc.problems.push((folder, err.to_string()));
-        None
-    });
+    }
     if let Some(filter) = filter {
         for kind in ResourceType::ALL {
             let patterns = match kind {
