@@ -277,7 +277,7 @@ async fn add_writes_entry() {
     );
 
     // An npm extension, granted only what --grant lists.
-    let package = json!({"name": "ext", "version": "1.0.0", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
+    let package = json!({"name": "ext", "version": "1.0.0", "description": "To\u{1b}[2J\u{1b}[Hdo\u{9b}2J", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
     let bytes = tarball(&[
         ("package.json", &package.to_string()),
         ("index.js", "export default () => {};\n"),
@@ -309,6 +309,9 @@ async fn add_writes_entry() {
     server.finish().unwrap();
     let said = text(&output);
     assert!(said.contains("requests: fs, net"), "{said}");
+    // Control characters in package text never reach the terminal.
+    assert!(said.contains("  To[2J[Hdo2J\n"), "{said:?}");
+    assert!(!said.contains(['\u{1b}', '\u{9b}']), "{said:?}");
     assert!(
         said.contains("requests capabilities it is not granted: net"),
         "{said}"

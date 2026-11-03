@@ -164,14 +164,22 @@ fn ci() -> bool {
     })
 }
 
-/// Prints `line` on stderr.
-pub fn say(line: &str) {
-    let _ = writeln!(std::io::stderr(), "{line}");
+/// `line` without control characters other than tab, so text from a
+/// package cannot move the cursor or redraw the terminal.
+fn printable(line: &str) -> String {
+    line.chars()
+        .filter(|c| *c == '\t' || !c.is_control())
+        .collect()
 }
 
-/// Prints `line` on stdout.
+/// Prints `line` on stderr, without control characters.
+pub fn say(line: &str) {
+    let _ = writeln!(std::io::stderr(), "{}", printable(line));
+}
+
+/// Prints `line` on stdout, without control characters.
 pub fn out(line: &str) {
-    let _ = writeln!(std::io::stdout(), "{line}");
+    let _ = writeln!(std::io::stdout(), "{}", printable(line));
 }
 
 /// Refuses a manifest that is a symbolic link, which a cloned project could
