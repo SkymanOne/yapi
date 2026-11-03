@@ -324,7 +324,6 @@ dependencies = [
  "serde_json",
  "tar",
  "tokio",
- "tokio-util",
  "yapi-ai",
  "yapi-core",
  "yapi-mock",

@@ -174,13 +174,19 @@ fn init_detects_agents() {
     ok(&scratch, &["init"]);
     let expected = "# Installed with `chest install`, pinned in the lock beside this file.\n\n[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\nextensions = \".yapi/chest\"\n";
     assert_eq!(read(&scratch.project.join("chest.toml")), expected);
-    let again = chest(&scratch, &["init", "--yes"], &[]);
+    // A command waits while another holds the manifest's lock, and says so
+    // once.
+    let held = scratch.project.join(".chest.toml.lock");
+    std::fs::create_dir(&held).unwrap();
+    let waiting = command(&scratch, &["init", "--yes"], &[]).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    std::fs::remove_dir(&held).unwrap();
+    let again = waiting.wait_with_output().unwrap();
     assert_eq!(again.status.code(), Some(1));
-    assert!(
-        text(&again).contains("chest.toml already exists"),
-        "{}",
-        text(&again)
-    );
+    let said = text(&again);
+    let wait = "Waiting for another chest command that changes";
+    assert_eq!(said.matches(wait).count(), 1, "{said}");
+    assert!(said.contains("chest.toml already exists"), "{said}");
     // CHEST_MANIFEST names the manifest when --manifest is absent.
     let dev = chest(
         &scratch,
@@ -571,7 +577,9 @@ fn import_settings_packages() {
     let scratch = scratch("import-settings");
     let settings = json!({"packages": [
         "npm:@acme/ext@^1",
-        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"], "extensions": ["x.ts"]},
+        {"source": "git:github.com/acme/tools@v2", "skills": ["!legacy/**"]},
+        {"source": "npm:@acme/picky", "extensions": ["x.ts"]},
+        {"source": "npm:@acme/quiet", "autoload": false, "skills": ["+a"]},
         "../local-ext",
     ]});
     let path = scratch.project.join(".yapi/settings.json");
@@ -588,11 +596,31 @@ fn import_settings_packages() {
     }
     let said = text(&output);
     assert!(said.contains("yapi remove -l npm:@acme/ext@^1"), "{said}");
+    // A filter chest cannot express leaves the package in settings.json.
+    for spec in ["npm:@acme/picky", "npm:@acme/quiet"] {
+        let skipped = format!(
+            "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+        );
+        assert!(said.contains(&skipped), "{said}");
+    }
     assert!(
-        said.contains("no `extensions` or `autoload` filter"),
-        "{said}"
+        !manifest.contains("picky") && !manifest.contains("quiet"),
+        "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
+    // A path names another file for either flag, and one flag is required.
+    write(
+        &scratch.dir.join("other.json"),
+        r#"{"packages": ["npm:other"]}"#,
+    );
+    ok(&scratch, &["import", "--settings", "../other.json"]);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("other = { npm = \"other\", capabilities = [\"all\"] }"),
+        "{manifest}"
+    );
+    let flagless = chest(&scratch, &["import", "../other.json"], &[]);
+    assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 
     // A manifest that is a symbolic link is refused, so a cloned project
     // cannot point chest at a file outside it.
@@ -618,6 +646,25 @@ fn import_settings_packages() {
             );
         }
         assert_eq!(read(&outside), manifest);
+        // So is a lock that is one, for every command that reads it.
+        std::fs::remove_file(&link).unwrap();
+        std::fs::rename(&outside, &link).unwrap();
+        let lock = scratch.project.join("chest.lock");
+        let moved = scratch.dir.join("outside.lock");
+        match lock.exists() {
+            true => std::fs::rename(&lock, &moved).unwrap(),
+            false => write(&moved, "version = 1\n"),
+        }
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        for args in [&["list"][..], &["verify"], &["install", "--frozen"]] {
+            let output = chest(&scratch, args, &[]);
+            assert_eq!(output.status.code(), Some(1), "{args:?}: {}", text(&output));
+            assert!(
+                text(&output).contains("chest.lock is a symbolic link"),
+                "{}",
+                text(&output)
+            );
+        }
     }
 }
 

@@ -1080,12 +1080,17 @@ fn host_group(host: &ExtensionHost) -> Group {
 /// its grants and event policy are the same, `next`'s roots are the same
 /// once canonical now, a native extension's file is the same, and no file
 /// it ran is in another group now, since the modules it imported keep
-/// running with its grants. A file that is gone keeps its module, as in
-/// pi's module cache. A root that moved or appeared since starts a new host.
+/// running with its grants. A file counts as itself whichever path names
+/// it. A file that is gone keeps its module, as in pi's module cache. A
+/// root that moved or appeared since starts a new host.
 fn serves(previous: &Group, next: &Group, all: &[Group]) -> bool {
     let first = |group: &Group| group.sources.first().map(|source| source.path.clone());
     let runs = |group: &Group, source: &SourceInfo| {
-        group.sources.iter().any(|other| other.path == source.path)
+        let file = canonical(&source.path);
+        group
+            .sources
+            .iter()
+            .any(|other| canonical(&other.path) == file)
     };
     let stayed =
         |source: &SourceInfo| runs(next, source) || !all.iter().any(|group| runs(group, source));
@@ -1728,6 +1733,21 @@ mod tests {
             ..js.clone()
         };
         assert!(!super::serves(&host, &gone, &[gone.clone(), elsewhere]));
+        // So has one that the next run names through a link.
+        #[cfg(unix)]
+        {
+            let file = a.join("six.ts");
+            std::fs::write(&file, "").unwrap();
+            let mut ran = js.clone();
+            ran.sources.push(source(&file.display().to_string(), "a"));
+            let linked = link.join("six.ts").display().to_string();
+            let linked = Group {
+                grants: yapi_ext::Grants::none(),
+                sources: vec![source(&linked, "settings")],
+                ..js.clone()
+            };
+            assert!(!super::serves(&started(&ran), &js, &[js.clone(), linked]));
+        }
         let mut roots = js.clone();
         roots.roots.push(b.clone());
         let mut grants = js.clone();
