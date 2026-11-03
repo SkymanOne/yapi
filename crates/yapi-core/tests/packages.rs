@@ -893,6 +893,12 @@ async fn npm_tree_replays() {
             "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
         ),
         (
+            &offline,
+            // Valid base64, but three bytes rather than sha512's 64.
+            with(integrity("sha512-AAAA".into())),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
             &secure,
             tree.clone(),
             format!(
