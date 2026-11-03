@@ -50,9 +50,6 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
             .unwrap_or_else(|| target.base().join("skills-lock.json"));
         skills_lock(&path, &mut document)?
     };
-    if let Some(parent) = target.path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     write(target, &document.to_string())?;
     say(&format!(
         "Added {added} entries to {}. Run `chest install` to install them.",

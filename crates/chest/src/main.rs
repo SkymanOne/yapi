@@ -13,7 +13,8 @@ use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use yapi_ai::auth::lock::write_atomic;
+use tokio_util::sync::CancellationToken;
+use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
@@ -109,7 +110,9 @@ fn main() -> ExitCode {
         Err(err) => Err(err.into()),
     };
     result.unwrap_or_else(|err| {
-        let _ = writeln!(std::io::stderr(), "error: {err:#}");
+        // Errors quote the manifest and lock, and git's stderr keeps its lines.
+        let error = printable(&format!("{err:#}"), &['\t', '\n']);
+        let _ = writeln!(std::io::stderr(), "error: {error}");
         ExitCode::FAILURE
     })
 }
@@ -135,6 +138,21 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         (None, false) => std::env::current_dir()?.join("chest.toml"),
     };
     let target = Target { path, scope };
+    // Commands that write the manifest hold its lock from their first read
+    // to their last write, a rollback included. Init and import may create
+    // its folder, and a missing folder holds no manifest to protect.
+    let writes = match &cli.command {
+        Command::Init(_) | Command::Import(_) => {
+            std::fs::create_dir_all(target.base())?;
+            true
+        }
+        Command::Add(_) | Command::Remove { .. } | Command::Update { .. } => target.base().is_dir(),
+        _ => false,
+    };
+    let _held = match writes {
+        true => Some(lock(&target).await?),
+        false => None,
+    };
     let mut npm = Npm::new(npm::config());
     match cli.command {
         Command::Init(args) => init::run(&target, &args)?,
@@ -157,6 +175,17 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Locks the manifest against other chest commands that write it, waiting
+/// for them. The lock is an empty folder, which git does not list, named
+/// apart from the lock `sync` takes on the lock file, even for a manifest
+/// without an extension.
+async fn lock(target: &Target) -> anyhow::Result<FileLock> {
+    let file = target.base().join(format!(".{}", target.name()));
+    FileLock::acquire(&file, &CancellationToken::new())
+        .await
+        .with_context(|| format!("locking {}", target.path.display()))
+}
+
 /// Whether `CI` asks for frozen installs: set, and not empty, `0` or
 /// `false`.
 fn ci() -> bool {
@@ -168,18 +197,40 @@ fn ci() -> bool {
     })
 }
 
-/// Prints `line` on stderr.
-pub fn say(line: &str) {
-    let _ = writeln!(std::io::stderr(), "{line}");
+/// `text` without control characters other than those in `keep`, so text
+/// from a package or project cannot move the cursor or redraw the terminal.
+fn printable(text: &str, keep: &[char]) -> String {
+    text.chars()
+        .filter(|c| keep.contains(c) || !c.is_control())
+        .collect()
 }
 
-/// Prints `line` on stdout.
+/// Prints `line` on stderr, without control characters.
+pub fn say(line: &str) {
+    let _ = writeln!(std::io::stderr(), "{}", printable(line, &['\t']));
+}
+
+/// Prints `line` on stdout, without control characters.
 pub fn out(line: &str) {
-    let _ = writeln!(std::io::stdout(), "{line}");
+    let _ = writeln!(std::io::stdout(), "{}", printable(line, &['\t']));
+}
+
+/// Refuses a manifest that is a symbolic link, which a cloned project could
+/// point at a file outside it.
+fn refuse_link(target: &Target) -> anyhow::Result<()> {
+    let metadata = std::fs::symlink_metadata(&target.path);
+    if metadata.is_ok_and(|metadata| metadata.is_symlink()) {
+        bail!(
+            "{} is a symbolic link, which chest does not follow: replace it with the file itself",
+            target.path.display()
+        );
+    }
+    Ok(())
 }
 
 /// The manifest's text, with a pointer to `chest init` when it is missing.
 pub fn read(target: &Target) -> anyhow::Result<String> {
+    refuse_link(target)?;
     if !target.path.exists() {
         bail!(
             "{} does not exist: run `chest init` first",
@@ -192,6 +243,7 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
 
 /// Writes the manifest's new text, whole or not at all.
 pub fn write(target: &Target, text: &str) -> anyhow::Result<()> {
+    refuse_link(target)?;
     write_atomic(&target.path, text.as_bytes(), 0o666)
         .with_context(|| format!("writing {}", target.path.display()))
 }

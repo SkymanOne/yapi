@@ -22,9 +22,9 @@ impl Prompt {
         self.interactive
     }
 
-    /// Prints `line` on stderr.
+    /// Prints `line` on stderr, as [`crate::say`] does.
     pub fn say(&self, line: &str) {
-        let _ = writeln!(std::io::stderr(), "{line}");
+        crate::say(line);
     }
 
     /// The trimmed answer to `question`, empty at the end of input.
