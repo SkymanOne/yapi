@@ -552,21 +552,41 @@ async fn gitignore_block_managed() {
         read(&root.join(".gitignore")),
         "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n.claude/skills/pdf\n# END chest\n"
     );
-    // A lock that is a link is not written through.
+    // A manifest or lock that is a link is refused in either scope, also
+    // when the lock turns into one after the project opened, and nothing is
+    // read or written through it.
     #[cfg(unix)]
     {
-        let lock = root.join("chest.lock");
-        let moved = outside.join("chest.lock");
-        std::fs::rename(&lock, &moved).unwrap();
-        std::os::unix::fs::symlink(&moved, &lock).unwrap();
-        let locked = read(&moved);
+        let refused = |path: &Path| {
+            format!(
+                "{} is a symbolic link, which chest does not follow",
+                path.display()
+            )
+        };
         let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
-        let error = failed(&mut open(&dir, empty), Mode::Resolve).await;
-        assert!(error.ends_with("chest.lock through a link"), "{error}");
-        assert_eq!(read(&moved), locked);
-        assert!(root.join(".agents/skills/pdf").exists());
-        std::fs::remove_file(&lock).unwrap();
-        std::fs::rename(&moved, &lock).unwrap();
+        let mut project = open(&dir, empty);
+        let (manifest, lock) = (root.join("chest.toml"), root.join("chest.lock"));
+        for (file, moved) in
+            [&lock, &manifest].map(|file| (file, outside.join(file.file_name().unwrap())))
+        {
+            std::fs::rename(file, &moved).unwrap();
+            std::os::unix::fs::symlink(&moved, file).unwrap();
+            for scope in [Scope::Project, Scope::Global] {
+                let error = Project::open(&manifest, scope).unwrap_err().to_string();
+                assert!(error.starts_with(&refused(file)), "{error}");
+            }
+            if file == &lock {
+                let locked = read(&moved);
+                for mode in [Mode::Resolve, Mode::Frozen] {
+                    let error = failed(&mut project, mode).await;
+                    assert!(error.starts_with(&refused(&lock)), "{error}");
+                }
+                assert_eq!(read(&moved), locked);
+                assert!(root.join(".agents/skills/pdf").exists());
+            }
+            std::fs::remove_file(file).unwrap();
+            std::fs::rename(&moved, file).unwrap();
+        }
     }
     // An install waits while another chest command holds the lock, and says
     // so once.

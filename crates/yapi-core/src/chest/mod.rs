@@ -188,6 +188,19 @@ pub async fn hold_lock(file: &Path, waiting: &mut dyn FnMut()) -> Result<FileLoc
     }
 }
 
+/// Fails when `path` is a symbolic link. chest reads and writes a manifest
+/// and its lock only as plain files, since a cloned project could point a
+/// link anywhere.
+pub fn refuse_link(path: &Path) -> Result<(), ChestError> {
+    if path.symlink_metadata().is_ok_and(|meta| meta.is_symlink()) {
+        return Err(invalid(format!(
+            "{} is a symbolic link, which chest does not follow: replace it with the file itself",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Removes the extensions `staged` built and did not put in place.
 fn discard(staged: &[Staged]) {
     for staged in staged {
@@ -244,9 +257,11 @@ impl Project {
     ///
     /// The manifest's folder is resolved to its canonical path once, so a
     /// project opened through a link or another spelling of its path places,
-    /// records and removes the same paths.
+    /// records and removes the same paths. A manifest or lock that is itself
+    /// a link is refused, as [`refuse_link`] says.
     pub fn open(path: &Path, scope: Scope) -> Result<Project, ChestError> {
         let path = std::path::absolute(path).map_err(io(path))?;
+        refuse_link(&path)?;
         let text = std::fs::read_to_string(&path).map_err(io(&path))?;
         let manifest = Manifest::parse(&text, scope)
             .map_err(|err| invalid(format!("{}: {err}", path.display())))?;
@@ -378,6 +393,7 @@ impl Project {
 
     fn read_lock(&self) -> Result<Option<Lock>, ChestError> {
         let path = self.lock_path();
+        refuse_link(&path)?;
         match std::fs::read_to_string(&path) {
             Ok(text) => Lock::parse(&text)
                 .map(Some)
@@ -499,18 +515,6 @@ impl Project {
             }
         }
         let lock_path = self.lock_path();
-        // `write_atomic` writes through a link, which may lead out of the root.
-        let writes = matches!(mode, Mode::Resolve | Mode::Update(_));
-        if writes
-            && lock_path
-                .symlink_metadata()
-                .is_ok_and(|meta| meta.is_symlink())
-        {
-            return Err(invalid(format!(
-                "Refusing to write {} through a link",
-                lock_path.display()
-            )));
-        }
         let mut waiting = || progress(&waiting_for(&lock_path));
         let _held = hold_lock(&lock_path, &mut waiting).await?;
         self.lock = self.read_lock()?;
