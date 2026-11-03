@@ -746,7 +746,7 @@ async fn npm_tree_replays() {
     assert_eq!(entries(&replayed), ["node_modules"]);
 
     // A download that fails partway leaves the root as it was.
-    let fork = "/@acme/fork/-/@acme/fork-2.0.0.tgz".to_owned();
+    let fork = "/@acme/fork/-/fork-2.0.0.tgz".to_owned();
     let original = mirror
         .files
         .lock()
