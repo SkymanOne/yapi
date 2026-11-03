@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2f4cdb16.js";
+            window.path_to_searchindex_js = "searchindex-ac2412b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -190,7 +190,7 @@
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call, 1 GiB per instance, restart after a crash. See <a href="security.html#sandboxing">Sandboxing</a>.</td></tr>
+<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60 seconds of computing per call and 10 while loading, 1 GiB per instance, restart after a crash. See <a href="security.html#sandboxing">Sandboxing</a>.</td></tr>
 <tr><td>Node APIs</td><td>All of Node</td><td><a href="extensions.html#how-pi-extensions-run">Shims</a>. Sockets, servers, <code>http</code> requests, <code>worker_threads</code>, <code>node:sqlite</code>, <code>zlib</code>, <code>vm</code> and <code>child_process.fork</code> throw when used. <code>require()</code> of an ES module fails.</td></tr>
 <tr><td>Native addons</td><td>Loaded</td><td>Installed, never built. Loading one fails.</td></tr>
 <tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. The other exports of <code>pi-agent-core</code> and <code>pi-coding-agent</code> behave as in Pi, except those listed under agent sessions and under Pi internals that bypass the host. <code>pi-ai</code> has its own row. Built-in tool factories return yapi’s tools, or Pi’s own when given custom <code>operations</code>, a <code>spawnHook</code> or a <code>commandPrefix</code>.</td></tr>

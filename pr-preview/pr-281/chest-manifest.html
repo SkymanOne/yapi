@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2f4cdb16.js";
+            window.path_to_searchindex_js = "searchindex-ac2412b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-07a2fd7d.js"></script>
@@ -187,6 +187,7 @@
 <li><code>--manifest &lt;path&gt;</code> names another, and <code>CHEST_MANIFEST</code> sets the default for it.</li>
 <li>An environment’s manifest is a complete manifest of its own, such as <code>chest.dev.toml</code>. Its lock is the same name with <code>.lock</code> for <code>.toml</code>, here <code>chest.dev.lock</code>.</li>
 <li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>.</li>
+<li>A <code>chest.toml</code> or <code>chest.lock</code> that is a symbolic link is refused, so a cloned project cannot point chest at a file outside it.</li>
 </ul>
 <p>Paths in a manifest are relative to the manifest’s folder. A project manifest keeps every folder inside the project. The global manifest may use <code>~</code> and absolute paths.</p>
 <h2 id="capabilities-defaults"><a class="header" href="#capabilities-defaults"><code>capabilities-defaults</code></a></h2>
@@ -211,7 +212,7 @@ skills = [".agents/skills", ".claude/skills"]
 agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 </code></pre>
-<p>Each folder must name a folder, so <code>.</code> is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
+<p>Each folder must name a folder, so <code>.</code> is refused. No folder may hold another or the store. A folder may not contain <code>*</code>, <code>?</code>, <code>[</code> or <code>\</code>, or start with <code>!</code> or <code>#</code>, because each one becomes a <code>.gitignore</code> line. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
 <h2 id="skills-agents-and-extensions"><a class="header" href="#skills-agents-and-extensions"><code>[skills]</code>, <code>[agents]</code> and <code>[extensions]</code></a></h2>
 <p>Each entry is a name with an inline table, or a <code>[section.name]</code> table. The source is one of these:</p>
 <div class="table-wrapper">
@@ -299,13 +300,14 @@ todo = { path = "../pi-todo" }
 <tr><td><code>net</code></td><td><code>fetch</code>, streamed fetch and DNS, model calls, reading provider credentials, HTTP MCP servers, and refreshing model catalogs over the network</td></tr>
 <tr><td><code>env</code></td><td>Reading environment variables, and the environment key fallback when calling a model</td></tr>
 <tr><td><code>session</code></td><td>Starting, steering and stopping turns, and changing the session, its files or the model’s setup</td></tr>
-<tr><td><code>all</code></td><td>Everything above, plus running programs, stdio MCP servers, the <code>bash</code>, <code>grep</code> and <code>find</code> tools, and registering model providers</td></tr>
+<tr><td><code>all</code></td><td>Everything above, plus running programs, stdio MCP servers, the <code>bash</code>, <code>grep</code> and <code>find</code> tools, registering model providers, and registering terminal input listeners and autocomplete providers</td></tr>
 <tr><td><code>none</code></td><td>Nothing beyond the baseline. It cannot be combined with other values.</td></tr>
 </tbody>
 </table>
 </div>
 <ul>
 <li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> is not a capability.</li>
+<li>Registering a terminal input listener with <code>ctx.ui.onTerminalInput</code>, or an autocomplete provider, needs <code>all</code>. What they return reaches yapi’s own input, where <code>!</code> runs a shell command and <code>/</code> a slash command.</li>
 <li>Calling a tool that is not built in needs <code>all</code>.</li>
 <li>Always allowed: registering tools, commands, flags, shortcuts, renderers and providers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
 </ul>
