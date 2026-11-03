@@ -126,10 +126,16 @@ async fn gated_kinds_denied() {
             .map(|(kind, _)| kind.as_str())
             .collect();
         assert_eq!(denied, expected, "{capability}: {answers:?}");
-        // Raw keys and completions reach yapi's own input, so they need `all`.
-        for kind in ["ui.setTerminalInput", "ui.setAutocomplete"] {
+        // Raw keys and completions reach yapi's own input, so they need
+        // `all`, and `file.lock` needs the file grant whatever its path.
+        let listed = [
+            ("ui.setTerminalInput", "all"),
+            ("ui.setAutocomplete", "all"),
+            ("file.lock", "fs"),
+        ];
+        for (kind, needs) in listed {
             let feature = answers.get(kind).map(|answer| &answer["feature"]);
-            assert_eq!(feature, Some(&json!("all")), "{capability}: {kind}");
+            assert_eq!(feature, Some(&json!(needs)), "{capability}: {kind}");
         }
         for (kind, answer) in &answers {
             let feature = answer["feature"].as_str();
