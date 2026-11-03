@@ -737,7 +737,13 @@ impl Project {
                         npm::fetch_pinned(npm, &pin, &package).await?;
                         pin
                     }
-                    None => npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?,
+                    None => {
+                        let pin =
+                            npm::fetch(npm, npm_name, entry.version.as_deref(), &package).await?;
+                        // Refused now if replay would refuse it, not in every clone.
+                        npm.check_pin(&pin)?;
+                        pin
+                    }
                 };
                 record.version = Some(pin.version);
                 record.tarball = Some(pin.tarball);
@@ -825,6 +831,11 @@ impl Project {
                 copy_checkout(package, entry.path.as_deref(), staging)?;
                 record.packages = npm::install_dependencies(npm, staging).await?;
             }
+        }
+        // A tree that replay would refuse fails this install, not every later
+        // one. A replayed tree records no pins: replay checked them.
+        for pin in &record.packages {
+            npm.check_pin(pin)?;
         }
         record.hash = Some(tree_hash(staging)?);
         Ok(())

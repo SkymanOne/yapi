@@ -621,9 +621,8 @@ async fn npm_extension_locked() {
         std::fs::remove_file(dir.join("project/.yapi")).unwrap();
     }
     // With an npm skill too, which places one folder of its package.
-    let manifest = &format!(
-        "[folders]\nskills = [\".agents/skills\"]\n\n[skills]\nguide = {{ npm = \"guide\", version = \"^1\", path = \"skills/guide\" }}\n\n{manifest}"
-    );
+    let guide_manifest = "[folders]\nskills = [\".agents/skills\"]\n\n[skills]\nguide = { npm = \"guide\", version = \"^1\", path = \"skills/guide\" }\n";
+    let manifest = &format!("{guide_manifest}\n{manifest}");
     let mut project = open(&dir, manifest);
     let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
     let report = project
@@ -740,6 +739,40 @@ async fn npm_extension_locked() {
     mirror.finish().unwrap();
     assert_eq!(tree_hash(&store).unwrap(), installed);
     assert_eq!(read(&guide.join("SKILL.md")), "# guide\n");
+
+    // A registry that keeps tarballs elsewhere fails the first install of a
+    // skill or an extension, rather than every replay of its lock.
+    let ext_manifest = "[extensions]\next = { npm = \"ext\", version = \"^1\" }\n";
+    for (name, files, manifest) in [
+        ("guide", &skill[..], guide_manifest),
+        ("ext", &[][..], ext_manifest),
+    ] {
+        let dir = scratch(&format!("npm-elsewhere-{name}"));
+        let server = MockServer::local_with(|base| {
+            let (mut packument, mut tarball) = publish(base, name, json!({}), files);
+            let (pinned, elsewhere) = (
+                format!("/{name}/-/{name}-1.0.0.tgz"),
+                format!("/files/{name}-1.0.0.tgz"),
+            );
+            packument.response.chunks[0] =
+                packument.response.chunks[0].replace(&pinned, &elsewhere);
+            tarball.request.path = elsewhere;
+            Cassette {
+                interactions: vec![packument, tarball],
+            }
+        })
+        .await
+        .unwrap();
+        let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+        let error = open(&dir, manifest)
+            .sync(Mode::Resolve, &mut npm, &mut |_| {})
+            .await
+            .unwrap_err()
+            .to_string();
+        let expected = format!("a pinned tarball must be at /{name}/-/{name}-1.0.0.tgz");
+        assert!(error.contains(&expected), "{error}");
+        assert!(!dir.join("project/chest.lock").exists());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

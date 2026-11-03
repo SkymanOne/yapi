@@ -672,8 +672,9 @@ impl Npm {
     /// that is exactly one sha512 digest, and a tarball on the host and port
     /// of the registry configured for its name, over https unless that
     /// registry uses http. An edited lock can then neither send a download
-    /// elsewhere nor credentials in cleartext.
-    fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
+    /// elsewhere nor credentials in cleartext. chest also checks each pin
+    /// before it writes a lock, so that it never writes one replay refuses.
+    pub(crate) fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
         check_name(&pin.name)?;
         let id = format!("{}@{}", pin.name, pin.version);
         if sha512_digest(&pin.integrity).is_none() {
