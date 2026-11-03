@@ -181,6 +181,17 @@ fn init_detects_agents() {
     );
     assert!(dev.status.success(), "{}", text(&dev));
     assert_eq!(read(&scratch.project.join("chest.dev.toml")), expected);
+    // One outside the folder is an error, as yapi loads no manifest for it.
+    let outside = scratch.dir.join("chest.out.toml");
+    let path = outside.display().to_string();
+    let refused = chest(&scratch, &["init", "--yes"], &[("CHEST_MANIFEST", &path)]);
+    assert_eq!(refused.status.code(), Some(1), "{}", text(&refused));
+    assert!(
+        text(&refused).contains("CHEST_MANIFEST must name a file inside the project"),
+        "{}",
+        text(&refused)
+    );
+    assert!(!outside.exists());
 }
 
 #[test]
