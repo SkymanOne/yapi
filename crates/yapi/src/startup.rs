@@ -1086,17 +1086,25 @@ fn host_group(host: &ExtensionHost) -> Group {
 }
 
 /// Whether a host that ran `previous`, with the canonical module roots it
-/// started with, may serve `next` after a reload: its grants and event
-/// policy are the same, `next`'s roots are the same once canonical now, and
-/// a native extension's file is the same. A root that moved or appeared
-/// since starts a new host.
-fn serves(previous: &Group, next: &Group) -> bool {
+/// started with, may serve `next`, one of the groups `all` after a reload:
+/// its grants and event policy are the same, `next`'s roots are the same
+/// once canonical now, a native extension's file is the same, and no file
+/// it ran is in another group now, since the modules it imported keep
+/// running with its grants. A file that is gone keeps its module, as in
+/// pi's module cache. A root that moved or appeared since starts a new host.
+fn serves(previous: &Group, next: &Group, all: &[Group]) -> bool {
     let first = |group: &Group| group.sources.first().map(|source| source.path.clone());
+    let runs = |group: &Group, source: &SourceInfo| {
+        group.sources.iter().any(|other| other.path == source.path)
+    };
+    let stayed =
+        |source: &SourceInfo| runs(next, source) || !all.iter().any(|group| runs(group, source));
     previous.native == next.native
         && previous.grants == next.grants
         && previous.events == next.events
         && previous.roots == yapi_ext::canonical_roots(&next.roots)
         && (!next.native || first(previous) == first(next))
+        && previous.sources.iter().all(stayed)
 }
 
 /// Installs missing packages, reporting failures to `install_failed` with
@@ -1208,14 +1216,15 @@ async fn start_extensions(
         options.agent_dir = agent_dir.clone();
         options.cache_dir = Some(cache.join("js"));
         options.terminal_size = terminal_size;
-        for group in group_sources(sources, policies) {
+        let groups = group_sources(sources, policies);
+        for group in &groups {
             // A host of `previous` serves the same group again, keeping the
             // modules it imported.
             let reused = previous.and_then(|previous| {
                 previous
                     .hosts
                     .iter()
-                    .find(|host| serves(&host_group(host), &group))
+                    .find(|host| serves(&host_group(host), group, &groups))
             });
             if let Some(host) = reused {
                 host.reload(&group.sources).await;
@@ -1577,8 +1586,9 @@ mod tests {
         );
 
         // A host serves a reload only with the same grants, events and
-        // canonical roots, and for a native extension the same file. A root
-        // that a link points elsewhere, or that appears, starts a new host.
+        // canonical roots, for a native extension the same file, and while
+        // none of its files is in another group. A root that a link points
+        // elsewhere, or that appears, starts a new host.
         let dir = std::env::temp_dir().join(format!("yapi-serves-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (a, b, later, link) = (
@@ -1601,7 +1611,23 @@ mod tests {
             ..groups[0].clone()
         };
         let host = started(&js);
+        // The groups of the next run are `next` alone, unless they say.
+        let serves = |host: &Group, next: &Group| serves(host, next, std::slice::from_ref(next));
         assert!(serves(&host, &js));
+        // The group gains a file, or loses one that is gone, which keeps
+        // its module as in pi.
+        let mut added = js.clone();
+        added.sources.push(source("/a/five.ts", "a"));
+        let mut gone = js.clone();
+        let moved = gone.sources.remove(0);
+        assert!(serves(&host, &added) && serves(&host, &gone));
+        // A file whose grants changed has left for another group.
+        let elsewhere = Group {
+            grants: yapi_ext::Grants::none(),
+            sources: vec![moved],
+            ..js.clone()
+        };
+        assert!(!super::serves(&host, &gone, &[gone.clone(), elsewhere]));
         let mut roots = js.clone();
         roots.roots.push(b.clone());
         let mut grants = js.clone();
