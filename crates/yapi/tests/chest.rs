@@ -389,7 +389,7 @@ async fn chest_skills_loaded() {
 }
 
 /// `CHEST_MANIFEST` names the project manifest yapi reads, inside the
-/// project.
+/// project, and one outside it loads none.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_manifest_env() {
     let home = common::scratch("chest-env");
@@ -419,19 +419,17 @@ async fn chest_manifest_env() {
     };
     assert_eq!(names(&[]), ["main"]);
     assert_eq!(names(&[("CHEST_MANIFEST", "chest.dev.toml")]), ["dev"]);
-    // A name outside the project falls back to `chest.toml`, with a warning.
+    // A name outside the project loads no project manifest, with a warning.
     let outside = home.join("chest.dev.toml").display().to_string();
-    assert_eq!(names(&[("CHEST_MANIFEST", &outside)]), ["main"]);
+    assert!(names(&[("CHEST_MANIFEST", &outside)]).is_empty());
     let output = common::yapi(&home)
         .args(["--approve", "--help"])
         .env("CHEST_MANIFEST", &outside)
         .output()
         .unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("CHEST_MANIFEST must name a file inside the project"),
-        "{stderr}"
-    );
+    let warning = format!("not \"{outside}\", so no project manifest loads");
+    assert!(stderr.contains(&warning), "{stderr}");
 }
 
 /// Extensions in different grant groups keep the resolver's order, which pi

@@ -3,13 +3,13 @@
 //! skills.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use yapi_types::settings::FilteredPackage;
 
 use super::fetch::placed_name;
 use super::lock::fresh;
-use super::manifest::{Entry, Manifest, Section};
+use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
 use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::Npm;
@@ -17,39 +17,13 @@ use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType};
 use crate::settings::Scope;
 use crate::tools::path::home_dir;
 
-/// The environment variable that names a project's chest manifest, relative
-/// to the project's folder.
-pub const MANIFEST_ENV: &str = "CHEST_MANIFEST";
-
-/// The manifest file [`MANIFEST_ENV`] names, if any. `Err` when it names a
-/// file outside the project: an absolute path, one under `~`, or one with
-/// `..`.
-fn manifest_name() -> Result<Option<String>, String> {
-    let Some(name) = std::env::var(MANIFEST_ENV)
-        .ok()
-        .filter(|name| !name.is_empty())
-    else {
-        return Ok(None);
-    };
-    let inside = !name.starts_with('~')
-        && Path::new(&name)
-            .components()
-            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
-    if inside {
-        Ok(Some(name))
-    } else {
-        Err(format!(
-            "{MANIFEST_ENV} must name a file inside the project, not \"{name}\": chest.toml is used"
-        ))
-    }
-}
-
 /// The project manifest of `project_root`: the file [`MANIFEST_ENV`] names
-/// relative to it, else `chest.toml`, which a name outside the project also
-/// gets. Its lock is the file beside it named with `.lock`.
-pub fn project_manifest(project_root: &Path) -> PathBuf {
-    let name = manifest_name().ok().flatten();
-    project_root.join(name.as_deref().unwrap_or("chest.toml"))
+/// relative to it, else `chest.toml`. `None` when the variable names a file
+/// outside the project, as chest refuses it too. Its lock is the file beside
+/// it named with `.lock`.
+pub fn project_manifest(project_root: &Path) -> Option<PathBuf> {
+    let name = from_env().ok()?;
+    Some(project_root.join(name.as_deref().unwrap_or("chest.toml")))
 }
 
 /// Whether `manifest` installs anything, beyond describing its folder as a
@@ -66,7 +40,7 @@ fn consumes(manifest: &Manifest) -> bool {
 /// with only `[package]`, which describes the project as a package, does not.
 /// A manifest that does not parse needs trust too.
 pub fn needs_trust(project_root: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(project_manifest(project_root)) else {
+    let Some(Ok(text)) = project_manifest(project_root).map(std::fs::read_to_string) else {
         return false;
     };
     Manifest::parse(&text, Scope::Project).map_or(true, |manifest| consumes(&manifest))
@@ -400,10 +374,12 @@ pub fn installed_inputs(
 /// cannot be read.
 fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String, String)>> {
     let mut found = Vec::new();
-    if trusted && let Err(problem) = manifest_name() {
+    if trusted && let Err(problem) = from_env() {
+        let problem = format!("{problem}, so no project manifest loads");
         found.push(Err((MANIFEST_ENV.to_owned(), problem)));
     }
-    let project = trusted.then(|| (project_manifest(project_root), Scope::Project));
+    let project = trusted.then(|| project_manifest(project_root)).flatten();
+    let project = project.map(|path| (path, Scope::Project));
     let global = Some((home_dir().join(".chest/chest.toml"), Scope::Global));
     for (path, scope) in [project, global].into_iter().flatten() {
         if !path.exists() {

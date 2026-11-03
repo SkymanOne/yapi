@@ -21,7 +21,7 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 
 ## chest
 
-yapi loads the [project packages](packages.md#project-packages-with-chest) that chest manifests list. It reads `chest.toml` in the project folder, or the file that `CHEST_MANIFEST` names relative to the project folder, such as `chest.dev.toml`. For a name that is absolute or leads out of the project with `..`, yapi warns and reads `chest.toml`. The lock is the file beside the manifest named with `.lock`, such as `chest.dev.lock`. The chest command reads `CHEST_MANIFEST` too, as [Which manifest](chest-manifest.md#which-manifest) describes. `~/.chest/chest.toml` lists packages for every project. chest keeps its download cache and its record of what it placed in `~/.chest`.
+yapi loads the [project packages](packages.md#project-packages-with-chest) that chest manifests list. It reads `chest.toml` in the project folder, or the file that `CHEST_MANIFEST` names relative to the project folder, such as `chest.dev.toml`. For a name that is absolute, starts with `~` or leads out of the project with `..`, yapi warns and reads no project manifest, and the chest command stops with an error. The lock is the file beside the manifest named with `.lock`, such as `chest.dev.lock`. The chest command reads `CHEST_MANIFEST` too, as [Which manifest](chest-manifest.md#which-manifest) describes. `~/.chest/chest.toml` lists packages for every project. chest keeps its download cache and its record of what it placed in `~/.chest`.
 
 A project manifest that installs anything loads only in a trusted project, and asks for trust as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust.
 
