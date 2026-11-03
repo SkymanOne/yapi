@@ -13,7 +13,6 @@ use std::process::ExitCode;
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use tokio_util::sync::CancellationToken;
 use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
@@ -178,14 +177,21 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 }
 
 /// Locks the manifest against other chest commands that write it, waiting
-/// for them. The lock is an empty folder, which git does not list, named
-/// apart from the lock `sync` takes on the lock file, even for a manifest
-/// without an extension.
+/// for them for as long as they run, and saying once on stderr that it
+/// waits. The lock is an empty folder, which git does not list, named apart
+/// from the lock `sync` takes on the lock file, even for a manifest without
+/// an extension.
 async fn lock(target: &Target) -> anyhow::Result<FileLock> {
     let file = target.base().join(format!(".{}", target.name()));
-    FileLock::acquire(&file, &CancellationToken::new())
+    let path = target.path.display();
+    let mut waiting = || {
+        say(&format!(
+            "Waiting for another chest command that changes {path}..."
+        ))
+    };
+    yapi_core::chest::hold_lock(&file, &mut waiting)
         .await
-        .with_context(|| format!("locking {}", target.path.display()))
+        .with_context(|| format!("locking {path}"))
 }
 
 /// Whether `CI` asks for frozen installs: set, and not empty, `0` or

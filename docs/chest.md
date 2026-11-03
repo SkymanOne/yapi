@@ -103,6 +103,8 @@ A pinned tarball must come from the registry configured for its package, at the 
 - `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash, and it never writes `chest.toml` or `chest.lock`. It is the default when `CI` is set to anything but an empty value, `0` or `false`, so a fresh clone in CI gets every skill and extension.
 - `chest verify` checks every installed copy, copy fallback and link against the lock and exits with 1 when one does not match.
 
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs and says once that it is waiting. A command that stopped without letting go of its lock holds it for 30 seconds at most.
+
 ## Update
 
 `chest outdated` lists entries whose source has a newer commit for its `rev`, or a newer npm version in range, and npm's `latest`. `chest update` moves the named entries, or all of them, to those, installs them and writes the lock. When an updated extension now requests capabilities or event channels beyond its grants, `chest update` warns and grants nothing more.

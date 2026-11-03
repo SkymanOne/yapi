@@ -174,13 +174,19 @@ fn init_detects_agents() {
     ok(&scratch, &["init"]);
     let expected = "# Installed with `chest install`, pinned in the lock beside this file.\n\n[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\nextensions = \".yapi/chest\"\n";
     assert_eq!(read(&scratch.project.join("chest.toml")), expected);
-    let again = chest(&scratch, &["init", "--yes"], &[]);
+    // A command waits while another holds the manifest's lock, and says so
+    // once.
+    let held = scratch.project.join(".chest.toml.lock");
+    std::fs::create_dir(&held).unwrap();
+    let waiting = command(&scratch, &["init", "--yes"], &[]).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    std::fs::remove_dir(&held).unwrap();
+    let again = waiting.wait_with_output().unwrap();
     assert_eq!(again.status.code(), Some(1));
-    assert!(
-        text(&again).contains("chest.toml already exists"),
-        "{}",
-        text(&again)
-    );
+    let said = text(&again);
+    let wait = "Waiting for another chest command that changes";
+    assert_eq!(said.matches(wait).count(), 1, "{said}");
+    assert!(said.contains("chest.toml already exists"), "{said}");
     // CHEST_MANIFEST names the manifest when --manifest is absent.
     let dev = chest(
         &scratch,
