@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 ```
 
-It installs `yapi` and `chest` in `~/.local/bin`. [Install yapi](install.md) covers the other methods. Check the installation:
+It asks what to install. Press Enter to install `yapi` and `chest`, its package manager, in `~/.local/bin`. [Install yapi](install.md) covers the other methods. Check the installation:
 
 ```sh
 yapi --version

@@ -1,12 +1,15 @@
 [package]
 name = "yapi-agent"
-description = "Agent loop with tool execution, steering and follow-up queues, and events."
+description = "Agent loop with tool execution, steering and follow-up queues, and events. An internal library of yapi, with no stable API."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# The oldest Rust that builds it, older than yapi's own. The Release workflow
+# checks it before publishing.
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+# Published to crates.io for chest-cli.
+publish = true
 
 [dependencies]
 futures-util.workspace = true

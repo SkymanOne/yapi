@@ -6,8 +6,10 @@
 # scripts/third-party-notices.sh writes, as THIRD-PARTY-NOTICES. The names
 # carry no version, so the latest release's archive is always at
 # releases/latest/download/yapi-<target>.tar.gz. install.sh and the
-# cargo-binstall metadata in crates/yapi/Cargo.toml rely on these names.
-# cargo-binstall takes only yapi from the archive. Releases build both
+# cargo-binstall metadata in crates/yapi/Cargo.toml and crates/chest/Cargo.toml
+# rely on these names. cargo-binstall takes one binary from the archive: yapi
+# for the yapi crate, and chest for chest-cli, whose metadata names the
+# release's tag literally because chest has its own version. Releases build both
 # binaries, and scripts/check-release.sh requires both. Without <chest>, the
 # archive holds yapi alone, as archives did before chest shipped.
 #

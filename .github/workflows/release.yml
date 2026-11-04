@@ -41,6 +41,12 @@ jobs:
             echo "::error::guest/Cargo.toml has version $guest, not Cargo.toml's $version"
             exit 1
           fi
+          # chest has its own version, so its cargo-binstall metadata names
+          # the release's tag literally.
+          if ! grep -q "^pkg-url = .*/releases/download/v$version/" crates/chest/Cargo.toml; then
+            echo "::error::crates/chest/Cargo.toml's pkg-url does not name v$version"
+            exit 1
+          fi
           scripts/release-notes.sh "$version" >/dev/null
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
@@ -203,9 +209,11 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" dist/yapi-*.tar.gz*
 
   # yapi-types, yapi-tui and yapi-extension-api on crates.io, after the GitHub
-  # release, so native extensions can depend on the SDK by version. A crate
-  # already published at this version is skipped, so a rerun finishes a run
-  # that failed partway. Other runs only check that the crates package.
+  # release, so native extensions can depend on the SDK by version, and
+  # chest-cli with the internal crates it builds on. A crate already published
+  # at its version is skipped, so a rerun finishes a run that failed partway,
+  # and chest-cli keeps its version across releases. Other runs only check
+  # that the crates package.
   # Publishing authenticates with crates.io trusted publishing: the job's OIDC
   # token is exchanged for a short-lived registry token, so no secret is stored.
   crates:
@@ -228,16 +236,21 @@ jobs:
         run: |
           msrv() { sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$1/Cargo.toml"; }
           types=$(msrv crates/yapi-types) tui=$(msrv crates/yapi-tui) sdk=$(msrv guest/yapi-extension-api)
-          rustup toolchain install "$types" "$tui" "$sdk" --profile minimal --target wasm32-wasip2
+          ai=$(msrv crates/yapi-ai) agent=$(msrv crates/yapi-agent) core=$(msrv crates/yapi-core) chest=$(msrv crates/chest)
+          rustup toolchain install "$types" "$tui" "$sdk" "$ai" "$agent" "$core" "$chest" --profile minimal --target wasm32-wasip2
           cargo "+$types" check -p yapi-types
           cargo "+$tui" check -p yapi-tui
+          cargo "+$ai" check -p yapi-ai
+          cargo "+$agent" check -p yapi-agent
+          cargo "+$core" check -p yapi-core
+          cargo "+$chest" check -p chest-cli
           cd guest
           cargo "+$sdk" check -p yapi-extension-api --target wasm32-wasip2
           cargo "+$tui" check -p yapi-extension-api --features widgets,all --target wasm32-wasip2
       - name: Check that the crates package
         if: github.ref_type != 'tag'
         run: |
-          cargo publish --dry-run -p yapi-types -p yapi-tui
+          cargo publish --dry-run -p yapi-types -p yapi-tui -p yapi-ai -p yapi-agent -p yapi-core -p chest-cli
           # The SDK packages against this checkout's yapi-tui and yapi-types,
           # the versions published with it.
           cd guest
@@ -254,12 +267,16 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
+          chest=$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/chest/Cargo.toml)
+          # Whether crates.io has crate $1 at version $2.
           published() {
             curl -fsS -o /dev/null -A "yapi release (https://github.com/$GITHUB_REPOSITORY)" \
-              "https://crates.io/api/v1/crates/$1/$version"
+              "https://crates.io/api/v1/crates/$1/$2"
           }
-          for crate in yapi-types yapi-tui; do
-            published "$crate" || cargo publish -p "$crate"
+          # In dependency order, as each publish needs the ones before it.
+          for crate in yapi-types yapi-tui yapi-ai yapi-agent yapi-core; do
+            published "$crate" "$version" || cargo publish -p "$crate"
           done
+          published chest-cli "$chest" || cargo publish -p chest-cli
           cd guest
-          published yapi-extension-api || cargo publish -p yapi-extension-api
+          published yapi-extension-api "$version" || cargo publish -p yapi-extension-api

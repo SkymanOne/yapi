@@ -75,12 +75,31 @@ Pi installs from `tests/fixtures/pi/generator` with `npm ci`, which needs Node.j
 A release takes these steps, in order:
 
 1. Set the new version in `[workspace.package]` of both `Cargo.toml` and `guest/Cargo.toml`. The extension SDK takes the guest workspace's version, and the Release workflow fails when the two differ from each other or from the tag.
-2. For a new minor or major version, raise the `version` requirements on `yapi-types` and `yapi-tui` in `Cargo.toml` and `guest/yapi-extension-api/Cargo.toml`.
-3. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`.
-4. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
-5. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
-6. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run doesn't prove main's. A flaky test is a bug to fix, not a run to repeat.
-7. Push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so the repository stores no token. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
+2. Set the exact `version` requirements on `yapi-ai`, `yapi-agent` and `yapi-core` in `Cargo.toml`, such as `=0.1.0`, to the new version. They have no stable API, so each published crate requires exactly the versions it was built with. For a new minor or major version, raise those on `yapi-types` and `yapi-tui` in `Cargo.toml` and `guest/yapi-extension-api/Cargo.toml` too.
+3. Set chest's version, which is its own, in `crates/chest/Cargo.toml`. Raise it, following semver, when `git diff --stat v<previous> -- crates/chest crates/yapi-core crates/yapi-agent crates/yapi-ai crates/yapi-types` lists changes. Otherwise keep it, and the release ships the same chest and skips publishing `chest-cli`, which crates.io already has.
+4. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`, which also finds the exact `=0.1.0` requirements of step 2. They include the tag in `pkg-url` in `crates/chest/Cargo.toml`, which the Release workflow checks, so that each published `chest-cli` downloads the release that built it.
+5. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
+6. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
+7. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run doesn't prove main's. A flaky test is a bug to fix, not a run to repeat.
+8. Push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive. Then it publishes `yapi-types`, `yapi-tui`, `yapi-ai`, `yapi-agent`, `yapi-core`, `chest-cli` and `yapi-extension-api` to crates.io with trusted publishing, so the repository stores no token. It skips each crate that crates.io already has at its version. Each crate has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
+
+### Publish a new crate for the first time
+
+crates.io accepts a trusted publisher only for a crate that exists, so a maintainer publishes each new crate once with their own token. The first publish of `yapi-ai`, `yapi-agent`, `yapi-core` and `chest-cli` has to come with a new workspace version, because the `yapi-types` 0.3.1 on crates.io is older than the code they build on. For that release, follow these steps, with `v0.4.0` standing for its tag:
+
+1. Release as above. The Release workflow publishes `yapi-types` and `yapi-tui`, then fails on `yapi-ai`, which has no trusted publisher yet.
+2. Create a crates.io API token with the `publish-new` scope, then publish the four crates from the tag. Cargo publishes them in dependency order:
+
+   ```sh
+   git checkout v0.4.0
+   cargo login
+   cargo publish -p yapi-ai -p yapi-agent -p yapi-core -p chest-cli
+   cargo logout
+   ```
+
+3. On crates.io, open each of the four crates' settings and add a trusted publisher for GitHub: owner `SkymanOne`, repository `yapi`, workflow `release.yml` and no environment.
+4. Rerun the failed `crates` job of the Release workflow. It skips the four crates and publishes `yapi-extension-api`.
+5. Revoke the token on crates.io.
 
 ## Build the documentation
 

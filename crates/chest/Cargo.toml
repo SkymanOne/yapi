@@ -1,12 +1,29 @@
 [package]
 name = "chest-cli"
 description = "chest: one manifest and lock for agent skills, subagents and yapi extensions"
-version.workspace = true
+# chest's own version, raised apart from yapi's. Each yapi release ships the
+# chest of this version, and the Release workflow publishes it once.
+version = "0.1.0"
 edition.workspace = true
-rust-version.workspace = true
+# The oldest Rust that builds it, older than yapi's own. The Release workflow
+# checks it before publishing.
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = true
+
+# `cargo binstall chest-cli` installs `chest` from the release archive for the
+# host, which holds `yapi` too, named as scripts/package-release.sh names it.
+# The tag is literal because chest's version differs from yapi's. The release
+# bump writes the new workspace version into it, so each published chest-cli
+# downloads the release that built it. Without that archive, cargo-binstall
+# compiles the published crate.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v0.3.1/yapi-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+# cargo-quickinstall's builds come from a third party.
+disabled-strategies = ["quick-install"]
 
 [[bin]]
 name = "chest"

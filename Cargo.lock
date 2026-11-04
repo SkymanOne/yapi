@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "chest-cli"
-version = "0.3.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
