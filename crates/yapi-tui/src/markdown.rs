@@ -1,11 +1,11 @@
 //! Markdown to styled terminal lines.
 //!
 //! Port of `packages/tui/src/components/markdown.ts` in pi `v1.0.0`. pi parses
-//! with marked; this uses pulldown-cmark and rebuilds marked's block structure,
-//! including its blank-line tokens, from source offsets, and marked's links
-//! for bare URLs. pi's LaTeX tokenizers run as marked runs them, before its
-//! own; the `math` module explains how. Code blocks are drawn by the theme's
-//! code renderer when it has one.
+//! with marked. This module uses pulldown-cmark and rebuilds marked's block
+//! structure, including its blank-line tokens, from source offsets, and
+//! marked's links for bare URLs. pi's LaTeX tokenizers run as marked runs
+//! them, before its own, as the `math` module explains. The theme's code
+//! renderer draws code blocks when it has one.
 
 use std::ops::Range;
 
@@ -84,8 +84,8 @@ pub struct MarkdownOptions {
     pub preserve_list_markers: bool,
     /// Show backslash escapes as written.
     pub preserve_backslash_escapes: bool,
-    /// Links are OSC 8 hyperlinks, without their URL after the text: pi-tui's
-    /// `hyperlinks` capability.
+    /// Links are OSC (Operating System Command) 8 hyperlinks, without their
+    /// URL after the text: pi-tui's `hyperlinks` capability.
     pub hyperlinks: bool,
 }
 
@@ -189,7 +189,7 @@ fn blank_line_after(source: &str, end: usize, at_end: bool) -> bool {
 
 /// pi's `trimPartialClosingFences`: while a closing fence streams in, the
 /// part that has arrived is not code, so the block does not flicker. `raw` is
-/// the block's source; only an unclosed block can end in such a line.
+/// the block's source. Only an unclosed block can end in such a line.
 fn trim_partial_closing_fence(raw: &str, code: &mut String) {
     let Some(fence) = raw.chars().next().filter(|c| matches!(c, '`' | '~')) else {
         return;
@@ -233,7 +233,7 @@ impl<'a> Builder<'a> {
     /// Adds one inline event, consuming the rest of a container it opens.
     fn inline(&mut self, event: Event<'a>, range: Range<usize>, out: &mut Vec<Inline>) {
         match event {
-            // pulldown-cmark decodes an entity reference into its own text;
+            // pulldown-cmark decodes an entity reference into its own text.
             // marked, and so pi, prints it as written.
             Event::Text(text)
                 if self.source.get(range.clone()).is_some_and(|raw| {
@@ -243,7 +243,7 @@ impl<'a> Builder<'a> {
                 push_text(out, self.source[range].to_owned());
             }
             Event::Text(text) => {
-                // pulldown-cmark starts an escaped character's text just after
+                // pulldown-cmark starts an escaped character's text right after
                 // its backslash. marked reads `\[` and `\]` in a link's text
                 // as `[` and `]`.
                 let escaped = self.preserve_escapes
@@ -550,8 +550,8 @@ impl<'a> Builder<'a> {
             }
         }
         self.place_defs(&mut out, usize::MAX);
-        // Blank lines after the last nested block belong to the enclosing block;
-        // at the top level they still render as one blank line.
+        // Blank lines after the last nested block belong to the enclosing block.
+        // At the top level they still render as one blank line.
         if let Some(last) = out.last_mut() {
             let blank = match &last.block {
                 // marked's display block takes the line break after it, and a
@@ -669,10 +669,10 @@ fn push_text(out: &mut Vec<Inline>, text: String) {
     }
 }
 
-/// marked's GFM `url` rule: the bare URLs and email addresses in the text
-/// of `inlines` as links. marked tries the rule where a token starts, which
-/// in text is at `http://`, `https://`, `ftp://` and `www.` anywhere, and at
-/// the start of an email address's local part.
+/// marked's GFM (GitHub Flavored Markdown) `url` rule: the bare URLs and
+/// email addresses in the text of `inlines` as links. marked tries the rule
+/// where a token starts, which in text is at `http://`, `https://`, `ftp://`
+/// and `www.` anywhere, and at the start of an email address's local part.
 fn autolink(inlines: Vec<Inline>) -> Vec<Inline> {
     let mut out = Vec::with_capacity(inlines.len());
     for inline in inlines {
@@ -825,7 +825,7 @@ fn email_link(s: &str) -> Option<(usize, String)> {
 }
 
 /// Where marked's `(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])` ends from `at`,
-/// in the order its backtracking tries; `matched` once a label matched.
+/// in the order its backtracking tries. `matched` is set once a label matched.
 fn domain_end(bytes: &[u8], at: usize, matched: bool) -> Option<usize> {
     if bytes.get(at) == Some(&b'.') {
         let run = bytes[at + 1..].iter().take_while(|c| is_label(**c)).count();
@@ -895,9 +895,9 @@ fn quote_spans(spans: Vec<Span<'static>>, quote: Style) -> Vec<Span<'static>> {
         .collect()
 }
 
-/// `text` in `style`, with the SGR sequences in it applied on top: pi-tui
-/// passes text with escape sequences through, as a Markdown transformer
-/// writes it.
+/// `text` in `style`, with the SGR (Select Graphic Rendition) sequences in it
+/// applied on top: pi-tui passes text with escape sequences through, as a
+/// Markdown transformer writes it.
 fn with_escapes(text: &str, style: Style) -> Vec<Span<'static>> {
     if !text.contains('\x1b') {
         return vec![Span::styled(text.to_owned(), style)];

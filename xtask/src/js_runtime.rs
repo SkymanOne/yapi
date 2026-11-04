@@ -34,10 +34,10 @@ const EXAMPLE_INPUTS: [&str; 11] = [
 ];
 /// The JS runtime yapi embeds.
 const ARTIFACT: &str = "crates/yapi-ext/yapi-js.wasm";
-/// The Rust SDK's example extensions, and extensions only tests use, one
-/// crate each; test fixtures.
+/// The Rust SDK's example extensions and the test fixtures, extensions only
+/// tests use, one crate each.
 const EXAMPLES: [&str; 2] = ["guest/examples", "guest/fixtures"];
-/// Where each example's build lands, as `<crate>.wasm`.
+/// Where the build writes each example, as `<crate>.wasm`.
 const FIXTURES: &str = "crates/yapi-ext/tests/fixtures";
 const RECORD: &str = "crates/yapi-ext/yapi-js.wasm.inputs";
 const TARGET: &str = "wasm32-wasip2";

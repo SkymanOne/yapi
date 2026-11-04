@@ -71,7 +71,7 @@ fn token_end(markdown: &str, end: usize) -> usize {
     let Some(rest) = markdown[end..].strip_prefix('\n') else {
         return end;
     };
-    // marked hands a lone line break to the token before it.
+    // marked adds a lone line break to the token before it.
     let next = rest.split('\n').next().unwrap_or_default();
     if rest.is_empty() || !next.trim_matches([' ', '\t']).is_empty() {
         end + 1

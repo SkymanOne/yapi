@@ -31,12 +31,12 @@ static IDLE_TIMEOUT_MS: AtomicU64 = AtomicU64::new(DEFAULT_IDLE_TIMEOUT_MS);
 
 /// Sets how long provider requests may wait for response headers, and then
 /// for each body chunk, before failing, as pi's `httpIdleTimeoutMs` sets
-/// undici's `headersTimeout` and `bodyTimeout`; 0 waits forever.
+/// undici's `headersTimeout` and `bodyTimeout`. 0 waits forever.
 pub fn set_idle_timeout_ms(ms: u64) {
     IDLE_TIMEOUT_MS.store(ms, Ordering::Relaxed);
 }
 
-/// The idle timeout; `None` waits forever.
+/// The idle timeout. `None` waits forever.
 pub(crate) fn idle_timeout() -> Option<Duration> {
     match IDLE_TIMEOUT_MS.load(Ordering::Relaxed) {
         0 => None,
@@ -44,7 +44,8 @@ pub(crate) fn idle_timeout() -> Option<Duration> {
     }
 }
 
-/// Waits for `future` within the idle timeout; `None` when it elapses.
+/// Waits for `future` within the idle timeout, or returns `None` when it
+/// elapses.
 async fn within_idle_timeout<T>(future: impl std::future::Future<Output = T>) -> Option<T> {
     match idle_timeout() {
         Some(limit) => tokio::time::timeout(limit, future).await.ok(),
@@ -54,7 +55,7 @@ async fn within_idle_timeout<T>(future: impl std::future::Future<Output = T>) ->
 
 /// Applies pi's `httpProxy` setting for this process: it serves as
 /// `HTTP_PROXY` and `HTTPS_PROXY` where those are unset. Call it before the
-/// first request; only the first call counts.
+/// first request. Only the first call counts.
 pub fn set_settings_proxy(proxy: Option<&str>) {
     if let Some(proxy) = proxy.map(str::trim).filter(|proxy| !proxy.is_empty()) {
         let _ = SETTINGS_PROXY.set(proxy.to_owned());
@@ -251,7 +252,7 @@ pub async fn send(
 }
 
 /// [`send`], which without `use_headers` ignores `retry-after` and
-/// `x-should-retry`, as pi's Google adapters do: their SDK's errors carry no
+/// `x-should-retry`, as pi's Google adapters do: their SDK's errors have no
 /// headers.
 pub(crate) async fn send_with(
     build: impl Fn() -> reqwest::RequestBuilder,
@@ -287,7 +288,7 @@ pub(crate) async fn send_with(
                         status,
                         body,
                     },
-                    // Only a status failure carries headers.
+                    // Only a status failure has headers.
                     other => other,
                 });
             }
@@ -369,7 +370,7 @@ fn retry_delay(headers: &HeaderMap, retry: u32, max_ms: Option<u64>) -> Result<D
         return Ok(Duration::from_millis(ms.max(0.0) as u64));
     }
     let exponential = (0.5 * 2f64.powi(retry as i32)).min(8.0) * 1000.0;
-    // pi jitters by up to 25%; a fixed 12.5% keeps tests deterministic.
+    // pi jitters by up to 25%. A fixed 12.5% keeps tests deterministic.
     Ok(Duration::from_millis((exponential * 0.875) as u64))
 }
 
@@ -427,8 +428,8 @@ pub fn sdk_error_message(error: &Value) -> String {
 pub const MALFORMED_SSE_JSON: &str = "Error reading response: malformed server-sent event JSON.";
 
 /// The next JSON chunk of an OpenAI SDK stream. Ends at `[DONE]` or the end of
-/// the body; skips `thread.*` events; fails on malformed JSON, an `error` event
-/// or a payload with a truthy `error`.
+/// the body and skips `thread.*` events. Fails on malformed JSON, an `error`
+/// event or a payload with a truthy `error`.
 pub async fn next_openai_chunk(
     reader: &mut SseReader,
     cancel: &CancellationToken,
@@ -471,8 +472,9 @@ pub fn is_truthy(value: &Value) -> bool {
 const MAX_ERROR_BODY_CHARS: usize = 4000;
 
 /// pi's `formatProviderError`: the SDK message, or the status and body when the
-/// message does not already carry the error body. With a prefix, either form reads
-/// `<prefix> (<status>): <text>`; without one, a body reads `<status>: <body>`.
+/// message does not already include the error body. With a prefix, either form
+/// reads `<prefix> (<status>): <text>`. Without one, a body reads
+/// `<status>: <body>`.
 pub fn provider_error_message(
     message: &str,
     status: Option<u16>,
@@ -506,7 +508,7 @@ pub(crate) fn truncate_chars(text: &str, max: usize) -> String {
     )
 }
 
-/// The next chunk of a response body; `None` at the end. Fails with pi's
+/// The next chunk of a response body, or `None` at the end. Fails with pi's
 /// message when `cancel` fires or the connection drops: `interrupted` when it
 /// fires during the read.
 pub async fn read_chunk(
@@ -673,7 +675,7 @@ mod tests {
             Duration::from_secs(2)
         );
         assert!(retry_delay(&headers, 0, Some(1000)).is_err());
-        // An HTTP date, `Mon, 21 Oct 2026 12:34:56 GMT`; the weekday is not read.
+        // An HTTP date, `Mon, 21 Oct 2026 12:34:56 GMT`. The weekday is not read.
         let iso = yapi_types::time::iso(yapi_types::time::now_ms() + 120_000);
         let months = [
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

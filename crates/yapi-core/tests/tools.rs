@@ -209,7 +209,7 @@ async fn bom_and_crlf_preserved() {
         )
     );
 
-    // A `tool_call` handler can drop a validated argument; the file is left alone.
+    // A `tool_call` handler can drop a validated argument, and the file is left alone.
     for (name, args, field) in [
         ("write", json!({"path": "sub/f.txt"}), "content"),
         ("write", json!({"content": "x"}), "path"),
@@ -463,7 +463,7 @@ async fn bash_long_output() {
     assert_eq!(structured["truncated"], true);
     assert_eq!(structured["full_output_path"], path);
     let full = structured["output"].as_str().unwrap();
-    // `seq 1 300000` prints 1,988,895 bytes; the first and last 512 KiB stay.
+    // `seq 1 300000` prints 1,988,895 bytes, of which the first and last 512 KiB stay.
     let omitted = 1_988_895 - 1024 * 1024;
     assert!(full.starts_with("1\n2\n3\n"));
     assert!(full.contains(&format!("\n\n[... {omitted} bytes omitted ...]\n\n")));

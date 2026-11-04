@@ -366,7 +366,7 @@ async fn huge_timeout() {
 
 #[tokio::test]
 async fn unreachable_http_server() {
-    // The discard port: outside the ephemeral range, so no free port lands on it.
+    // The discard port: outside the ephemeral range, so the OS never assigns it.
     let transport = HttpTransport::new(HttpOptions {
         url: "http://127.0.0.1:9/mcp".into(),
         ..HttpOptions::default()
@@ -378,7 +378,7 @@ async fn unreachable_http_server() {
     assert_eq!(error.to_string(), "fetch failed");
 }
 
-/// The test server over HTTP with `flags`, and its URL; killed when dropped.
+/// The test server over HTTP with `flags`, killed when dropped, and its URL.
 async fn spawn_http(flags: &[&str]) -> (tokio::process::Child, String) {
     let mut server = tokio::process::Command::new("python3")
         .arg(server_script())
@@ -423,8 +423,8 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// A prompt that opens the authorization URL like a browser and records it;
-/// nobody pastes a redirect URL.
+/// A prompt that opens the authorization URL like a browser and records it.
+/// Nobody pastes a redirect URL.
 fn browser(opened: Arc<Mutex<Vec<String>>>) -> SignInPrompt {
     SignInPrompt {
         show_authorization_url: Box::new(move |url: &str| {
@@ -452,7 +452,8 @@ fn stored_state(agent_dir: &Path, url: &str) -> serde_json::Map<String, Value> {
 }
 
 /// `mcp-auth.json` with the values that differ between sign-ins masked: the
-/// server and callback URLs, `state`, the PKCE verifier and the expiry.
+/// server and callback URLs, `state`, the Proof Key for Code Exchange (PKCE)
+/// verifier and the expiry.
 fn masked_state_file(text: &str, client_name: &str) -> String {
     let mut states: serde_json::Map<String, Value> = serde_json::from_str(text).unwrap();
     let key = states.keys().next().unwrap().clone();

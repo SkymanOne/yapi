@@ -107,8 +107,9 @@ struct LayoutLine {
 }
 
 /// Wraps `line` into chunks of at most `max_width` columns, as byte ranges,
-/// breaking after whitespace or beside CJK characters where possible. Paste
-/// markers with an id in `valid_ids` stay whole unless wider than a line.
+/// breaking after whitespace or beside CJK (Chinese, Japanese and Korean)
+/// characters where possible. Paste markers with an id in `valid_ids` stay
+/// whole unless wider than a line.
 #[allow(
     clippy::single_range_in_vec_init,
     reason = "a line that fits is one chunk"
@@ -146,8 +147,8 @@ pub(crate) fn word_wrap_line(line: &str, max_width: usize, valid_ids: &[u32]) ->
             wrap_at = None;
         }
         // A paste marker wider than a line breaks into its characters. pi
-        // recurses for one wide character too and never returns; yapi gives it
-        // a chunk of its own.
+        // recurses for one wide character too and never returns, while yapi
+        // gives it a chunk of its own.
         if width > max_width && marker {
             let sub = word_wrap_line(seg.text, max_width, &[]);
             for chunk in &sub[..sub.len() - 1] {
@@ -271,7 +272,7 @@ pub struct Editor {
     /// A request whose suggestions the provider is still working on: its
     /// `force` and explicit-Tab flags.
     autocomplete_pending: Option<(bool, bool)>,
-    /// Whether keys of one terminal read are being handled; see
+    /// Whether keys of one terminal read are being handled. See
     /// [`Editor::begin_input_batch`].
     in_input_batch: bool,
     /// The last autocomplete request of the current input batch.
@@ -288,8 +289,8 @@ pub struct Editor {
     last_action: Option<LastAction>,
     jump: Option<Jump>,
     preferred_visual_col: Option<usize>,
-    /// Where a vertical move landed before it snapped to a grapheme's start,
-    /// in UTF-16 units of the line as pi counts, which may fall inside a
+    /// The column a vertical move reached before it snapped to a grapheme's
+    /// start, in UTF-16 units of the line as pi counts, which may fall inside a
     /// surrogate pair.
     snapped_from_cursor_col: Option<usize>,
     undo_stack: Vec<Snapshot>,
@@ -412,8 +413,9 @@ impl Editor {
 
     /// Starts handling the keys of one terminal read. Until
     /// [`Editor::end_input_batch`], autocomplete requests wait and keys see
-    /// the list as it was, as in pi, whose suggestions arrive only after the
-    /// keys of a read are handled: Enter right after typed text submits it.
+    /// the list as it was. This matches pi, whose suggestions arrive only
+    /// after the keys of a read are handled, so Enter right after typed text
+    /// submits it.
     pub fn begin_input_batch(&mut self) {
         self.in_input_batch = true;
     }
@@ -1398,7 +1400,8 @@ impl Editor {
                 }
                 Jump::Backward => {
                     let to = if current {
-                        // The cursor's character is skipped; a match may start just before it.
+                        // The cursor's character is skipped, but a match may
+                        // start right before it.
                         let col = line.floor_char_boundary(self.state.cursor_col);
                         let start = line[..col].chars().last().map_or(0, |c| col - c.len_utf8());
                         (start + target.len()).min(line.len())
@@ -1518,7 +1521,7 @@ impl Editor {
         let column = self.vertical_move_column(current_col, source_max, target_max);
         self.state.cursor_line = target.logical;
         let line = self.state.lines[target.logical].clone();
-        // pi's cursor is a UTF-16 index, which may land inside a surrogate
+        // pi's cursor is a UTF-16 index, which may fall inside a surrogate
         // pair until it snaps to the grapheme's start below.
         let target_units =
             (utf16_index(&line, target.start) + column).min(yapi_types::js::len(&line));

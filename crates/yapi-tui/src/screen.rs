@@ -292,7 +292,7 @@ impl MainScreen {
         let mut top = prev_top;
         let mut hardware_row = self.hardware_cursor_row;
 
-        // The first frame draws without clearing; a resize, or a shrink with
+        // The first frame draws without clearing. A resize, or a shrink with
         // `clearOnShrink`, redraws everything.
         let first_frame = self.previous.is_empty() && !width_changed && !height_changed;
         if first_frame
@@ -560,16 +560,16 @@ pub(crate) fn shrink_stack(sizes: &[usize], minimums: &[usize], available: usize
 /// One part of a stack: its rows and its minimum height.
 pub type StackPart = (Vec<StyledLine>, usize);
 
-/// Where a stack part landed: its first row in the stack, its first row
+/// Where a stack part is placed: its first row in the stack, its first row
 /// shown and how many of its rows show.
 pub type Placement = (usize, usize, usize);
 
 /// Lays out a vertical stack of `parts`, each its rows and minimum height,
 /// in `available` rows, as pi-tui's layout does: a part shorter than its
-/// minimum gets blank rows below it, parts shrink by [`shrink_stack`], and
-/// a cut part keeps its top rows unless the cursor,
-/// given as part, row and column, would fall below them. Returns the rows,
-/// the cursor within them and where each part landed.
+/// minimum gets blank rows below it, parts shrink by `shrink_stack`, and a
+/// cut part keeps its top rows unless the cursor, given as part, row and
+/// column, would fall below them. Returns the rows, the cursor within them
+/// and where each part is placed.
 pub fn fit_stack(
     parts: Vec<StackPart>,
     cursor: Option<(usize, usize, usize)>,
@@ -604,7 +604,8 @@ pub fn fit_stack(
         placements.push((out.len(), offset, size));
         out.extend(rows.drain(offset..offset + size));
     }
-    // Minimums can exceed the room; the stack's rectangle clips its bottom.
+    // Minimums can exceed the room, and the stack's rectangle clips its
+    // bottom.
     out.truncate(available);
     (
         out,
@@ -620,7 +621,7 @@ pub struct AltScreen {
     previous_size: (usize, usize),
     /// The cursor bytes of the last frame.
     previous_cursor: String,
-    /// First transcript row shown; `None` follows the end.
+    /// First transcript row shown. `None` follows the end.
     scroll_top: Option<usize>,
     viewport: usize,
     transcript_len: usize,
@@ -637,7 +638,7 @@ pub struct AltScreen {
     pub kitty_images: bool,
     /// Kitty images the terminal holds, the least recently shown first.
     uploaded: IndexMap<u32, Upload>,
-    /// When the transcript's scrollbar shows; pi's `fullscreenScrollbar`.
+    /// When the transcript's scrollbar shows (pi's `fullscreenScrollbar`).
     pub scrollbar: Scrollbar,
     /// Style of the scrollbar's track.
     pub scrollbar_track: Style,
@@ -645,11 +646,11 @@ pub struct AltScreen {
     pub scrollbar_thumb: Style,
     /// Until when an `auto` scrollbar shows after scrolling.
     scrollbar_until: Option<Instant>,
-    /// Copy a selection when the mouse button is released; pi's
-    /// `fullscreenCopyOnSelect`.
+    /// Copy a selection when the mouse button is released (pi's
+    /// `fullscreenCopyOnSelect`).
     pub copy_on_select: bool,
-    /// Rows a wheel event scrolls, or `None` for `auto`; pi's
-    /// `fullscreenWheelScrollLines`.
+    /// Rows a wheel event scrolls, or `None` for `auto` (pi's
+    /// `fullscreenWheelScrollLines`).
     pub wheel_lines: Option<usize>,
     /// The wheel's acceleration in `auto` mode.
     pub wheel: WheelScroll,
@@ -899,7 +900,7 @@ impl AltScreen {
     }
 
     /// Shows transcript row `row` at the top, as far as the transcript
-    /// allows; the end resumes following.
+    /// allows. The end resumes following.
     pub fn scroll_to(&mut self, row: usize) {
         let max = self.max_scroll();
         let next = row.min(max);
@@ -1271,8 +1272,8 @@ mod tests {
             let rest = &frame[start..];
             rest[..rest.find("\x1b[").unwrap_or(rest.len())].to_owned()
         };
-        // `always`: four rows over ten; thumb of round(16 / 10) = 2 rows at
-        // the end, since the view follows the end.
+        // `always`: four rows over ten, with a thumb of round(16 / 10) = 2
+        // rows at the end, since the view follows the end.
         let mut screen = AltScreen::new();
         screen.scrollbar = Scrollbar::Always;
         let frame = screen.frame(&transcript, &dock, None, 10, 5);

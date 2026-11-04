@@ -129,7 +129,7 @@ pub(crate) fn job(
     (job, result)
 }
 
-/// Queues `operation` on `jobs`, the queue of the call that started it; the
+/// Queues `operation` on `jobs`, the queue of the call that started it. The
 /// returned future gives its result. Once that call has ended, `operation`
 /// runs where the returned future is polled.
 pub(crate) fn queue(
@@ -187,7 +187,7 @@ pub(crate) async fn timer(payload: Value) -> Result<Value, String> {
 
 /// Reads `pipe` to its end, or until the pipes sharing `sent` have sent more
 /// than `max` bytes together, which `overflow` hears of. Keeps the bytes
-/// within `max`; empty without a pipe.
+/// within `max`, and returns none without a pipe.
 async fn read_all(
     pipe: Option<impl tokio::io::AsyncRead + Unpin>,
     max: u64,
@@ -416,7 +416,7 @@ impl Streams {
     }
 
     /// Writes base64 `{id, data}` to process `id`'s standard input once the
-    /// chunk before it has been taken; whether it is still open.
+    /// chunk before it has been taken. Returns whether it is still open.
     pub(crate) fn write(&self, payload: &Value) -> BoxFuture<'static, Result<Value, String>> {
         let data = STANDARD.decode(payload["data"].as_str().unwrap_or_default());
         let stdin = self.with(payload, |running| running.stdin.clone());
@@ -434,8 +434,8 @@ impl Streams {
         self.with(payload, |running| running.stdin = None);
     }
 
-    /// Sends `{id, signal}`, a signal name or number, to process `id`;
-    /// whether it was still running.
+    /// Sends `{id, signal}`, a signal name or number, to process `id`.
+    /// Returns whether it was still running.
     pub(crate) fn kill(&self, payload: &Value) -> Value {
         let signal = payload["signal"].clone();
         json!(self.with(payload, |running| running.signals.send(signal).is_ok()))
@@ -457,7 +457,8 @@ impl Streams {
         id
     }
 
-    /// Runs `f` on process `{id}`; false when there is none.
+    /// Runs `f` on process `{id}`, or returns the default, such as `false`
+    /// or `None`, when there is none.
     fn with<T: Default>(&self, payload: &Value, f: impl FnOnce(&mut Running) -> T) -> T {
         lock(&self.running)
             .get_mut(&process_id(payload))
@@ -466,7 +467,8 @@ impl Streams {
     }
 }
 
-/// The process `{id}` names; none when it names none.
+/// The process `{id}` names, or `u64::MAX`, which no process has, when it
+/// names none.
 pub(crate) fn process_id(payload: &Value) -> u64 {
     payload["id"].as_u64().unwrap_or(u64::MAX)
 }
@@ -541,7 +543,7 @@ fn send_signal(child: &mut tokio::process::Child, signal: &Value) {
     }
 }
 
-/// Sends `{url, method, headers, body | bodyBase64}`; answers `{status,
+/// Sends `{url, method, headers, body | bodyBase64}` and answers `{status,
 /// statusText, headers, bodyBase64}` once the whole body has arrived.
 pub(crate) async fn fetch(payload: Value) -> Result<Value, String> {
     let response = send(&payload).await?;
@@ -554,8 +556,8 @@ pub(crate) async fn fetch(payload: Value) -> Result<Value, String> {
     Ok(answer)
 }
 
-/// Sends `{url, method, headers, body | bodyBase64}`; the response once its
-/// headers arrive.
+/// Sends `{url, method, headers, body | bodyBase64}`, and returns the
+/// response once its headers arrive.
 async fn send(payload: &Value) -> Result<reqwest::Response, String> {
     let url = payload["url"].as_str().unwrap_or_default();
     let method = payload["method"].as_str().unwrap_or("GET");
@@ -625,8 +627,8 @@ async fn read_body(
 }
 
 /// Resolves `{hostname}` with the system resolver, as Node's `dns.lookup`
-/// does; answers `{addresses: [{address, family}]}` in the resolver's order,
-/// or `{error}` when the name does not resolve.
+/// does, and answers `{addresses: [{address, family}]}` in the resolver's
+/// order, or `{error}` when the name does not resolve.
 pub(crate) async fn dns_lookup(payload: Value) -> Result<Value, String> {
     let hostname = payload["hostname"].as_str().unwrap_or_default().to_owned();
     let resolved = tokio::task::spawn_blocking(move || {
@@ -684,7 +686,7 @@ pub fn reset_signal_dispositions() {
         // one to `action`, which is read only when that succeeded. Replacing
         // SIG_IGN with SIG_DFL installs no handler. The check and the reset
         // are not atomic, so a handler another thread installed in between
-        // would be lost; the caller runs this before any thread exists.
+        // would be lost. The caller runs this before any thread exists.
         unsafe {
             if libc::sigaction(signal, std::ptr::null(), action.as_mut_ptr()) == 0
                 && action.assume_init().sa_sigaction == libc::SIG_IGN
@@ -702,7 +704,7 @@ fn spawn_error(syscall: &str, command: &str, err: &std::io::Error) -> String {
     format!("{syscall} {command} {code}")
 }
 
-/// The signals Node names, as its `signo_string` does; others have no name.
+/// The signals Node names, as its `signo_string` does. Others have no name.
 #[cfg(unix)]
 const SIGNALS: &[(rustix::process::Signal, &str)] = {
     use rustix::process::Signal;
@@ -783,7 +785,7 @@ mod tests {
     }
 
     /// Output beyond a pipe's buffer must not stall a process until its
-    /// timeout kills it; a timeout stops it with SIGTERM, as in Node.
+    /// timeout kills it. A timeout stops it with SIGTERM, as in Node.
     #[test]
     fn exec_sync_reads_output() {
         let run = |script: &str, timeout: u64| {

@@ -45,7 +45,7 @@ pub struct Startup {
     pub messages: Vec<String>,
 }
 
-/// Reads piped stdin when stdin is not a terminal; empty input is no input.
+/// Reads piped stdin when stdin is not a terminal. Empty input is no input.
 pub fn read_piped_stdin() -> Option<String> {
     if std::io::stdin().is_terminal() {
         return None;
@@ -168,8 +168,8 @@ fn resolve_session(
     }
 }
 
-/// Asks a yes/no question on the terminal; anything but `y` is no. Asks on
-/// stderr, as stdout carries print, JSON and RPC output.
+/// Asks a yes/no question on the terminal, where anything but `y` is no. Asks
+/// on stderr, as stdout belongs to print, JSON and RPC output.
 fn confirm(question: &str) -> bool {
     use std::io::{BufRead, Write};
     let mut out = std::io::stderr();
@@ -264,8 +264,8 @@ fn tool_names(args: &Args, settings: &SettingsManager) -> Vec<String> {
     names
 }
 
-/// The session directory from `--session-dir`, the environment or settings;
-/// an empty value is unset.
+/// The session directory from `--session-dir`, the environment or settings.
+/// An empty value is unset.
 fn custom_session_dir(args: &Args, settings: &SettingsManager, cwd: &Path) -> Option<PathBuf> {
     let set = |dir: &&str| !dir.is_empty();
     let env_dir = std::env::var(SESSION_DIR_ENV).ok();
@@ -353,12 +353,12 @@ pub fn resume_context(args: &Args, run: &RunSettings) -> (Option<PathBuf>, Optio
     (custom, run.settings.settings().theme.clone())
 }
 
-/// The user cancelled a startup prompt; the run ends without an error.
+/// The user cancelled a startup prompt, and the run ends without an error.
 #[derive(Debug, thiserror::Error)]
 #[error("")]
 pub struct Cancelled;
 
-/// Builds the session for a run. Errors are user-facing messages; a
+/// Builds the session for a run. Errors are user-facing messages, and a
 /// [`Cancelled`] error ends the run quietly. `interactive` allows prompts.
 pub fn start(
     args: &mut Args,
@@ -376,7 +376,7 @@ pub fn start(
     let custom_dir = custom_session_dir(args, &settings, &cwd);
     let mut session = open_session(args, &cwd, &agent_dir, custom_dir.as_deref())?;
     // pi's missing-cwd check: the interactive mode offers to continue in the
-    // current directory; the other modes refuse the session.
+    // current directory, and the other modes refuse the session.
     if let Some(file) = session.file().map(Path::to_path_buf)
         && !session.cwd().as_os_str().is_empty()
         && !session.cwd().exists()
@@ -502,12 +502,12 @@ pub async fn sync_runtime_key(args: &Args, session: &AgentSession) {
 /// Builds a session around `session` in its working directory, with the
 /// files of that directory's project ([`project_dir`]): settings, model,
 /// thinking level, tools and prompt resources follow the arguments.
-/// `preloaded` are the settings of that project and whether it is trusted,
-/// when already loaded, those `extensions` were found with, so their
-/// resolved resources serve the session too. `warn` reports model problems
-/// on stderr, which only the first session may do. Returns pi's
-/// `modelFallbackMessage` too: why the session's model could not be
-/// restored, or that no model is available.
+/// `preloaded` holds that project's settings and whether it is trusted,
+/// when they are already loaded. They are the settings `extensions` were
+/// found with, so the extensions' resolved resources serve the session too.
+/// `warn` reports model problems on stderr, which only the first session may
+/// do. Returns pi's `modelFallbackMessage` too: why the session's model could
+/// not be restored, or that no model is available.
 fn build(
     args: &Args,
     session: SessionManager,
@@ -564,7 +564,7 @@ fn build(
     let context = session.build_context();
     let existing = !context.messages.is_empty();
     let settings_view = settings.settings();
-    // The scope from `--models` or `enabledModels`; without `--model`, a new
+    // The scope from `--models` or `enabledModels`. Without `--model`, a new
     // session starts on the saved default if it is in scope, else on the
     // first scoped model.
     let patterns = args
@@ -681,8 +681,8 @@ fn build(
             .collect()
     };
     // pi's sources: settings entries are `local`, resolved against their
-    // settings file's directory; command-line paths are `cli`, relative to
-    // the working directory; package resources carry their package.
+    // settings file's directory. Command-line paths are `cli`, relative to
+    // the working directory. Package resources name their package.
     let cli_sources = |paths: &[String]| -> Vec<SourceInfo> {
         cli_paths(paths)
             .iter()
@@ -691,7 +691,7 @@ fn build(
     };
     // pi's order for each kind: `-e` packages' resources, then what settings,
     // packages and discovery enable (unless `--no-skills` and the like), then
-    // command-line paths; a path counts once.
+    // command-line paths. A path counts once.
     let fresh;
     let resolved = if resolved_with_extensions {
         &extensions.resolved
@@ -750,7 +750,7 @@ fn build(
     let (skills, skill_diagnostics) = yapi_core::resources::skills_from(&skill_sources);
     let (templates, mut template_diagnostics) =
         yapi_core::resources::templates_from(&template_sources);
-    // pi reports the command line's missing template paths; skill paths are
+    // pi reports the command line's missing template paths. Skill paths are
     // reported as they load.
     for path in cli_paths(&args.prompt_templates) {
         if !path.exists()
@@ -844,7 +844,7 @@ pub fn models(
     warn: bool,
 ) -> (ModelRegistry, Apis) {
     let mut registry = ModelRegistry::load(&agent_dir());
-    // pi's built-in llama.cpp extension provides its provider.
+    // pi's built-in llama.cpp extension registers its provider.
     if builtin_enabled(yapi_core::llama::NAME, args, &extension_settings(settings)) {
         registry.enable_llama();
     }
@@ -872,9 +872,9 @@ const BUILTIN_PREFIX: &str = "builtin:";
 pub const BUILTINS: [&str; 4] = ["llama.cpp", "codemode", "tool-search", "mcp"];
 
 /// Whether built-in extension `name` runs, as in pi: `-e builtin:<name>` loads
-/// it; otherwise it runs unless `--no-extensions` or the `extensions` setting
+/// it. Otherwise it runs unless `--no-extensions` or the `extensions` setting
 /// excludes it. In the user's setting `-builtin:<name>` wins over
-/// `+builtin:<name>`, which wins over a `!` pattern; in the project's, the last
+/// `+builtin:<name>`, which wins over a `!` pattern. In the project's, the last
 /// matching entry decides and overrides the user's.
 fn builtin_enabled(name: &str, args: &Args, settings: &[Vec<String>; 2]) -> bool {
     let path = format!("{BUILTIN_PREFIX}{name}");
@@ -884,7 +884,7 @@ fn builtin_enabled(name: &str, args: &Args, settings: &[Vec<String>; 2]) -> bool
     if args.no_extensions {
         return false;
     }
-    // `+` and `-` name a path exactly; `!` takes a glob.
+    // `+` and `-` name a path exactly, and `!` takes a glob.
     let matches = |entry: &str| match entry.split_at(entry.chars().next().map_or(0, char::len_utf8))
     {
         ("+" | "-", target) => target == path,
@@ -968,8 +968,8 @@ pub async fn load_extensions(
 /// settings, as pi's runtime loads them for each session. Missing packages
 /// are installed, and those that fail to are listed with the extensions that
 /// failed to load. `previous`, the extensions of the session before in the
-/// same directory, keeps the modules it imported, as pi's module cache does;
-/// without it every file is imported. The command line's flags apply to the
+/// same directory, keeps the modules it imported, as pi's module cache does.
+/// Without it, every file is imported. The command line's flags apply to the
 /// extensions that still register them.
 async fn session_extensions(
     args: &Args,
@@ -1000,7 +1000,7 @@ async fn session_extensions(
     Ok((extensions, run))
 }
 
-/// `path` as one file, whichever way it is named; itself when it is not a
+/// `path` as one file, whichever way it is named, or itself when it is not a
 /// file.
 fn canonical(path: &str) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
@@ -1133,7 +1133,7 @@ fn serves(previous: &Group, next: &Group, all: &[Group]) -> bool {
 /// command line's flag values, chest's each with its manifest's grants,
 /// event policy and module root. The hosts of `previous` that serve the
 /// same group run their factories again instead, keeping the modules they
-/// imported. Returns the problems with the flags too; an error means no
+/// imported. Returns the problems with the flags too. An error means no
 /// extension could start.
 async fn start_extensions(
     args: &Args,
@@ -1153,7 +1153,7 @@ async fn start_extensions(
         yapi_core::packages::npm::config(),
     );
     let offline = yapi_core::tools::external::offline();
-    // Installs missing packages; what they provide comes from pi's resolver.
+    // Installs missing packages. What they provide comes from pi's resolver.
     // Unlike pi, a failure does not stop the others (docs/compat.md).
     if !offline {
         let _ = packages.install_missing(&mut install_failed).await;
@@ -1212,7 +1212,7 @@ async fn start_extensions(
     }
     // pi's precedence: the project's settings entries and discovered
     // extensions, then the user's, then packages. `--no-extensions` leaves
-    // them out; packages still provide their skills, prompts and themes.
+    // them out, but packages still provide their skills, prompts and themes.
     let resolved = yapi_core::packages::resolve_resources(
         packages.settings().project_dir(),
         &agent_dir,

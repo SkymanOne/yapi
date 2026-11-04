@@ -23,7 +23,8 @@ static ANSI: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
-/// pi's `stripAnsi`: removes OSC and CSI sequences.
+/// pi's `stripAnsi`: removes OSC (operating system command) and CSI (control
+/// sequence introducer) sequences.
 pub fn strip_ansi(text: &str) -> String {
     if !text.contains(['\x1b', '\u{9b}']) {
         return text.to_owned();

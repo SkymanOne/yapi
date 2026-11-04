@@ -15,7 +15,8 @@ use crate::stream::{EventStream, Provider, Request, StreamEvent, new_output, now
 pub struct Response {
     /// Content blocks, streamed in order.
     pub content: Vec<ContentBlock>,
-    /// Final stop reason; `toolUse` when the content has tool calls, else `stop`.
+    /// Final stop reason. `None` means `toolUse` when the content has tool
+    /// calls, else `stop`.
     pub stop_reason: Option<StopReason>,
     /// Error message for `error` and `aborted`.
     pub error_message: Option<String>,

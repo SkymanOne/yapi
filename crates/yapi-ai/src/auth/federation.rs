@@ -1,5 +1,6 @@
-//! Anthropic workload identity federation: exchanges an external OIDC token
-//! for a short-lived Anthropic access token and caches it per configuration.
+//! Anthropic workload identity federation: exchanges an external OpenID
+//! Connect (OIDC) token for a short-lived Anthropic access token and caches
+//! it per configuration.
 //!
 //! Port of the Anthropic SDK's `oidcFederationProvider` and `TokenCache`
 //! (`@anthropic-ai/sdk` 0.124.0), which pi `v1.0.0` uses when the
@@ -16,7 +17,7 @@ use crate::credentials::{ProviderEnv, provider_env_value};
 
 const GRANT_TYPE_JWT_BEARER: &str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const TOKEN_ENDPOINT: &str = "/v1/oauth/token";
-/// The `anthropic-beta` value requests with a federated bearer token carry.
+/// The `anthropic-beta` value that requests with a federated bearer token send.
 pub const OAUTH_API_BETA: &str = "oauth-2025-04-20";
 const FEDERATION_BETA: &str = "oidc-federation-2026-04-01";
 const SDK_VERSION: &str = "0.124.0";
@@ -70,8 +71,8 @@ fn now_seconds() -> u64 {
     super::now_ms() / 1000
 }
 
-/// An access token for `config`: the cached one while it has more than 30
-/// seconds left, else a fresh exchange. `force` skips the cache, as after a
+/// An access token for `config`: the cached one while it has more than 30s
+/// left, else a fresh exchange. `force` skips the cache, as after a
 /// 401.
 pub async fn token(
     config: &Config,
@@ -105,7 +106,7 @@ pub fn invalidate(config: &Config) {
     }
 }
 
-/// The SDK's `requireSecureTokenEndpoint`: the assertion travels only over
+/// The SDK's `requireSecureTokenEndpoint`: the assertion is sent only over
 /// HTTPS, or plain HTTP to a loopback host.
 fn require_secure(base_url: &str) -> Result<(), String> {
     let url = url::Url::parse(base_url)
@@ -128,7 +129,7 @@ fn require_secure(base_url: &str) -> Result<(), String> {
 }
 
 /// The SDK's `redactSensitive`: JSON error bodies keep only RFC 6749 error
-/// fields; other text is truncated.
+/// fields. Other text is truncated.
 fn redact(body: &str) -> String {
     match serde_json::from_str::<Value>(body) {
         Ok(Value::Object(fields)) => {

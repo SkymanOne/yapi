@@ -125,7 +125,7 @@ pub fn document(tool: &ToolInfo) -> String {
         .join(" ")
 }
 
-/// Okapi BM25 (k1 1.2, b 0.75) over `documents`; the best `limit` names with a
+/// Okapi BM25 (k1 1.2, b 0.75) over `documents`: the best `limit` names with a
 /// positive score. Ties keep document order.
 pub fn rank(query: &str, documents: &[(String, String)], limit: usize) -> Vec<(String, f64)> {
     let mut terms = Vec::new();

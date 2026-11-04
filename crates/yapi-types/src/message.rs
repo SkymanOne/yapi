@@ -2,7 +2,7 @@
 //!
 //! Mirrors `packages/ai/src/types.ts` and `packages/coding-agent/src/core/messages.ts`
 //! in pi `v1.0.0`. Fields are declared in the order pi's providers and agent loop
-//! build them; see the crate docs for why existing files are not re-serialized from
+//! build them. See the crate docs for why existing files are not re-serialized from
 //! these types.
 #![allow(
     missing_docs,
@@ -25,21 +25,21 @@ pub enum Message {
     ToolResult(ToolResultMessage),
     /// Output of a user `!command`.
     BashExecution(BashExecutionMessage),
-    /// Extension message; in message entries only for sessions migrated from v2.
+    /// Extension message, in message entries only for sessions migrated from v2.
     Custom(CustomMessage),
-    /// Built from a `branch_summary` entry when assembling context; not stored.
+    /// Built from a `branch_summary` entry when assembling context, and not stored.
     BranchSummary(BranchSummaryMessage),
-    /// Built from a `compaction` entry when assembling context; not stored.
+    /// Built from a `compaction` entry when assembling context, and not stored.
     CompactionSummary(CompactionSummaryMessage),
 }
 
 /// System prompt state at one point in the transcript. The first system message is
-/// the prompt; later ones patch it.
+/// the prompt, and later ones patch it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemMessage {
     pub content: Content,
-    /// Named prompt sections in render order; `None` removes a section.
+    /// Named prompt sections in render order. `None` removes a section.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sections: Option<IndexMap<String, Option<String>>>,
     /// Unix time in milliseconds.
@@ -109,7 +109,7 @@ pub struct AssistantMessage {
     /// Whether the provider reported an explicit end of turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_turn: Option<bool>,
-    /// pi thinking level the agent loop requested; set last by the loop.
+    /// pi thinking level the agent loop requested, set last by the loop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
 }
@@ -171,7 +171,7 @@ pub struct NestedToolCalls {
 pub struct NestedToolCall {
     pub id: String,
     pub name: String,
-    /// Omitted when over the size limit; `argumentsBytes` then gives the size.
+    /// Omitted when over the size limit, and `argumentsBytes` then gives the size.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arguments: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -254,8 +254,8 @@ pub enum Content {
 }
 
 /// A content block, tagged by `type`. Which kinds a role allows follows pi's types:
-/// assistants use text, thinking and tool calls; users and tool results use text
-/// and images.
+/// assistants use text, thinking and tool calls, while users and tool results use
+/// text and images.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ContentBlock {
@@ -278,10 +278,10 @@ pub struct TextContent {
 #[serde(rename_all = "camelCase")]
 pub struct ThinkingContent {
     pub thinking: String,
-    /// Opaque reasoning replay data; may be empty.
+    /// Opaque reasoning replay data, possibly empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_signature: Option<String>,
-    /// Content redacted by provider safety filters; the payload is in the signature.
+    /// Content redacted by provider safety filters. The payload is in the signature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redacted: Option<bool>,
 }
@@ -323,7 +323,7 @@ pub struct Usage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
     pub cost: Cost,
-    /// Part of `cacheWrite` with one-hour retention; Anthropic only.
+    /// Part of `cacheWrite` with one-hour retention (Anthropic only).
     #[serde(
         default,
         rename = "cacheWrite1h",
@@ -444,7 +444,7 @@ impl Usage {
 }
 
 impl Content {
-    /// The text blocks joined by `separator`; images and other blocks are skipped.
+    /// The text blocks joined by `separator`. Images and other blocks are skipped.
     pub fn text(&self, separator: &str) -> String {
         match self {
             Content::Text(text) => text.clone(),
@@ -452,7 +452,7 @@ impl Content {
         }
     }
 
-    /// The content as blocks; a string becomes one text block.
+    /// The content as blocks. A string becomes one text block.
     pub fn into_blocks(self) -> Vec<ContentBlock> {
         match self {
             Content::Text(text) => vec![ContentBlock::text(text)],

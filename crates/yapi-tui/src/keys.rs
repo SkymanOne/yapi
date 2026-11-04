@@ -241,8 +241,8 @@ fn digits(text: &str) -> (Option<i64>, &str) {
     (text[..end].parse().ok(), &text[end..])
 }
 
-/// The `[; mod] [: event]` end of a CSI key: its modifier, 1 when absent, and
-/// event; `None` when anything else follows.
+/// The `[; mod] [: event]` end of a CSI (Control Sequence Introducer) key: its
+/// modifier, 1 when absent, and event, or `None` when anything else follows.
 fn mod_event(mut rest: &str) -> Option<(i64, Option<i64>)> {
     let mut modifier = 1;
     if let Some(after) = rest.strip_prefix(';') {
@@ -453,7 +453,7 @@ impl Keys {
         if code == expected_code {
             return true;
         }
-        // Non-Latin layouts report the PC-101 key as the base layout key; trust it
+        // Non-Latin layouts report the PC-101 key as the base layout key. Trust it
         // only when the reported key is not itself a Latin letter or symbol.
         parsed.base_layout == Some(expected) && !(97..=122).contains(&code) && !is_symbol_code(code)
     }
@@ -779,7 +779,7 @@ fn format_parsed(code: i64, modifier: u32, base_layout: Option<i64>) -> Option<S
 }
 
 /// The printable text of a Kitty CSI-u or modifyOtherKeys sequence for a plain
-/// or shifted key; `None` for other input.
+/// or shifted key, or `None` for other input.
 pub fn decode_printable(data: &str) -> Option<String> {
     if let Some(kitty) = parse_csi_u(data) {
         let allowed = SHIFT | LOCK_MASK;

@@ -20,14 +20,14 @@ const CHARS_PER_TOKEN: usize = 4;
 pub const DEFAULT_INLINE_BUDGET: u64 = 3000;
 
 /// TypeScript types for MCP results, which `CallToolResult<T>` declarations
-/// refer to; pi's `MCP_TYPESCRIPT_PREAMBLE`.
+/// refer to (pi's `MCP_TYPESCRIPT_PREAMBLE`).
 const MCP_TYPES: &str = include_str!("mcp-types.ts");
 
 const INTRO: &str = "Run JavaScript that calls other tools. The input is raw JavaScript (not JSON, no code fence), run as an async function body in a QuickJS sandbox: top-level `await` and `return` work. No Node, file system, network, or timers.
 - `await tools.<name>({ ...args })` resolves to a string, or an object if the tool's declaration says so, and rejects with an Error on failure. Calls still running when the script ends are cancelled.
 - Optional first line: `// @options: {\"max_output_tokens\": 10000, \"timeout_ms\": 60000}`";
 
-/// The globals block; [`description`] adds the `models` line.
+/// The globals block. [`description`] adds the `models` line.
 const GLOBALS: &str = "Globals:
 - `text(value)`, `image(dataUrlOrImageBlock)`, `console.log(...)`, and top-level `return` add output; `exit()` ends the script.
 - `store(key, value)` and `load(key)` keep JSON values across codemode calls.
@@ -42,13 +42,13 @@ pub struct Declaration {
     pub description: String,
     /// Its argument schema.
     pub input: Value,
-    /// What a call resolves to; `{"type": "string"}` for text output.
+    /// What a call resolves to, `{"type": "string"}` for text output.
     pub output: Value,
     /// Its group.
     pub namespace: Option<Namespace>,
 }
 
-/// The identifier a script uses for tool `name`; pi's `toCodemodeIdentifier`.
+/// The identifier a script uses for tool `name` (pi's `toCodemodeIdentifier`).
 pub fn identifier(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars() {
@@ -298,7 +298,7 @@ impl Schemas<'_> {
     }
 }
 
-/// The TypeScript type of JSON Schema `schema`; pi's `schemaToType`. Types
+/// The TypeScript type of JSON Schema `schema` (pi's `schemaToType`). Types
 /// longer than `max_chars` become `unknown`.
 pub fn schema_to_type(schema: &Value, max_chars: Option<usize>) -> String {
     let out = Schemas {
@@ -314,8 +314,8 @@ pub fn schema_to_type(schema: &Value, max_chars: Option<usize>) -> String {
 }
 
 /// The `structuredContent` schema of an MCP `CallToolResult` output schema,
-/// `true` when it declares none, or `None` when the schema is not one; pi's
-/// `mcpStructuredContentSchema`.
+/// `true` when it declares none, or `None` when the schema is not one (pi's
+/// `mcpStructuredContentSchema`).
 pub fn mcp_structured_content(schema: &Value) -> Option<Value> {
     let properties = schema.get("properties")?.as_object()?;
     let kind = |key: &str| properties.get(key)?.as_object()?.get("type")?.as_str();
@@ -338,7 +338,7 @@ pub fn mcp_structured_content(schema: &Value) -> Option<Value> {
     }
 }
 
-/// The type a call resolves to; pi's `renderToolOutputType`.
+/// The type a call resolves to (pi's `renderToolOutputType`).
 pub fn output_type(schema: &Value) -> String {
     if let Some(structured) = mcp_structured_content(schema) {
         let kind = schema_to_type(&structured, None);
@@ -351,7 +351,7 @@ pub fn output_type(schema: &Value) -> String {
     schema_to_type(schema, None)
 }
 
-/// The tool's description and declaration; pi's `renderToolSample`.
+/// The tool's description and declaration (pi's `renderToolSample`).
 pub fn sample(declaration: &Declaration) -> String {
     let input = schema_to_type(&declaration.input, Some(INPUT_SCHEMA_MAX_CHARS));
     format!(
@@ -385,7 +385,7 @@ struct Group {
 
 /// The sections that fit `budget`: in each round every group places its
 /// cheapest remaining tool, and a group whose next tool does not fit drops
-/// out; pi's `selectCatalog`.
+/// out (pi's `selectCatalog`).
 fn select(groups: &[Group], budget: Option<u64>) -> HashSet<String> {
     let Some(budget) = budget else {
         return groups
@@ -422,7 +422,7 @@ fn select(groups: &[Group], budget: Option<u64>) -> HashSet<String> {
 }
 
 /// The codemode tool's description for `listed` tools, of which `deferred`
-/// ones are callable but never listed; pi's `createCodemodeDescription`.
+/// ones are callable but never listed (pi's `createCodemodeDescription`).
 pub fn description(
     listed: &[Declaration],
     deferred: &HashSet<String>,
@@ -519,7 +519,7 @@ pub fn description(
     sections.join("\n\n")
 }
 
-/// What a script call resolves to, in one line; pi's `describeOutput`.
+/// What a script call resolves to, in one line (pi's `describeOutput`).
 fn describe_output(schema: &Value) -> String {
     let kind = output_type(schema);
     if kind == "string" {
@@ -559,8 +559,8 @@ fn describe_output(schema: &Value) -> String {
     format!("`{lead}{collapsed}{trail}`")
 }
 
-/// A declared tool's description followed by how scripts call it; pi's
-/// `describeScriptCall`.
+/// A declared tool's description followed by how scripts call it (pi's
+/// `describeScriptCall`).
 pub fn script_call(declaration: &Declaration) -> String {
     format!(
         "{}\n\nCodemode: `tools.{}(args)` resolves to {}.",

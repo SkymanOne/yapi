@@ -61,7 +61,7 @@ fn menu_list(
 }
 
 impl McpManager {
-    /// The manager showing `screen`; `None` for [`McpScreen::Close`].
+    /// The manager showing `screen`, or `None` for [`McpScreen::Close`].
     pub fn new(screen: McpScreen) -> Option<McpManager> {
         Some(match screen {
             McpScreen::Menu(menus, reply) => McpManager::Menu(menus, None, Some(reply)),

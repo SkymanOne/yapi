@@ -86,7 +86,7 @@ pub struct Scope<'a> {
 
 /// Signs a request: adds `x-amz-date`, `x-amz-content-sha256` and the
 /// session token to `headers`, then returns the `authorization` value.
-/// `path` is the request path as sent; `query` is the canonical query
+/// `path` is the request path as sent, and `query` is the canonical query
 /// string, empty for none.
 pub fn sign(
     method: &str,

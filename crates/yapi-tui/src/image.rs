@@ -2,7 +2,7 @@
 //!
 //! Ports of `terminal-image.ts` and `components/image.ts` in pi-tui `v1.0.0`.
 //! An image's first or last row holds the escape sequence that draws it as
-//! raw text, which [`is_image_line`] recognizes; code that measures or edits
+//! raw text, which [`is_image_line`] recognizes. Code that measures or edits
 //! rows leaves those rows as they are, as pi-tui does.
 
 use std::sync::{LazyLock, Mutex, PoisonError};
@@ -186,7 +186,7 @@ pub fn crop_kitty(text: &str, hidden: usize, visible: usize) -> String {
 pub struct Placement {
     /// The image's id.
     pub id: u32,
-    /// Which rendering of the image `id` this is; a newer one uploads again.
+    /// Which rendering of the image `id` this is. A newer one uploads again.
     pub generation: u64,
     /// The length of the commands that upload the image.
     pub transmission_bytes: usize,
@@ -321,7 +321,7 @@ fn decoded_len(data: &str) -> usize {
 /// `imageId` options: the rows that draw base64 `data`, an image of `size`
 /// pixels, in cells of `cell` pixels. Kitty takes only PNG data.
 ///
-/// `None` when `data` holds anything but base64, since it reaches the
+/// `None` when `data` contains anything but base64, since it reaches the
 /// terminal raw and could end the sequence to send one of its own.
 pub fn render(
     data: &str,

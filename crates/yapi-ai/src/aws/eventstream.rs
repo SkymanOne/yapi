@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 /// One decoded message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
-    /// String-valued headers, such as `:event-type`; other header types are
+    /// String-valued headers, such as `:event-type`. Other header types are
     /// kept as their text form.
     pub headers: IndexMap<String, String>,
     /// The payload.

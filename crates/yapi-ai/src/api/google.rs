@@ -183,7 +183,7 @@ fn disabled_thinking_config(model: &Model) -> Result<Value, String> {
     Ok(json!({"thinkingLevel": google_level(resolve_level(model, fallback)?)}))
 }
 
-/// Thought signatures are base64 (TYPE_BYTES); others are dropped.
+/// Thought signatures are base64 (TYPE_BYTES). Others are dropped.
 fn valid_signature(signature: Option<&str>) -> Option<&str> {
     signature.filter(|signature| {
         !signature.is_empty() && signature.len() % 4 == 0 && {
@@ -751,7 +751,7 @@ pub(super) async fn run(request: Request, sender: EventSender, flavor: Flavor) {
     }
 }
 
-/// Sends the request; the response once its status is a success.
+/// Sends the request and returns the response once its status is a success.
 async fn connect(
     model: &Model,
     messages: &[Message],

@@ -339,7 +339,7 @@ async fn streams_extension_events() {
         (start.provider.as_str(), start.model.as_str()),
         ("echo", "hello")
     );
-    // Updates carry the usage of the live message as they are forwarded.
+    // Updates include the usage of the live message as they are forwarded.
     let mut updates = Vec::new();
     let done = loop {
         match next(&mut stream).await {
@@ -673,7 +673,7 @@ async fn pi_ai_provider_features() {
     let model = registry.find("native", "n1").unwrap().clone();
     assert_eq!(model.api, "native-api");
 
-    // Its check found a key as the extension loaded; its resolve gives it.
+    // Its check found a key as the extension loaded, and its resolve gives it.
     assert!(registry.has_auth("native"));
     assert_eq!(
         registry.login_status("native").as_deref(),
@@ -707,7 +707,7 @@ async fn pi_ai_provider_features() {
         json!({"ok": {"type": "bool", "probability": 0.5}})
     );
 
-    // Its OAuth sign-in prompts through the interaction; the expired token
+    // Its OAuth sign-in prompts through the interaction. The expired token
     // refreshes and gives the account's credentials.
     assert_eq!(registry.oauth_flow("native").unwrap().name(), "Native SSO");
     let (interaction, mut requests) = Interaction::new(CancellationToken::new());

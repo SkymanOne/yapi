@@ -1,6 +1,6 @@
 //! Answers extensions give for drawing a transcript item, which a frame
-//! never waits for. pi calls such hooks synchronously; yapi's extensions run
-//! on their own threads. A render reads what the item's questions got so
+//! never waits for. pi calls such hooks synchronously, but yapi's extensions
+//! run on their own threads. A render reads what the item's questions got so
 //! far and notes the questions it still has, the app asks them after the
 //! frame, and an answer redraws the item.
 //!
@@ -39,7 +39,7 @@ struct Slots<Q, A> {
 }
 
 struct Slot<Q, A> {
-    /// The latest question answered, and its answer; `None` draws as if
+    /// The latest question answered, and its answer. `None` draws as if
     /// nobody answered.
     answer: Option<(Q, Option<A>)>,
     /// The question out.
@@ -272,8 +272,8 @@ type Answered<A> = (Option<A>, Vec<(String, String)>);
 /// The lines a code renderer drew for `earlier`'s code, standing in for
 /// `code`'s. A block that grew keeps the colors of the lines it had that
 /// are complete and shows the rest in `plain` until the renderer answers.
-/// A renderer that drew as many lines as the code had not is shown as it
-/// drew.
+/// A renderer that drew more or fewer lines than the code had is shown as
+/// it drew.
 fn code_lines(
     code: &str,
     earlier: &CodeQuestion,

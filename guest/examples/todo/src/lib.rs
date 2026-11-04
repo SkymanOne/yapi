@@ -1,10 +1,10 @@
 //! A todo list the model manages through a `todo` tool, and a `/todos`
 //! command that shows it in a component.
 //!
-//! A port of pi's `todo.ts` example. Each tool result carries the whole list
-//! in its details, and the list is rebuilt from the session's current branch
-//! when a session starts or `/tree` moves to another entry, so every branch
-//! keeps its own list.
+//! A port of pi's `todo.ts` example. Each tool result holds the whole list
+//! in its details, and the extension rebuilds the list from the session's
+//! current branch when a session starts or `/tree` moves to another entry,
+//! so every branch keeps its own list.
 
 use std::cell::RefCell;
 
@@ -117,7 +117,7 @@ fn apply(state: &mut State, params: &Value) -> (String, Option<String>) {
     }
 }
 
-/// The list `/todos` shows until Escape closes it; pi's `TodoListComponent`.
+/// pi's `TodoListComponent`: the list `/todos` shows until Escape closes it.
 struct TodoList {
     todos: Vec<Value>,
     done: Done<()>,

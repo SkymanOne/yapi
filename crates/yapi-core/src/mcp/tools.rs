@@ -34,8 +34,8 @@ pub const LIST_MCP_RESOURCES_TOOL: &str = "list_mcp_resources";
 /// Lists resource templates.
 pub const LIST_MCP_RESOURCE_TEMPLATES_TOOL: &str = "list_mcp_resource_templates";
 
-/// `mcp__<server>__<tool>` with everything but `[A-Za-z0-9_]` as `_`; too
-/// long, or taken by another tool, it is cut and given a hash suffix.
+/// `mcp__<server>__<tool>` with everything but `[A-Za-z0-9_]` as `_`. A
+/// name too long, or taken by another tool, is cut and given a hash suffix.
 pub fn tool_name(server: &str, tool: &str, is_taken: impl Fn(&str) -> bool) -> String {
     let name: String = format!("mcp__{server}__{tool}")
         .chars()
@@ -71,7 +71,7 @@ pub fn server_tool_label(tools: &crate::extensions::Tools, name: &str) -> Option
     })
 }
 
-/// Saves `data` to a temp file only the user can read; its path.
+/// Saves `data` to a temp file only the user can read, and returns its path.
 async fn save_temp(data: &[u8], extension: &str) -> Result<PathBuf, String> {
     let path = std::env::temp_dir().join(format!(
         "yapi-mcp-{}{extension}",
@@ -92,7 +92,8 @@ async fn save_temp(data: &[u8], extension: &str) -> Result<PathBuf, String> {
 }
 
 /// Keeps model-facing text within [`OUTPUT_MAX_BYTES`]: longer text becomes
-/// one block in Codex's format with the full text's path; images follow it.
+/// one block in Codex's format with the full text's path, before any
+/// images.
 pub async fn limit_content(content: Vec<ContentBlock>) -> (Vec<ContentBlock>, Option<PathBuf>) {
     let combined = blocks_text(&content, "\n");
     let truncation = truncate_middle(&combined, OUTPUT_MAX_BYTES);

@@ -11,7 +11,7 @@ use ratatui_core::text::{Line, Span};
 /// leak across lines.
 pub(crate) const LINE_RESET: &str = "\x1b[0m";
 
-/// Closes an OSC 8 hyperlink.
+/// Closes an OSC (Operating System Command) 8 hyperlink.
 const LINK_CLOSE: &str = "\x1b]8;;\x1b\\";
 
 /// The URLs of hyperlinks, by id.
@@ -72,10 +72,11 @@ impl Links {
 static LINKS: LazyLock<Mutex<Links>> = LazyLock::new(Mutex::default);
 
 /// `style` with its text linked to `url` by an OSC 8 hyperlink, as pi-tui's
-/// `hyperlink`. The link rides in the style's underline color as an id that
-/// no output writes as a color, so it never changes widths or wrapping.
-/// `style` stays unlinked when `url` holds a control character, which could
-/// end the hyperlink early and reach the terminal as its own sequence.
+/// `hyperlink`. The style keeps the link as an id in its underline color,
+/// which no output writes as a color, so linking never changes widths or
+/// wrapping. `style` stays unlinked when `url` contains a control character,
+/// which could end the hyperlink early and reach the terminal as its own
+/// sequence.
 pub fn link(style: Style, url: &str) -> Style {
     if url.chars().any(char::is_control) {
         return style;
@@ -95,7 +96,8 @@ pub fn link_url(style: Style) -> Option<Arc<str>> {
     links.url(u32::from_be_bytes([0, r, g, b]))
 }
 
-/// The 16 named colors in SGR order: 30-37, then the bright 90-97.
+/// The 16 named colors in SGR (Select Graphic Rendition) order: 30-37, then
+/// the bright 90-97.
 const NAMED: [Color; 16] = [
     Color::Black,
     Color::Red,
@@ -128,8 +130,8 @@ fn color_code(out: &mut String, color: Color, background: bool) {
     };
 }
 
-/// The SGR sequence that sets `style` from a reset state; empty for the
-/// default style.
+/// The SGR sequence that sets `style` from a reset state, or an empty string
+/// for the default style.
 pub fn sgr(style: Style) -> String {
     let mut codes: Vec<String> = Vec::new();
     let modifiers = style.add_modifier;
@@ -197,15 +199,16 @@ pub fn line_to_ansi(line: &Line<'_>) -> String {
     out
 }
 
-/// pi-tui's `CURSOR_MARKER`: an APC sequence a focused component puts where
-/// the terminal cursor belongs.
+/// pi-tui's `CURSOR_MARKER`: an APC (Application Program Command) sequence a
+/// focused component puts where the terminal cursor belongs.
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 
 fn basic_color(index: u16, bright: bool) -> Color {
     NAMED[usize::from(index.min(7)) + 8 * usize::from(bright)]
 }
 
-/// An extended color from `38`/`48` parameters; consumes what it reads.
+/// An extended color from `38`/`48` parameters. Consumes the parameters it
+/// reads.
 fn extended_color(params: &mut std::slice::Iter<'_, u16>) -> Option<Color> {
     match params.next()? {
         5 => params.next().map(|index| Color::Indexed(*index as u8)),
@@ -257,8 +260,9 @@ fn apply_sgr(style: &mut Style, params: &[u16]) {
 
 /// A line of text with escape sequences as a styled line, and the column of
 /// pi-tui's cursor marker when the line has one. SGR sequences become styles
-/// and OSC 8 hyperlinks [`link`]s; other OSC and APC strings and other CSI
-/// sequences are dropped, keeping their visible text.
+/// and OSC 8 hyperlinks become [`link`]s. Other OSC and APC strings and other
+/// CSI (Control Sequence Introducer) sequences are dropped, keeping their
+/// visible text.
 pub fn parse_line(text: &str) -> (Line<'static>, Option<usize>) {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut style = Style::default();
@@ -389,7 +393,8 @@ mod tests {
 
     #[test]
     fn control_char_links_dropped() {
-        // An OSC 8 URL ends only at BEL or ST, so it can carry other sequences.
+        // An OSC 8 URL ends only at BEL or ST, so it can contain other
+        // sequences.
         let (line, _) =
             parse_line("\x1b]8;;http://a\x1b[2J\x1b]52;c;aGk=\x1b\\click\x1b]8;;\x1b\\");
         assert_eq!(line_to_ansi(&line), "click\x1b[0m");

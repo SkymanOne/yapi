@@ -27,7 +27,7 @@ use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::module::Declared;
 use rquickjs::{CatchResultExt, Context, Ctx, Function, Module, Object, Runtime, Value};
 
-/// QuickJS's own limit; the host bounds the whole instance's memory.
+/// QuickJS's own limit. The host bounds the whole instance's memory.
 const STACK_SIZE: usize = 1024 * 1024;
 
 thread_local! {
@@ -257,7 +257,7 @@ fn js() -> (Runtime, Context) {
 
 /// A new runtime and context with the natives and the runtime script.
 fn start() -> (Runtime, Context) {
-    // A panic aborts the instance; report it first so the host can log why.
+    // A panic aborts the instance. Report it first so the host can log why.
     std::panic::set_hook(Box::new(|info| {
         log_error(&format!("yapi-js panicked: {info}"));
     }));
@@ -298,7 +298,7 @@ fn drain() -> Vec<Outcome> {
         match runtime.execute_pending_job() {
             Ok(true) => {}
             Ok(false) => break,
-            // A job's exception is reported by the promise it belongs to.
+            // The promise a job belongs to reports the job's exception.
             Err(_) => {}
         }
     }

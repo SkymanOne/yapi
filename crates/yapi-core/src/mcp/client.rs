@@ -18,8 +18,8 @@ use super::transport::{Event, Transport};
 
 /// The protocol version the client asks for.
 pub const LATEST_PROTOCOL_VERSION: &str = "2025-11-25";
-/// Versions accepted from a server; servers answer with their own latest one
-/// when they do not support the requested version.
+/// Versions accepted from a server. A server that does not support the
+/// requested version answers with its own latest one.
 pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 4] = [
     LATEST_PROTOCOL_VERSION,
     "2025-06-18",
@@ -44,10 +44,10 @@ pub struct ClientOptions {
     pub name: String,
     /// Client version.
     pub version: String,
-    /// Default per-request timeout; zero waits forever.
+    /// Default per-request timeout. Zero waits forever.
     pub request_timeout: Duration,
-    /// Roots answered to `roots/list`; with any, the `roots` capability is
-    /// declared.
+    /// Roots answered to `roots/list`. With any, the client declares the
+    /// `roots` capability.
     pub roots: Vec<Root>,
 }
 
@@ -57,7 +57,7 @@ pub type ProgressListener = Arc<dyn Fn(&Value) + Send + Sync>;
 /// Per-request options.
 #[derive(Clone, Default)]
 pub struct RequestOptions {
-    /// Cancels the request; the server is notified.
+    /// Cancels the request and notifies the server.
     pub cancel: Option<CancellationToken>,
     /// Overrides the client's timeout. Progress notifications restart it.
     pub timeout: Option<Duration>,
@@ -124,7 +124,7 @@ struct Inner {
     close_listeners: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 }
 
-/// A connected client. Cheap to clone; clones share the connection.
+/// A connected client. Cheap to clone, and clones share the connection.
 #[derive(Clone)]
 pub struct McpClient {
     inner: Arc<Inner>,
@@ -197,7 +197,7 @@ fn is_tool(tool: &Map<String, Value>) -> bool {
         && tool.get("inputSchema").is_some_and(Value::is_object)
 }
 
-/// `name` is required by the spec, but some servers omit it.
+/// The spec requires `name`, but some servers omit it.
 fn is_resource(resource: &Map<String, Value>) -> bool {
     resource.get("uri").is_some_and(Value::is_string)
         && resource.get("name").is_none_or(Value::is_string)
@@ -233,7 +233,7 @@ impl ResourceKind {
         }
     }
 
-    /// The field that locates an item; it names items without a name.
+    /// The field that locates an item, which also names items without a name.
     fn uri_field(self) -> &'static str {
         match self {
             ResourceKind::Resources => "uri",
@@ -476,7 +476,7 @@ impl McpClient {
         Ok(result)
     }
 
-    /// Closes the connection; requests in flight fail.
+    /// Closes the connection. Requests in flight fail.
     pub async fn close(&self) {
         self.mark_closed();
         self.inner.transport.close().await;
@@ -578,7 +578,7 @@ impl McpClient {
             },
         );
         // The send runs on its own, as pi's does, so the timeout and
-        // cancellation apply while a server is slow to take the message; a
+        // cancellation apply while a server is slow to take the message. A
         // stdio write is never dropped half way. Its failure fails the request.
         let client = self.clone();
         let sent = key.clone();

@@ -644,8 +644,8 @@ async fn package_scripts_extend_env() {
     std::fs::copy(fixture("package-scripts"), &wasm).unwrap();
     let mut installed = cli_source(&wasm);
     installed.base_dir = Some(package.to_string_lossy().into_owned());
-    // An installed package's scripts are at its root; those of a file given
-    // with `-e` next to it.
+    // An installed package's scripts are at its root, and those of a file
+    // given with `-e` are next to it.
     for (source, root) in [
         (installed, package.clone()),
         (cli_source(&wasm), package.join("extensions")),
@@ -767,8 +767,8 @@ async fn ignoring_tool_stops_immediately() {
     assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
 }
 
-/// A native tool that waits for the abort but has not returned 10 seconds
-/// later is dropped, so it cannot hold the run forever.
+/// A native tool that waits for the abort but has not returned 10s later
+/// is dropped, so it cannot hold the run forever.
 #[tokio::test(flavor = "multi_thread")]
 async fn abort_deadline_drops_tool() {
     let (result, text, elapsed) = abort_countdown(
@@ -783,7 +783,8 @@ async fn abort_deadline_drops_tool() {
     assert!(elapsed < Duration::from_secs(20), "{elapsed:?}");
 }
 
-/// The rows of `component` at `width`, without CSI and APC sequences.
+/// The rows of `component` at `width`, without control sequence introducer
+/// (CSI) and application program command (APC) sequences.
 async fn plain(component: &RemoteComponent, width: u16) -> Vec<String> {
     let strip = |row: &str| {
         let mut out = String::new();

@@ -14,7 +14,7 @@ use yapi_ai::stream::{Request, StreamOptions, Transport};
 use yapi_mock::{Cassette, Interaction, MockServer, RecordedRequest};
 use yapi_types::message::{AssistantMessage, Content, Message, StopReason, UserMessage};
 
-/// An access token whose claims carry the account id `acct_mock`.
+/// An access token whose claims hold the account id `acct_mock`.
 const TOKEN: &str = "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF9tb2NrIn19.sig";
 
 fn cassette(name: &str) -> Cassette {
@@ -82,7 +82,7 @@ async fn ask_at(url: &str, messages: Vec<Message>, options: StreamOptions) -> As
         .find(|model| model.id == "gpt-5.5")
         .unwrap();
     model.base_url = url.to_owned();
-    // Grammar-constrained tools travel as custom tools.
+    // Grammar-constrained tools are sent as custom tools.
     model
         .compat
         .get_or_insert_with(Default::default)
@@ -117,7 +117,7 @@ async fn sse_bodies_zstd_compressed() {
     assert_eq!(message.error_message, None);
     let requests = server.finish().unwrap();
     assert_eq!(requests[0].headers["content-encoding"], "zstd");
-    // The mock decodes the body; raw zstd would not parse.
+    // The mock decodes the body. Raw zstd would not parse.
     assert_eq!(body(&requests[0])["model"], "gpt-5.5");
 }
 
@@ -160,7 +160,7 @@ async fn connection_limit_retries_once() {
 }
 
 /// Empty messages are skipped and values other than objects passed over, as
-/// in pi; `null` fails as pi's read of its `type` does.
+/// in pi. `null` fails as pi's read of its `type` does.
 #[tokio::test]
 async fn empty_non_object_messages() {
     let mut odd = text();
@@ -476,7 +476,7 @@ async fn busy_socket_extra_connection() {
         (StopReason::Stop, StopReason::Stop)
     );
     assert_eq!(stats("ws-busy")["connectionsCreated"], 2);
-    // The one-off socket closed; the cached one serves the next request.
+    // The one-off socket closed. The cached one serves the next request.
     ask(&server, options()).await;
     assert_eq!(stats("ws-busy")["connectionsReused"], 1);
     server.finish().unwrap();

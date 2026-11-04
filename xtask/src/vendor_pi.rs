@@ -1,10 +1,15 @@
 //! `cargo xtask vendor-pi`: bundle the npm packages pi extensions import and
-//! yapi provides, `typebox`, `@earendil-works/pi-tui`,
-//! `@earendil-works/pi-agent-core`, the parts of `@earendil-works/pi-ai` that
-//! `xtask/vendor-pi/pi-ai/entry.mjs` names and the parts of
-//! `@earendil-works/pi-coding-agent` its facade serves, into
-//! `guest/yapi-js/js/vendor`. The bundles share chunks, so each package is
-//! included once. Also copies pi's HTML export template, unchanged, into
+//! yapi provides into `guest/yapi-js/js/vendor`:
+//!
+//! - `typebox`
+//! - `@earendil-works/pi-tui`
+//! - `@earendil-works/pi-agent-core`
+//! - the parts of `@earendil-works/pi-ai` that
+//!   `xtask/vendor-pi/pi-ai/entry.mjs` names
+//! - the parts of `@earendil-works/pi-coding-agent` its facade serves
+//!
+//! The bundles share chunks, so each package is included once. Also copies
+//! pi's HTML export template, unchanged, into
 //! `crates/yapi/assets/export-html`.
 
 use std::fs;
@@ -82,7 +87,7 @@ export { UserMessageSelectorComponent } from '../dist/modes/interactive/componen
 const PI_PACKAGE: &str = "tests/fixtures/pi/generator/node_modules/@earendil-works/pi-coding-agent";
 /// pi modules replaced in the copy by yapi's: its configuration (yapi's
 /// directories and names), theme, frontmatter parser and image processing,
-/// which the runtime's `yapi:pi/host` provides.
+/// which the runtime's `yapi:pi/host` exports.
 const OVERRIDES: [&str; 5] = [
     "config.js",
     "modes/interactive/theme/theme.js",
@@ -156,7 +161,7 @@ const BARE_BUILTINS: [&str; 17] = [
 
 /// Regenerate the vendored bundles, then rebuild the runtime with
 /// `cargo xtask js-runtime`. Install the sources first with `npm ci` in
-/// `tests/fixtures/pi/generator`; needs Node and network access for `npx`.
+/// `tests/fixtures/pi/generator`. Needs Node, and network access for `npx`.
 #[derive(clap::Args)]
 pub struct Args {}
 
@@ -230,7 +235,7 @@ pub fn run(_args: Args) -> anyhow::Result<()> {
     if !status.success() {
         bail!("esbuild failed");
     }
-    // Replace the bundles; the license notes stay.
+    // Replace the bundles and keep the license notes.
     for entry in fs::read_dir(VENDOR)? {
         let path = entry?.path();
         if path.extension().is_some_and(|ext| ext == "mjs") {
@@ -261,11 +266,13 @@ pub fn run(_args: Args) -> anyhow::Result<()> {
 }
 
 /// Copies pi-ai's `package.json` and `dist` from `package` to `copy` with
-/// yapi's replacements, next to the entries in `PI_AI_SOURCES`: the files
-/// under `PI_AI_SOURCES/dist` replace pi's, which stay beside them as
-/// `*.pi.js`; the wire API modules stream through the host; the catalog data
-/// is empty, as the generated catalogs read the host's, which
-/// `providers.mjs` re-exports.
+/// yapi's replacements, next to the entries in `PI_AI_SOURCES`:
+///
+/// - the files under `PI_AI_SOURCES/dist` replace pi's, which stay beside
+///   them as `*.pi.js`
+/// - the wire API modules stream through the host
+/// - the catalog data is empty, as the generated catalogs read the host's,
+///   which `providers.mjs` re-exports
 fn prepare_pi_ai(package: &Path, copy: &Path) -> anyhow::Result<()> {
     copy_dir(&package.join("dist"), &copy.join("dist"))?;
     fs::copy(package.join("package.json"), copy.join("package.json"))?;

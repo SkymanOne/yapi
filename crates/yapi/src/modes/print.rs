@@ -11,7 +11,7 @@ use yapi_types::message::ContentBlock;
 use crate::runtime::{Bind, Runtime, SessionFactory, forward_newest};
 use crate::startup::Startup;
 
-/// Runs print mode; returns the process exit code. Extension commands
+/// Runs print mode and returns the process exit code. Extension commands
 /// replace the session through `factory`, and later prompts go to the
 /// replacement.
 pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
@@ -26,7 +26,7 @@ pub async fn run(startup: Startup, json: bool, factory: SessionFactory) -> u8 {
     if json && let Some(header) = session.header_json() {
         crate::out(&header);
     }
-    // The current session's number; listeners of older ones stay silent.
+    // The current session's number. Listeners of older ones stay silent.
     let epoch = Arc::new(AtomicU64::new(0));
     // As in pi, a session's events stream once its extensions have started.
     let bind: Bind = Box::new(move |session, actions, replaced| {

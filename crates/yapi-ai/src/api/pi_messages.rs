@@ -1,8 +1,9 @@
 //! `pi-messages`: pi's own message protocol, spoken by the Radius gateway.
 //!
 //! One POST of `{model, context, options}` to `<baseUrl>/messages`, answered
-//! by an SSE stream of serialized assistant-message events ending in `done`
-//! or `error`. Port of `packages/ai/src/api/pi-messages.ts` in pi `v1.0.0`.
+//! by a server-sent events (SSE) stream of serialized assistant-message
+//! events ending in `done` or `error`. Port of
+//! `packages/ai/src/api/pi-messages.ts` in pi `v1.0.0`.
 
 use serde_json::{Map, Value, json};
 use yapi_types::event::AssistantMessageEvent;
@@ -146,7 +147,7 @@ impl Converter {
         }
     }
 
-    /// Applies one event; returns the stream event to send, if any.
+    /// Applies one event and returns the stream event to send, if any.
     fn apply(&mut self, event: &Value) -> Option<StreamEvent> {
         let index = event["contentIndex"].as_u64().unwrap_or_default() as usize;
         let text = |key: &str| event[key].as_str().unwrap_or_default().to_owned();
@@ -288,7 +289,7 @@ impl Converter {
     }
 }
 
-/// The `data:` payload of one SSE event; `None` for `[DONE]` and events
+/// The `data:` payload of one SSE event, or `None` for `[DONE]` and events
 /// without data.
 fn event_data(raw: &str) -> Option<&str> {
     let data = raw

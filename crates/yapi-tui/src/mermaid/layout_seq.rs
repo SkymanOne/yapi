@@ -195,7 +195,7 @@ fn row_height(item: &SeqItem) -> usize {
     }
 }
 
-/// Geometry for a box drawn by position and size; ranks are irrelevant here.
+/// Geometry for a box drawn by position and size. Ranks are irrelevant here.
 fn place_box(x: usize, y: usize, w: usize, h: usize) -> Placed {
     Placed {
         x,
@@ -208,7 +208,7 @@ fn place_box(x: usize, y: usize, w: usize, h: usize) -> Placed {
     }
 }
 
-/// Draw a `SeqItem::Message` at row `r`; any other item draws nothing.
+/// Draw a `SeqItem::Message` at row `r`. Any other item draws nothing.
 fn draw_message(canvas: &mut Canvas, item: &SeqItem, xs: &[usize], r: usize) {
     let SeqItem::Message {
         from,

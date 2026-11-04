@@ -1,7 +1,7 @@
 //! Settings: global `settings.json` merged with the trusted project's.
 //!
 //! Port of `packages/coding-agent/src/core/settings-manager.ts` in pi `v1.0.0`.
-//! Each scope is an order-preserving document; edits re-read its file under the
+//! Each scope is an order-preserving document. Edits re-read its file under the
 //! file's lock, change it and write it back the way pi does. Readers use the
 //! typed view of the merged document.
 
@@ -58,7 +58,7 @@ pub struct SettingsManager {
     /// Both scopes merged as written, as pi's `settings`.
     document: Map<String, Value>,
     merged: Settings,
-    /// Files that failed to load, by scope; they read as empty and are never
+    /// Files that failed to load, by scope. They read as empty and are never
     /// written, so a broken file is not overwritten.
     broken: [bool; 2],
     errors: Vec<String>,
@@ -180,7 +180,7 @@ fn is_tool_modifier(entry: &str) -> bool {
 }
 
 /// `defaultTools`: a list of plain names, or any other value, replaces the
-/// inherited one; a list of only `+name` and `-name` entries is appended to it.
+/// inherited one. A list of only `+name` and `-name` entries is appended to it.
 fn merge_default_tools(base: Option<&Value>, overrides: Option<&Value>) -> Option<Value> {
     let Some(overrides) = overrides else {
         return base.cloned();
@@ -263,7 +263,7 @@ impl SettingsManager {
             .join(ConfigFile::Settings.file_name());
         let mut errors = Vec::new();
         let mut broken = [false; 2];
-        // pi reports a file that fails to load and carries on without it.
+        // pi reports a file that fails to load and continues without it.
         let mut read = |path: &Path, scope: usize| match read_document(path) {
             Ok(document) => document,
             Err(error) => {
@@ -321,7 +321,7 @@ impl SettingsManager {
         }
         self.document = merged.clone();
         // pi reads these switches by truthiness, so a value of another type
-        // keeps the rest of its object; `null` reads as unset.
+        // keeps the rest of its object. `null` reads as unset.
         for field in ["compaction", "retry"] {
             if let Some(Value::Object(object)) = merged.get_mut(field)
                 && let Some(enabled) = object.get("enabled").filter(|value| !value.is_boolean())
@@ -381,13 +381,13 @@ impl SettingsManager {
     }
 
     /// pi's `getHttpIdleTimeoutMs`: `httpIdleTimeoutMs` in milliseconds, as a
-    /// number, a numeric string or `"disabled"` (0); five minutes when unset.
+    /// number, a numeric string or `"disabled"` (0), five minutes when unset.
     pub fn http_idle_timeout_ms(&self) -> Result<u64, String> {
         Ok(self.timeout_ms("httpIdleTimeoutMs")?.unwrap_or(300_000))
     }
 
     /// pi's `getWebSocketConnectTimeoutMs`: `websocketConnectTimeoutMs`, read
-    /// as `httpIdleTimeoutMs` is; `None` when unset.
+    /// as `httpIdleTimeoutMs` is, or `None` when unset.
     pub fn websocket_connect_timeout_ms(&self) -> Result<Option<u64>, String> {
         self.timeout_ms("websocketConnectTimeoutMs")
     }
@@ -406,7 +406,7 @@ impl SettingsManager {
     }
 
     /// pi's `parseTimeoutSetting` of setting `key`: milliseconds as a
-    /// number, a numeric string or `"disabled"` (0); `None` when unset, and
+    /// number, a numeric string or `"disabled"` (0). `None` when unset, and
     /// pi's error for any other value.
     fn timeout_ms(&self, key: &str) -> Result<Option<u64>, String> {
         let Some(value) = self.project.get(key).or_else(|| self.global.get(key)) else {
@@ -470,8 +470,8 @@ impl SettingsManager {
     }
 
     /// pi's `getCacheWarmingMode`: `cacheWarming` from the global settings
-    /// only, because each refresh costs money; `streaming` when unset or
-    /// invalid.
+    /// only, because each refresh costs money, defaulting to `streaming` when
+    /// unset or invalid.
     pub fn cache_warming_mode(&self) -> CacheWarming {
         self.global
             .get("cacheWarming")
@@ -490,7 +490,7 @@ impl SettingsManager {
         self.project_trusted
     }
 
-    /// The settings document of `scope` as written; empty for an untrusted
+    /// The settings document of `scope` as written, empty for an untrusted
     /// project.
     pub fn document(&self, scope: Scope) -> &Map<String, Value> {
         match scope {
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(manager.compaction_error(None).as_deref(), Some(error));
 
         // As pi's next-turn hook throws it, the run ends between turns with a
-        // failed response; as its check before a prompt throws it, the next
+        // failed response. As its check before a prompt throws it, the next
         // prompt fails before its request.
         use yapi_ai::faux::{Faux, Response};
         use yapi_types::message::{Message, StopReason};
@@ -772,7 +772,7 @@ mod tests {
             (compaction.enabled, tokens),
             (Some(false), (None, Some(20000)))
         );
-        // A whole float is its integer; pi rounds a fraction down where it
+        // A whole float is its integer. pi rounds a fraction down where it
         // counts cells, and reads any output padding but 0 as 1.
         let summary = settings.branch_summary.as_ref().unwrap();
         assert_eq!(

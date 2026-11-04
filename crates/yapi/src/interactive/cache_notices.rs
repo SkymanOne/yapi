@@ -90,7 +90,7 @@ impl App {
         }
     }
 
-    /// pi's notices for a response that just finished: the thinking blocks
+    /// pi's notices for a finished response: the thinking blocks
     /// Anthropic dropped, when more than in the previous response, and the
     /// cache miss it paid for. The session may already hold `message`.
     pub(super) fn response_notices(&mut self, message: &AssistantMessage) {
@@ -139,8 +139,8 @@ impl App {
     /// for refreshes, summaries and cache misses pi shows when the
     /// transcript is drawn again. The latest compaction comes first, as
     /// the context has it, or with `in_place` where it happened: after the
-    /// entries it kept and before later ones, as pi draws a compaction that
-    /// just happened.
+    /// entries it kept and before later ones, as pi draws a compaction
+    /// right after it runs.
     pub(super) fn shown_history(&self, in_place: bool) -> Vec<Shown> {
         let notices = self.cache_notices();
         let registry = self.session.registry();

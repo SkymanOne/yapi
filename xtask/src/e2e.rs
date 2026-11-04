@@ -15,8 +15,8 @@ use crate::write_json;
 /// Run `tests/fixtures/scenarios` against yapi, pi, or both.
 ///
 /// Without flags, compares yapi with the goldens recorded from pi. `--record-pi`
-/// rewrites the goldens from pi; `--differential` runs both and compares them
-/// directly. pi runs from the fixture generator's install (needs Node).
+/// rewrites the goldens from pi, and `--differential` runs both and compares
+/// them directly. pi runs from the fixture generator's install (needs Node).
 #[derive(clap::Args)]
 pub struct Args {
     /// Rewrite the goldens from pi.

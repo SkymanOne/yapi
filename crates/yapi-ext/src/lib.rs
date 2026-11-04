@@ -32,7 +32,7 @@ pub enum Error {
     /// An instance could not start.
     #[error("cannot start the extension runtime: {0}")]
     Instantiate(String),
-    /// The call failed in JS; the message is the error's.
+    /// The call failed in JS, with the error's message.
     #[error("{0}")]
     Call(String),
     /// The instance trapped during the call and was restarted.

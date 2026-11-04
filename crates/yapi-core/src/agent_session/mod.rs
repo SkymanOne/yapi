@@ -85,7 +85,7 @@ impl InputSource {
     }
 }
 
-/// pi's `PromptOptions` for [`AgentSession::prompt_with`]; the default is
+/// pi's `PromptOptions` for [`AgentSession::prompt_with`]. The default is
 /// pi's.
 #[derive(Clone, Debug)]
 pub struct PromptOptions {
@@ -93,7 +93,7 @@ pub struct PromptOptions {
     /// expand. Without it they stay literal text, but `input` handlers still
     /// run.
     pub expand_prompt_templates: bool,
-    /// How the message queues while a run streams; without one that is an
+    /// How the message queues while a run streams. Without one, that is an
     /// error.
     pub streaming_behavior: Option<StreamingBehavior>,
     /// Images sent with the text.
@@ -188,7 +188,7 @@ pub enum UserBash {
     Local,
     /// Run it through an extension's operations.
     Operations(BashOperations),
-    /// An extension ran it; its result, not yet recorded.
+    /// An extension ran it. The result is not yet recorded.
     Done(crate::bash_executor::BashResult),
 }
 
@@ -245,10 +245,10 @@ pub struct SessionConfig {
     /// The session's extensions, which load before the active tools are set.
     pub extensions: Vec<Arc<dyn Extension>>,
     /// Activate the tools extensions register as they load, unless they opt
-    /// out; pi does unless `--tools` names the tools.
+    /// out. pi does unless `--tools` names the tools.
     pub include_extension_tools: bool,
-    /// The only tools that may exist, from `--tools` (none for `--no-tools`);
-    /// every tool when `None`.
+    /// The only tools that may exist, from `--tools` (none for `--no-tools`),
+    /// or every tool when `None`.
     pub allowed_tools: Option<Vec<String>>,
     /// Tools that may never exist, from `--exclude-tools`.
     pub excluded_tools: Vec<String>,
@@ -280,7 +280,7 @@ struct Inner {
     catalog_refresh: tokio::sync::Mutex<()>,
     apis: RwLock<Apis>,
     state: Mutex<State>,
-    /// The models cycling moves through; empty means every available one.
+    /// The models cycling moves through. Empty means every available one.
     scoped_models: Mutex<Vec<crate::model_resolver::ScopedModel>>,
     tools: Tools,
     extensions: Vec<Arc<dyn Extension>>,
@@ -290,7 +290,7 @@ struct Inner {
     /// Extension sections of the current run's system prompt.
     run_options: Mutex<Option<SystemPromptOptions>>,
     /// The base prompt options a command edited, with the options they were
-    /// made from; pi drops the edits when it rebuilds the base.
+    /// made from. pi drops the edits when it rebuilds the base.
     edited_base: Mutex<Option<(SystemPromptOptions, SystemPromptOptions)>>,
     /// The system prompt a `before_agent_start` handler forced for the run.
     forced_prompt: Mutex<Option<String>>,
@@ -466,7 +466,7 @@ pub struct TreeOutcome {
     pub summary_entry: Option<FileEntry>,
 }
 
-/// A running conversation. Cheap to clone; clones share state.
+/// A running conversation. Cheap to clone, and clones share state.
 #[derive(Clone)]
 pub struct AgentSession {
     inner: Arc<Inner>,
@@ -533,8 +533,8 @@ impl AgentSession {
         }
         tool_registry.set_active(tools);
 
-        // As pi: a session with messages gains a missing thinking level; any
-        // other records its model and level.
+        // As in pi, a session with messages gains a missing thinking level,
+        // and any other records its model and level.
         let has_messages = !session.build_context().messages.is_empty();
         if has_messages {
             let has_thinking = session.branch_path(None).iter().any(|entry| {
@@ -700,7 +700,7 @@ impl AgentSession {
             })
     }
 
-    /// Names the session; extensions hear of it as pi's
+    /// Names the session. Extensions hear of it as pi's
     /// `session_info_changed`.
     pub fn set_name(&self, name: &str) {
         let name = self.with_session(|session| {
@@ -812,7 +812,7 @@ impl AgentSession {
     }
 
     /// Sets the steering mode, any value as pi takes it, and saves it in the
-    /// global settings; `None` removes the setting.
+    /// global settings. `None` removes the setting.
     pub fn set_steering_mode(&self, mode: Option<Value>) -> Result<(), String> {
         lock(&self.inner.queue_modes).0.clone_from(&mode);
         self.set_global_setting("steeringMode", mode)
@@ -837,7 +837,7 @@ impl AgentSession {
     }
 
     /// Saves whether automatic compaction runs in the global settings, any
-    /// value as pi takes it; `None` removes the setting.
+    /// value as pi takes it. `None` removes the setting.
     pub fn set_auto_compaction(&self, enabled: Option<Value>) -> Result<(), String> {
         lock(&self.inner.settings)
             .set_nested(
@@ -891,7 +891,7 @@ impl AgentSession {
     /// session's shell or through an extension's `operations`, streaming
     /// output to `on_chunk` and as `bash_execution_update` events tagged
     /// `id`, and records it. `exclude_from_context` (`!!`) keeps the output
-    /// from the model; it is recorded as given. While a run streams, the
+    /// from the model and is recorded as given. While a run streams, the
     /// record waits for its end.
     pub async fn execute_bash(
         &self,
@@ -1069,8 +1069,8 @@ impl AgentSession {
     }
 
     /// pi's `getLastAssistantText`: the text of the last assistant message,
-    /// skipping aborted ones without content; `None` when that message has no
-    /// text.
+    /// skipping aborted ones without content, or `None` when that message has
+    /// no text.
     pub fn last_assistant_text(&self) -> Option<String> {
         let assistant = self
             .messages()
@@ -1112,14 +1112,14 @@ impl AgentSession {
         })
     }
 
-    /// The part of pi's `sendCustomMessage` that happens at once: the message
-    /// is queued, held or recorded and reported before this returns.
-    /// `deliver_as` `nextTurn` holds the message for the next prompt; while a
-    /// run streams it steers (or follows up) unless `trigger_turn` is false, in
-    /// which case it is appended when the turn ends; otherwise `trigger_turn`
-    /// returns the run it starts, which the caller defers as pi does (see
-    /// [`AgentSession::settled_turn`]), and without one it is appended at
-    /// once.
+    /// The part of pi's `sendCustomMessage` that happens at once. The message
+    /// is queued, held or recorded and reported before this returns:
+    /// - `deliver_as` `nextTurn` holds the message for the next prompt.
+    /// - While a run streams, it steers (or follows up) unless `trigger_turn`
+    ///   is false, in which case it is appended when the turn ends.
+    /// - Otherwise `trigger_turn` returns the run it starts, which the caller
+    ///   defers as pi does (see [`AgentSession::settled_turn`]), and without
+    ///   one it is appended at once.
     pub fn deliver_custom_message(
         &self,
         message: yapi_types::message::CustomMessage,
@@ -1157,7 +1157,7 @@ impl AgentSession {
 
     /// pi defers a prompt started while `agent_settled` handlers run: the
     /// run that settled starts it once they return, and ends after it. `None`
-    /// outside those handlers; otherwise the prompt's place is taken now, and
+    /// outside those handlers. Otherwise the prompt's place is taken now, and
     /// the future resolves when it may start, to a guard it holds until it
     /// ends.
     pub fn settled_turn(
@@ -1235,8 +1235,8 @@ impl AgentSession {
         }
     }
 
-    /// pi's `steer` and `followUp`: an extension command cannot be queued;
-    /// otherwise the `input` handlers see the message first, then it is
+    /// pi's `steer` and `followUp`: an extension command cannot be queued.
+    /// Otherwise the `input` handlers see the message first, then it is
     /// queued with templates and skills expanded.
     pub async fn queue_input(
         &self,
@@ -1435,8 +1435,8 @@ impl AgentSession {
         options
     }
 
-    /// Has the extensions' loadout hooks that answer later look at the
-    /// `declared` tools, before a request presents them.
+    /// Shows the `declared` tools to the extensions' loadout hooks that
+    /// answer later, before a request presents them.
     pub(super) async fn refresh_loadouts(&self, declared: Vec<RegisteredTool>) {
         let loadout = Loadout {
             declared,
@@ -1475,9 +1475,9 @@ impl AgentSession {
         (loadout, changes)
     }
 
-    /// The `declared` tools as the model sees them, with the descriptions
-    /// the extensions' loadout hooks give them, and records the tools the
-    /// hooks hide from requests; pi's `_applyToolLoadout`.
+    /// pi's `_applyToolLoadout`: the `declared` tools as the model sees
+    /// them, with the descriptions the extensions' loadout hooks give them.
+    /// Records the tools the hooks hide from requests.
     fn loadout(&self, declared: Vec<RegisteredTool>) -> Vec<Arc<dyn Tool>> {
         let (loadout, changes) = self.loadout_changes(declared);
         let mut descriptions = changes.descriptions;
@@ -1541,7 +1541,7 @@ impl AgentSession {
         self.system_prompt_text(&self.inner.tools.active())
     }
 
-    /// pi's `buildSystemPrompt`: the system prompt `options` give, their
+    /// pi's `buildSystemPrompt`: the system prompt `options` give, or their
     /// forced prompt if they have one.
     pub fn render_prompt(&self, options: &SystemPromptOptions) -> Result<String, String> {
         match &options.force_system_prompt {
@@ -1570,8 +1570,8 @@ impl AgentSession {
 
     /// [`AgentSession::prompt_with`] while a run streams, when the message
     /// has a streaming behavior and neither an `input` handler nor an
-    /// extension command takes it: it is queued before this returns, as pi
-    /// queues it before any later event. Whether it was.
+    /// extension command takes it. It is queued before this returns, as pi
+    /// queues it before any later event. Returns whether it was.
     pub fn queue_now(&self, text: &str, options: &PromptOptions) -> bool {
         let Some(behavior) = options.streaming_behavior.filter(|_| self.is_streaming()) else {
             return false;
@@ -1603,7 +1603,7 @@ impl AgentSession {
     }
 
     /// pi's `prompt`: while a run streams, the options' streaming behavior
-    /// queues the message, and without one it is an error; otherwise the
+    /// queues the message, and without one it is an error. Otherwise the
     /// message starts a run that lasts until the agent settles. `preflight`
     /// learns which, before any event of the run. A prompt started while
     /// `agent_settled` handlers run waits until they return.
@@ -1834,7 +1834,7 @@ impl AgentSession {
             .as_ref()
             .and_then(|retry| retry.provider.clone())
             .unwrap_or_default();
-        // pi stands the longest timer it can set in for a disabled one.
+        // pi uses the longest timer it can set in place of a disabled one.
         let idle = if idle == 0 { 2_147_483_647 } else { idle };
         Ok(StreamOptions {
             timeout_ms: Some(manager.provider_timeout_ms().unwrap_or(idle as f64)),
@@ -2271,7 +2271,7 @@ impl AgentSession {
         })
     }
 
-    /// Sets the active tools; unknown and hidden names are ignored.
+    /// Sets the active tools, ignoring unknown and hidden names.
     pub fn set_active_tools(&self, names: Vec<String>) {
         self.inner.tools.set_active(names);
     }
@@ -2325,9 +2325,9 @@ impl AgentSession {
         Ok(())
     }
 
-    /// The tools other tools may call, in registration order: every
-    /// `codemode` and `deferred` tool and the active `direct` ones; pi's
-    /// `_getCallableTools`.
+    /// The tools other tools may call, in registration order, as pi's
+    /// `_getCallableTools`: every `codemode` and `deferred` tool and the
+    /// active `direct` ones.
     pub fn callable_tools(&self) -> Vec<RegisteredTool> {
         self.inner.tools.with(|registry| {
             let active = registry.active();
@@ -2481,7 +2481,7 @@ impl AgentSession {
     }
 }
 
-/// A skill invocation as `/skill:<name>` expands it; pi's `ParsedSkillBlock`.
+/// pi's `ParsedSkillBlock`: a skill invocation as `/skill:<name>` expands it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SkillBlock {
     /// The skill's name.

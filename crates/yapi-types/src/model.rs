@@ -1,8 +1,8 @@
 //! Catalog models: what a provider serves and how to talk to it.
 //!
 //! Mirrors `Model` and the compat interfaces in `packages/ai/src/types.ts` in pi
-//! `v1.0.0`. The same shape is used by the built-in catalog, by models resolved from
-//! `models.json` and by extension-registered providers.
+//! `v1.0.0`. The built-in catalog, models resolved from `models.json` and
+//! extension-registered providers use the same shape.
 #![allow(
     missing_docs,
     reason = "fields mirror pi's TypeScript types; contracts are noted where they differ from the name"
@@ -31,14 +31,14 @@ pub struct Model {
     pub cost: Pricing,
     pub context_window: u64,
     pub max_tokens: u64,
-    /// pi thinking level to provider value; `None` marks the level unsupported.
+    /// pi thinking level to provider value. `None` marks the level unsupported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level_map: Option<IndexMap<String, Option<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_cache: Option<PromptCache>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampling_params: Option<Map<String, Value>>,
-    /// Wire-API-specific options; read through [`Model::compat`].
+    /// Wire-API-specific options, read through [`Model::compat`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compat: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -64,7 +64,7 @@ pub struct ImageModel {
     pub provider: String,
     pub base_url: String,
     pub input: Vec<InputKind>,
-    /// Output modalities; always includes `image`.
+    /// Output modalities, which always include `image`.
     pub output: Vec<InputKind>,
     pub cost: Pricing,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,7 +158,7 @@ pub struct Pricing {
     pub output: f64,
     pub cache_read: f64,
     pub cache_write: f64,
-    /// Request-wide rates; the highest tier below the input size applies.
+    /// Request-wide rates. The highest tier below the input size applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tiers: Option<Vec<CostTier>>,
 }

@@ -404,7 +404,7 @@ impl ConfigSelector {
         let _ = self.settings.set(scope, key, value);
     }
 
-    /// A package entry as an object; a bare source becomes `{"source": ...}`.
+    /// A package entry as an object. A bare source becomes `{"source": ...}`.
     fn package_object(entry: &Value) -> Option<Map<String, Value>> {
         match entry {
             Value::String(_) => Some(Map::from_iter([("source".to_owned(), entry.clone())])),
@@ -592,7 +592,7 @@ impl ConfigSelector {
         }
     }
 
-    /// pi's `setProjectResourceOverride`; whether anything changed.
+    /// pi's `setProjectResourceOverride`: whether anything changed.
     fn set_override(&mut self, item: &Item, state: Override) -> bool {
         if item.info.origin == "top-level" {
             let key = item.kind.key();

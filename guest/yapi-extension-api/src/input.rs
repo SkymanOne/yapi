@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use crate::task::LocalFuture;
 use crate::{Context, op, request};
 
-/// What a terminal input listener does with a key; pi's `{consume, data}`.
+/// pi's `{consume, data}`: what a terminal input listener does with a key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TerminalInput {
     /// Lets the key through unchanged, as pi's `undefined`.
@@ -31,7 +31,7 @@ type Listener = Rc<dyn Fn(&str) -> TerminalInput>;
 struct Input {
     next: u64,
     listeners: Vec<(u64, Listener)>,
-    /// Providers in the order they were added; each wraps those before it.
+    /// Providers in the order they were added, each wrapping those before it.
     providers: Vec<Rc<dyn Provider>>,
     triggers: Vec<String>,
 }
@@ -62,8 +62,8 @@ pub(crate) fn reset() {
     drop(dropped);
 }
 
-/// A listener from [`Context::on_terminal_input`], which stops when this is
-/// dropped; pi's unsubscribe function.
+/// pi's unsubscribe function: a listener from [`Context::on_terminal_input`],
+/// which stops when this is dropped.
 #[must_use = "dropping a Subscription stops its listener"]
 pub struct Subscription(u64);
 
@@ -88,7 +88,7 @@ impl Drop for Subscription {
 }
 
 /// The `terminalInput` call: each of `{"keys"}` through the listeners in the
-/// order they were added, as pi-tui runs them; `null` for a consumed key.
+/// order they were added, as pi-tui runs them, and `null` for a consumed key.
 fn terminal_input(payload: &Value) -> Value {
     let keys = payload["keys"].as_array().into_iter().flatten();
     let through = |key: &Value| {
@@ -175,8 +175,8 @@ pub struct Suggestions {
 /// pi-tui's `AutocompleteProvider`, which [`Context::add_autocomplete_provider`]
 /// adds over the providers before it.
 pub trait AutocompleteProvider: 'static {
-    /// Characters that open completion where a word starts, as `@` does;
-    /// pi's `triggerCharacters`.
+    /// pi's `triggerCharacters`: characters that open completion where a
+    /// word starts, as `@` does.
     fn trigger_characters(&self) -> Vec<String> {
         Vec::new()
     }
@@ -193,8 +193,8 @@ pub trait AutocompleteProvider: 'static {
     ) -> impl Future<Output = Option<Suggestions>>;
 
     /// pi's `applyCompletion`: the editor after choosing `item`, which
-    /// completes `prefix`. By default, as the providers this one wraps
-    /// apply it.
+    /// completes `prefix`. The default applies `item` as the providers this
+    /// one wraps do.
     fn apply(
         &self,
         state: &EditorState,
@@ -360,8 +360,8 @@ impl Context {
     }
 }
 
-/// The text in the editor, paste markers expanded; pi's
-/// `ctx.ui.getEditorText`.
+/// pi's `ctx.ui.getEditorText`: the text in the editor, paste markers
+/// expanded.
 pub fn editor_text() -> String {
     match request("ui.getEditorText", &json!({})) {
         Ok(Value::String(text)) => text,

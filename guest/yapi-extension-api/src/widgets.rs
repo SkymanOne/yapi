@@ -131,7 +131,7 @@ impl Component for Text {
 }
 
 /// pi-tui's `wrapTextWithAnsi`: `text` wrapped to `width` columns, styles
-/// carried across the breaks.
+/// kept across the breaks.
 pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
     to_ansi(&tui::lines::wrap(&parse(text), width), None)
 }
@@ -315,7 +315,7 @@ impl CustomEditor {
         bound.iter().any(|key| keys.matches(data, key))
     }
 
-    /// Hands the key to the editor, reporting its new text or submission.
+    /// Passes the key to the editor, reporting its new text or submission.
     fn edit(&mut self, data: &str) {
         let before = self.editor.expanded_text();
         if let EditorEvent::Submit(text) = self.editor.handle_input(data, &self.bindings.tui) {

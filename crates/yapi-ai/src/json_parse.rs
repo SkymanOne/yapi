@@ -1,4 +1,5 @@
-//! Lenient JSON parsing for model output: tool-call arguments and SSE payloads.
+//! Lenient JSON parsing for model output: tool-call arguments and server-sent
+//! event payloads.
 
 use serde_json::{Map, Number, Value};
 
@@ -68,7 +69,7 @@ pub fn parse_json_with_repair(json: &str) -> Result<Value, serde_json::Error> {
 }
 
 /// The message of the error JavaScript's `JSON.parse` throws for `text`, as
-/// V8 words it; `None` when `text` is valid JSON.
+/// V8 words it, or `None` when `text` is valid JSON.
 pub fn js_parse_error(text: &str) -> Option<String> {
     let units: Vec<u16> = text.encode_utf16().collect();
     let mut scan = V8Scan {
@@ -323,7 +324,7 @@ impl V8Scan<'_> {
 
 /// Parses possibly incomplete tool-call arguments into an object.
 ///
-/// Complete JSON parses as-is (with repair); a prefix of an object yields the
+/// Complete JSON parses as-is (with repair). A prefix of an object yields the
 /// fields seen so far, with a trailing string, number or literal kept in its partial
 /// form. Anything that is not an object yields an empty object.
 pub fn parse_streaming_json(partial: &str) -> Map<String, Value> {

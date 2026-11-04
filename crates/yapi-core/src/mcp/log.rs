@@ -9,8 +9,8 @@ use serde_json::Value;
 
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
-/// One log line: time, server, level, logger and data; continuation lines
-/// are indented.
+/// One log line: time, server, level, logger and data, with continuation
+/// lines indented.
 pub fn format_message(server: &str, params: &Value, time: &str) -> String {
     let wrapped;
     let message = if params.is_object() {
@@ -34,7 +34,7 @@ pub fn format_message(server: &str, params: &Value, time: &str) -> String {
     format!("{time} [{server}] {level}{logger} {text}\n")
 }
 
-/// Appends server log messages to one file; failures are ignored.
+/// Appends server log messages to one file and ignores failures.
 #[derive(Clone)]
 pub struct Log {
     path: PathBuf,

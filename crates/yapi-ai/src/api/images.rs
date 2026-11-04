@@ -18,9 +18,9 @@ use crate::stream::{RequestHooks, now_ms};
 pub struct ImagesOptions {
     /// Credential for the provider.
     pub api_key: Option<String>,
-    /// Extra headers; `None` removes one.
+    /// Extra headers. `None` removes one.
     pub headers: IndexMap<String, Option<String>>,
-    /// Retries of retryable failures; none when absent, as the SDK call.
+    /// Retries of retryable failures, or none when absent, as in the SDK call.
     pub max_retries: Option<u32>,
     /// Largest server-requested retry delay to honor.
     pub max_retry_delay_ms: Option<u64>,
@@ -32,8 +32,8 @@ pub struct ImagesOptions {
     pub hooks: RequestHooks,
 }
 
-/// Generates images with `model`. Failures are reported in the result, as
-/// pi's `generateImages()` does.
+/// Generates images with `model`. Reports failures in the result, as pi's
+/// `generateImages()` does.
 pub async fn generate_images(
     model: &ImageModel,
     context: &ImagesContext,

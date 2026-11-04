@@ -1159,7 +1159,8 @@ impl SettingsSelector {
     }
 
     /// pi's `handleMouse` of the list or the open submenu: `kind` at column
-    /// `x` of row `y` of the last render; `None` when nothing there takes it.
+    /// `x` of row `y` of the last render, or `None` when nothing there takes
+    /// it.
     pub fn mouse(&mut self, kind: MouseKind, x: usize, y: usize, ui: &Ui<'_>) -> Option<Outcome> {
         // Between the borders.
         let y = y.checked_sub(1).filter(|y| *y < self.body)?;
@@ -1386,7 +1387,6 @@ pub(super) fn available_themes(
     names
 }
 
-/// pi's `parseHttpIdleTimeoutMs` of the setting, or its default.
 impl super::App {
     /// pi's `showSettingsSelector`.
     pub(super) fn open_settings(&mut self) {

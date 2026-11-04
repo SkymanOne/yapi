@@ -55,8 +55,8 @@ pub struct ModelDefinition {
     pub api: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-    /// `"image"` or `"classifier"` in an extension provider's models; absent
-    /// or `"chat"` otherwise. `models.json` defines chat models only.
+    /// `"image"` or `"classifier"` in an extension provider's models, and
+    /// absent or `"chat"` otherwise. `models.json` defines chat models only.
     #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// An image model's output modalities.
@@ -72,7 +72,7 @@ pub struct ModelDefinition {
 pub struct ModelOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<bool>,
-    /// pi thinking level to provider value; `None` marks the level unsupported.
+    /// pi thinking level to provider value. `None` marks the level unsupported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level_map: Option<IndexMap<String, Option<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,12 +91,12 @@ pub struct ModelOptions {
     pub headers: Option<IndexMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compat: Option<Map<String, Value>>,
-    /// Required rates in a definition; any subset in an override.
+    /// Required rates in a definition, or any subset in an override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
 }
 
-/// Changes to a built-in model; every field is optional.
+/// Changes to a built-in model. Every field is optional.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModelOverride {
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,6 +1,6 @@
-//! Radius gateway sign-in: a browser PKCE flow on a fixed loopback port, or
-//! an RFC 8628 device authorization, both against the gateway's OAuth API.
-//! Port of `oauth/radius.ts`.
+//! Radius gateway sign-in: a browser Proof Key for Code Exchange (PKCE)
+//! flow on a fixed loopback port, or an RFC 8628 device authorization, both
+//! against the gateway's OAuth API. Port of `oauth/radius.ts`.
 
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -98,7 +98,7 @@ async fn oauth_failure(response: reqwest::Response, message: &str) -> OAuthFailu
 }
 
 impl RadiusOAuth {
-    /// A token request; an OAuth error keeps its code for device polling.
+    /// A token request. An OAuth error keeps its code for device polling.
     async fn token(
         &self,
         fields: &[(&str, &str)],

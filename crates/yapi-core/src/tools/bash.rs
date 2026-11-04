@@ -275,7 +275,7 @@ impl Accumulator {
     }
 
     /// The log at `path`, or its first and last bytes when longer than
-    /// [`STRUCTURED_OUTPUT_MAX_BYTES`]; only those are read.
+    /// [`STRUCTURED_OUTPUT_MAX_BYTES`]. Only those bytes are read.
     fn read_log(path: &Path) -> std::io::Result<(String, bool)> {
         use std::io::{Read, Seek, SeekFrom};
         let mut file = std::fs::File::open(path)?;
@@ -497,7 +497,7 @@ pub(crate) enum Stop {
 /// Runs `child`, tracked, until it exits and its pipes close or go quiet:
 /// descendants may hold them open. Passes each event to `on`, which returns
 /// when it next wants an [`Event::Tick`]. Kills the process tree when
-/// `cancel` fires or `deadline` passes; output that never pauses holds off
+/// `cancel` fires or `deadline` passes. Output that never pauses holds off
 /// neither, and stays ahead of the exit so none is lost. Returns the shell's
 /// exit status and why its tree was killed.
 pub(crate) async fn run_child(
@@ -543,7 +543,7 @@ pub(crate) async fn run_child(
     (status, stop)
 }
 
-/// A finished child's exit code; a signal's death is 128 plus the signal.
+/// A finished child's exit code, or 128 plus the signal that killed it.
 pub(crate) fn exit_code_of(status: std::process::ExitStatus) -> Option<i32> {
     #[cfg(unix)]
     {

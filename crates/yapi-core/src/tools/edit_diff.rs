@@ -7,7 +7,7 @@ use unicode_normalization::UnicodeNormalization;
 /// One requested replacement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Replacement {
-    /// Text to find; must occur exactly once.
+    /// Text to find, which must occur exactly once.
     pub old_text: String,
     /// Text to put in its place.
     pub new_text: String,
@@ -28,7 +28,7 @@ pub fn normalize_to_lf(text: &str) -> String {
 
 /// `new`, an edit of `normalized`, written over `original`, the text
 /// [`normalize_to_lf`] turned into `normalized`: lines the edit left equal keep
-/// their original bytes and line ending, changed lines end with `ending`.
+/// their original bytes and line ending, and changed lines end with `ending`.
 pub fn restore_line_endings(original: &str, normalized: &str, new: &str, ending: &str) -> String {
     // The line ends `normalize_to_lf` turns into `\n`.
     let mut original_lines = Vec::new();
@@ -61,8 +61,8 @@ pub fn restore_line_endings(original: &str, normalized: &str, new: &str, ending:
     output
 }
 
-/// The form fuzzy matching compares: NFKC, no trailing spaces, ASCII quotes,
-/// dashes and spaces.
+/// The form fuzzy matching compares: Unicode NFKC normalization, no trailing
+/// spaces, ASCII quotes, dashes and spaces.
 pub fn normalize_for_fuzzy_match(text: &str) -> String {
     let normalized: String = text.nfkc().collect();
     normalized
@@ -435,8 +435,8 @@ mod tests {
             apply_edits("a\nb\nc\n", &[edit("b", "B"), edit("c", "C")], "f").unwrap(),
             "a\nB\nC\n"
         );
-        // Curly quotes and trailing spaces in the file still match; other lines
-        // keep their original text.
+        // Curly quotes and trailing spaces in the file still match, and other
+        // lines keep their original text.
         let content = "say \u{201C}hi\u{201D}  \nkeep\u{2019}s\n";
         assert_eq!(
             apply_edits(content, &[edit("say \"hi\"", "say \"bye\"")], "f").unwrap(),

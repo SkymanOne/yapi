@@ -192,7 +192,7 @@ pub enum ExtensionEvent<'a> {
 impl ExtensionEvent<'_> {
     /// The event as the JSON document handlers receive.
     pub fn to_value(&self) -> Value {
-        // Only a path that is not UTF-8 fails to serialize; such an event is
+        // Only a path that is not UTF-8 fails to serialize. Such an event is
         // `null` and reaches no handler.
         serde_json::to_value(self).unwrap_or_default()
     }

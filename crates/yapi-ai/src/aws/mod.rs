@@ -114,8 +114,8 @@ fn cache() -> &'static Mutex<HashMap<String, Credentials>> {
 }
 
 /// The default credential chain for `profile` (else `AWS_PROFILE`), with
-/// `region` for STS calls. Results are cached until five minutes before they
-/// expire.
+/// `region` for Security Token Service (STS) calls. Results are cached until
+/// five minutes before they expire.
 pub async fn default_credentials(
     env: &AwsEnv,
     profile: Option<&str>,
@@ -364,7 +364,8 @@ async fn read_token_file(path: &str) -> Result<String, ChainError> {
         })
 }
 
-/// `AWS_WEB_IDENTITY_TOKEN_FILE` with `AWS_ROLE_ARN`, as IRSA sets them.
+/// `AWS_WEB_IDENTITY_TOKEN_FILE` with `AWS_ROLE_ARN`, as IAM roles for service
+/// accounts (IRSA) set them.
 async fn from_token_file(
     env: &AwsEnv,
     region: Option<&str>,
@@ -637,7 +638,7 @@ async fn sso(
     }
 }
 
-/// Metadata services answer quickly or not at all.
+/// Metadata services answer within a second or not at all.
 const METADATA_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// A client for metadata services. As in the SDK, it never uses a proxy, which
@@ -746,7 +747,8 @@ async fn container(env: &AwsEnv, cancel: &CancellationToken) -> Result<Credentia
     metadata_credentials(&body)
 }
 
-/// EC2 instance metadata with an IMDSv2 session token.
+/// EC2 instance metadata with an Instance Metadata Service v2 (IMDSv2)
+/// session token.
 async fn instance_metadata(
     env: &AwsEnv,
     cancel: &CancellationToken,

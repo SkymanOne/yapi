@@ -301,7 +301,7 @@ async fn compare(args: Args) -> anyhow::Result<ExitCode> {
         let got = load(&engine, &dir, name, version, args.verbose)
             .await
             .unwrap_or_else(|err| json!({"version": version, "crash": err.to_string()}));
-        // The installs are large; only the results are kept.
+        // The installs are large, so only the results are kept.
         let _ = std::fs::remove_dir_all(&dir);
         println!("\n{MARKER}{}", yapi_types::json::to_string(&got)?);
         return Ok(ExitCode::SUCCESS);

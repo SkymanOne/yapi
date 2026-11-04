@@ -41,13 +41,13 @@ const OAUTH_REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct Auth {
     /// The API key, if the provider takes one.
     pub api_key: Option<String>,
-    /// Headers that carry or accompany the credential; `None` removes a header.
+    /// Headers that carry or accompany the credential. `None` removes a header.
     pub headers: IndexMap<String, Option<String>>,
     /// Where the credential came from, for messages.
     pub source: Option<String>,
     /// Replaces the model's base URL, for accounts with their own endpoint.
     pub base_url: Option<String>,
-    /// Why credentials could not be resolved; a request with it fails.
+    /// Why credentials could not be resolved. A request with it fails.
     pub error: Option<String>,
     /// Provider settings from the credential, such as a Cloudflare account
     /// id, that the request reads ahead of the process environment.
@@ -122,7 +122,7 @@ fn environment_source(provider: &str) -> Option<String> {
         })
 }
 
-/// `credential` with its key resolved; no key when it does not resolve.
+/// `credential` with its key resolved, or with no key when it does not resolve.
 async fn resolve_stored(credential: ApiKeyCredential) -> ApiKeyCredential {
     let key = match &credential.key {
         Some(key) => credentials::resolve(key, credential.env.as_ref(), true).await,
@@ -131,9 +131,8 @@ async fn resolve_stored(credential: ApiKeyCredential) -> ApiKeyCredential {
     ApiKeyCredential { key, ..credential }
 }
 
-/// A model that stands for a provider in provider-level auth.
 /// Replaces the models `key` matches by id with `refreshed` ones, and
-/// appends the new ones; pi's `mergeModels`.
+/// appends the new ones (pi's `mergeModels`).
 fn overlay<T: Clone>(models: &mut Vec<T>, refreshed: &[T], key: impl Fn(&T) -> Option<&str>) {
     for model in refreshed {
         let Some(id) = key(model) else {
@@ -146,6 +145,7 @@ fn overlay<T: Clone>(models: &mut Vec<T>, refreshed: &[T], key: impl Fn(&T) -> O
     }
 }
 
+/// A model that stands for a provider in provider-level auth.
 fn placeholder_model(provider: &str) -> Option<Model> {
     serde_json::from_value(serde_json::json!({
         "id": "",
@@ -162,8 +162,8 @@ fn placeholder_model(provider: &str) -> Option<Model> {
     .ok()
 }
 
-/// The models of a Radius gateway config that sign-ins before the models
-/// store kept in their credential.
+/// The models of a Radius gateway config that older sign-ins, from before
+/// the models store, kept in their credential.
 fn legacy_radius_models(provider: &str, config: &Value) -> Vec<Model> {
     let Some(base_url) = config["baseUrl"].as_str() else {
         return Vec::new();
@@ -195,13 +195,13 @@ pub enum LoginKind {
 /// credential, as pi's `Models` finds it each time availability refreshes.
 #[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
 pub struct Availability {
-    /// Where its API key `check` finds a key; `None` when it finds none.
+    /// Where its API key `check` finds a key, or `None` when it finds none.
     pub source: Option<String>,
-    /// The ids of the chat models its `filterModels` keeps; `None` keeps
+    /// The ids of the chat models its `filterModels` keeps. `None` keeps
     /// every one.
     pub chat: Option<HashSet<String>>,
     /// The ids of the models of each type kept across every type, as pi's
-    /// `getAllAvailable` keeps them; `None` keeps every one.
+    /// `getAllAvailable` keeps them. `None` keeps every one.
     pub all: Option<HashMap<String, HashSet<String>>>,
 }
 
@@ -217,8 +217,8 @@ pub struct ModelRegistry {
     extension_keys: HashSet<String>,
     /// Providers extensions register.
     extension_providers: HashSet<String>,
-    /// The `models.json` entries extension providers replaced, by provider;
-    /// `None` where there was none.
+    /// The `models.json` entries extension providers replaced, by provider,
+    /// with `None` where there was none.
     replaced: HashMap<String, Option<ProviderConfig>>,
     error: Option<String>,
     /// Classifier models, built-in and refreshed.
@@ -548,8 +548,9 @@ fn apply_override(model: &mut Model, over: &ModelOverride) {
 }
 
 impl ModelRegistry {
-    /// Loads the catalog with `models.json` and `auth.json` from `agent_dir`. A
-    /// broken `models.json` is reported by [`ModelRegistry::error`] and ignored.
+    /// Loads the catalog with `models.json` and `auth.json` from `agent_dir`. It
+    /// ignores a broken `models.json` and reports it through
+    /// [`ModelRegistry::error`].
     pub fn load(agent_dir: &Path) -> ModelRegistry {
         let mut registry = ModelRegistry {
             store: Arc::new(CredentialStore::open(agent_dir.join("auth.json"))),
@@ -651,7 +652,7 @@ impl ModelRegistry {
         sources
     }
 
-    /// Provides pi's llama.cpp provider, as its built-in extension does.
+    /// Adds pi's llama.cpp provider, as its built-in extension does.
     pub fn enable_llama(&mut self) {
         if self.llama {
             return;
@@ -697,7 +698,7 @@ impl ModelRegistry {
             .as_ref()
             .and_then(|env| env.get(crate::llama::BASE_URL_ENV))
             .cloned()?;
-        // A stored key, or the environment's; pi sends no "local" placeholder.
+        // A stored key, or the environment's. pi sends no "local" placeholder.
         let key = credential
             .and_then(|credential| credential.key)
             .or_else(|| std::env::var("LLAMA_API_KEY").ok());
@@ -986,7 +987,7 @@ impl ModelRegistry {
     }
 
     /// Classifies `context` with `model`, resolving the provider's
-    /// credentials; pi's `Models.classify`. Failures are in the result.
+    /// credentials (pi's `Models.classify`). Failures are in the result.
     pub async fn classify(
         &self,
         model: &ClassifierModel,
@@ -1024,8 +1025,8 @@ impl ModelRegistry {
         self.operations.get(&(provider.to_owned(), api.to_owned()))
     }
 
-    /// Generates images with `model`, resolving the provider's credentials;
-    /// pi's `Models.generateImages`. Failures are in the result.
+    /// Generates images with `model`, resolving the provider's credentials
+    /// (pi's `Models.generateImages`). Failures are in the result.
     pub async fn generate_images(
         &self,
         model: &ImageModel,
@@ -1059,7 +1060,7 @@ impl ModelRegistry {
     }
 
     /// Adds a provider an extension configures, as a `models.json` entry
-    /// that replaces any of the same name; pi's `registerProvider`.
+    /// that replaces any of the same name (pi's `registerProvider`).
     pub fn register_config(&mut self, provider: &str, mut config: ProviderConfig) {
         if config.api_key.is_some() {
             self.extension_keys.insert(provider.to_owned());
@@ -1088,8 +1089,8 @@ impl ModelRegistry {
 
     /// Removes the provider an extension registered as `provider`, with its
     /// sign-ins, availability and implementations, and restores the
-    /// built-in or `models.json` provider it replaced; pi's
-    /// `unregisterProvider`. Does nothing for a provider no extension
+    /// built-in or `models.json` provider it replaced (pi's
+    /// `unregisterProvider`). Does nothing for a provider no extension
     /// registered.
     pub fn unregister_provider(&mut self, provider: &str) {
         if !self.extension_providers.remove(provider) {
@@ -1142,7 +1143,7 @@ impl ModelRegistry {
     }
 
     /// Uses `implementation` for `provider`'s classifier and image models of
-    /// `apis`; pi's `classifiers` and `images` of an extension's provider.
+    /// `apis` (pi's `classifiers` and `images` of an extension's provider).
     pub fn register_operations(
         &mut self,
         provider: &str,
@@ -1178,7 +1179,7 @@ impl ModelRegistry {
     }
 
     /// Uses `models` as `provider`'s chat models, as an extension's legacy
-    /// `oauth.modifyModels` made them for its signed-in account; `None`
+    /// `oauth.modifyModels` made them for its signed-in account. `None`
     /// restores the provider's own.
     pub fn modify_models(&mut self, provider: &str, models: Option<Vec<Model>>) {
         match models {
@@ -1311,7 +1312,7 @@ impl ModelRegistry {
             .any(|key| credentials::is_command(key))
     }
 
-    /// Where `provider`'s credential comes from, without running commands;
+    /// Where `provider`'s credential comes from, without running commands, or
     /// `None` when it has none.
     fn auth_source(&self, provider: &str) -> Option<String> {
         if self.runtime_keys.contains_key(provider) {
@@ -1402,7 +1403,7 @@ impl ModelRegistry {
             .filter(|key| !key.is_empty())
     }
 
-    /// Whether `provider` authenticates with a stored OAuth credential; a
+    /// Whether `provider` authenticates with a stored OAuth credential. A
     /// runtime key takes its place.
     pub fn is_using_oauth(&self, provider: &str) -> bool {
         !self.runtime_keys.contains_key(provider)
@@ -1742,7 +1743,7 @@ impl ModelRegistry {
     }
 
     /// Runs a sign-in and stores the credential. An API key login asks for the
-    /// key, with an extension provider's own `login` when it has one; an
+    /// key, with an extension provider's own `login` when it has one, and an
     /// OAuth login runs the provider's flow.
     pub async fn login(
         &self,
@@ -1857,7 +1858,7 @@ mod tests {
             strip_json_comments("{\"a\": \"x//y\", // note\n \"b\": [1, 2,],\n}"),
             "{\"a\": \"x//y\", \n \"b\": [1, 2]\n}"
         );
-        // JavaScript's `\s` before the bracket; an escaped quote stays in the string.
+        // JavaScript's `\s` before the bracket. An escaped quote stays in the string.
         assert_eq!(
             strip_json_comments("[1,\u{a0}\u{feff}] \"a\\\"// b\""),
             "[1\u{a0}\u{feff}] \"a\\\"// b\""

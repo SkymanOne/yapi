@@ -7,7 +7,7 @@ use yapi_ai::registry::ModelRegistry;
 use yapi_types::json::stringify;
 
 /// `models.classify()` and `models.generateImages()` calls one script may
-/// have in flight; more wait for a slot.
+/// have in flight. More wait for a slot.
 pub(super) const MAX_CONCURRENT_MODEL_CALLS: usize = 4;
 
 /// The globals scripts see, in pi's order.
@@ -53,7 +53,7 @@ fn with_article(word: &str) -> String {
     format!("{article} {word}")
 }
 
-/// A script value in an error message; pi's `describeValue`.
+/// A script value in an error message (pi's `describeValue`).
 pub(super) fn describe(value: &Value) -> String {
     match value {
         Value::Null => "null".into(),
@@ -77,7 +77,7 @@ fn describe_field(value: Option<&Value>) -> String {
     value.map_or_else(|| "undefined".to_owned(), describe)
 }
 
-/// A catalog entry for scripts, without `headers`, which can carry
+/// A catalog entry for scripts, without `headers`, which can contain
 /// credentials from `models.json`.
 fn info(mut model: Value) -> Value {
     if let Some(object) = model.as_object_mut() {
@@ -179,7 +179,7 @@ pub(super) fn model_of_type(
 }
 
 /// The `provider` and `id` of the script's model argument, resolved to a
-/// catalog entry of `kind`; a script-supplied base URL or headers never
+/// catalog entry of `kind`. A script-supplied base URL or headers never
 /// receive the credentials.
 pub(super) fn resolve_model(
     registry: &ModelRegistry,

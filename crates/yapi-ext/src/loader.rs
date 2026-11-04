@@ -2,7 +2,7 @@
 //! format of each file, as pi's jiti loader treats them.
 //!
 //! ES modules reach the guest as source text. CommonJS files run in the guest
-//! through its `require`; ES modules that import them get their exports.
+//! through its `require`, and ES modules that import them get their exports.
 //! Both may use `require`, `__filename` and `__dirname` as under jiti.
 
 use std::collections::HashMap;
@@ -30,7 +30,7 @@ enum Format {
     Json,
 }
 
-/// A file prepared for the guest; cheap to clone.
+/// A file prepared for the guest, cheap to clone.
 #[derive(Clone, Debug)]
 struct Prepared {
     format: Format,
@@ -62,7 +62,7 @@ fn resolver(conditions: &[&str]) -> Resolver {
             (".cjs".into(), vec![".cts".into(), ".cjs".into()]),
         ],
         condition_names: conditions.iter().map(|name| (*name).to_owned()).collect(),
-        // Node reads only `main`; `module` is a bundler convention.
+        // Node reads only `main`, and `module` is a bundler convention.
         main_fields: vec!["main".into()],
         ..ResolveOptions::default()
     })
@@ -159,7 +159,8 @@ impl Loader {
         let text = std::fs::read_to_string(file)
             .map_err(|err| format!("Cannot read module {}: {err}", file.display()))?;
         let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        // Node ignores a hashbang line; keep the line so positions hold.
+        // Node ignores a hashbang line, which stays as an empty line so
+        // positions hold.
         let text = match text.strip_prefix("#!") {
             Some(rest) => &rest[rest.find('\n').unwrap_or(rest.len())..],
             None => text,

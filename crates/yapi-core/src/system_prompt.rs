@@ -1,4 +1,4 @@
-//! The system prompt: named sections the transcript carries and later patches.
+//! The system prompt: named sections the transcript holds and later patches.
 //!
 //! Port of `packages/coding-agent/src/core/system-prompt.ts` in pi `v1.0.0`. The
 //! preamble and the documentation section name yapi, and the section points
@@ -62,8 +62,8 @@ fn docs(docs: &crate::docs::Locations) -> String {
     )
 }
 
-/// Whether a custom section name is valid: lowercase, then letters, digits, `_`,
-/// `-`; not `preamble`.
+/// Whether a custom section name is valid: a lowercase letter, then lowercase
+/// letters, digits, `_` or `-`, and not `preamble`.
 pub fn valid_section_name(name: &str) -> bool {
     let mut chars = name.chars();
     name != "preamble"
@@ -72,7 +72,7 @@ pub fn valid_section_name(name: &str) -> bool {
 }
 
 /// The prompt's sections in order, with `docs` in the documentation section.
-/// `preamble` is plain text; every other section is wrapped in a tag of its
+/// `preamble` is plain text. Every other section is wrapped in a tag of its
 /// name.
 pub fn build_sections(
     options: &SystemPromptOptions,

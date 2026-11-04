@@ -2,7 +2,7 @@
 //! keeps them (`_refreshToolRegistry`, `_applyToolLoadout` in pi `v1.0.0`).
 //!
 //! Active tools are declared to the model. Registering a `direct` or
-//! `model-only` tool activates it unless it opts out; re-registering a name
+//! `model-only` tool activates it unless it opts out. Re-registering a name
 //! replaces the tool in place, and a tool that becomes hidden is deactivated.
 //! Names restored from the transcript before their tool is registered wait as
 //! pending and activate on registration.
@@ -44,8 +44,8 @@ impl ToolRegistry {
         registry
     }
 
-    /// Allows only `allowed` (every name when `None`) minus `excluded`;
-    /// registered tools outside them are removed.
+    /// Allows only `allowed` (every name when `None`) minus `excluded`, and
+    /// removes registered tools outside them.
     pub fn restrict(&mut self, allowed: Option<Vec<String>>, excluded: Vec<String>) {
         self.allowed = allowed;
         self.excluded = excluded;
@@ -127,7 +127,7 @@ impl ToolRegistry {
         }
     }
 
-    /// Activates `names` as a transcript recorded them; names of tools not
+    /// Activates `names` as a transcript recorded them. Names of tools not
     /// registered yet activate when they are.
     pub fn restore(&mut self, names: Vec<String>) {
         self.pending = names
@@ -226,7 +226,8 @@ mod tests {
         registry.set_active(vec!["read".into()]);
         registry.register(tool("mcp__a", Exposure::Direct));
         assert_eq!(registry.active(), ["read"]);
-        // Hidden tools leave the active set; becoming direct again activates them.
+        // Hidden tools leave the active set, and becoming direct again
+        // activates them.
         registry.set_active(vec!["read".into(), "mcp__a".into(), "mcp__b".into()]);
         registry.register(tool("mcp__a", Exposure::Hidden));
         assert_eq!(registry.active(), ["read", "mcp__b"]);
@@ -254,7 +255,7 @@ mod tests {
         assert!(registry.get("mcp__other").is_none());
         registry.set_active(vec!["read".into(), "codemode".into()]);
         assert_eq!(registry.active(), ["read"]);
-        // `--no-tools` allows none; `--exclude-tools` removes names.
+        // `--no-tools` allows none, and `--exclude-tools` removes names.
         registry.restrict(Some(Vec::new()), Vec::new());
         registry.register(tool("mcp__a", Exposure::Direct));
         assert!(registry.active().is_empty());

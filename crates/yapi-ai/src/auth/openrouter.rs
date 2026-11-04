@@ -1,5 +1,6 @@
-//! OpenRouter OAuth: a PKCE sign-in that trades the authorization code for a
-//! permanent, user-controlled API key. Port of `oauth/openrouter.ts`.
+//! OpenRouter OAuth: a Proof Key for Code Exchange (PKCE) sign-in that
+//! trades the authorization code for a permanent, user-controlled API key.
+//! Port of `oauth/openrouter.ts`.
 
 use std::time::Duration;
 
@@ -122,7 +123,7 @@ impl OpenRouterOAuth {
         interaction: &Interaction,
     ) -> Result<OAuthCredential, AuthError> {
         let pkce = pkce::generate()?;
-        // OpenRouter sends no `state`; the random path keeps stray requests
+        // OpenRouter sends no `state`. The random path keeps stray requests
         // from completing the sign-in.
         let uuid = yapi_types::time::try_uuid_v4().map_err(AuthError::random)?;
         let path = format!("/oauth/callback/{uuid}");

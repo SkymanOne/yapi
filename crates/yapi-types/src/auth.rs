@@ -23,7 +23,7 @@ pub enum Credential {
     OAuth(OAuthCredential),
 }
 
-/// Values may be literals, `$VAR` templates or `!command`s; see pi's
+/// Values may be literals, `$VAR` templates or `!command`s. See pi's
 /// `resolve-config-value.ts`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ApiKeyCredential {

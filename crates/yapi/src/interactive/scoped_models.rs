@@ -17,7 +17,7 @@ use super::catalogs::RefreshStatus;
 use super::keybindings::keys_display;
 use super::selectors::{Action, Outcome, Ui, input_mouse};
 
-/// Enabled model ids in order; `None` enables every model.
+/// Enabled model ids in order. `None` enables every model.
 type Enabled = Option<Vec<String>>;
 
 fn is_enabled(enabled: &Enabled, id: &str) -> bool {
@@ -163,7 +163,7 @@ impl ScopedModelsSelector {
         self.touched
     }
 
-    /// The enabled model ids; `None` enables every model.
+    /// The enabled model ids. `None` enables every model.
     pub fn enabled(&self) -> &Enabled {
         &self.enabled
     }
@@ -479,7 +479,7 @@ impl ScopedModelsSelector {
 }
 
 /// The ids the `enabledModels` patterns select, then the patterns that
-/// select nothing; `None` without patterns.
+/// select nothing, or `None` without patterns.
 pub(super) fn configured_ids(patterns: &[String], models: &[Model]) -> Enabled {
     if patterns.is_empty() {
         return None;

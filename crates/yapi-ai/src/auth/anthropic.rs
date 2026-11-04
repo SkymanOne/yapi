@@ -1,5 +1,6 @@
-//! Anthropic (Claude Pro/Max) sign-in: PKCE with a loopback callback or a
-//! copied code. Port of `oauth/anthropic.ts`.
+//! Anthropic (Claude Pro/Max) sign-in: Proof Key for Code Exchange (PKCE)
+//! with a loopback callback or a copied code. Port of
+//! `oauth/anthropic.ts`.
 
 use std::time::Duration;
 
@@ -30,7 +31,7 @@ pub struct AnthropicOAuth {
     pub token_url: String,
     /// Loopback callback port.
     pub callback_port: u16,
-    /// Redirect URI for the browser flow; must reach the callback port.
+    /// Redirect URI for the browser flow, which must reach the callback port.
     pub redirect_uri: String,
     /// Redirect URI for the copy-code flow.
     pub copy_code_redirect_uri: String,

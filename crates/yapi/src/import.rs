@@ -12,7 +12,8 @@ fn files(count: usize) -> &'static str {
     if count == 1 { "file" } else { "files" }
 }
 
-/// Prints what one directory's import did; the files copied and kept.
+/// Prints what one directory's import did and returns the counts of files
+/// copied and kept.
 fn report(from: &Path, to: &Path, imported: &[Imported]) -> (usize, usize) {
     out(&format!("{} -> {}", from.display(), to.display()));
     if imported.is_empty() {
@@ -67,7 +68,8 @@ enum Source {
     Pi,
 }
 
-/// Runs `yapi import` with `args` (after `import`); the exit code.
+/// Runs `yapi import` with `args` (after `import`) and returns the exit
+/// code.
 pub fn run(args: &[String]) -> u8 {
     if let Err(code) = crate::parse_command::<ImportArgs>("yapi import", args) {
         return code;

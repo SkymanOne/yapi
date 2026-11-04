@@ -816,7 +816,7 @@ fn add_prompts_capabilities() {
         pty.rows()
     );
     // While the question waits, chest keeps the manifest's lock fresh, which
-    // it refreshes every 15 seconds.
+    // it refreshes every 15s.
     let lock = scratch.project.join(".chest.toml.lock");
     let modified = || lock.metadata().and_then(|lock| lock.modified()).unwrap();
     let (taken, deadline) = (modified(), Instant::now() + Duration::from_secs(25));

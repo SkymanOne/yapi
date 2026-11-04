@@ -8,7 +8,7 @@ pub fn len(text: &str) -> usize {
 }
 
 /// The UTF-16 index of byte offset `byte` in `text`, as JavaScript indexes
-/// strings; an offset inside a character counts from its start.
+/// strings. An offset inside a character counts from its start.
 pub fn utf16_index(text: &str, byte: usize) -> usize {
     len(&text[..text.floor_char_boundary(byte)])
 }
@@ -37,7 +37,7 @@ pub fn slice(text: &str, start: usize, end: usize) -> String {
 
 /// `TextDecoder.decode(bytes, {stream: true})`: appends `bytes` to `pending`
 /// and decodes what is complete. A character cut off at the end stays
-/// pending; invalid bytes become U+FFFD.
+/// pending, and invalid bytes become U+FFFD.
 pub fn decode_utf8_stream(pending: &mut Vec<u8>, bytes: &[u8]) -> String {
     pending.extend_from_slice(bytes);
     let valid = match std::str::from_utf8(pending) {

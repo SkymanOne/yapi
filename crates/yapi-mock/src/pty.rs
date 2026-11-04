@@ -121,7 +121,7 @@ impl Pty {
     /// Starts `executable` with `args` in `cwd`, with exactly `env` and
     /// `TERM=xterm-256color`, on a `cols` by `rows` terminal. With `answer`,
     /// the terminal replies to device attribute and color queries as a dark
-    /// xterm does; otherwise it stays silent.
+    /// xterm does, and otherwise stays silent.
     pub fn spawn(
         executable: &Path,
         args: &[String],
@@ -226,8 +226,8 @@ impl Pty {
         self.lock().shown.hide_cursor()
     }
 
-    /// The OSC 9;4 progress sequences the program wrote so far, in order,
-    /// such as `"9;4;3"`.
+    /// The operating system command (OSC) `9;4` progress sequences the
+    /// program wrote so far, in order, such as `"9;4;3"`.
     pub fn progress(&self) -> Vec<String> {
         let screen = self.lock();
         let text = String::from_utf8_lossy(&screen.output);
@@ -239,8 +239,9 @@ impl Pty {
             .collect()
     }
 
-    /// Waits until the screen has been quiet for [`settle_time`], counting from
-    /// now or the last output, whichever is later; at most [`SETTLE_LIMIT`].
+    /// Waits until the screen has been quiet for [`settle_time`], counting
+    /// from now or the last output, whichever is later, for at most
+    /// [`SETTLE_LIMIT`].
     pub fn settle(&self) {
         let quiet = settle_time();
         let started = Instant::now();
@@ -256,8 +257,8 @@ impl Pty {
         }
     }
 
-    /// Waits until `done` holds for the screen rows; the time it took, or
-    /// `None` after `limit`.
+    /// Waits until `done` holds for the screen rows, and returns the time it
+    /// took, or `None` after `limit`.
     pub fn wait_for(&self, limit: Duration, done: impl Fn(&[String]) -> bool) -> Option<Duration> {
         let started = Instant::now();
         loop {
@@ -288,7 +289,7 @@ impl Pty {
 mod tests {
     use super::*;
 
-    /// The screen changes only when a frame completes, also when the frame
+    /// The screen changes only when a frame completes, even when the frame
     /// and its markers span chunks.
     #[test]
     fn shows_only_complete_frames() {

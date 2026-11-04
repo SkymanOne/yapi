@@ -3,7 +3,7 @@
 //!
 //! pi's side is `tests/fixtures/pi/extensions/registrations.json`, written by
 //! `tests/fixtures/pi/generator/extensions.mjs`. The examples come from the
-//! generator's npm install of pi; without it the test only reports that.
+//! generator's npm install of pi. Without it, the test only reports that.
 #![allow(
     clippy::unwrap_used,
     reason = "test helpers; a panic is a test failure"

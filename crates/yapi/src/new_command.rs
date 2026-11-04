@@ -57,12 +57,12 @@ fn create(dir: &Path, name: &str) -> std::io::Result<()> {
 struct NewArgs {
     /// Where to create the project.
     path: PathBuf,
-    /// The package name; the directory's name by default.
+    /// The package name (the directory's name by default).
     #[arg(long, allow_hyphen_values = true)]
     name: Option<String>,
 }
 
-/// Runs `yapi new` with `args` (after `new`); the exit code.
+/// Runs `yapi new` with `args` (after `new`) and returns the exit code.
 pub fn run(args: &[String]) -> u8 {
     let NewArgs { path, name } = match crate::parse_command("yapi new", args) {
         Ok(args) => args,

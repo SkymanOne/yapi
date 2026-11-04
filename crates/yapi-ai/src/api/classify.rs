@@ -23,16 +23,16 @@ use crate::stream::now_ms;
 /// Options of one classification.
 #[derive(Clone, Debug, Default)]
 pub struct ClassifyOptions {
-    /// Credential for the service; llama.cpp servers may need none.
+    /// Credential for the service. llama.cpp servers may need none.
     pub api_key: Option<String>,
-    /// Extra headers; `None` removes one.
+    /// Extra headers. `None` removes one.
     pub headers: IndexMap<String, Option<String>>,
-    /// Divides answer logits before they become probabilities; APIs that
+    /// Divides answer logits before they become probabilities. APIs that
     /// cannot apply it ignore it.
     pub temperature: Option<f64>,
     /// Per-attempt timeout.
     pub timeout_ms: Option<u64>,
-    /// Retries of retryable failures; 2 when absent.
+    /// Retries of retryable failures, or 2 when absent.
     pub max_retries: Option<u32>,
     /// Largest server-requested retry delay to honor.
     pub max_retry_delay_ms: Option<u64>,
@@ -40,8 +40,8 @@ pub struct ClassifyOptions {
     pub cancel: CancellationToken,
 }
 
-/// Classifies `context` with `model`. Failures are reported in the result,
-/// as pi's `classify()` does.
+/// Classifies `context` with `model`. Reports failures in the result, as
+/// pi's `classify()` does.
 pub async fn classify(
     model: &ClassifierModel,
     context: &ClassifierContext,
@@ -317,7 +317,7 @@ fn parse_answers(
 }
 
 /// Usage from System One's `{input_tokens, output_tokens}`, priced from the
-/// catalog; a missing or malformed object leaves the result without usage.
+/// catalog. A missing or malformed object leaves the result without usage.
 fn parse_usage(value: Option<&Value>, model: &ClassifierModel) -> Option<Usage> {
     let value = value?.as_object()?;
     if !value.contains_key("input_tokens") && !value.contains_key("output_tokens") {

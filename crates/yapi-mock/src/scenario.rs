@@ -3,7 +3,7 @@
 //!
 //! A scenario is a cassette, command-line arguments and files to create in a fresh
 //! working directory. The agent directory gets a `models.json` pointing the
-//! providers at the mock server; credentials are dummy environment variables.
+//! providers at the mock server, and credentials are dummy environment variables.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -21,7 +21,7 @@ use crate::{Cassette, Error, MockServer, RecordedRequest};
 /// One scenario from `tests/fixtures/scenarios/scenarios.json`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Scenario {
-    /// Name; also the golden file name.
+    /// Name, also the golden file name.
     pub name: String,
     /// Cassette path relative to `tests/fixtures/cassettes`.
     pub cassette: String,
@@ -34,7 +34,7 @@ pub struct Scenario {
     /// base64.
     #[serde(default, rename = "binaryFiles")]
     pub binary_files: IndexMap<String, String>,
-    /// Text on stdin; stdin is empty otherwise.
+    /// Text on stdin, which is empty otherwise.
     #[serde(default)]
     pub stdin: Option<String>,
     /// Files to create in the agent directory, such as `settings.json`.
@@ -47,7 +47,7 @@ pub struct Scenario {
     /// Runs the program in a terminal and types into it.
     #[serde(default)]
     pub tty: Option<Tty>,
-    /// Commands for RPC mode, sent one at a time; stdin closes after the last.
+    /// Commands for RPC mode, sent one at a time. Stdin closes after the last.
     #[serde(default)]
     pub rpc: Option<Vec<RpcStep>>,
     /// A Node script in the fixture generator that runs instead, with the
@@ -89,13 +89,13 @@ pub fn generator_dir() -> PathBuf {
 /// One command of an RPC scenario.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RpcStep {
-    /// The command, written as one JSON line; a string is written verbatim
+    /// The command, written as one JSON line. A string is written verbatim
     /// and `null` writes nothing. A string value `{{<id>:<pointer>}}` inside
     /// the command becomes the value at that JSON pointer of the response to
     /// command `<id>`.
     pub send: Value,
     /// Waits until the mock has received this many requests before writing
-    /// the command, so that an `abort` lands while a request is in flight
+    /// the command, so that an `abort` arrives while a request is in flight
     /// instead of racing the program's sending of it.
     #[serde(default)]
     pub requests: Option<usize>,
@@ -119,7 +119,8 @@ pub struct Tty {
     /// Steps: input to send, one write each, such as `"hello"` or `"\r"`, or
     /// text to wait for.
     pub keys: Vec<Key>,
-    /// Whether to record the terminal progress sequences (OSC 9;4) written.
+    /// Whether to record the operating system command (OSC) `9;4` progress
+    /// sequences the program writes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub progress: bool,
 }
@@ -210,7 +211,7 @@ pub fn load_scenarios() -> Result<Vec<Scenario>, Error> {
     crate::cassette::load_json(&fixtures_dir().join("scenarios/scenarios.json"))
 }
 
-/// Compiles a pattern of this file; each is a valid literal.
+/// Compiles a pattern of this file. Each is a valid literal.
 fn pattern(text: &str) -> Regex {
     Regex::new(text).expect("the normalizer's patterns are valid")
 }
@@ -376,8 +377,8 @@ pub async fn run(scenario: &Scenario, program: &Program) -> Result<Run, Error> {
         "opencode-go": {"baseUrl": url},
     }});
     let models_path = agent_dir.join("models.json");
-    // A scenario's own `models.json` keeps its settings; providers it leaves
-    // without a base URL still point at the mock.
+    // A scenario's own `models.json` keeps its settings, and providers it
+    // leaves without a base URL still point at the mock.
     if let Some(Value::Object(seeded)) = std::fs::read_to_string(&models_path)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -852,7 +853,7 @@ impl Normalizer<'_> {
                             | "wall_time_seconds",
                             Value::String(_) | Value::Number(_),
                         ) => Value::from(format!("<{key}>")),
-                        // pi's diagnostics carry the error's stack trace.
+                        // pi's diagnostics include the error's stack trace.
                         ("diagnostics", Value::Array(items)) => {
                             let mut items = self.value(&Value::Array(items.clone()));
                             for item in items.as_array_mut().into_iter().flatten() {
@@ -892,7 +893,7 @@ impl Normalizer<'_> {
 /// text, the requests' method, path, query and body, and session files.
 ///
 /// pi serializes live objects, so `message_update.usage` and the partial in an
-/// assistant `message_start` depend on network timing; both are dropped.
+/// assistant `message_start` depend on network timing. Both are dropped.
 /// `estimatedTokensAfter` estimates the whole prompt, which includes pi's
 /// `docs` section, and a transport diagnostic's `requestBytes` measures it,
 /// so both are masked too. Parallel tools finish in any order, so
@@ -1030,7 +1031,8 @@ fn normalize_screen(rows: &[String], normalizer: &mut Normalizer<'_>) -> Vec<Str
     };
     let mut out: Vec<String> = Vec::new();
     for row in &rows[start..] {
-        // Both logos' top rows contain `▀▀█`; Apple Terminal shows wordmarks.
+        // Both logos' top rows contain `▀▀█`. Apple Terminal shows wordmarks
+        // instead.
         if row.contains("▀▀█") || row.starts_with(" YaPi v") {
             continue;
         }

@@ -41,7 +41,7 @@ fn to_js(lines: &[String], line: usize, col: usize) -> EditorState {
 }
 
 /// The editor state and `force` flag of an extension's request for
-/// suggestions, in byte columns; `None` when it is malformed.
+/// suggestions, in byte columns, or `None` when it is malformed.
 pub(super) fn request(value: &Value) -> Option<(Completion, bool)> {
     let state = serde_json::from_value(value.clone()).ok()?;
     Some((from_js(state), value["force"] == true))
@@ -119,7 +119,7 @@ pub(super) struct ExtensionCompletions {
 }
 
 impl ExtensionCompletions {
-    /// Asks `providers` and calls `notify` when an answer arrives; `triggers`
+    /// Asks `providers` and calls `notify` when an answer arrives. `triggers`
     /// open completion as `@` does.
     pub fn new(
         providers: Arc<dyn ComponentHost>,

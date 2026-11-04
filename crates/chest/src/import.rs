@@ -197,7 +197,7 @@ fn skills_lock(path: &Path, document: &mut ManifestDocument) -> anyhow::Result<u
     for (name, skill) in skills {
         let text = |key: &str| skill.get(key).and_then(Value::as_str).map(str::to_owned);
         let source = text("source").unwrap_or_default();
-        // `skillPath` names the SKILL.md; chest names its folder.
+        // `skillPath` names the SKILL.md, and chest names its folder.
         let folder = text("skillPath").map(|path| {
             let parent = Path::new(&path)
                 .parent()

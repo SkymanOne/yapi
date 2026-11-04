@@ -23,8 +23,8 @@ pub type UpdateSink = Arc<dyn Fn(ToolResult) + Send + Sync>;
 
 /// A tool: a declaration for the model and an implementation.
 ///
-/// `execute` returns `Err` with a message for failures; the loop turns it into an
-/// error result. Cancellation is cooperative through `cancel`.
+/// `execute` returns `Err` with a message for failures, and the loop turns it
+/// into an error result. Cancellation is cooperative through `cancel`.
 pub trait Tool: Send + Sync {
     /// Name, description and argument schema as sent to the model.
     fn declaration(&self) -> &ToolDeclaration;
@@ -40,7 +40,7 @@ pub trait Tool: Send + Sync {
     }
 
     /// JSON Schema of the value the tool returns as `structuredContent`, for
-    /// tools whose results scripts consume; pi's `outputSchema`.
+    /// tools whose results scripts consume (pi's `outputSchema`).
     fn output_schema(&self) -> Option<&Value> {
         None
     }

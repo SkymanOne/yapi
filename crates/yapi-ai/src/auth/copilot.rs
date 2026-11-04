@@ -271,7 +271,7 @@ impl CopilotOAuth {
     ) -> Result<Catalog, AuthError> {
         let base = self.base_url(token, enterprise);
         // Some Individual accounts disable every picker flag despite enabled
-        // policies; only that endpoint falls back to the policies.
+        // policies. Only that endpoint falls back to the policies.
         let allow_policy_fallback = base == DEFAULT_BASE_URL;
         let build = || {
             let mut request = crate::http::client()
@@ -296,7 +296,7 @@ impl CopilotOAuth {
         parse_catalog(&json_body(response).await, allow_policy_fallback)
     }
 
-    /// Enables models for the account, best effort; exhausted rate limiting
+    /// Enables models for the account, best effort. Exhausted rate limiting
     /// stops the batch.
     async fn enable_models(
         &self,
@@ -369,7 +369,7 @@ impl CopilotOAuth {
             return Err(AuthError::failed("Invalid device code response fields"));
         }
         let interval = interval.and_then(Value::as_f64);
-        // The URI is opened in a browser; only web URLs are trusted.
+        // The URI is opened in a browser. Only web URLs are trusted.
         let verification_uri = url::Url::parse(verification_uri)
             .ok()
             .filter(|url| matches!(url.scheme(), "https" | "http"))

@@ -3,7 +3,7 @@
 //!
 //! Each script runs in a fresh `yapi-js` instance without grants or file
 //! access. The guest compiles the script next to pi's prelude in an empty
-//! QuickJS context; nested tool calls and discovery globals are operations
+//! QuickJS context. Nested tool calls and discovery globals are operations
 //! this module answers, so the script reaches nothing else.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -98,8 +98,8 @@ fn parse_options(directive: &str) -> Result<SourceOptions, String> {
     Ok(options)
 }
 
-/// Splits an optional first-line `// @options: {...}` from the script; pi's
-/// `parseCodemodeSource`. The options line becomes an empty line, so line
+/// Splits an optional first-line `// @options: {...}` from the script (pi's
+/// `parseCodemodeSource`). The options line becomes an empty line, so line
 /// numbers are unchanged.
 pub(super) fn parse_source(input: &str) -> Result<(String, SourceOptions), String> {
     if input.trim().is_empty() {
@@ -121,7 +121,7 @@ pub(super) fn parse_source(input: &str) -> Result<(String, SourceOptions), Strin
 }
 
 /// `load()` values: the `codemode-store` entries of the branch, applied from
-/// the root, as JSON texts; pi's `readCodemodeStore`.
+/// the root, as JSON texts (pi's `readCodemodeStore`).
 fn read_store(session: Option<&AgentSession>) -> Map<String, Value> {
     let mut store = Map::new();
     let Some(session) = session else {
@@ -229,7 +229,7 @@ fn script_value(value: Option<&Value>) -> Value {
     json!({"json": value.map(yapi_types::json::stringify)})
 }
 
-/// Whether `query` names namespace `namespace`; pi's `isNamespaceName`.
+/// Whether `query` names namespace `namespace` (pi's `isNamespaceName`).
 fn is_namespace_name(namespace: &str, query: &str) -> bool {
     let (id, query_id) = (identifier(namespace), identifier(query));
     let suffix = |name: &str| name.rfind("__").map(|index| name[index + 2..].to_owned());
@@ -641,7 +641,7 @@ fn summary(calls: &[CallRecord]) -> String {
     )
 }
 
-/// Writes the full text output to a temp file; the path or why not.
+/// Writes the full text output to a temp file. Returns the path or why not.
 fn spill(text: &str) -> Result<String, String> {
     let name = yapi_types::time::random_hex(8);
     let path = std::env::temp_dir().join(format!("yapi-codemode-{name}.txt"));
@@ -650,7 +650,8 @@ fn spill(text: &str) -> Result<String, String> {
 }
 
 /// Applies the token budget: over it, the text items become one item with
-/// the start and end of the text, and images follow it; pi's `truncateOutput`.
+/// the start and end of the text, and images follow it (pi's
+/// `truncateOutput`).
 fn truncate_output(items: Vec<Value>, max_tokens: u64) -> (Vec<Value>, Option<String>) {
     let texts: Vec<&str> = items
         .iter()
@@ -715,7 +716,8 @@ fn store_entry(writes: &str) -> Option<Value> {
 pub(crate) struct Runner {
     cache_dir: Option<std::path::PathBuf>,
     engine: Arc<tokio::sync::OnceCell<Engine>>,
-    /// The codemode reference; scripts with a session reach `models` when set.
+    /// The codemode reference. When it is set, scripts with a session reach
+    /// `models`.
     docs: Option<String>,
 }
 

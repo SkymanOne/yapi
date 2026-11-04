@@ -2,7 +2,7 @@
 //!
 //! Port of `packages/coding-agent/src/core/compaction/compaction.ts` and
 //! `compaction/utils.ts` in pi `v1.0.0`. The functions here are pure apart from
-//! the summary request; the agent session decides when to compact and records the
+//! the summary request. The agent session decides when to compact and records the
 //! result.
 
 use std::collections::BTreeSet;
@@ -32,7 +32,7 @@ use crate::time::{now_ms, uuid_v7};
 pub struct CompactionSettings {
     /// Automatic compaction is on.
     pub enabled: bool,
-    /// Tokens kept free for the response; compaction starts when less is left.
+    /// Tokens kept free for the response. Compaction starts when less is left.
     pub reserve_tokens: u64,
     /// Recent tokens kept verbatim.
     pub keep_recent_tokens: u64,
@@ -69,7 +69,7 @@ pub struct RetryPolicy {
     pub enabled: bool,
     /// Retries after the first attempt.
     pub max_retries: u32,
-    /// Delay before the first retry; doubles each time.
+    /// Delay before the first retry, doubling each time.
     pub base_delay_ms: u64,
     /// Cap on one delay.
     pub max_delay_ms: u64,
@@ -137,8 +137,8 @@ fn content_chars(content: &Content) -> usize {
     }
 }
 
-/// Estimated tokens of one message: characters / 4, rounded up; images count
-/// 4800 characters.
+/// Estimated tokens of one message: characters / 4, rounded up, where an image
+/// counts as 4800 characters.
 pub fn estimate_tokens(message: &Message) -> u64 {
     let chars = match message {
         Message::System(system) => {
@@ -359,7 +359,7 @@ fn find_cut_point(
     }
 
     // A recovery attempt and its omission edits are invisible after the last
-    // visible input; move past them only when the whole suffix is such an attempt.
+    // visible input. Move past them only when the whole suffix is such an attempt.
     let suffix = &entries[(cut + 1).min(end)..end];
     let intrinsically_visible = |entry: &ProjectedEntry<'_>| {
         !matches!(entry.source, FileEntry::ContextEdit(_))
@@ -590,7 +590,7 @@ const UPDATE_SUMMARIZATION_INSTRUCTIONS: &str = "Update the existing structured 
 
 const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = "The messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.\n\nCreate a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.\n\n## Original Request\n[What did the user ask for?]\n\n## Progress So Far\n- [Key decisions and work completed in these messages]\n\n## Context Needed to Continue\n- [Information from these messages needed to understand the later work]\n\nOnly summarize information explicitly present above. Do not infer or recreate later messages.";
 
-/// What compaction will summarize and keep; serializes as pi's
+/// What compaction will summarize and keep, serialized as pi's
 /// `CompactionPreparation`.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -614,7 +614,7 @@ pub struct Preparation {
     pub settings: CompactionSettings,
 }
 
-/// Plans a compaction of a branch; `None` when there is nothing to summarize.
+/// Plans a compaction of a branch, or `None` when there is nothing to summarize.
 pub fn prepare_compaction(
     branch: &[&FileEntry],
     settings: CompactionSettings,
@@ -624,7 +624,7 @@ pub fn prepare_compaction(
     }
     let projection = crate::session::build_projection(branch);
     let entries = &projection.entries;
-    // The newest compaction is projected first; older ones contribute nothing.
+    // The newest compaction is projected first. Older ones contribute nothing.
     let previous = entries
         .iter()
         .position(|entry| is_compaction(entry) && !entry.messages.is_empty());
@@ -701,7 +701,7 @@ pub struct Summarizer<'a> {
     pub apis: Apis,
     /// Credentials for the model.
     pub auth: Auth,
-    /// The session's thinking level; used when the model reasons.
+    /// The session's thinking level, used when the model reasons.
     pub thinking_level: ThinkingLevel,
     /// Retries for transient failures.
     pub retry: RetryPolicy,
@@ -716,7 +716,7 @@ pub struct Summarizer<'a> {
     pub hooks: yapi_ai::stream::RequestHooks,
 }
 
-/// What a summarizer reports while it retries; pi-ai's `RetryCallbacks`.
+/// pi-ai's `RetryCallbacks`: what a summarizer reports while it retries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SummaryRetry {
     /// A failed request is retried after `delay_ms`.
@@ -746,7 +746,7 @@ pub struct Summary {
 }
 
 /// Why a summary response cannot become a checkpoint, if it cannot: it
-/// failed, hit the token cap or called a tool.
+/// failed, reached the token cap or called a tool.
 pub(crate) fn check_summary(response: &AssistantMessage, label: &str) -> Result<(), String> {
     match response.stop_reason {
         StopReason::Error => Err(format!(
@@ -891,7 +891,7 @@ impl Summarizer<'_> {
         label: &str,
     ) -> Result<Summary, String> {
         // As in pi, a request started after the abort fails with its kind,
-        // while one aborted mid-stream counts as finished; the caller then
+        // while one aborted mid-stream counts as finished. The caller then
         // sees the abort.
         if self.cancel.is_cancelled() {
             return Err(format!("{label} failed: This operation was aborted"));
@@ -1039,12 +1039,12 @@ const BRANCH_SUMMARY_PREAMBLE: &str = "The user explored a different conversatio
 
 const BRANCH_SUMMARY_PROMPT: &str = "Create a structured summary of this conversation branch for context when returning later.\n\nUse this EXACT format:\n\n## Goal\n[What was the user trying to accomplish in this branch?]\n\n## Constraints & Preferences\n- [Any constraints, preferences, or requirements mentioned]\n- [Or \"(none)\" if none were mentioned]\n\n## Progress\n### Done\n- [x] [Completed tasks/changes]\n\n### In Progress\n- [ ] [Work that was started but not finished]\n\n### Blocked\n- [Issues preventing progress, if any]\n\n## Key Decisions\n- **[Decision]**: [Brief rationale]\n\n## Next Steps\n1. [What should happen next to continue this work]\n\nKeep each section concise. Preserve exact file paths, function names, and error messages.";
 
-/// The message an entry contributes to a branch summary; tool results are
-/// skipped because the calls carry their context.
+/// The message an entry contributes to a branch summary. Tool results are
+/// skipped because the calls already contain their context.
 fn branch_entry_message(entry: &FileEntry) -> Option<Message> {
     match entry {
         FileEntry::Message(entry) if matches!(entry.message, Message::ToolResult(_)) => None,
-        // A compaction's summary comes after the system message it may carry.
+        // A compaction's summary comes after the system message it may include.
         FileEntry::Message(_)
         | FileEntry::CustomMessage(_)
         | FileEntry::BranchSummary(_)

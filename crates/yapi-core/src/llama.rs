@@ -3,7 +3,7 @@
 //! from Hugging Face. The provider itself lives in `yapi_ai::llama`.
 //!
 //! Port of `extensions/llama/index.ts` in pi-coding-agent `v1.0.0`. pi draws
-//! the manager as its own components; yapi asks through the standard dialogs.
+//! the manager as its own components. yapi asks through the standard dialogs.
 
 use std::sync::Arc;
 
@@ -285,7 +285,7 @@ impl Manager {
         else {
             return Ok(());
         };
-        // `owner/repository[:quant]` names a model; anything else searches.
+        // `owner/repository[:quant]` names a model. Anything else searches.
         let selected = if query.contains('/') {
             query
         } else {

@@ -121,7 +121,7 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// `count` random bytes as lowercase hexadecimal; panics as
+/// `count` random bytes as lowercase hexadecimal. Panics as
 /// [`random_bytes`] does.
 pub fn random_hex(count: usize) -> String {
     let mut bytes = vec![0u8; count];
@@ -129,7 +129,7 @@ pub fn random_hex(count: usize) -> String {
     hex(&bytes)
 }
 
-/// A random UUID v4, as `crypto.randomUUID`; panics as [`random_bytes`] does.
+/// A random UUID v4, as `crypto.randomUUID`. Panics as [`random_bytes`] does.
 pub fn uuid_v4() -> String {
     v4(random_bytes())
 }
@@ -145,7 +145,7 @@ fn v4(mut bytes: [u8; 16]) -> String {
     format_uuid(&bytes)
 }
 
-/// A time-ordered UUID v7, used for session ids; panics as [`random_bytes`]
+/// A time-ordered UUID v7, used for session ids. Panics as [`random_bytes`]
 /// does.
 pub fn uuid_v7() -> String {
     let mut bytes = random_bytes::<16>();

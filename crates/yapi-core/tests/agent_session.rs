@@ -419,7 +419,7 @@ impl yapi_core::extensions::ExtensionUi for Errors {
     }
 }
 
-/// A `/skill:` name ends at a space only; an unreadable skill file is
+/// A `/skill:` name ends at a space only. An unreadable skill file is
 /// reported and leaves the prompt as typed, as in pi.
 #[tokio::test]
 async fn skill_split_space() {

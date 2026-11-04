@@ -8,8 +8,8 @@ use super::width::measured;
 use super::{Cls, Span};
 
 /// Sentinel occupying the trailing column of a wide glyph. Never emitted: the
-/// line builder skips it so a CJK character claims two cells of layout but
-/// contributes one character of output.
+/// line builder skips it so a CJK (Chinese, Japanese and Korean) character
+/// claims two cells of layout but contributes one character of output.
 pub(super) const CONT: &str = "\0";
 
 /// Connection direction bits, combined into a box-drawing glyph by `mask_char`.
@@ -25,7 +25,7 @@ pub(super) const STY_SOLID: u8 = 4;
 
 /// A grid of cells. Edges accumulate as direction bits rather than glyphs so
 /// that crossings and junctions resolve correctly whatever order they are
-/// drawn in; `finalize_mask` turns the accumulated bits into characters at the
+/// drawn in. `finalize_mask` turns the accumulated bits into characters at the
 /// end.
 ///
 /// `occupied` marks cells claimed by a box, which edge bits must not overwrite.
@@ -86,7 +86,7 @@ impl Canvas {
 
     /// Accumulate direction bits on a free cell.
     ///
-    /// `cls` is the class to claim the cell for; `Border` cells are never
+    /// `cls` is the class to claim the cell for. `Border` cells are never
     /// reclassified, so a connector meeting a box keeps the box's styling.
     pub(super) fn add_bits(&mut self, x: usize, y: usize, bits: u8, cls: Cls) {
         if x >= self.w || y >= self.h {
@@ -180,7 +180,7 @@ impl Canvas {
     }
 
     /// Mirror top-to-bottom for `BT`. Rows reorder but within-row text does
-    /// not, so labels stay readable; box-drawing glyphs flip to match.
+    /// not, so labels stay readable, and box-drawing glyphs flip to match.
     pub(super) fn flip_vertical(&mut self) {
         for y in 0..self.h / 2 {
             let y2 = self.h - 1 - y;
@@ -240,7 +240,7 @@ impl Canvas {
         let mut width = 0;
         for y in 0..self.h {
             // A trailing CONT counts as painted: it is the second cell of a
-            // wide glyph, so the row really does reach that column.
+            // wide glyph, so the row does reach that column.
             let mut last = 0;
             for x in (0..self.w).rev() {
                 if self.ch[self.idx(x, y)] != " " {
@@ -278,7 +278,8 @@ impl Canvas {
             }
             styled.push(spans);
             // Only ASCII spaces, which is all a blank cell ever holds. Trimming
-            // `\s` would eat a trailing NBSP that `styled` keeps, desyncing the two.
+            // `\s` would remove a trailing NBSP that `styled` keeps, desyncing
+            // the two.
             plain.push(plain_row.trim_end_matches(' ').to_string());
         }
         let mut first = 0;

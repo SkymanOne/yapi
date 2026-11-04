@@ -13,7 +13,7 @@ use yapi_types::extension_event::RegisteredMcpServer;
 
 use crate::config::PROJECT_DIR;
 
-/// How an MCP server's tools reach the model; pi's `McpExposure`.
+/// pi's `McpExposure`: how an MCP server's tools reach the model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McpExposure {
     /// Called from codemode scripts. The default.
@@ -49,7 +49,7 @@ impl McpExposure {
     }
 
     /// The tool exposure: `codemode` tools are deferred tools that codemode
-    /// reaches; they differ only in which discovery tool is activated.
+    /// reaches. The two differ only in which discovery tool is activated.
     pub fn tool_exposure(self) -> crate::tools::Exposure {
         use crate::tools::Exposure;
         match self {
@@ -134,7 +134,7 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    /// The server's exposure; `codemode` by default.
+    /// The server's exposure, `codemode` by default.
     pub fn exposure(&self) -> McpExposure {
         self.exposure.unwrap_or(McpExposure::Codemode)
     }
@@ -661,7 +661,7 @@ pub fn remove_server_config(path: &Path, name: &str) -> Result<bool, String> {
     Ok(removed)
 }
 
-/// A setting `/mcp` changes; pi's `McpServerConfigPatch`.
+/// pi's `McpServerConfigPatch`: a setting `/mcp` changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigPatch {
     /// `enabled`.

@@ -1,5 +1,5 @@
 //! Signals that the process catches leave the extension runtime running,
-//! whichever thread they land on.
+//! whichever thread receives them.
 #![cfg(target_os = "macos")]
 #![allow(
     clippy::unwrap_used,

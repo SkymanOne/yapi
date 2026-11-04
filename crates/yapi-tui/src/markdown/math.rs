@@ -2,16 +2,16 @@
 //!
 //! marked runs them before its own tokenizers at every block and inline
 //! position, so an expression hides any Markdown inside it, and a display
-//! block ends the paragraph before it. pulldown-cmark has no such hook: the
-//! expressions are found on a parse, each is replaced with a placeholder that
-//! Markdown leaves alone, and the source is parsed again. The replacements
-//! keep every line and container prefix, so the second parse has the same
-//! blocks and blank lines.
+//! block ends the paragraph before it. pulldown-cmark has no such hook, so
+//! this module finds the expressions on a parse, replaces each with a
+//! placeholder that Markdown leaves alone, and parses the source again. The
+//! replacements keep every line and container prefix, so the second parse has
+//! the same blocks and blank lines.
 //!
 //! An expression found hides the emphasis and link delimiters in it, which
 //! the first parse may have paired with others around a later expression. So
-//! the expressions are found again on a parse with the ones found masked,
-//! until they no longer change.
+//! the module finds the expressions again on a parse with the ones found
+//! masked, until they no longer change.
 
 use std::ops::Range;
 
@@ -42,9 +42,10 @@ pub(super) struct Math {
 /// line splits into as many table cells.
 const START: char = '\u{e000}';
 const END: char = '\u{e001}';
-/// Replaces each further line of a multi-line expression; the line is dropped.
+/// Replaces each further line of a multi-line expression. The line is dropped.
 const CONTINUATION: char = '\u{e002}';
-/// Ends a placeholder in place of `$`; neither punctuation nor whitespace.
+/// Ends a placeholder in place of `$`, and is neither punctuation nor
+/// whitespace.
 const WORD_END: char = '\u{e003}';
 const PIPES_LAST: char = '\u{e004}';
 const DIGIT_ZERO: u32 = 0xe010;
@@ -781,7 +782,7 @@ fn mask(source: &str, hits: &[Hit]) -> String {
 const ROUNDS: usize = 4;
 
 /// The source with each LaTeX expression replaced by a placeholder, and the
-/// expressions; `None` when it has none.
+/// expressions. `None` when it has none.
 pub(super) fn extract(source: &str, options: Options) -> Option<(String, Vec<Math>)> {
     if !(source.contains('$') || source.contains("\\(") || source.contains("\\["))
         || source.contains([START, END, CONTINUATION])

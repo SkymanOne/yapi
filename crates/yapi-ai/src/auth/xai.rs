@@ -41,7 +41,8 @@ struct Answer {
     body: Value,
 }
 
-/// POSTs `fields` as a form; the answer, with a non-object JSON body as `{}`.
+/// POSTs `fields` as a form and returns the answer, with a non-object
+/// JSON body as `{}`.
 async fn request(
     url: &str,
     fields: &[(&str, &str)],

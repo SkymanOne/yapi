@@ -26,7 +26,7 @@ pub struct BoolCriteria {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ClassifierQuestion {
-    /// Pick one key of `criteria`; each value describes its option.
+    /// Pick one key of `criteria`. Each value describes its option.
     Choice {
         instructions: String,
         criteria: IndexMap<String, String>,

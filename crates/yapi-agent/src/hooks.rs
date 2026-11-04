@@ -14,8 +14,8 @@ pub struct BeforeToolCall<'a> {
     pub assistant_message: &'a AssistantMessage,
     /// The call as the model made it.
     pub tool_call: &'a ToolCall,
-    /// Validated arguments, which the hook may change; the tool runs with
-    /// them as they are when it returns.
+    /// Validated arguments, which the hook may change. The tool runs with
+    /// them as they are when the hook returns.
     pub args: &'a mut Value,
     /// The transcript so far.
     pub messages: &'a [Message],
@@ -26,7 +26,7 @@ pub struct BeforeToolCall<'a> {
 /// Blocks a tool call.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Block {
-    /// Shown to the model; "Tool execution was blocked" when absent.
+    /// Shown to the model, or "Tool execution was blocked" when absent.
     pub reason: Option<String>,
     /// Ends the run after this batch.
     pub terminate: bool,
@@ -49,7 +49,7 @@ pub struct AfterToolCall<'a> {
     pub parent_tool_call_id: Option<&'a str>,
 }
 
-/// Replacement fields for a tool result; `None` keeps the original.
+/// Replacement fields for a tool result. `None` keeps the original.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ResultPatch {
     /// New content. It drops the structured content, which may no longer
@@ -67,10 +67,10 @@ pub struct ResultPatch {
     pub terminate: Option<bool>,
 }
 
-/// What the session decides as a turn ends; pi's `AgentTurnDecision`.
+/// What the session decides as a turn ends (pi's `AgentTurnDecision`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TurnDecision {
-    /// Ensures one more provider request when nothing else would make one.
+    /// Makes the loop send one more provider request when nothing else would.
     pub continue_run: bool,
 }
 
@@ -84,7 +84,7 @@ pub trait AgentHooks: Send + Sync {
         Box::pin(async {})
     }
 
-    /// Rewrites the transcript before it is converted for the provider.
+    /// Rewrites the transcript before the loop converts it for the provider.
     fn transform_context(&self, messages: Vec<Message>) -> BoxFuture<'_, Vec<Message>> {
         Box::pin(async { messages })
     }
@@ -112,9 +112,9 @@ pub trait AgentHooks: Send + Sync {
         Box::pin(async { None })
     }
 
-    /// A turn finished: its assistant message and tool results are emitted
-    /// and `turn_end` is next; pi's `finishTurn`. The decision is ignored
-    /// after a failed or aborted response.
+    /// A turn finished: the loop emitted its assistant message and tool
+    /// results, and `turn_end` is next (pi's `finishTurn`). The loop ignores
+    /// the decision after a failed or aborted response.
     fn finish_turn<'a>(
         &'a self,
         _message: &'a AssistantMessage,
@@ -124,7 +124,7 @@ pub trait AgentHooks: Send + Sync {
     }
 
     /// The message to record in place of `message` once it is complete, before
-    /// its `message_end` is emitted; pi's `message_end` replacement. Must
+    /// the loop emits its `message_end` (pi's `message_end` replacement). Must
     /// keep the message's role.
     fn finish_message(&self, message: Message) -> BoxFuture<'_, Message> {
         Box::pin(async { message })
@@ -135,25 +135,25 @@ pub trait AgentHooks: Send + Sync {
     fn complete_tool_result(&self, _message: &mut ToolResultMessage) {}
 
     /// The transcript the next turn continues from, read before each turn
-    /// after the first; pi's `prepareNextTurn` context. `None` keeps the
+    /// after the first (pi's `prepareNextTurn` context). `None` keeps the
     /// loop's own. An error ends the run with it, as pi's agent ends a run
     /// whose hook throws.
     fn next_turn_messages(&self) -> BoxFuture<'_, Result<Option<Vec<Message>>, String>> {
         Box::pin(async { Ok(None) })
     }
 
-    /// The tools for the next request, read before each turn; `None` keeps
+    /// The tools for the next request, read before each turn. `None` keeps
     /// the current ones.
     fn current_tools(&self) -> BoxFuture<'_, Option<Vec<std::sync::Arc<dyn crate::Tool>>>> {
         Box::pin(async { None })
     }
 
-    /// Messages the user queued to steer the current run; drained when read.
+    /// Messages the user queued to steer the current run. Reading drains them.
     fn steering_messages(&self) -> BoxFuture<'_, Vec<Message>> {
         Box::pin(async { Vec::new() })
     }
 
-    /// Messages to send once the run would otherwise stop; drained when read.
+    /// Messages to send once the run would otherwise stop. Reading drains them.
     fn follow_up_messages(&self) -> BoxFuture<'_, Vec<Message>> {
         Box::pin(async { Vec::new() })
     }

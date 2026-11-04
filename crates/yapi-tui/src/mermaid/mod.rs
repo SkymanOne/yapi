@@ -23,8 +23,8 @@ use parse::{
     DiagramKind, diagram_kind, parse_class, parse_er, parse_graph, parse_sequence, parse_state,
 };
 
-/// Semantic class of a run of cells. The renderer never knows about colour;
-/// consumers map these to their own theme.
+/// Semantic class of a run of cells. The renderer never knows about colour.
+/// Consumers map these to their own theme.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cls {
     /// Box outlines, subgraph frames, compartment rules.
@@ -68,7 +68,7 @@ pub struct MermaidArt {
 
 /// Render a Mermaid source block as Unicode box-drawing art.
 ///
-/// The diagram is laid out at whatever size it needs; `width` reports the
+/// The diagram is laid out at whatever size it needs, and `width` reports the
 /// columns that turned out to be. Deciding what to do when that exceeds the
 /// space at hand is the caller's.
 ///
@@ -76,7 +76,7 @@ pub struct MermaidArt {
 /// diagram type this renderer does not draw, or one large enough that laying it
 /// out is refused.
 ///
-/// Rendering is best-effort. A flowchart keeps whatever parsed; the stricter
+/// Rendering is best-effort. A flowchart keeps whatever parsed. The stricter
 /// grammars additionally get one retry without their final line, which keeps a
 /// streaming diagram on screen while its last statement is half-typed.
 /// Everything given up on is listed in `warnings`.
@@ -102,12 +102,12 @@ struct Drawn {
 
 /// Draw `src`, retrying once without its last line if the grammar rejects it.
 ///
-/// State, class, ER and sequence fail a whole diagram on one unreadable
-/// statement, and while a source is streaming its last line is usually still
-/// being typed. Without this a diagram would alternate with the source all the
-/// way in. Only the final line is dropped, and doing so is always reported, so
-/// a finished document with a bad last line still says what it lost rather than
-/// quietly rendering short.
+/// State, class, ER (entity relationship) and sequence fail a whole diagram on
+/// one unreadable statement, and while a source is streaming its last line is
+/// usually still being typed. Without this a diagram would alternate with the
+/// source all the way in. Only the final line is dropped, and doing so is
+/// always reported, so a finished document with a bad last line still says
+/// what it lost rather than quietly rendering short.
 fn attempt(src: &str) -> Option<Drawn> {
     if let Some(drawn) = draw(src) {
         return Some(drawn);
@@ -124,7 +124,7 @@ fn attempt(src: &str) -> Option<Drawn> {
     Some(salvaged)
 }
 
-/// Dispatch on the declared diagram type; `None` means nothing was drawn.
+/// Dispatch on the declared diagram type. `None` means nothing was drawn.
 fn draw(src: &str) -> Option<Drawn> {
     let plain = |canvas: CanvasResult| {
         canvas.map(|canvas| Drawn {

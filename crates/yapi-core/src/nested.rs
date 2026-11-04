@@ -32,7 +32,7 @@ struct Recorder {
 }
 
 impl Recorder {
-    /// Records a call as it starts; `None` when it is dropped.
+    /// Records a call as it starts, or returns `None` when it is dropped.
     fn start(&mut self, call: &ToolCall) -> Option<usize> {
         if self.calls.len() >= MAX_CALLS {
             self.incomplete = true;

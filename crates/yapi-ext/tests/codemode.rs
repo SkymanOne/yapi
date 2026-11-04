@@ -499,7 +499,7 @@ async fn discovery_globals_find_tools() {
     );
 }
 
-/// Packages that decorate codemode register the facade's definition; scripts
+/// Packages that decorate codemode register the facade's definition. Scripts
 /// still run in yapi's sandbox, and the loadout still applies.
 #[tokio::test(flavor = "multi_thread")]
 async fn facade_codemode_replaces_builtin() {

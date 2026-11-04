@@ -177,10 +177,10 @@ pub struct Resized {
 }
 
 /// pi's `resizeImage`: the image unchanged when it is within `limits`, pi's
-/// defaults where unset (2000×2000 and 4.5 MB of base64); otherwise scaled
-/// to fit, as the first of PNG and JPEG at falling qualities that fits the
-/// byte limit, shrinking by a quarter until one does. `None` when the image
-/// does not decode or no encoding fits.
+/// defaults where unset (2000×2000 and 4.5 MB of base64). Otherwise the image
+/// scaled to fit, as the first of PNG and JPEG at falling qualities that fits
+/// the byte limit, shrinking by a quarter until one does. `None` when the
+/// image does not decode or no encoding fits.
 pub fn resize_image(
     bytes: &[u8],
     mime_type: &str,
@@ -308,7 +308,7 @@ fn encode(image: &DynamicImage, format: ImageOutputFormat) -> Option<Vec<u8>> {
 }
 
 /// pi's `getExifOrientation`: the EXIF orientation of a JPEG or WebP image,
-/// 1 when it has none.
+/// or 1 when it has none.
 fn exif_orientation(bytes: &[u8]) -> u16 {
     let tiff = if bytes.starts_with(&[0xff, 0xd8]) {
         jpeg_tiff_offset(bytes)
@@ -524,7 +524,8 @@ mod tests {
     #[test]
     fn exif_upright_before_resize() {
         let jpeg = file(&pixels(4, 2, false), ImageOutputFormat::Jpeg(90));
-        // An APP1 segment with one IFD entry: orientation 6, rotate clockwise.
+        // An APP1 segment with one IFD (image file directory) entry:
+        // orientation 6, rotate clockwise.
         let mut exif = b"\xff\xe1\x00\x22Exif\0\0MM\0\x2a\0\0\0\x08\0\x01".to_vec();
         exif.extend_from_slice(b"\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0");
         let rotated = [&jpeg[..2], &exif, &jpeg[2..]].concat();

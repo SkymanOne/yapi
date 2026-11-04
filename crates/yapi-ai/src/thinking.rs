@@ -10,8 +10,8 @@ const CONTEXT_SAFETY_TOKENS: u64 = 4096;
 /// Output tokens kept for the answer when a thinking budget would consume all.
 pub const MIN_ANSWER_TOKENS: u64 = 1024;
 
-/// The levels a model accepts: only `off` without reasoning; `xhigh` and `max` only
-/// when its thinking level map names them; none the map marks unsupported.
+/// The levels a model accepts: only `off` without reasoning, `xhigh` and `max` only
+/// when its thinking level map names them, and none the map marks unsupported.
 pub fn supported_levels(model: &Model) -> Vec<ThinkingLevel> {
     if !model.reasoning {
         return vec![ThinkingLevel::Off];
@@ -68,7 +68,7 @@ pub fn requested_max_tokens(model: &Model, messages: &[Message], options: &Strea
     )
 }
 
-/// The requested level clamped to the model; `None` when it is off.
+/// The requested level clamped to the model, or `None` when it is off.
 pub fn effort(model: &Model, options: &StreamOptions) -> Option<ThinkingLevel> {
     options
         .reasoning
@@ -94,7 +94,7 @@ pub fn budgeted(
     )
 }
 
-/// The budget for budget-based thinking at `level`; `xhigh` and `max` use `high`.
+/// The budget for budget-based thinking at `level`. `xhigh` and `max` use `high`.
 pub fn budget_for_level(level: ThinkingLevel, budgets: &ThinkingBudgets) -> u64 {
     match level {
         ThinkingLevel::Off | ThinkingLevel::Minimal => budgets.minimal.unwrap_or(1024),
@@ -106,8 +106,9 @@ pub fn budget_for_level(level: ThinkingLevel, budgets: &ThinkingBudgets) -> u64 
     }
 }
 
-/// Raises `base` by the thinking budget, capped at the model's output limit; shrinks
-/// the budget when it would leave no room to answer. Returns `(max_tokens, budget)`.
+/// Raises `base` by the thinking budget, capped at the model's output limit, and
+/// shrinks the budget when it would leave no room to answer. Returns
+/// `(max_tokens, budget)`.
 fn adjust_max_tokens_for_thinking(
     base: u64,
     model_max_tokens: u64,

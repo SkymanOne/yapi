@@ -4,9 +4,9 @@
 //! [`emit`] runs this extension's own handlers for the channel at once, in
 //! the order they subscribed, as Pi's `emit` does. yapi then delivers the
 //! event to the handlers of every other extension, native or Pi, after
-//! `emit` has returned. Data travels between extensions as JSON.
+//! `emit` has returned. yapi passes the data between extensions as JSON.
 //!
-//! yapi hears which channels have handlers, so that it can warn when its
+//! yapi learns which channels have handlers, so that it can warn when its
 //! routing keeps another extension's event from them.
 
 use std::cell::{Cell, RefCell};
