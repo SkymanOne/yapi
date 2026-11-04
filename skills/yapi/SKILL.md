@@ -29,22 +29,22 @@ Every file uses Pi's format. Provider variables such as `ANTHROPIC_API_KEY` and 
 
 ## Install yapi and check the version
 
-The install script puts the release binary in `~/.local/bin`:
+The install script puts the release binaries, `yapi` and `chest`, in `~/.local/bin`. In a terminal it asks which to install, so pass `--only` with `yapi`, `chest` or `both` to skip the question:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
-  | sh
+  | sh -s -- --only both
 yapi --version
 ```
 
-With Cargo, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer:
+With Cargo, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer. Use `chest-cli` in place of the last `yapi` for chest:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
 cargo install --locked --git https://github.com/SkymanOne/yapi yapi
 ```
 
-Keep `--git` with Cargo: on crates.io, `yapi` is an unrelated crate. To bring an existing Pi setup across, run `yapi import pi`. It copies settings, credentials, sessions and packages, and keeps files yapi already has.
+Keep `--git` with Cargo: on crates.io, `yapi` is an unrelated crate, and `chest-cli` isn't published. To bring an existing Pi setup across, run `yapi import pi`. It copies settings, credentials, sessions and packages, and keeps files yapi already has.
 
 ## Hand a task to yapi
 

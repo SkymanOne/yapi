@@ -21,14 +21,14 @@ yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](h
 
 ## Get started
 
-Install the latest release on Linux or macOS. The script installs `yapi` and `chest`, its package manager:
+Install the latest release on Linux or macOS. The script asks whether to install `yapi`, its package manager `chest`, or both, and installs both when you press Enter:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 ```
 
-[Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling.
+Add `-s -- --only yapi` or `-s -- --only chest` after `sh` to install one without the question. [Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling, for either executable or both.
 
 Start yapi in the folder where you want it to work:
 
@@ -66,7 +66,7 @@ Pi extensions in TypeScript or JavaScript run unchanged in a bundled QuickJS-NG 
 
 ## Manage packages with chest
 
-`chest` is a package manager for coding agents. It installs with yapi as a separate binary, and you can use it without yapi.
+`chest` is a package manager for coding agents. It installs with yapi as a separate binary, or alone, and you can use it without yapi.
 
 List a project's skills, subagents and extensions in `chest.toml`. chest pins what they resolved to in `chest.lock`, with a content hash for every installed item. Commit both files, and everyone who clones the project installs the same set.
 

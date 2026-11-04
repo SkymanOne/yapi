@@ -41,18 +41,21 @@ Each page in this part starts with a note that says whether it applies to any ag
 
 > **Any agent.** chest doesn't need yapi to run.
 
-yapi's [install script](install.md#run-the-install-script) and release archives install `chest` next to `yapi`:
+yapi's [install script](install.md#run-the-install-script) installs `chest` with `yapi`, or alone. To use chest with another agent and without yapi, install `chest` alone:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
-  | sh
+  | sh -s -- --only chest
 ```
 
-To build it from source instead:
+Without `--only`, the script asks in a terminal whether to install `yapi`, `chest` or both. cargo-binstall installs the release's `chest` alone as well, and Cargo builds it from source:
 
 ```sh
+cargo binstall --git https://github.com/SkymanOne/yapi chest-cli
 cargo install --locked --git https://github.com/SkymanOne/yapi chest-cli
 ```
+
+[Install yapi](install.md) covers release archives, upgrades and uninstalling for both executables.
 
 chest has its own npm client, so it needs neither Node.js nor npm. It reads registry settings from `~/.npmrc` and `npm_config_*` variables. Git sources need `git`.
 

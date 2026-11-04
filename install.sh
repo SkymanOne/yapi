@@ -3,14 +3,18 @@
 # checks it against its published SHA-256 and copies yapi, and chest when the
 # release has it, into a directory on PATH. Then it installs the release's
 # docs for the model the same way into yapi's agent directory, replacing the
-# previous copy.
+# previous copy. It can install yapi or chest alone instead. Without that
+# choice, it asks when it runs in a terminal and installs both otherwise.
 #
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
+#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --only chest
 #
 # Options, or the environment variables that set them:
 #   --version <tag>   YAPI_VERSION       release to install (default: the latest)
 #   --to <dir>        YAPI_INSTALL_DIR   where to put yapi and chest (default: ~/.local/bin)
+#   --only <name>     YAPI_INSTALL_ONLY  yapi, or chest without the docs, or both
+#                                        (default: ask in a terminal, else both)
 #   --no-docs         YAPI_NO_DOCS=1     skip the docs for the model
 #   YAPI_CODING_AGENT_DIR                where the docs go, under docs/
 #                                        (default: ~/.yapi/agent)
@@ -25,7 +29,7 @@ case "${YAPI_NO_DOCS:-}" in
     1 | true | TRUE | True | yes | YES | Yes) docs= ;;
     *) docs=yes ;;
 esac
-from_source="cargo install --locked --git https://github.com/SkymanOne/yapi yapi"
+only="${YAPI_INSTALL_ONLY:-}"
 
 fail() {
     echo "install.sh: $*" >&2
@@ -44,20 +48,27 @@ while [ $# -gt 0 ]; do
             dir=$2
             shift 2
             ;;
+        --only)
+            [ $# -ge 2 ] || fail "--only needs a value"
+            only=$2
+            shift 2
+            ;;
         --no-docs)
             docs=
             shift
             ;;
         -h | --help)
             cat <<EOF
-Usage: install.sh [--version <tag>] [--to <dir>] [--no-docs]
+Usage: install.sh [--version <tag>] [--to <dir>] [--only yapi|chest|both] [--no-docs]
 
 Installs yapi and chest from a GitHub release, checked against its SHA-256,
 and the release's docs for the model into ~/.yapi/agent/docs, or
-YAPI_CODING_AGENT_DIR.
+YAPI_CODING_AGENT_DIR. Without --only, it asks in a terminal whether to
+install both or one.
 
   --version <tag>   release to install (default: the latest), or YAPI_VERSION
   --to <dir>        where to put yapi and chest (default: ~/.local/bin), or YAPI_INSTALL_DIR
+  --only <name>     yapi, or chest without the docs, or both, or YAPI_INSTALL_ONLY
   --no-docs         skip the docs, or YAPI_NO_DOCS=1
 EOF
             exit 0
@@ -69,6 +80,37 @@ if [ -z "$dir" ]; then
     [ -n "${HOME:-}" ] || fail "HOME is not set. Choose where to install yapi with --to <dir> or YAPI_INSTALL_DIR."
     dir="$HOME/.local/bin"
 fi
+case "$only" in
+    '' | yapi | chest | both) ;;
+    *) fail "--only and YAPI_INSTALL_ONLY take yapi, chest or both, not '$only'" ;;
+esac
+
+# Asks only when someone can answer: stdout is a terminal and /dev/tty opens.
+# With curl | sh, stdin holds the script, so the answer comes from /dev/tty.
+if [ -z "$only" ] && [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
+    printf 'Install:\n  1) yapi and chest\n  2) yapi only\n  3) chest only\n' >/dev/tty
+    tries=0
+    while [ -z "$only" ]; do
+        printf 'Choose 1, 2 or 3 [1]: ' >/dev/tty
+        read -r answer </dev/tty || fail "no answer. Run the script again, or pass --only yapi, chest or both."
+        case "$answer" in
+            '' | 1) only=both ;;
+            2) only=yapi ;;
+            3) only=chest ;;
+            *)
+                tries=$((tries + 1))
+                [ "$tries" -lt 3 ] || fail "no valid choice. Run the script again, or pass --only yapi, chest or both."
+                ;;
+        esac
+    done
+fi
+case "$only" in
+    yapi) binaries=yapi crates=yapi ;;
+    # The docs are for yapi's model.
+    chest) binaries=chest crates=chest-cli docs= ;;
+    *) binaries="yapi chest" crates="yapi chest-cli" ;;
+esac
+from_source="cargo install --locked --git https://github.com/SkymanOne/yapi $crates"
 
 command -v curl >/dev/null 2>&1 || fail "needs curl"
 command -v tar >/dev/null 2>&1 || fail "needs tar"
@@ -145,13 +187,19 @@ fetch_checked "$name" || fail "$problem. Build from source: $from_source"
 
 mkdir "$work/unpacked"
 tar -xzf "$work/$name" -C "$work/unpacked"
-[ -f "$work/unpacked/yapi" ] || fail "$name does not contain yapi"
-installed=$("$work/unpacked/yapi" --version) || fail "the downloaded yapi does not run on this system"
-# Releases before chest shipped hold yapi alone.
-binaries=yapi
-if [ -f "$work/unpacked/chest" ]; then
+if [ "$only" != chest ]; then
+    [ -f "$work/unpacked/yapi" ] || fail "$name does not contain yapi"
+    installed=$("$work/unpacked/yapi" --version) || fail "the downloaded yapi does not run on this system"
+fi
+if [ "$only" = yapi ]; then
+    :
+elif [ -f "$work/unpacked/chest" ]; then
     chest=$("$work/unpacked/chest" --version) || fail "the downloaded chest does not run on this system"
-    binaries="yapi chest"
+elif [ "$only" = chest ]; then
+    fail "$name holds no chest, because releases before chest shipped hold yapi alone. Build chest from source: $from_source"
+else
+    # Releases before chest shipped hold yapi alone.
+    binaries=yapi
 fi
 mkdir -p "$dir"
 for binary in $binaries; do
@@ -160,7 +208,7 @@ for binary in $binaries; do
     chmod 755 "$dir/.$binary.$$"
     mv -f "$dir/.$binary.$$" "$dir/$binary"
 done
-echo "Installed yapi $installed to $dir/yapi"
+[ "$binaries" = chest ] || echo "Installed yapi $installed to $dir/yapi"
 [ "$binaries" = yapi ] || echo "Installed $chest to $dir/chest"
 
 # The docs the model reads about yapi and pi, unpacked next to the old copy,
@@ -192,7 +240,8 @@ if [ -n "$docs" ]; then
     fi
 fi
 
+[ "$binaries" != "yapi chest" ] || binaries="yapi and chest"
 case ":${PATH:-}:" in
     *":$dir:"*) ;;
-    *) echo "Add $dir to PATH to run yapi, for example in your shell's profile: export PATH=\"$dir:\$PATH\"" ;;
+    *) echo "Add $dir to PATH to run $binaries, for example in your shell's profile: export PATH=\"$dir:\$PATH\"" ;;
 esac
