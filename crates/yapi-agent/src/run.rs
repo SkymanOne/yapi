@@ -20,7 +20,7 @@ use yapi_types::model::Model;
 use crate::hooks::{AfterToolCall, AgentHooks, BeforeToolCall};
 use crate::tool::{ExecutionMode, Tool, UpdateSink};
 
-/// Starts a provider request; dispatches on the model's wire API. An error
+/// Starts a provider request through the model's wire API. An error
 /// before any request ends the run, as pi's agent ends it when its stream
 /// function throws.
 pub type StreamFn = Arc<dyn Fn(Request) -> Result<EventStream, String> + Send + Sync>;
@@ -28,9 +28,9 @@ pub type StreamFn = Arc<dyn Fn(Request) -> Result<EventStream, String> + Send + 
 /// The transcript and the tools the model may call.
 #[derive(Clone, Default)]
 pub struct AgentContext {
-    /// Messages so far; the loop appends to them.
+    /// Messages so far. The loop appends to them.
     pub messages: Vec<Message>,
-    /// Active tools; changes are declared to the model through system messages.
+    /// Active tools. The loop declares changes to the model in system messages.
     pub tools: Vec<Arc<dyn Tool>>,
 }
 
@@ -39,11 +39,11 @@ pub struct AgentContext {
 pub struct LoopConfig {
     /// The model to call.
     pub model: Model,
-    /// Thinking level; `Off` disables thinking.
+    /// Thinking level. `Off` disables thinking.
     pub thinking_level: ThinkingLevel,
     /// Starts provider requests.
     pub stream: StreamFn,
-    /// Options for every request; `cancel` aborts the run.
+    /// Options for every request. Their `cancel` aborts the run.
     pub options: StreamOptions,
     /// Forces sequential tool execution.
     pub tool_execution: ExecutionMode,
@@ -95,7 +95,8 @@ pub async fn run_continue(
     Ok(new_messages)
 }
 
-/// Emits `message`'s start and end; the message as the hooks finished it.
+/// Emits `message`'s start and end, and returns the message as the hooks
+/// finished it.
 async fn emit_message(hooks: &dyn AgentHooks, message: Message) -> Message {
     hooks
         .on_event(&AgentEvent::MessageStart {
@@ -328,8 +329,8 @@ fn with_tool_changes(
     }
 }
 
-/// The model's response to the context; the stream function's error when it
-/// fails before a request.
+/// The model's response to the context, or the stream function's error when
+/// it fails before a request.
 async fn stream_response(
     context: &mut AgentContext,
     config: &LoopConfig,
@@ -763,8 +764,9 @@ async fn execute_tool_calls(
     (messages, terminate)
 }
 
-/// Runs one call outside the loop's batches, as pi's `runToolCall`: it is
-/// prepared, validated, passed through the hooks and executed in `scope`.
+/// Runs one call outside the loop's batches, as pi's `runToolCall` does: it
+/// prepares and validates the call, passes it through the hooks and executes
+/// it in `scope`.
 /// Failures come back as error results. Emits no events: `updates` receives
 /// the tool's partial results.
 pub async fn run_tool_call(
