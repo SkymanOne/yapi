@@ -20,7 +20,7 @@ use crate::credentials::ProviderEnv;
 pub struct Resolved {
     /// Sent as the API key.
     pub api_key: Option<String>,
-    /// Headers that carry the credential; `None` removes a header.
+    /// Headers that carry the credential. `None` removes a header.
     pub headers: IndexMap<String, Option<String>>,
     /// Provider settings the request reads, such as a Cloudflare account id.
     pub env: Option<ProviderEnv>,
@@ -32,9 +32,9 @@ pub struct Resolved {
 
 /// What resolution reads besides the stored credential.
 pub struct Ambient<'a> {
-    /// An environment variable; blank values count as unset.
+    /// An environment variable. Blank values count as unset.
     pub env: &'a dyn Fn(&str) -> Option<String>,
-    /// Whether a file exists; a leading `~` is the home directory.
+    /// Whether a file exists. A leading `~` is the home directory.
     pub file_exists: &'a dyn Fn(&str) -> bool,
 }
 
@@ -100,8 +100,8 @@ pub fn resolve(
     }
 }
 
-/// llama.cpp: the server URL from the credential, else `LLAMA_BASE_URL`;
-/// the key from the credential, else `LLAMA_API_KEY`, else `local`.
+/// llama.cpp: the server URL from the credential, else `LLAMA_BASE_URL`,
+/// and the key from the credential, else `LLAMA_API_KEY`, else `local`.
 fn llama(credential: Option<&ApiKeyCredential>, ambient: &Ambient<'_>) -> Option<Resolved> {
     use crate::llama::{BASE_URL_ENV, inference_url, normalize_server_url};
     let configured = stored_env(credential, BASE_URL_ENV)
@@ -291,7 +291,7 @@ const FEDERATION_REQUIRED: [&str; 3] = [
 const FEDERATION_OPTIONAL: [&str; 2] = ["ANTHROPIC_SERVICE_ACCOUNT_ID", "ANTHROPIC_WORKSPACE_ID"];
 
 /// Anthropic's last resort when no key or token is set: workload identity
-/// federation, whose ids travel to the request as provider settings.
+/// federation, whose ids pass to the request as provider settings.
 pub fn anthropic_federation(ambient: &Ambient<'_>) -> Option<Resolved> {
     let mut env = ProviderEnv::new();
     for name in FEDERATION_REQUIRED {

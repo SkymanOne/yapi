@@ -20,7 +20,7 @@ pub const PROVIDER_ID: &str = "llama.cpp";
 pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8080";
 /// The credential setting with the server URL.
 pub const BASE_URL_ENV: &str = "LLAMA_BASE_URL";
-/// pi gives each server request 15 seconds.
+/// pi gives each server request 15s.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A model's state on the server.
@@ -185,7 +185,7 @@ impl Client {
         Ok(payload)
     }
 
-    /// The server's models; `reload` rescans its model directories.
+    /// The server's models. `reload` rescans its model directories.
     pub async fn list(
         &self,
         reload: bool,
@@ -307,8 +307,8 @@ impl Client {
         }
     }
 
-    /// Downloads `model` and waits until the router lists it; the catalog
-    /// after a rescan.
+    /// Downloads `model`, waits until the router lists it and returns the
+    /// catalog after a rescan.
     pub async fn download_and_wait(
         &self,
         model: &str,
@@ -821,8 +821,8 @@ pub mod huggingface {
         }
     }
 
-    /// The quantization a GGUF file stem names, upper-cased; pi's
-    /// `QUANTIZATION_PATTERN` after the shard suffix is removed.
+    /// The quantization a GGUF file stem names, upper-cased, as pi's
+    /// `QUANTIZATION_PATTERN` matches it once the shard suffix is removed.
     pub fn quantization(stem: &str) -> Option<String> {
         let stem = match stem.rfind("-of-") {
             Some(of)

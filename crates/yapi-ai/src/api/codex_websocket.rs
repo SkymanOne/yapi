@@ -49,7 +49,7 @@ enum Slot {
 
 /// A cached socket between requests, held by its reader task.
 struct Idle {
-    /// Stops the reader: `None` hands the socket back, a reason closes it.
+    /// Stops the reader: `None` returns the socket, a reason closes it.
     stop: oneshot::Sender<Option<&'static str>>,
     /// The socket, unless it closed or was closed.
     reader: JoinHandle<Option<Socket>>,
@@ -60,7 +60,8 @@ struct Idle {
 
 static SOCKETS: LazyLock<Mutex<HashMap<Key, Slot>>> = LazyLock::new(Default::default);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
-/// Sessions whose WebSocket failed; they use SSE for the rest of the process.
+/// Sessions whose WebSocket failed, which use server-sent events (SSE) for
+/// the rest of the process.
 static FALLBACK: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 static STATS: LazyLock<Mutex<HashMap<String, DebugStats>>> = LazyLock::new(Default::default);
 
@@ -298,7 +299,7 @@ impl Failure {
     }
 }
 
-/// The exchange a cached socket last carried.
+/// The last exchange on a cached socket.
 pub(super) struct Continuation {
     /// The full request, as sent before any delta was taken.
     pub(super) body: Value,
@@ -307,7 +308,7 @@ pub(super) struct Continuation {
     pub(super) items: Vec<Value>,
 }
 
-/// The request to send on a socket that last carried `continuation`: when
+/// The request to send on a socket whose last exchange is `continuation`: when
 /// `body` repeats that request with more input after the response's items,
 /// only the new input, referencing the response. Otherwise `body`, and the
 /// continuation is dropped.
@@ -365,12 +366,12 @@ pub(super) fn frame(body: &Value) -> String {
 /// A socket for one request.
 pub(super) struct Lease {
     socket: Socket,
-    /// The cache slot the socket returns to; `None` for a one-off socket.
+    /// The cache slot the socket returns to, or `None` for a one-off socket.
     key: BusySlot,
     created: Instant,
     /// Whether the socket served an earlier request.
     pub(super) reused: bool,
-    /// The exchange the socket last carried.
+    /// The socket's last exchange.
     pub(super) continuation: Option<Continuation>,
 }
 
@@ -468,7 +469,7 @@ impl Lease {
 
     /// The next text or binary message, as text. Fails when the socket
     /// closes or errs, when `cancel` fires, and once `idle` passes without a
-    /// message; pings and pongs do not count.
+    /// message. Pings and pongs do not count.
     pub(super) async fn next(
         &mut self,
         cancel: &CancellationToken,
@@ -507,8 +508,8 @@ impl Lease {
     }
 
     /// Returns a cached socket to its session when `keep` and its slot is
-    /// still the request's, to close after five idle minutes; closes it
-    /// otherwise.
+    /// still the request's, to close after five idle minutes. Otherwise closes
+    /// it.
     pub(super) fn release(mut self, keep: bool) {
         let Some(key) = self.key.0.take() else {
             return close(self.socket, "done");

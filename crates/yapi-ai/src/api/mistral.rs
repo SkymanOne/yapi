@@ -31,7 +31,7 @@ use crate::transcript::{current_tools, resolve_transcript, transform_messages};
 
 const TOOL_CALL_ID_LENGTH: usize = 9;
 const MAX_ERROR_BODY_CHARS: usize = 4000;
-/// pi's default `timeoutMs`; it bounds the whole request, stream included.
+/// pi's default `timeoutMs`, which bounds the whole request, stream included.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 const TIMEOUT_MESSAGE: &str = "The operation was aborted due to timeout";
 
@@ -250,7 +250,7 @@ fn function_tools(tools: &[ToolDeclaration]) -> Result<Vec<Value>, String> {
 }
 
 /// pi's `streamSimple` reasoning: models with a thinking level map send
-/// `reasoning_effort`; other reasoning models send `prompt_mode`.
+/// `reasoning_effort`, and other reasoning models send `prompt_mode`.
 fn reasoning(
     model: &Model,
     level: Option<ThinkingLevel>,
@@ -334,7 +334,7 @@ fn boundary(buffer: &str) -> Option<(usize, usize)> {
     const SEPARATORS: [&str; 8] = [
         "\r\n\r\n", "\r\n\r", "\r\n\n", "\r\r\n", "\n\r\n", "\r\r", "\n\r", "\n\n",
     ];
-    // The earliest match wins; at one position, the regex alternation order does.
+    // The earliest match wins. At one position, the regex alternation order does.
     let bytes = buffer.as_bytes();
     (0..bytes.len()).find_map(|index| {
         SEPARATORS
@@ -366,7 +366,7 @@ fn parse_event(raw: &str) -> Result<Option<Parsed>, String> {
 }
 
 impl EventParser {
-    /// Events completed by `text`; `Done` ends the stream.
+    /// Events completed by `text`. `Done` ends the stream.
     fn push(&mut self, text: &str) -> Result<Vec<Parsed>, String> {
         self.buffer.push_str(text);
         let mut events = Vec::new();

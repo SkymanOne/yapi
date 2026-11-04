@@ -11,7 +11,7 @@ pub struct Event {
 
 /// Incremental decoder: feed bytes as they arrive, collect complete events.
 ///
-/// Lines end at `\n`, `\r\n` or `\r`; a blank line dispatches the event. Comments
+/// Lines end at `\n`, `\r\n` or `\r`, and a blank line dispatches the event. Comments
 /// (`:`) and unknown fields are ignored. Bytes of a UTF-8 character split across
 /// chunks are kept until the rest arrives.
 #[derive(Debug, Default)]

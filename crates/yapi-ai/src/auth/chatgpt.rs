@@ -13,7 +13,7 @@ use super::{
     callback_host, error_text, expiry, form, json_body, pkce, post_form, send,
 };
 
-/// Every sign-in registers a new client under this id; the callback carries the issued one.
+/// Every sign-in registers a new client under this id. The callback includes the issued one.
 const DYNAMIC_CLIENT_ID: &str = "dynamic_agent_client";
 const AGENT_NAME_HINT: &str = "yapi";
 const RESOURCE: &str = "https://api.openai.com/v1";
@@ -32,7 +32,7 @@ pub struct ChatGptOAuth {
     pub token_url: String,
     /// Loopback callback port.
     pub callback_port: u16,
-    /// Redirect URI; must reach the callback port.
+    /// Redirect URI, which must reach the callback port.
     pub redirect_uri: String,
 }
 
@@ -293,7 +293,7 @@ impl ChatGptOAuth {
                 interaction.cancel(),
             )
             .await?;
-        // The ID token is part of the response contract; yapi does not read it.
+        // The ID token is part of the response contract. yapi does not read it.
         if token
             .get("id_token")
             .and_then(Value::as_str)

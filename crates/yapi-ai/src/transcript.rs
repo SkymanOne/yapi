@@ -1,4 +1,4 @@
-//! The transcript a provider receives: messages in which system messages carry the
+//! The transcript a provider receives: messages in which system messages hold the
 //! prompt and tool declarations.
 //!
 //! The first message, when it is a system message, is the initial prompt. Later
@@ -125,9 +125,9 @@ pub fn has_non_additive_tool_changes(messages: &[Message]) -> bool {
     false
 }
 
-/// Tools for the top-level request field, and whether later system messages carry
+/// Tools for the top-level request field, and whether later system messages keep
 /// their own additions in place. Anchoring needs API support and a transcript that
-/// only ever adds tools; otherwise the request lists the current tools.
+/// only ever adds tools. Otherwise the request lists the current tools.
 pub fn resolve_transcript_tools(
     messages: &[Message],
     supports_tool_additions: bool,
@@ -229,13 +229,13 @@ fn replace_images(content: &[ContentBlock], placeholder: &str) -> Vec<ContentBlo
 pub type NormalizeToolCallId<'a> = dyn Fn(&str, &AssistantMessage) -> String + 'a;
 
 /// Rewrites a transcript for `model`:
-/// - images become placeholders when the model is text-only;
-/// - thinking from other models becomes text, or is dropped when empty or redacted;
+/// - images become placeholders when the model is text-only
+/// - thinking from other models becomes text, or is dropped when empty or redacted
 /// - tool-call ids from other models are normalized for the target API, given the
-///   id and its source message, and tool results follow;
-/// - failed and aborted assistant messages are dropped;
+///   id and its source message, and tool results follow
+/// - failed and aborted assistant messages are dropped
 /// - tool calls without a result get an error result before the next turn, and system
-///   messages between a call and its results move after the results.
+///   messages between a call and its results move after the results
 pub fn transform_messages(
     messages: &[Message],
     model: &Model,

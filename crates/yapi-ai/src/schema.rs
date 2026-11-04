@@ -216,7 +216,7 @@ pub struct Grammar<'a> {
     pub syntax: &'static str,
     /// The grammar, in `syntax`.
     pub definition: &'a str,
-    /// The tool's one required string argument, which carries the raw input.
+    /// The tool's one required string argument, which holds the raw input.
     pub property: &'a str,
 }
 
@@ -285,7 +285,7 @@ fn grammar_property(schema: &Value) -> Result<&str, String> {
 }
 
 /// The tools a transcript declares that are sent with a grammar, by name, with
-/// the argument that carries each one's raw input. `messages` is the
+/// the argument that holds each one's raw input. `messages` is the
 /// transcript as the provider receives it, after
 /// [`resolve_transcript`](crate::transcript::resolve_transcript): a model that
 /// folds later system messages into the first one sees only the current tools.
@@ -302,7 +302,7 @@ pub fn grammar_properties(
     Ok(properties)
 }
 
-/// The raw input of a grammar tool call, from the argument that carries it.
+/// The raw input of a grammar tool call, from the argument that holds it.
 pub fn grammar_input<'a>(
     name: &str,
     arguments: &'a Map<String, Value>,
@@ -320,7 +320,7 @@ pub fn grammar_input<'a>(
 /// of its arguments object.
 #[derive(Debug)]
 pub struct GrammarInput {
-    /// The argument that carries the raw input.
+    /// The argument that holds the raw input.
     pub property: String,
     input: String,
     started: bool,
@@ -337,7 +337,7 @@ impl GrammarInput {
         }
     }
 
-    /// The input of a custom tool call to `name`, carried by the argument that
+    /// The input of a custom tool call to `name`, held in the argument that
     /// `properties` (from [`grammar_properties`]) gives for it. A call to a tool
     /// sent without a grammar still keeps its input, as `input`.
     pub fn for_call(properties: &HashMap<String, String>, name: &str) -> GrammarInput {
@@ -345,7 +345,7 @@ impl GrammarInput {
         GrammarInput::new(property.to_owned())
     }
 
-    /// The raw input `arguments` carry.
+    /// The raw input `arguments` hold.
     pub fn input<'a>(&self, arguments: &'a Map<String, Value>) -> &'a str {
         arguments
             .get(&self.property)
@@ -353,7 +353,7 @@ impl GrammarInput {
             .unwrap_or_default()
     }
 
-    /// Sets `arguments` to carry `input`. Returns the JSON text that takes the
+    /// Sets `arguments` to hold `input`. Returns the JSON text that takes the
     /// arguments streamed so far to it, closing the object when `close`, or
     /// `None` when there is nothing to stream. `Err`, leaving `arguments` as
     /// they are, when `input` does not extend the input streamed so far, or

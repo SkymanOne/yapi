@@ -1028,8 +1028,8 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     }
 }
 
-/// Sends the request; the response once its status is a success, and the
-/// input argument of each tool sent with a grammar, by name.
+/// Sends the request and returns the response once its status is a success,
+/// with the input argument of each tool sent with a grammar, by name.
 async fn connect(
     model: &Model,
     compat: &Compat,
@@ -1047,7 +1047,7 @@ async fn connect(
         None => return Err(format!("No API key for provider: {}", model.provider)),
     };
     // Calls are stored as ordinary tool calls. Each request decides from the
-    // declared tools which ones travel as custom tool calls.
+    // declared tools which ones it sends as custom tool calls.
     let grammar = schema::grammar_properties(normalized, compat.supports_grammar_tools)?;
     // streamSimple: clamp output to the context and the level to the model.
     let max_tokens = requested_max_tokens(model, messages, options);

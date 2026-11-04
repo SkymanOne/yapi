@@ -12,7 +12,7 @@ pub fn builtin_providers() -> impl Iterator<Item = &'static str> {
     data::PROVIDERS.iter().map(|(id, _)| *id)
 }
 
-/// The built-in chat models of a provider, in catalog order; empty for an unknown
+/// The built-in chat models of a provider, in catalog order. Empty for an unknown
 /// provider. Each call parses that provider's data.
 pub fn builtin_models(provider: &str) -> Vec<Model> {
     of_provider(data::PROVIDERS, provider)

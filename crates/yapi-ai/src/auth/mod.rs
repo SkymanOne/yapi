@@ -62,7 +62,7 @@ pub struct SelectOption {
     pub label: String,
 }
 
-/// A question a sign-in asks; deserializes from pi's `AuthPrompt` JSON.
+/// A question a sign-in asks, deserialized from pi's `AuthPrompt` JSON.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(
     tag = "type",
@@ -82,7 +82,7 @@ pub enum AuthPrompt {
         /// The question.
         message: String,
     },
-    /// One of several options; the answer is the option id.
+    /// One of several options. The answer is the option id.
     Select {
         /// The question.
         message: String,
@@ -125,7 +125,7 @@ pub struct Link {
     pub url: String,
 }
 
-/// Something a sign-in tells the user; deserializes from pi's `AuthEvent`
+/// Something a sign-in tells the user, deserialized from pi's `AuthEvent`
 /// JSON.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(
@@ -170,8 +170,8 @@ pub enum AuthEvent {
 /// A request from a sign-in to the UI.
 #[derive(Debug)]
 pub enum AuthRequest {
-    /// Ask a question. Dropping `reply` cancels the sign-in; `cancel` fires when
-    /// the sign-in no longer needs the answer.
+    /// Ask a question. Dropping `reply` cancels the sign-in, and `cancel` fires
+    /// when the sign-in no longer needs the answer.
     Prompt {
         /// The question.
         prompt: AuthPrompt,
@@ -208,7 +208,7 @@ impl Interaction {
         self.prompt_until(prompt, self.cancel.child_token()).await
     }
 
-    /// Asks the UI; `cancel` withdraws the question.
+    /// Asks the UI. `cancel` withdraws the question.
     pub async fn prompt_until(
         &self,
         prompt: AuthPrompt,
@@ -258,7 +258,7 @@ pub struct LoginOptions {
 pub struct OAuthAuth {
     /// Sent as the API key.
     pub api_key: Option<String>,
-    /// Headers that carry the token instead; `None` removes a header.
+    /// Headers that carry the token instead. `None` removes a header.
     pub headers: indexmap::IndexMap<String, Option<String>>,
     /// Replaces the model's base URL, for providers whose endpoint depends on
     /// the account.
@@ -324,7 +324,7 @@ pub trait KeyAuth: Send + Sync {
     ) -> BoxFuture<'a, Result<ApiKeyCredential, AuthError>>;
 
     /// Request credentials from `credential`, whose key is resolved, else
-    /// from the environment; `None` when the provider is not configured.
+    /// from the environment, or `None` when the provider is not configured.
     fn resolve<'a>(
         &'a self,
         credential: Option<&'a ApiKeyCredential>,
@@ -353,7 +353,7 @@ pub fn builtin_oauth(provider: &str) -> Option<Arc<dyn OAuthProvider>> {
 pub(crate) use yapi_types::time::now_ms;
 
 /// pi's `openBrowser`: opens `target` in the platform browser, best effort and
-/// without a shell. Returns at once; the opener starts on its own thread.
+/// without a shell. Returns at once, since the opener starts on its own thread.
 pub fn open_browser(target: &str) {
     // `open` would read a target such as `-a…` as an option.
     if target.starts_with('-') {
@@ -370,7 +370,7 @@ pub fn open_browser(target: &str) {
 }
 
 /// Starts `command` without terminal input or output, best effort. Returns at
-/// once; the command runs on its own thread.
+/// once, since the command runs on its own thread.
 pub fn launch(mut command: std::process::Command) {
     command
         .stdin(std::process::Stdio::null())
@@ -451,7 +451,7 @@ pub(crate) fn object(pairs: &[(&str, &str)]) -> serde_json::Value {
     pairs.iter().copied().collect()
 }
 
-/// The body parsed as JSON; `null` when it is not JSON.
+/// The body parsed as JSON, or `null` when it is not JSON.
 pub(crate) async fn json_body(response: reqwest::Response) -> serde_json::Value {
     let bytes = response.bytes().await.unwrap_or_default();
     serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
