@@ -759,9 +759,9 @@ fn build_codex_body(
     Ok(Value::Object(body))
 }
 
-/// pi's `resolveAzureConfig`: the base URL from `AZURE_OPENAI_BASE_URL`, else
-/// `AZURE_OPENAI_RESOURCE_NAME`, else the model, with `/openai/v1` added to
-/// bare Azure hosts; and the API version.
+/// pi's `resolveAzureConfig`: the Responses URL with the API version, under the
+/// base URL from `AZURE_OPENAI_BASE_URL`, else `AZURE_OPENAI_RESOURCE_NAME`,
+/// else the model. Bare Azure hosts get `/openai/v1`.
 fn azure_endpoint(model: &Model) -> Result<String, String> {
     let env = |name: &str| {
         std::env::var(name)
@@ -963,7 +963,7 @@ async fn prepare(
         .as_deref()
         .filter(|_| options.resolved_cache_retention() != CacheRetention::None);
     // Calls are stored as ordinary tool calls. Each request decides from the
-    // declared tools which ones travel as custom tool calls, once the
+    // declared tools which ones it sends as custom tool calls, once the
     // credentials and endpoint check out, as in pi.
     let grammar = || schema::grammar_properties(normalized, compat.supports_grammar_tools);
     let (params, url, grammar) = match flavor {
@@ -1048,7 +1048,8 @@ async fn prepare(
     ))
 }
 
-/// Sends `prepared` over HTTP; the response once its status is a success.
+/// Sends `prepared` over HTTP and returns the response once its status is a
+/// success.
 async fn send(
     prepared: &Prepared,
     model: &Model,
@@ -1136,8 +1137,8 @@ fn codex_backoff(attempt: u32) -> std::time::Duration {
     std::time::Duration::from_millis(CODEX_RETRY_BASE_MS << attempt.min(32))
 }
 
-/// One Codex SSE request; its response headers must arrive within pi's
-/// `timeoutMs` and the HTTP idle timeout.
+/// One Codex server-sent events (SSE) request. Its response headers must
+/// arrive within pi's `timeoutMs` and the HTTP idle timeout.
 async fn codex_attempt(
     request: reqwest::RequestBuilder,
     options: &StreamOptions,
@@ -1147,7 +1148,7 @@ async fn codex_attempt(
         message,
         retry: true,
     };
-    // pi's own timer on `timeoutMs`; the HTTP idle timeout underneath fails
+    // pi's own timer on `timeoutMs`. The HTTP idle timeout underneath fails
     // the fetch itself.
     let send = async {
         match http::idle_timeout() {
@@ -1326,7 +1327,7 @@ async fn codex_websocket(
 }
 
 /// pi's `timeoutMs` as Codex applies it: to SSE response headers and to the
-/// wait between WebSocket messages; none without one. `prepare` has rejected
+/// wait between WebSocket messages, or none without one. `prepare` rejected
 /// an invalid value.
 fn codex_idle_timeout(options: &StreamOptions) -> Option<std::time::Duration> {
     options
@@ -1637,7 +1638,7 @@ impl State {
         }
     }
 
-    /// The input a custom tool call carries so far.
+    /// The input of a custom tool call so far.
     fn custom_input(&self, position: usize) -> String {
         match (
             self.custom_inputs.get(&position),
@@ -1784,8 +1785,8 @@ impl State {
         Ok(())
     }
 
-    /// Azure can leave `encrypted_content` out of `output_item.done` and send it
-    /// only in the final response; copy it into the stored reasoning items.
+    /// Copies `encrypted_content` from the final response into the stored
+    /// reasoning items, since Azure can leave it out of `output_item.done`.
     fn backfill_reasoning(&mut self, output: &Value) {
         for item in output.as_array().into_iter().flatten() {
             let Some(encrypted) = item["encrypted_content"]
@@ -2258,7 +2259,7 @@ mod tests {
                 "name": "codemode", "input": "return 1;"})
             ]
         );
-        // Without grammar support the call travels as a function call, which
+        // Without grammar support the call converts to a function call, which
         // cannot keep the custom item id.
         assert_eq!(
             convert_assistant(&assistant, &model, 0, &HashMap::new()).unwrap(),
@@ -2267,7 +2268,8 @@ mod tests {
                 "arguments": "{\"code\":\"return 1;\"}"})
             ]
         );
-        // OpenAI pairs item ids with another model's reasoning, so they go.
+        // OpenAI pairs item ids with another model's reasoning, so the conversion
+        // drops them.
         let mut other = assistant.clone();
         other.model = "gpt-5".into();
         assert_eq!(

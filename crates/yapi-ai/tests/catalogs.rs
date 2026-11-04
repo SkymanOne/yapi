@@ -94,13 +94,13 @@ async fn pi_dev_overlay_merged() {
     let stored = store.read("xai").unwrap();
     assert_eq!(stored["etag"], "\"v1\"");
     assert_eq!(stored["lastModified"], 4_102_444_800_000_u64);
-    // Image models are kept for later; unknown types are dropped.
+    // Image models are kept for later. Unknown types are dropped.
     assert_eq!(stored["models"].as_array().unwrap().len(), 2);
 
     // A catalog checked within four hours is not fetched again.
     let fresh = refresh(&targets, &store, &options).await;
     assert_eq!(ids(&fresh.models["xai"].chat), ["grok-next"]);
-    // A forced refresh revalidates; 304 keeps the stored catalog.
+    // A forced refresh revalidates, and 304 keeps the stored catalog.
     let forced = RefreshOptions {
         force: true,
         ..options.clone()

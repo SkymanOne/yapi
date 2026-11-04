@@ -44,7 +44,7 @@ struct Walk<T> {
 }
 
 impl<T> Walk<T> {
-    /// The walks of `roots`, the first root last so that it pops first;
+    /// The walks of `roots`, the first root last so that it pops first.
     /// `multiple` says the tree shows several roots.
     fn roots(roots: Vec<T>, multiple: bool) -> Vec<Walk<T>> {
         let count = roots.len();
@@ -984,7 +984,7 @@ impl TreeSelector {
             rows.push((gutter, body, anchor, selected));
         }
         // pi's renderHorizontalViewport: pan only to keep the selected entry's
-        // text visible; the gutter stays.
+        // text visible. The gutter stays.
         let viewport = width.saturating_sub(GUTTER_WIDTH);
         let max_body = rows
             .iter()
@@ -1253,7 +1253,7 @@ impl TreeSelector {
                 self.label_input = None;
                 return Outcome::None;
             }
-            // Enter is handled above; a `\n` submit does nothing.
+            // Enter is handled above. A `\n` submit does nothing.
             input.handle_input(data, kb);
             return Outcome::None;
         }

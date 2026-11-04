@@ -2,7 +2,7 @@
 //!
 //! Port of `packages/coding-agent/src/core/session-manager.ts` in pi `v1.0.0`.
 //! Entries are kept as order-preserving documents so a migration rewrites files the
-//! way pi does; typed views are parsed alongside. A new session reaches disk only
+//! way pi does. Typed views are parsed alongside. A new session reaches disk only
 //! once it has a user or assistant message.
 
 use std::collections::HashMap;
@@ -81,7 +81,7 @@ impl Entry {
 pub struct SessionContext {
     /// Messages, with compaction and branch summaries and context edits applied.
     pub messages: Vec<Message>,
-    /// The last thinking level set on the branch; `off` when none.
+    /// The last thinking level set on the branch, or `off` when none.
     pub thinking_level: String,
     /// The last model used or selected on the branch, as (provider, model id).
     pub model: Option<(String, String)>,
@@ -140,7 +140,7 @@ pub struct SessionManager {
     cwd: PathBuf,
     persist: bool,
     flushed: bool,
-    /// The first entry a failed write left off the file; the next write
+    /// The first entry a failed write left off the file. The next write
     /// appends it and those after it.
     unsaved: Option<usize>,
     /// The session's first failed write, until
@@ -171,9 +171,9 @@ fn line(doc: &Value) -> String {
     yapi_types::json::stringify(doc) + "\n"
 }
 
-/// Reads the entries of a session file; empty when the file is missing or does not
-/// start with a session header. With `repair`, a valid file whose last line lacks
-/// its newline gets one appended.
+/// Reads the entries of a session file, or none when the file is missing or does
+/// not start with a session header. With `repair`, a valid file whose last line
+/// lacks its newline gets one appended.
 fn load_docs(path: &Path, repair: bool) -> Result<Vec<Value>> {
     let Ok(bytes) = fs::read(path) else {
         return Ok(Vec::new());
@@ -343,8 +343,8 @@ impl SessionManager {
         manager
     }
 
-    /// Opens a session file; a missing file starts a new session at that path. The
-    /// working directory comes from the header unless given; new sessions go to
+    /// Opens a session file. A missing file starts a new session at that path. The
+    /// working directory comes from the header unless given, and new sessions go to
     /// `dir`, else the file's directory.
     pub fn open(path: &Path, dir: Option<&Path>, cwd: Option<&Path>) -> Result<SessionManager> {
         let docs = load_docs(path, true)?;
@@ -433,7 +433,7 @@ impl SessionManager {
         }
     }
 
-    /// Starts over with a fresh header; returns the new file path when persisted.
+    /// Starts over with a fresh header and returns the new file path when persisted.
     pub fn new_session(&mut self, id: Option<String>, parent: Option<String>) -> Option<PathBuf> {
         self.session_id = id.unwrap_or_else(uuid_v7);
         let timestamp = now_iso();
@@ -549,7 +549,7 @@ impl SessionManager {
         self.write_error.take()
     }
 
-    /// Appends a message on the current branch; returns its entry id.
+    /// Appends a message on the current branch and returns its entry id.
     pub fn append_message(&mut self, message: Message) -> Result<String> {
         let meta = self.new_meta();
         self.append(FileEntry::Message(MessageEntry { meta, message }))
@@ -574,8 +574,8 @@ impl SessionManager {
         }))
     }
 
-    /// Records a compaction. The current system message travels with it, so the
-    /// prompt survives when the messages before `firstKeptEntryId` drop out.
+    /// Records a compaction with the current system message, so the prompt
+    /// survives when the messages before `firstKeptEntryId` drop out.
     pub fn append_compaction(
         &mut self,
         summary: String,
@@ -657,7 +657,7 @@ impl SessionManager {
         }))
     }
 
-    /// Names the session; line breaks become spaces.
+    /// Names the session, with line breaks as spaces.
     pub fn append_session_info(&mut self, name: &str) -> Result<String> {
         let meta = self.new_meta();
         let name = name
@@ -838,8 +838,8 @@ impl SessionManager {
             .filter_map(|entry| entry.view.as_ref())
     }
 
-    /// pi's `getTree`: entries under their parents, children oldest first;
-    /// entries whose parent is missing become roots.
+    /// pi's `getTree`: entries under their parents, children oldest first.
+    /// Entries whose parent is missing become roots.
     pub fn tree(&self) -> SessionTree {
         let entries: Vec<&FileEntry> = self.entries().collect();
         let index: HashMap<&str, usize> = entries
@@ -940,7 +940,7 @@ impl SessionManager {
         out
     }
 
-    /// Moves the leaf to an existing entry; the next append starts a branch there.
+    /// Moves the leaf to an existing entry. The next append starts a branch there.
     pub fn branch(&mut self, id: &str) -> Result<()> {
         if !self.by_id.contains_key(id) {
             return Err(SessionError::NotFound(id.to_owned()));
@@ -1182,7 +1182,7 @@ fn edited(
 pub struct ProjectedEntry<'a> {
     /// The entry.
     pub source: &'a FileEntry,
-    /// Its model-visible messages; empty when edited out or not visible.
+    /// Its model-visible messages, empty when edited out or not visible.
     pub messages: Vec<Message>,
 }
 
@@ -1194,14 +1194,14 @@ pub struct Projection<'a> {
     pub entries: Vec<ProjectedEntry<'a>>,
     /// Every projected message, in order.
     pub messages: Vec<Message>,
-    /// The last thinking level set on the branch; `off` when none.
+    /// The last thinking level set on the branch, or `off` when none.
     pub thinking_level: String,
     /// The last model used or selected on the branch, as (provider, model id).
     pub model: Option<(String, String)>,
 }
 
-/// Projects a branch path: from the last compaction on, entries kept by it, then
-/// later entries; context edits applied; model and thinking level as last set.
+/// Projects a branch path: the last compaction, the entries it keeps, then later
+/// entries, with context edits applied and model and thinking level as last set.
 pub fn build_projection<'a>(path: &[&'a FileEntry]) -> Projection<'a> {
     let mut thinking_level = "off".to_owned();
     let mut model = None;
@@ -1285,7 +1285,7 @@ pub fn build_projection<'a>(path: &[&'a FileEntry]) -> Projection<'a> {
     }
 }
 
-/// The model context of a branch path; see [`build_projection`].
+/// The model context of a branch path (see [`build_projection`]).
 pub fn build_context(path: &[&FileEntry]) -> SessionContext {
     let projection = build_projection(path);
     SessionContext {
@@ -1477,7 +1477,7 @@ fn sorted(mut sessions: Vec<SessionSummary>) -> Vec<SessionSummary> {
     sessions
 }
 
-/// Sessions in `dir`, latest activity first; only those from `cwd` when given.
+/// Sessions in `dir`, latest activity first, only those from `cwd` when given.
 pub fn list(dir: &Path, cwd: Option<&Path>) -> Vec<SessionSummary> {
     sorted(
         session_paths(dir)

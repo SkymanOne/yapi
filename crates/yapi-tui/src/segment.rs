@@ -19,7 +19,7 @@ pub(crate) struct Segment<'a> {
     pub word_like: bool,
 }
 
-/// Grapheme clusters or UAX #29 words.
+/// Grapheme clusters or UAX #29 (Unicode Text Segmentation) words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Granularity {
     /// Extended grapheme clusters.

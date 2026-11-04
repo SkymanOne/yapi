@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 use yapi_ai::aws::{AwsEnv, default_credentials};
 use yapi_mock::{Cassette, Interaction, MockServer};
 
-/// AWS container and instance metadata carry tokens and credentials in plain
-/// HTTP, which the SDK never sends through a proxy.
+/// AWS container and instance metadata services send tokens and credentials
+/// over plain HTTP, which the SDK never sends through a proxy.
 #[tokio::test]
 async fn aws_metadata_unproxied() {
     // A proxy that refuses connections fails every request sent through it.

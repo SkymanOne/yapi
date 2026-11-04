@@ -1,5 +1,5 @@
 //! jsdiff's `diffWords` (version 8), which pi uses to highlight the changed
-//! words of a replaced line: words and punctuation carry their surrounding
+//! words of a replaced line: words and punctuation include their surrounding
 //! whitespace, compare without it, and lose duplicated whitespace afterwards.
 
 /// What a part of the diff is.

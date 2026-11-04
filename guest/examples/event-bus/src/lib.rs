@@ -1,7 +1,8 @@
 //! Extensions talking over `pi.events`, a port of Pi's `event-bus.ts`.
 //! The listener shows each `my:notification` event, from this extension or
 //! any other, native or Pi. `/emit [message]` emits one, and so does the
-//! start of a session. `/mute` stops the listener, and runs it again.
+//! start of a session. `/mute` stops the listener, and a second `/mute`
+//! starts it again.
 
 use std::cell::RefCell;
 

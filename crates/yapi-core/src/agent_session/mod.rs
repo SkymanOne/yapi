@@ -7,7 +7,7 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use futures_util::future::BoxFuture;
@@ -85,7 +85,7 @@ impl InputSource {
     }
 }
 
-/// pi's `PromptOptions` for [`AgentSession::prompt_with`]; the default is
+/// pi's `PromptOptions` for [`AgentSession::prompt_with`]. The default is
 /// pi's.
 #[derive(Clone, Debug)]
 pub struct PromptOptions {
@@ -93,7 +93,7 @@ pub struct PromptOptions {
     /// expand. Without it they stay literal text, but `input` handlers still
     /// run.
     pub expand_prompt_templates: bool,
-    /// How the message queues while a run streams; without one that is an
+    /// How the message queues while a run streams. Without one, that is an
     /// error.
     pub streaming_behavior: Option<StreamingBehavior>,
     /// Images sent with the text.
@@ -188,7 +188,7 @@ pub enum UserBash {
     Local,
     /// Run it through an extension's operations.
     Operations(BashOperations),
-    /// An extension ran it; its result, not yet recorded.
+    /// An extension ran it. The result is not yet recorded.
     Done(crate::bash_executor::BashResult),
 }
 
@@ -245,10 +245,10 @@ pub struct SessionConfig {
     /// The session's extensions, which load before the active tools are set.
     pub extensions: Vec<Arc<dyn Extension>>,
     /// Activate the tools extensions register as they load, unless they opt
-    /// out; pi does unless `--tools` names the tools.
+    /// out. pi does unless `--tools` names the tools.
     pub include_extension_tools: bool,
-    /// The only tools that may exist, from `--tools` (none for `--no-tools`);
-    /// every tool when `None`.
+    /// The only tools that may exist, from `--tools` (none for `--no-tools`),
+    /// or every tool when `None`.
     pub allowed_tools: Option<Vec<String>>,
     /// Tools that may never exist, from `--exclude-tools`.
     pub excluded_tools: Vec<String>,
@@ -262,7 +262,14 @@ struct State {
     session: SessionManager,
     model: Option<Model>,
     thinking_level: ThinkingLevel,
+    /// A run is active, as pi's `isStreaming`. Queueing a message while it
+    /// is and the run's last look at the queues before it ends hold this
+    /// lock, so the run takes every message queued meanwhile.
     streaming: bool,
+    /// `agent_settled` handlers are running. A prompt deferred while they
+    /// do and the run's taking of the deferred prompts hold this lock, so
+    /// the run starts every prompt deferred meanwhile.
+    settling: bool,
 }
 
 struct Inner {
@@ -273,7 +280,7 @@ struct Inner {
     catalog_refresh: tokio::sync::Mutex<()>,
     apis: RwLock<Apis>,
     state: Mutex<State>,
-    /// The models cycling moves through; empty means every available one.
+    /// The models cycling moves through. Empty means every available one.
     scoped_models: Mutex<Vec<crate::model_resolver::ScopedModel>>,
     tools: Tools,
     extensions: Vec<Arc<dyn Extension>>,
@@ -283,7 +290,7 @@ struct Inner {
     /// Extension sections of the current run's system prompt.
     run_options: Mutex<Option<SystemPromptOptions>>,
     /// The base prompt options a command edited, with the options they were
-    /// made from; pi drops the edits when it rebuilds the base.
+    /// made from. pi drops the edits when it rebuilds the base.
     edited_base: Mutex<Option<(SystemPromptOptions, SystemPromptOptions)>>,
     /// The system prompt a `before_agent_start` handler forced for the run.
     forced_prompt: Mutex<Option<String>>,
@@ -314,8 +321,6 @@ struct Inner {
     docs: crate::docs::Locations,
     /// Woken when a run ends.
     idle: tokio::sync::Notify,
-    /// `agent_settled` handlers are running.
-    settling: std::sync::atomic::AtomicBool,
     /// Prompts started while `agent_settled` handlers ran, in order, as pi's
     /// `_deferredSettledActions`: each learns when it may start, with a guard
     /// it drops as it ends.
@@ -354,6 +359,8 @@ struct Inner {
     dropped_results: Mutex<std::collections::HashSet<(String, String)>>,
     /// Keeps the latest request's prompt cache entry warm.
     cache_warmer: Mutex<cache_warmer::CacheWarmer>,
+    #[cfg(test)]
+    races: RacePoints,
 }
 
 /// A blocking extension dialog's kind and title.
@@ -378,20 +385,45 @@ impl Drop for Compacting<'_> {
     }
 }
 
-/// Holds [`Inner::settling`] set while alive, so a run dropped while
-/// extensions hear `agent_settled` clears it, as pi's `finally` does.
-struct Settling<'a>(&'a AtomicBool);
+/// Code a test runs where a message may meet the end of a run.
+#[cfg(test)]
+#[derive(Default)]
+struct RacePoints {
+    /// After the run's last look at the queues, before it ends.
+    before_end: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// As a prompt asks to wait for `agent_settled` handlers, before it
+    /// takes its place among the deferred prompts.
+    before_defer: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
 
-impl<'a> Settling<'a> {
-    fn start(flag: &'a AtomicBool) -> Settling<'a> {
-        flag.store(true, Ordering::SeqCst);
-        Settling(flag)
+/// Runs the code a test set at `point`, once.
+#[cfg(test)]
+fn race(point: &Mutex<Option<Box<dyn FnOnce() + Send>>>) {
+    let hook = lock(point).take();
+    if let Some(hook) = hook {
+        hook();
+    }
+}
+
+/// Holds [`State::settling`], which the run set as it ended, until the run
+/// takes the prompts deferred meanwhile, so a run dropped while extensions
+/// hear `agent_settled` clears it, as pi's `finally` does.
+struct Settling<'a>(&'a Inner);
+
+impl Settling<'_> {
+    /// Ends it: the prompts deferred meanwhile, in order.
+    fn finish(self) -> Vec<tokio::sync::oneshot::Sender<tokio::sync::oneshot::Sender<()>>> {
+        let mut state = lock(&self.0.state);
+        state.settling = false;
+        let deferred = std::mem::take(&mut *lock(&self.0.deferred));
+        drop(state);
+        deferred
     }
 }
 
 impl Drop for Settling<'_> {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
+        lock(&self.0.state).settling = false;
     }
 }
 
@@ -434,7 +466,7 @@ pub struct TreeOutcome {
     pub summary_entry: Option<FileEntry>,
 }
 
-/// A running conversation. Cheap to clone; clones share state.
+/// A running conversation. Cheap to clone, and clones share state.
 #[derive(Clone)]
 pub struct AgentSession {
     inner: Arc<Inner>,
@@ -501,8 +533,8 @@ impl AgentSession {
         }
         tool_registry.set_active(tools);
 
-        // As pi: a session with messages gains a missing thinking level; any
-        // other records its model and level.
+        // As in pi, a session with messages gains a missing thinking level,
+        // and any other records its model and level.
         let has_messages = !session.build_context().messages.is_empty();
         if has_messages {
             let has_thinking = session.branch_path(None).iter().any(|entry| {
@@ -546,6 +578,7 @@ impl AgentSession {
                     model,
                     thinking_level,
                     streaming: false,
+                    settling: false,
                 }),
                 scoped_models: Mutex::new(Vec::new()),
                 tools: tool_registry,
@@ -571,8 +604,9 @@ impl AgentSession {
                 docs,
                 agent_dir,
                 idle: tokio::sync::Notify::new(),
-                settling: std::sync::atomic::AtomicBool::new(false),
                 deferred: Mutex::new(Vec::new()),
+                #[cfg(test)]
+                races: RacePoints::default(),
                 compacting: AtomicUsize::new(0),
                 manual_compaction: std::sync::atomic::AtomicBool::new(false),
                 retry_cancel: Mutex::new(None),
@@ -666,7 +700,7 @@ impl AgentSession {
             })
     }
 
-    /// Names the session; extensions hear of it as pi's
+    /// Names the session. Extensions hear of it as pi's
     /// `session_info_changed`.
     pub fn set_name(&self, name: &str) {
         let name = self.with_session(|session| {
@@ -778,7 +812,7 @@ impl AgentSession {
     }
 
     /// Sets the steering mode, any value as pi takes it, and saves it in the
-    /// global settings; `None` removes the setting.
+    /// global settings. `None` removes the setting.
     pub fn set_steering_mode(&self, mode: Option<Value>) -> Result<(), String> {
         lock(&self.inner.queue_modes).0.clone_from(&mode);
         self.set_global_setting("steeringMode", mode)
@@ -803,7 +837,7 @@ impl AgentSession {
     }
 
     /// Saves whether automatic compaction runs in the global settings, any
-    /// value as pi takes it; `None` removes the setting.
+    /// value as pi takes it. `None` removes the setting.
     pub fn set_auto_compaction(&self, enabled: Option<Value>) -> Result<(), String> {
         lock(&self.inner.settings)
             .set_nested(
@@ -857,7 +891,7 @@ impl AgentSession {
     /// session's shell or through an extension's `operations`, streaming
     /// output to `on_chunk` and as `bash_execution_update` events tagged
     /// `id`, and records it. `exclude_from_context` (`!!`) keeps the output
-    /// from the model; it is recorded as given. While a run streams, the
+    /// from the model and is recorded as given. While a run streams, the
     /// record waits for its end.
     pub async fn execute_bash(
         &self,
@@ -1035,8 +1069,8 @@ impl AgentSession {
     }
 
     /// pi's `getLastAssistantText`: the text of the last assistant message,
-    /// skipping aborted ones without content; `None` when that message has no
-    /// text.
+    /// skipping aborted ones without content, or `None` when that message has
+    /// no text.
     pub fn last_assistant_text(&self) -> Option<String> {
         let assistant = self
             .messages()
@@ -1078,14 +1112,14 @@ impl AgentSession {
         })
     }
 
-    /// The part of pi's `sendCustomMessage` that happens at once: the message
-    /// is queued, held or recorded and reported before this returns.
-    /// `deliver_as` `nextTurn` holds the message for the next prompt; while a
-    /// run streams it steers (or follows up) unless `trigger_turn` is false, in
-    /// which case it is appended when the turn ends; otherwise `trigger_turn`
-    /// returns the run it starts, which the caller defers as pi does (see
-    /// [`AgentSession::settled_turn`]), and without one it is appended at
-    /// once.
+    /// The part of pi's `sendCustomMessage` that happens at once. The message
+    /// is queued, held or recorded and reported before this returns:
+    /// - `deliver_as` `nextTurn` holds the message for the next prompt.
+    /// - While a run streams, it steers (or follows up) unless `trigger_turn`
+    ///   is false, in which case it is appended when the turn ends.
+    /// - Otherwise `trigger_turn` returns the run it starts, which the caller
+    ///   defers as pi does (see [`AgentSession::settled_turn`]), and without
+    ///   one it is appended at once.
     pub fn deliver_custom_message(
         &self,
         message: yapi_types::message::CustomMessage,
@@ -1095,7 +1129,11 @@ impl AgentSession {
         let message = Message::Custom(message);
         if deliver_as == Some("nextTurn") {
             lock(&self.inner.next_turn).push(message);
-        } else if self.is_streaming() && trigger_turn != Some(false) {
+            return None;
+        }
+        // Queued in one step with the check; see [`State::streaming`].
+        let state = lock(&self.inner.state);
+        if state.streaming && trigger_turn != Some(false) {
             let queue = if deliver_as == Some("followUp") {
                 &self.inner.follow_up
             } else {
@@ -1103,13 +1141,15 @@ impl AgentSession {
             };
             lock(queue).push_back(message);
         } else if trigger_turn == Some(true) {
+            drop(state);
             let session = self.clone();
             return Some(async move {
                 let _ = session.run(vec![message]).await;
             });
-        } else if self.is_streaming() {
+        } else if state.streaming {
             lock(&self.inner.pending_custom).push(message);
         } else {
+            drop(state);
             self.append_custom_message(&message);
         }
         None
@@ -1117,18 +1157,22 @@ impl AgentSession {
 
     /// pi defers a prompt started while `agent_settled` handlers run: the
     /// run that settled starts it once they return, and ends after it. `None`
-    /// outside those handlers; otherwise the prompt's place is taken now, and
+    /// outside those handlers. Otherwise the prompt's place is taken now, and
     /// the future resolves when it may start, to a guard it holds until it
     /// ends.
     pub fn settled_turn(
         &self,
     ) -> Option<impl Future<Output = Option<tokio::sync::oneshot::Sender<()>>> + Send + 'static>
     {
-        if !self.inner.settling.load(Ordering::SeqCst) {
+        #[cfg(test)]
+        race(&self.inner.races.before_defer);
+        let state = lock(&self.inner.state);
+        if !state.settling {
             return None;
         }
         let (turn, start) = tokio::sync::oneshot::channel();
         lock(&self.inner.deferred).push(turn);
+        drop(state);
         Some(async move { start.await.ok() })
     }
 
@@ -1191,8 +1235,8 @@ impl AgentSession {
         }
     }
 
-    /// pi's `steer` and `followUp`: an extension command cannot be queued;
-    /// otherwise the `input` handlers see the message first, then it is
+    /// pi's `steer` and `followUp`: an extension command cannot be queued.
+    /// Otherwise the `input` handlers see the message first, then it is
     /// queued with templates and skills expanded.
     pub async fn queue_input(
         &self,
@@ -1227,16 +1271,36 @@ impl AgentSession {
     }
 
     fn queue(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>) {
-        {
-            let mut queued = lock(&self.inner.queued);
-            let (texts, queue) = match behavior {
-                StreamingBehavior::Steer => (&mut queued.0, &self.inner.steering),
-                StreamingBehavior::FollowUp => (&mut queued.1, &self.inner.follow_up),
-            };
-            texts.push(text.clone());
-            lock(queue).push_back(Self::user_message(text, images));
-        }
+        self.push_queued(behavior, text, images);
         self.emit_queue_update();
+    }
+
+    /// [`AgentSession::queue`] while a run is active, in one step with the
+    /// check (see [`State::streaming`]); otherwise the message back.
+    fn queue_streaming(
+        &self,
+        behavior: StreamingBehavior,
+        text: String,
+        images: Vec<ImageContent>,
+    ) -> Result<(), (String, Vec<ImageContent>)> {
+        let state = lock(&self.inner.state);
+        if !state.streaming {
+            return Err((text, images));
+        }
+        self.push_queued(behavior, text, images);
+        drop(state);
+        self.emit_queue_update();
+        Ok(())
+    }
+
+    fn push_queued(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>) {
+        let mut queued = lock(&self.inner.queued);
+        let (texts, queue) = match behavior {
+            StreamingBehavior::Steer => (&mut queued.0, &self.inner.steering),
+            StreamingBehavior::FollowUp => (&mut queued.1, &self.inner.follow_up),
+        };
+        texts.push(text.clone());
+        lock(queue).push_back(Self::user_message(text, images));
     }
 
     fn expand(&self, text: &str) -> String {
@@ -1371,8 +1435,8 @@ impl AgentSession {
         options
     }
 
-    /// Has the extensions' loadout hooks that answer later look at the
-    /// `declared` tools, before a request presents them.
+    /// Shows the `declared` tools to the extensions' loadout hooks that
+    /// answer later, before a request presents them.
     pub(super) async fn refresh_loadouts(&self, declared: Vec<RegisteredTool>) {
         let loadout = Loadout {
             declared,
@@ -1411,9 +1475,9 @@ impl AgentSession {
         (loadout, changes)
     }
 
-    /// The `declared` tools as the model sees them, with the descriptions
-    /// the extensions' loadout hooks give them, and records the tools the
-    /// hooks hide from requests; pi's `_applyToolLoadout`.
+    /// pi's `_applyToolLoadout`: the `declared` tools as the model sees
+    /// them, with the descriptions the extensions' loadout hooks give them.
+    /// Records the tools the hooks hide from requests.
     fn loadout(&self, declared: Vec<RegisteredTool>) -> Vec<Arc<dyn Tool>> {
         let (loadout, changes) = self.loadout_changes(declared);
         let mut descriptions = changes.descriptions;
@@ -1477,7 +1541,7 @@ impl AgentSession {
         self.system_prompt_text(&self.inner.tools.active())
     }
 
-    /// pi's `buildSystemPrompt`: the system prompt `options` give, their
+    /// pi's `buildSystemPrompt`: the system prompt `options` give, or their
     /// forced prompt if they have one.
     pub fn render_prompt(&self, options: &SystemPromptOptions) -> Result<String, String> {
         match &options.force_system_prompt {
@@ -1506,8 +1570,8 @@ impl AgentSession {
 
     /// [`AgentSession::prompt_with`] while a run streams, when the message
     /// has a streaming behavior and neither an `input` handler nor an
-    /// extension command takes it: it is queued before this returns, as pi
-    /// queues it before any later event. Whether it was.
+    /// extension command takes it. It is queued before this returns, as pi
+    /// queues it before any later event. Returns whether it was.
     pub fn queue_now(&self, text: &str, options: &PromptOptions) -> bool {
         let Some(behavior) = options.streaming_behavior.filter(|_| self.is_streaming()) else {
             return false;
@@ -1524,8 +1588,8 @@ impl AgentSession {
         } else {
             text.to_owned()
         };
-        self.queue(behavior, text, options.images.clone());
-        true
+        self.queue_streaming(behavior, text, options.images.clone())
+            .is_ok()
     }
 
     /// Sends a user prompt and runs until the agent settles. Templates and
@@ -1539,7 +1603,7 @@ impl AgentSession {
     }
 
     /// pi's `prompt`: while a run streams, the options' streaming behavior
-    /// queues the message, and without one it is an error; otherwise the
+    /// queues the message, and without one it is an error. Otherwise the
     /// message starts a run that lasts until the agent settles. `preflight`
     /// learns which, before any event of the run. A prompt started while
     /// `agent_settled` handlers run waits until they return.
@@ -1573,12 +1637,19 @@ impl AgentSession {
             return Ok(());
         };
         let expanded = if expand { self.expand(&text) } else { text };
-        if self.is_streaming() {
-            let behavior = behavior.ok_or("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.")?;
-            self.queue(behavior, expanded, images);
-            preflight(PromptDisposition::Queued);
-            return Ok(());
-        }
+        let (expanded, images) = match behavior {
+            Some(behavior) => match self.queue_streaming(behavior, expanded, images) {
+                Ok(()) => {
+                    preflight(PromptDisposition::Queued);
+                    return Ok(());
+                }
+                Err(message) => message,
+            },
+            None if self.is_streaming() => {
+                return Err("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.".into());
+            }
+            None => (expanded, images),
+        };
         self.flush_pending_bash();
         self.flush_pending_custom();
         // Without a model pi's agent holds a placeholder from provider
@@ -1670,45 +1741,32 @@ impl AgentSession {
         lock(&self.inner.state).streaming = true;
         self.run_agent(Some(prompts), &cancel).await;
         let mut result = Ok(());
-        while !cancel.is_cancelled() {
-            let again = match self.handle_post_run(&cancel).await {
-                Ok(again) => again,
-                Err(error) => {
-                    result = Err(error);
-                    break;
-                }
-            };
-            if again {
-                if cancel.is_cancelled() {
-                    break;
-                }
-                self.run_agent(None, &cancel).await;
-                continue;
+        loop {
+            self.settle_run(&cancel, &mut result).await;
+            if cancel.is_cancelled() {
+                self.finish_cancelled_retry();
             }
-            if cancel.is_cancelled() || !self.before_settle(&cancel).await {
+            #[cfg(test)]
+            race(&self.inner.races.before_end);
+            if self.end_run(cancel.is_cancelled() || result.is_err()) {
                 break;
             }
+            // A message queued since the last look at the queues.
             self.run_agent(None, &cancel).await;
         }
-        if cancel.is_cancelled() {
-            self.finish_cancelled_retry();
-        }
-        lock(&self.inner.state).streaming = false;
+        let settling = Settling(&self.inner);
         self.flush_pending_bash();
         self.flush_pending_custom();
         *lock(&self.inner.cancel) = None;
         self.cache_warming_settled();
         // Extensions hear it first, as in pi.
-        let settling = Settling::start(&self.inner.settling);
         self.emit_extension_event(
             &ExtensionEvent::AgentSettled.to_value(),
             CancellationToken::new(),
         )
         .await;
         self.emit(&AgentEvent::AgentSettled);
-        drop(settling);
-        let deferred = std::mem::take(&mut *lock(&self.inner.deferred));
-        for turn in deferred {
+        for turn in settling.finish() {
             let (guard, ended) = tokio::sync::oneshot::channel();
             if turn.send(guard).is_ok() {
                 // Fails once the prompt drops the guard as it ends.
@@ -1717,6 +1775,47 @@ impl AgentSession {
         }
         self.inner.idle.notify_waiters();
         result
+    }
+
+    /// pi's post-run loop until the agent would settle: retries, overflow
+    /// recovery and compaction, the queued messages, and the
+    /// `agent_before_settle` boundary. An invalid compaction setting ends
+    /// it with its error in `result`.
+    async fn settle_run(&self, cancel: &CancellationToken, result: &mut Result<(), String>) {
+        while !cancel.is_cancelled() {
+            let again = match self.handle_post_run(cancel).await {
+                Ok(again) => again,
+                Err(error) => {
+                    *result = Err(error);
+                    break;
+                }
+            };
+            if again {
+                if cancel.is_cancelled() {
+                    break;
+                }
+                self.run_agent(None, cancel).await;
+                continue;
+            }
+            if cancel.is_cancelled() || !self.before_settle(cancel).await {
+                break;
+            }
+            self.run_agent(None, cancel).await;
+        }
+    }
+
+    /// Ends the run, as pi's `_emitAgentSettled` starts: no longer active,
+    /// and settling. Unless `stopped`, only when no message was queued since
+    /// the run last looked, in one step with queueing (see
+    /// [`State::streaming`]). Whether it ended.
+    fn end_run(&self, stopped: bool) -> bool {
+        let mut state = lock(&self.inner.state);
+        if !stopped && self.has_queued() {
+            return false;
+        }
+        state.streaming = false;
+        state.settling = true;
+        true
     }
 
     fn has_queued(&self) -> bool {
@@ -1735,7 +1834,7 @@ impl AgentSession {
             .as_ref()
             .and_then(|retry| retry.provider.clone())
             .unwrap_or_default();
-        // pi stands the longest timer it can set in for a disabled one.
+        // pi uses the longest timer it can set in place of a disabled one.
         let idle = if idle == 0 { 2_147_483_647 } else { idle };
         Ok(StreamOptions {
             timeout_ms: Some(manager.provider_timeout_ms().unwrap_or(idle as f64)),
@@ -2172,7 +2271,7 @@ impl AgentSession {
         })
     }
 
-    /// Sets the active tools; unknown and hidden names are ignored.
+    /// Sets the active tools, ignoring unknown and hidden names.
     pub fn set_active_tools(&self, names: Vec<String>) {
         self.inner.tools.set_active(names);
     }
@@ -2226,9 +2325,9 @@ impl AgentSession {
         Ok(())
     }
 
-    /// The tools other tools may call, in registration order: every
-    /// `codemode` and `deferred` tool and the active `direct` ones; pi's
-    /// `_getCallableTools`.
+    /// The tools other tools may call, in registration order, as pi's
+    /// `_getCallableTools`: every `codemode` and `deferred` tool and the
+    /// active `direct` ones.
     pub fn callable_tools(&self) -> Vec<RegisteredTool> {
         self.inner.tools.with(|registry| {
             let active = registry.active();
@@ -2382,7 +2481,7 @@ impl AgentSession {
     }
 }
 
-/// A skill invocation as `/skill:<name>` expands it; pi's `ParsedSkillBlock`.
+/// pi's `ParsedSkillBlock`: a skill invocation as `/skill:<name>` expands it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SkillBlock {
     /// The skill's name.

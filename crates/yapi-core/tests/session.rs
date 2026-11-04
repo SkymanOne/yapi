@@ -42,7 +42,7 @@ fn contexts_match_pi() {
     for entry in std::fs::read_dir(fixtures().join("sessions")).unwrap() {
         let source = entry.unwrap().path();
         let name = source.file_stem().unwrap().to_string_lossy().into_owned();
-        // Opening may append a final newline; work on a copy.
+        // Opening may append a final newline, so work on a copy.
         let copy = scratch.0.join(source.file_name().unwrap());
         std::fs::copy(&source, &copy).unwrap();
         let session = SessionManager::open(&copy, None, Some(Path::new("/tmp"))).unwrap();

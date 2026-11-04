@@ -159,7 +159,7 @@ async fn commands_input_and_new_sessions() {
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
         .await;
     first.prompt("/note buy milk", Vec::new()).await.unwrap();
-    // The action runs on the runtime; wait for it to land.
+    // The action runs on the runtime, so wait for it to finish.
     for _ in 0..100 {
         if !first.messages().is_empty() {
             break;
@@ -260,7 +260,7 @@ async fn model_registry_reads_typed_models() {
         .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
         .await;
     session.prompt("/probe", Vec::new()).await.unwrap();
-    // The command runs on the runtime; wait for its entry.
+    // The command runs on the runtime, so wait for its entry.
     for _ in 0..200 {
         if !custom_entries(&session, "probe").is_empty() {
             break;
@@ -327,7 +327,7 @@ async fn session_manager_reads_children() {
     session.append_custom_entry("first", None).unwrap();
     session.append_custom_entry("second", None).unwrap();
     session.prompt("/children", Vec::new()).await.unwrap();
-    // The command runs on the runtime; wait for its entry.
+    // The command runs on the runtime, so wait for its entry.
     for _ in 0..200 {
         if !custom_entries(&session, "children").is_empty() {
             break;
@@ -408,7 +408,7 @@ async fn session_abort_reaches_tools() {
     );
 }
 
-/// `before_agent_start` hands handlers pi's prompt options. Their edits to
+/// `before_agent_start` passes handlers pi's prompt options. Their edits to
 /// guidelines, sections and selected tools shape the run's prompt and its
 /// active tools. The event's `systemPrompt` and `ctx.getSystemPrompt()`
 /// render the options as edited so far (#203), and `ctx.getSystemPrompt()`
@@ -1139,7 +1139,7 @@ async fn hook_results_need_grants() {
         } else {
             ""
         };
-        // They carry the request's credentials, which need the network grant.
+        // They include the request's credentials, which need the network grant.
         let heard = session.has_handlers("before_provider_request")
             || session.has_handlers("before_provider_headers");
         let found = [
@@ -2154,7 +2154,7 @@ export default function (pi: ExtensionAPI) {
         assert_eq!(rows, [expected]);
     };
     // The native listener takes `?` from the empty prompt only while the
-    // prompt editor has the keyboard; a dialog gets it.
+    // prompt editor has the keyboard. A dialog gets it.
     let help = async || listeners.terminal_input(vec!["?".into()]).await;
     let focus = |editor_focused: bool| {
         screen

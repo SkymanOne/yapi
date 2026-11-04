@@ -2,7 +2,7 @@
 //!
 //! Ports of the discovery parts of `resource-loader.ts`, `skills.ts` and
 //! `prompt-templates.ts` in pi `v1.0.0`. Project `.yapi/` resources load only for a
-//! trusted project; `AGENTS.md` and `CLAUDE.md` files always load.
+//! trusted project. `AGENTS.md` and `CLAUDE.md` files always load.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -33,7 +33,7 @@ pub enum Diagnostic {
         /// The path.
         path: PathBuf,
     },
-    /// A name an earlier resource took; the later one is skipped.
+    /// A name an earlier resource took. The later one is skipped.
     Collision {
         /// The name.
         name: String,
@@ -106,7 +106,7 @@ fn load_yaml(mut yaml: String) -> Result<Vec<yaml_rust2::Yaml>, yaml_rust2::Scan
     loop {
         match yaml_rust2::YamlLoader::load_from_str(&yaml) {
             Err(error) if error.info() == "':' must be followed by a valid YAML whitespace" => {
-                // The error points past the tabs; the first of them becomes a space.
+                // The error points past the tabs. The first of them becomes a space.
                 let at = yaml
                     .char_indices()
                     .nth(error.marker().index())
@@ -122,7 +122,7 @@ fn load_yaml(mut yaml: String) -> Result<Vec<yaml_rust2::Yaml>, yaml_rust2::Scan
     }
 }
 
-/// A YAML value as JavaScript sees it; keys become strings.
+/// A YAML value as JavaScript sees it, with keys as strings.
 fn yaml_to_json(yaml: yaml_rust2::Yaml) -> Value {
     use yaml_rust2::Yaml;
     match yaml {
@@ -347,7 +347,7 @@ fn name_problems(name: &str) -> Vec<String> {
 }
 
 /// pi's `loadSkillFromFile`: a `SKILL.md` file, or another markdown file with
-/// a description. Problems with the name or description are reported; a
+/// a description. Problems with the name or description are reported. A
 /// skill without a description does not load.
 fn load_skill(
     path: &Path,
@@ -417,7 +417,7 @@ fn load_skill(
     })
 }
 
-/// Skills under `dir`: a directory with `SKILL.md` is one skill; otherwise
+/// Skills under `dir`: a directory with `SKILL.md` is one skill. Otherwise
 /// subdirectories are searched, and at the top level other `.md` files with a
 /// description are skills too. Hidden entries and `node_modules` are skipped.
 fn skills_in(
@@ -455,7 +455,7 @@ fn skills_in(
 
 /// pi's `loadSkills` over `sources`, in order, each with its source: skill
 /// files, or directories searched for skills. The first skill of a name
-/// wins; later ones are reported as collisions.
+/// wins, and later ones are reported as collisions.
 pub fn skills_from(sources: &[SourceInfo]) -> (Vec<Skill>, Vec<Diagnostic>) {
     let mut found = Vec::new();
     let mut diagnostics = Vec::new();
@@ -612,8 +612,8 @@ fn template_at(
 
 /// pi's prompt template loading over `sources`, in order, each with its
 /// source: markdown files, or directories of them. The first template of a
-/// name wins; later ones are reported as collisions. Missing paths are
-/// skipped; the command line's are reported by the caller.
+/// name wins, and later ones are reported as collisions. Missing paths are
+/// skipped, and the caller reports the command line's.
 pub fn templates_from(sources: &[SourceInfo]) -> (Vec<PromptTemplate>, Vec<Diagnostic>) {
     let mut templates: Vec<PromptTemplate> = Vec::new();
     let mut diagnostics = Vec::new();
@@ -669,7 +669,7 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
         return content.to_owned();
     };
     let all = args.join(" ");
-    // Digits too many for an index name no argument, as in JavaScript.
+    // An index with too many digits names no argument, as in JavaScript.
     let number = |digits: &str| digits.parse::<usize>().unwrap_or(usize::MAX);
     let arg = |digits: &str| {
         number(digits)
@@ -704,7 +704,7 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
         .into_owned()
 }
 
-/// Expands `/name args` when `name` is a template; other text is unchanged.
+/// Expands `/name args` when `name` is a template. Other text is unchanged.
 pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> String {
     let Some(rest) = text.strip_prefix('/') else {
         return text.to_owned();

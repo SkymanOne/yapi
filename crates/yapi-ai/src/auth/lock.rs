@@ -30,7 +30,7 @@ pub enum LockError {
     Io(#[from] std::io::Error),
 }
 
-/// A held lock; dropping it releases the lock.
+/// A held lock. Dropping it releases the lock.
 #[derive(Debug)]
 pub struct FileLock {
     dir: PathBuf,
@@ -115,7 +115,7 @@ fn try_lock(dir: &Path) -> std::io::Result<Option<FileLock>> {
                 }));
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                // Another process may take a stale lock over first; either way, try again.
+                // Another process may take a stale lock over first. Either way, try again.
                 if !is_stale(dir) || std::fs::remove_dir(dir).is_err() {
                     return Ok(None);
                 }
@@ -127,8 +127,8 @@ fn try_lock(dir: &Path) -> std::io::Result<Option<FileLock>> {
 
 /// Replaces `path`'s contents so that readers see the old or the new bytes,
 /// never a partial file: writes a temporary file beside it, flushes it to disk
-/// and renames it over `path`. An existing file keeps its permissions; a new
-/// one is created with `create_mode` (Unix, less the umask). A symbolic link
+/// and renames it over `path`. An existing file keeps its permissions, and a
+/// new one gets `create_mode` (Unix, less the umask). A symbolic link
 /// keeps pointing at its target, which receives the contents. On error the
 /// file is unchanged.
 pub fn write_atomic(path: &Path, contents: &[u8], create_mode: u32) -> std::io::Result<()> {
@@ -192,9 +192,9 @@ fn is_stale(dir: &Path) -> bool {
         .is_some_and(|age| age > STALE)
 }
 
-/// A value in `[0, 1)`; spreads retries of competing processes.
+/// A value in `[0, 1)` that spreads retries of competing processes.
 fn jitter() -> f64 {
-    // Like pi's `Math.random`, jitter never fails; without the generator it is 0.
+    // Like pi's `Math.random`, jitter never fails. Without the generator it is 0.
     let bytes = yapi_types::time::try_random_bytes().unwrap_or_default();
     f64::from(u16::from_le_bytes(bytes)) / 65536.0
 }

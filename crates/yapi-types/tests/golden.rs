@@ -93,7 +93,7 @@ fn session_views_cover_fixtures() {
 
 /// New objects built from the typed views use pi's key order. pi places some
 /// assistant-message fields and compaction checkpoints by code path, so those are
-/// exempt; see the session-format research in the crate docs.
+/// exempt. See the session-format research in the crate docs.
 #[test]
 fn typed_views_key_order() {
     let text = fs::read_to_string(

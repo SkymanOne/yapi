@@ -26,12 +26,12 @@ use std::process::ExitCode;
 
 use args::Mode;
 
-/// Writes `line` to stdout; a closed stdout is not an error.
+/// Writes `line` to stdout. A closed stdout is not an error.
 pub(crate) fn out(line: &str) {
     let _ = writeln!(std::io::stdout(), "{line}");
 }
 
-/// Writes `line` to stderr; a closed stderr is not an error.
+/// Writes `line` to stderr. A closed stderr is not an error.
 pub(crate) fn err(line: &str) {
     let _ = writeln!(std::io::stderr(), "{line}");
 }
@@ -61,7 +61,8 @@ fn apply_http_proxy() {
     yapi_ai::http::set_settings_proxy(proxy.as_deref());
 }
 
-/// Runs `future` to completion on a current-thread runtime; its exit code.
+/// Runs `future` to completion on a current-thread runtime and returns its
+/// exit code.
 fn block_on(future: impl std::future::Future<Output = u8>) -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -75,7 +76,7 @@ fn block_on(future: impl std::future::Future<Output = u8>) -> ExitCode {
     };
     let code = runtime.block_on(future);
     // A stdin read still in progress (RPC mode after a signal) runs on a
-    // blocking thread that only returns at end of input; exit without it.
+    // blocking thread that only returns at end of input, so exit without it.
     runtime.shutdown_background();
     // Exiting while an extension thread frees its wasm code aborts in libgcc.
     yapi_ext::join_stopped();
@@ -334,8 +335,8 @@ async fn run(parsed: &mut args::Args) -> u8 {
         }
     };
     interactive::keybindings::migrate_file(&yapi_core::config::agent_dir());
-    // pi picks the session for `--resume` in print and JSON mode too; yapi
-    // needs a terminal for the picker.
+    // pi picks the session for `--resume` in print and JSON mode too, but
+    // yapi needs a terminal for the picker.
     if parsed.resume
         && parsed.mode != Some(Mode::Rpc)
         && std::io::stdin().is_terminal()
@@ -419,7 +420,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
                 session.refresh_model_catalogs(options).await;
             });
         }
-        // pi's RPC mode starts without a model, on a placeholder; prompts
+        // pi's RPC mode starts without a model, on a placeholder, and prompts
         // then fail with the missing-key message.
         return modes::rpc::run(startup.session, startup::factory(parsed, extensions, false)).await;
     }
@@ -431,7 +432,7 @@ async fn run(parsed: &mut args::Args) -> u8 {
     .await
 }
 
-/// [`startup::start`], or the exit code once its error is printed; a
+/// [`startup::start`], or the exit code once its error is printed. A
 /// cancelled prompt exits quietly. `--api-key` then applies as in pi.
 async fn start(
     parsed: &mut args::Args,

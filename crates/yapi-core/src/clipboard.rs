@@ -3,9 +3,9 @@
 //!
 //! Port of `copyToClipboard` in `packages/coding-agent/src/utils/clipboard.ts`
 //! and of the reads of `handleClipboardPaste` in pi `v1.0.0`, without pi's
-//! native clipboard addon: platform commands first, then OSC 52 for remote
-//! and headless sessions. On macOS a script reads the pasteboard as the
-//! addon does.
+//! native clipboard addon: platform commands first, then OSC (operating
+//! system command) 52 for remote and headless sessions. On macOS a script
+//! reads the pasteboard as the addon does.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -61,8 +61,9 @@ fn is_wsl() -> bool {
 }
 
 /// pi's `runClipboardCommand`: runs `command` with `input` on stdin, and
-/// its output when it exits successfully within `timeout`. A command given
-/// input gets no output pipe, because clipboard writers can daemonize.
+/// returns its output when it exits successfully within `timeout`. A
+/// command given input gets no output pipe, because clipboard writers can
+/// daemonize.
 async fn run(
     command: &str,
     args: &[&str],

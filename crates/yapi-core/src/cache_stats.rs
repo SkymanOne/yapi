@@ -21,7 +21,7 @@ pub struct CacheMiss {
     /// Prompt tokens of the previous request that were not read from the
     /// cache.
     pub missed_tokens: u64,
-    /// Dollars paid beyond a full cache hit; 0 when prices are unknown.
+    /// Dollars paid beyond a full cache hit, or 0 when prices are unknown.
     pub missed_cost: f64,
     /// Milliseconds since the previous request, which last refreshed the
     /// cache.
@@ -41,7 +41,7 @@ pub struct CacheWaste {
     pub miss_count: usize,
 }
 
-/// The last request a scan saw; everything in its prompt should be cached.
+/// The last request a scan saw. Everything in its prompt should be cached.
 struct Previous {
     prompt_tokens: u64,
     model: String,
@@ -80,7 +80,7 @@ fn detect(
     if missed_tokens <= NOISE_FLOOR_TOKENS {
         return None;
     }
-    // Missed tokens land in the input or cache write buckets, so this
+    // Missed tokens are billed as input or cache write tokens, so this
     // message's own costs give the rate paid for them.
     let paid_tokens = usage.input + usage.cache_write;
     let paid_per_token = if paid_tokens > 0 {
@@ -185,8 +185,8 @@ pub fn collect_cache_misses<'a>(
     misses
 }
 
-/// pi's `detectCacheMiss`: the miss a just-finished assistant `message`
-/// paid for. `entries` may already hold the message; the scan stops there.
+/// pi's `detectCacheMiss`: the miss a newly finished assistant `message`
+/// paid for. `entries` may already hold the message, where the scan stops.
 pub fn detect_cache_miss<'a>(
     entries: impl IntoIterator<Item = &'a FileEntry>,
     message: &AssistantMessage,

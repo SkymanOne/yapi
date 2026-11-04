@@ -72,7 +72,7 @@ fn export_matches_pi() {
 }
 
 /// Once `-p` or `--mode` owns stdout, help and the model list go to stderr,
-/// as in pi; on their own they print to stdout.
+/// as in pi. On their own they print to stdout.
 #[test]
 fn metadata_on_stderr() {
     let home = common::scratch("metadata");
@@ -219,7 +219,7 @@ export default function (pi) {
 }
 
 /// `--enable-logging` appends extension messages to `yapi.log` in the agent
-/// directory; without it, yapi writes no log.
+/// directory. Without it, yapi writes no log.
 #[test]
 fn logging_flag() {
     let home = common::scratch("logging");
@@ -956,7 +956,7 @@ fn extension_output_off_screen() {
 #[test]
 fn update_self_names_installer() {
     let dir = common::scratch("update-self");
-    // pi's `--force` reinstalls pi; yapi accepts it for `update` only.
+    // pi's `--force` reinstalls pi, and yapi accepts it for `update` only.
     for args in [&["update", "self"][..], &["update", "--force"]] {
         let output = common::yapi(&dir)
             .args(args)
@@ -1372,7 +1372,7 @@ async fn project_dir_flag() {
     assert!(!loaded(&request, "project") && !loaded(&request, "cwd"));
     assert!(!request.contains("settings-skill"), "{request}");
 
-    // `--approve` trusts the project; tools run in the working directory.
+    // `--approve` trusts the project. Tools run in the working directory.
     run(&[&project_flag[..], &["--approve"]].concat());
     let requests = server.requests();
     let first = &requests[1].body;

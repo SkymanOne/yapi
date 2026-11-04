@@ -100,7 +100,7 @@ impl TextInput {
         &self.value
     }
 
-    /// Replaces the text; the cursor stays where it was, within the text.
+    /// Replaces the text. The cursor stays where it was, within the text.
     pub fn set_value(&mut self, value: &str) {
         self.value = value.to_owned();
         self.cursor = self.value.floor_char_boundary(self.cursor);

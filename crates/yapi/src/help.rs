@@ -16,8 +16,8 @@ fn heading(bold: bool, text: &str) -> String {
     }
 }
 
-/// The help text, listing `flags` the loaded extensions registered; headings
-/// are bold when `bold` is set.
+/// The help text, listing the `flags` the loaded extensions registered, with
+/// bold headings when `bold` is set.
 pub fn text(bold: bool, flags: &[yapi_ext::Flag]) -> String {
     let b = |text: &str| heading(bold, text);
     let app = APP_NAME;

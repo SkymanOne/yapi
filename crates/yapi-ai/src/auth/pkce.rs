@@ -1,4 +1,5 @@
-//! PKCE (RFC 7636) verifier and S256 challenge. Port of `oauth/pkce.ts`.
+//! Proof Key for Code Exchange (PKCE, RFC 7636) verifier and S256 challenge.
+//! Port of `oauth/pkce.ts`.
 
 use aws_lc_rs::digest::{SHA256, digest};
 use base64::Engine as _;

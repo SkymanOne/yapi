@@ -1,12 +1,15 @@
 //! `cargo xtask bench`: measures yapi, and optionally pi on the same machine:
-//! startup to the interactive first paint, startup in print mode to the
-//! first request byte, keystroke-to-paint latency in a pseudo-terminal,
-//! memory when idle, with a large session open, after a session of turns
-//! with tool calls and with JS extensions loaded, and install size.
+//!
+//! - startup to the interactive first paint
+//! - startup in print mode to the first request byte
+//! - keystroke-to-paint latency in a pseudo-terminal
+//! - memory when idle, with a large session open, after a session of turns
+//!   with tool calls, and with JS extensions loaded
+//! - install size
 //!
 //! Startup measurements alternate between the programs run by run, so drift
 //! on the machine (thermal throttling, background work) affects both alike.
-//! Each result is reported as the median with the range of its samples.
+//! The report gives each result as the median with the range of its samples.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -21,8 +24,8 @@ use yapi_mock::{Cassette, MockServer, scenario};
 /// Measure yapi (and pi with `--pi`).
 #[derive(clap::Args)]
 pub struct Args {
-    /// The yapi executable [default: the workspace's target/release/yapi];
-    /// build it with `cargo build --release -p yapi`.
+    /// The yapi executable [default: the workspace's target/release/yapi].
+    /// Build it with `cargo build --release -p yapi`.
     #[arg(long)]
     yapi: Option<PathBuf>,
     /// Also measure this pi executable.
@@ -30,8 +33,8 @@ pub struct Args {
     pi: Option<PathBuf>,
     /// A directory holding only a pi installation, such as the prefix of
     /// `npm install --prefix <dir> --ignore-scripts @earendil-works/pi-coding-agent`,
-    /// whose size is reported as pi's install size. Its example extensions
-    /// are loaded for one memory measure.
+    /// whose size the report gives as pi's install size. One memory measure
+    /// loads its example extensions.
     #[arg(long)]
     pi_install: Option<PathBuf>,
     /// Startups to time, per program and measure.
@@ -388,7 +391,7 @@ fn first_paint(program: &Program) -> anyhow::Result<Duration> {
 }
 
 /// The memory of an interactive run started with `args`: the resident set
-/// size of the program and its child processes, 2 s after `drive` returns.
+/// size of the program and its child processes, 2s after `drive` returns.
 /// `drive` starts at the first paint.
 fn memory(
     program: &Program,
@@ -416,7 +419,7 @@ fn memory(
     Ok(bytes)
 }
 
-/// The memory of an interactive run 2 s after first paint.
+/// The memory of an interactive run 2s after first paint.
 fn idle_rss(program: &Program) -> anyhow::Result<u64> {
     memory(program, &model_args(&["--no-session"]), |_| Ok(()))
 }
@@ -500,7 +503,7 @@ fn conversation() -> anyhow::Result<Cassette> {
 
 /// Types [`TURNS`] prompts, each once the previous turn has finished. pi
 /// keeps a prompt submitted before its startup completes in the editor and
-/// adds a notice to the transcript; Enter then submits it again.
+/// adds a notice to the transcript, and Enter then submits it again.
 fn work(pty: &mut Pty) -> anyhow::Result<()> {
     let early = |rows: &[String]| {
         rows.iter()
@@ -540,7 +543,7 @@ fn active_rss(program: &Program, runtime: &tokio::runtime::Runtime) -> anyhow::R
         conversation()?,
     ))?;
     program.point_provider(&server.url())?;
-    // Without `--no-session`: the turns are saved to a session file.
+    // Without `--no-session`, so the program saves the turns to a session file.
     let bytes = memory(program, &model_args(&[]), work);
     std::fs::remove_file(program.agent.join("models.json"))?;
     let bytes = bytes?;
@@ -550,12 +553,14 @@ fn active_rss(program: &Program, runtime: &tokio::runtime::Runtime) -> anyhow::R
     Ok(bytes)
 }
 
-/// pi's example extensions that the memory measure leaves out: those that
-/// replace the footer, header or editor, where the benchmark looks for the
-/// first paint; those that start commands, timers or file watchers when a
-/// session starts; one that commits to the working directory's repository on
-/// exit; and those that override a built-in tool `built-in-tool-renderer.ts`
-/// also overrides, which pi refuses to load together.
+/// pi's example extensions that the memory measure leaves out:
+///
+/// - those that replace the footer, header or editor, where the benchmark
+///   looks for the first paint
+/// - those that start commands, timers or file watchers when a session starts
+/// - one that commits to the working directory's repository on exit
+/// - those that override a built-in tool `built-in-tool-renderer.ts` also
+///   overrides, which pi refuses to load together
 const SKIPPED_EXAMPLES: [&str; 13] = [
     "border-status-editor.ts",
     "custom-footer.ts",
@@ -573,7 +578,7 @@ const SKIPPED_EXAMPLES: [&str; 13] = [
 ];
 
 /// Copies pi's single-file example extensions from a pi installation into
-/// `dir`, except [`SKIPPED_EXAMPLES`]; the number copied.
+/// `dir`, except [`SKIPPED_EXAMPLES`], and returns the number copied.
 fn copy_examples(pi_install: &Path, dir: &Path) -> anyhow::Result<usize> {
     let examples =
         pi_install.join("node_modules/@earendil-works/pi-coding-agent/examples/extensions");

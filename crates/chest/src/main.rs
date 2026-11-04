@@ -1,6 +1,6 @@
 //! `chest`: one manifest and lock for agent skills, subagents and yapi
-//! extensions, built on the engine in `yapi_core::chest`. The commands and
-//! their exit codes are described in docs/chest-commands.md.
+//! extensions, built on the engine in `yapi_core::chest`.
+//! docs/chest-commands.md describes the commands and their exit codes.
 
 mod add;
 mod check;
@@ -187,9 +187,9 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 
 /// Locks the manifest against other chest commands that write it, waiting
 /// for them for as long as they run, and saying once on stderr that it
-/// waits. The lock is an empty folder, which git does not list, named apart
-/// from the lock `sync` takes on the lock file, even for a manifest without
-/// an extension.
+/// waits. The lock is an empty folder, which git does not list. Its name
+/// differs from the lock `sync` takes on the lock file, even for a manifest
+/// without an extension.
 async fn lock(target: &Target) -> anyhow::Result<FileLock> {
     let file = target.base().join(format!(".{}", target.name()));
     let path = target.path.display();

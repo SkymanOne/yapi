@@ -21,8 +21,8 @@ use super::{
     terminal_enter, terminal_leave,
 };
 
-/// Shows the session selector; the chosen session file, or `None` when
-/// cancelled.
+/// Shows the session selector and returns the chosen session file, or `None`
+/// when cancelled.
 pub fn pick_session(
     agent_dir: &Path,
     sources: Sources,
@@ -39,7 +39,7 @@ pub fn pick_session(
 }
 
 /// pi's startup trust prompt for `cwd`: stores the chosen decision and returns
-/// whether the project is trusted; `None` when cancelled.
+/// whether the project is trusted, or `None` when cancelled.
 pub fn ask_project_trust(
     agent_dir: &Path,
     cwd: &Path,
@@ -61,7 +61,7 @@ pub fn ask_project_trust(
 }
 
 /// pi's `showStartupSelector`: `title` over `labels` before the interactive
-/// mode starts; the chosen index, or `None` when cancelled.
+/// mode starts. Returns the chosen index, or `None` when cancelled.
 pub fn ask_choice(
     agent_dir: &Path,
     theme_setting: Option<&str>,
@@ -92,16 +92,17 @@ pub fn configure(
     Ok(())
 }
 
-/// Runs `selector` on the main screen until it finishes; its action, or
-/// `None` when cancelled. With `clear`, its rows are erased afterwards.
-/// SIGTERM or SIGHUP ends it with an error once the terminal is restored.
+/// Runs `selector` on the main screen until it finishes and returns its
+/// action, or `None` when cancelled. With `clear`, its rows are erased
+/// afterwards. SIGTERM or SIGHUP ends it with an error once the terminal is
+/// restored.
 fn run_selector(
     agent_dir: &Path,
     theme_setting: Option<&str>,
     mut selector: Selector,
     clear: bool,
 ) -> std::io::Result<Option<Action>> {
-    // Caught from here on; polled without the runtime, which this holds.
+    // Caught from here on, and polled without the runtime, which this holds.
     let mut terminated = Box::pin(crate::modes::rpc::termination());
     let mut signalled = false;
     #[cfg(unix)]

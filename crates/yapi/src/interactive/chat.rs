@@ -45,7 +45,8 @@ pub struct RenderContext<'a> {
     pub agent_dir: &'a std::path::Path,
     /// The label of hidden thinking blocks.
     pub thinking_label: &'a str,
-    /// Links are OSC 8 hyperlinks: pi-tui's `hyperlinks` capability.
+    /// Links are OSC (operating system command) 8 hyperlinks: pi-tui's
+    /// `hyperlinks` capability.
     pub hyperlinks: bool,
     /// How tool results show images: pi-tui's `images` capability, `None`
     /// also when the `terminal.showImages` setting is off.
@@ -192,9 +193,9 @@ pub enum Custom {
     Entry(yapi_types::session::CustomEntry),
 }
 
-/// pi's `CustomMessageComponent`: the message in a labelled box, or the
-/// component an extension's message renderer built; and pi's
-/// `CustomEntryComponent`, the component an entry renderer built.
+/// pi's `CustomMessageComponent` and `CustomEntryComponent`: a message in a
+/// labelled box, or the component an extension's message or entry renderer
+/// built.
 pub struct CustomView {
     /// The message or entry.
     pub custom: Custom,

@@ -14,7 +14,8 @@ use yapi_extension_api::{
 #[derive(Default)]
 struct Fragile {
     text: String,
-    /// Ends the dialog it is; `None` for the editor and notes.
+    /// Finishes the dialog when this is one, or `None` for the editor and
+    /// notes.
     done: Option<Done<()>>,
 }
 

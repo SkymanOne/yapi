@@ -49,7 +49,8 @@ impl AgentSession {
     }
 
     /// The models cycling moves through, from `--models` or the
-    /// `enabledModels` setting; empty when every available model is in scope.
+    /// `enabledModels` setting, or empty when every available model is in
+    /// scope.
     pub fn scoped_models(&self) -> Vec<crate::model_resolver::ScopedModel> {
         lock(&self.inner.scoped_models).clone()
     }
@@ -64,7 +65,7 @@ impl AgentSession {
         }
     }
 
-    /// Replaces the scope; an empty list puts every available model in it.
+    /// Replaces the scope. An empty list puts every available model in it.
     pub fn set_scoped_models(&self, models: Vec<crate::model_resolver::ScopedModel>) {
         *lock(&self.inner.scoped_models) = models;
     }
@@ -152,7 +153,7 @@ impl AgentSession {
 
     /// pi's `cycleModel`, forward or backward, over the scoped models that
     /// have credentials, or over every available model when the scope is
-    /// empty. Returns the new model and whether the scope applied; `None`
+    /// empty. Returns the new model and whether the scope applied, or `None`
     /// when there is at most one model to cycle through.
     pub fn cycle_model(&self, forward: bool) -> Option<(Model, bool)> {
         let scoped = self.scoped_models();
@@ -192,8 +193,8 @@ impl AgentSession {
         Some((model, is_scoped))
     }
 
-    /// Sets the thinking level, clamped to what the model supports; a change
-    /// is recorded and announced.
+    /// Sets the thinking level, clamped to what the model supports, and
+    /// records and announces a change.
     pub fn set_thinking_level(&self, level: ThinkingLevel) {
         let mut state = lock(&self.inner.state);
         let level = match &state.model {
@@ -213,8 +214,8 @@ impl AgentSession {
         });
     }
 
-    /// The thinking levels the current model supports; all of them without a
-    /// model.
+    /// The thinking levels the current model supports, or all of them without
+    /// a model.
     pub fn available_thinking_levels(&self) -> Vec<ThinkingLevel> {
         match self.model() {
             Some(model) => yapi_ai::thinking::supported_levels(&model),
@@ -246,7 +247,7 @@ impl AgentSession {
             .collect()
     }
 
-    /// The model registry; credentials it reads stay current with `auth.json`.
+    /// The model registry. Credentials it reads stay current with `auth.json`.
     pub fn registry(&self) -> Arc<ModelRegistry> {
         Arc::clone(&read(&self.inner.registry))
     }
@@ -302,7 +303,7 @@ impl AgentSession {
             lists.extend(extension.refresh_models(&registry, &options).await);
         }
         let mut errors = refreshed.errors;
-        // Apply to the registry current now; credentials may have changed.
+        // Apply to the registry current now: credentials may have changed.
         let mut slot = write(&self.inner.registry);
         let mut next = (**slot).clone();
         next.apply_catalogs(refreshed.models);

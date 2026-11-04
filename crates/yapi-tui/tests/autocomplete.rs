@@ -165,7 +165,8 @@ fn background_file_search() {
     assert!(!provider.pending());
     assert_eq!(suggestions.prefix, "@ma");
     assert_eq!(suggestions.items[0].value, "@src/main.rs");
-    // Another query starts a new search; its answer arrives the same way.
+    // Another query starts a new search, and its answer arrives the same
+    // way.
     let lines = vec!["@sr".to_owned()];
     assert_eq!(provider.suggestions(&lines, 0, 3, false), None);
     rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();

@@ -115,7 +115,7 @@ pub struct Server<T> {
 
 impl<T: Send + 'static> Server<T> {
     /// Listens on `host:port` (0 picks a port) and answers each request with
-    /// `handler`, until a reply carries an outcome.
+    /// `handler`, until a reply has an outcome.
     pub async fn start(
         host: &str,
         port: u16,

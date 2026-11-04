@@ -2,8 +2,8 @@
 //! cycles, or a submenu its owner opens.
 //!
 //! Port of `packages/tui/src/components/settings-list.ts` in pi `v1.0.0`.
-//! pi's submenus are components the list hosts; here the list reports which
-//! item asked for one and its owner draws it.
+//! pi's submenus are components the list hosts. Here the list reports which
+//! item asked for one, and its owner draws it.
 
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
@@ -243,8 +243,8 @@ impl SettingsList {
     /// pi's `handleMouse`: a press on the search field moves its cursor, the
     /// wheel moves the highlight a row without wrapping, a press highlights
     /// the item under it and a click activates the item pressed, as Enter
-    /// does. `x` and `y` are a column and row of [`SettingsList::render`]'s;
-    /// `None` when the list does not take the event.
+    /// does. `x` and `y` are a column and row of [`SettingsList::render`]'s.
+    /// Returns `None` when the list does not take the event.
     pub fn mouse(&mut self, kind: MouseKind, x: usize, y: usize) -> Option<SettingsEvent> {
         let mut y = y;
         if let Some(input) = &mut self.search {

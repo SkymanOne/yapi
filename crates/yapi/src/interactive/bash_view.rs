@@ -29,7 +29,7 @@ pub struct BashView {
 }
 
 impl BashView {
-    /// A running command; `exclude_from_context` is the `!!` form.
+    /// A running command. `exclude_from_context` is the `!!` form.
     pub fn new(id: u64, command: &str, exclude_from_context: bool) -> BashView {
         BashView {
             id,

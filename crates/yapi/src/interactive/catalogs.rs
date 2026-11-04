@@ -18,8 +18,8 @@ pub(super) enum Refresh {
     Selector(u64),
     /// `/model <ref>` found no cached match.
     ModelSearch(String),
-    /// A sign-in finished; `defer` when the default model waits on the
-    /// provider's catalog.
+    /// A sign-in finished, with `defer` set when the default model waits on
+    /// the provider's catalog.
     Login {
         option: Box<ProviderOption>,
         label: String,

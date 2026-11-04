@@ -36,9 +36,9 @@ use super::tree_selector::TreeSelector;
 /// What a selector asks the app to do.
 #[derive(Clone, Debug)]
 pub enum Action {
-    /// Use a model; `default` also saves it to settings.
+    /// Use a model. `default` also saves it to settings.
     Model { model: Box<Model>, default: bool },
-    /// Use a thinking level; `default` also saves it to settings.
+    /// Use a thinking level. `default` also saves it to settings.
     Thinking { level: ThinkingLevel, default: bool },
     /// Fork from a user message entry.
     Fork(String),
@@ -52,7 +52,7 @@ pub enum Action {
     Tree(String),
     /// Set or clear an entry's label.
     Label { id: String, label: Option<String> },
-    /// Copy text; `None` when the entry has none.
+    /// Copy text, or `None` when the entry has none.
     Copy(Option<String>),
     /// Toggle tool output expansion.
     ToggleTools,
@@ -71,7 +71,7 @@ pub enum Action {
     },
     /// Show a theme setting without saving it.
     ThemePreview(String),
-    /// The models `ctrl+p` cycles through; `None` is every model. `save`
+    /// The models `ctrl+p` cycles through. `None` is every model. `save`
     /// also writes them to settings.
     ScopedModels {
         /// Enabled model ids in order.
@@ -85,7 +85,7 @@ pub enum Action {
         provider: String,
         /// The model's id.
         id: String,
-        /// The level; `None` clears the override.
+        /// The level. `None` clears the override.
         level: Option<ThinkingLevel>,
     },
 }
@@ -250,9 +250,9 @@ impl Selector {
     }
 
     /// pi's `handleMouse` of the selector's lists and fields: `kind` at
-    /// column `x` of row `y` of the last render; `None` when nothing there
-    /// takes it. pi's other selectors draw their rows as text, which takes
-    /// no clicks.
+    /// column `x` of row `y` of the last render, or `None` when nothing
+    /// there takes it. pi's other selectors draw their rows as text, which
+    /// takes no clicks.
     pub fn mouse(&mut self, kind: MouseKind, x: usize, y: usize, ui: &Ui<'_>) -> Option<Outcome> {
         match self {
             Selector::Model(selector) => {
@@ -274,7 +274,7 @@ impl Selector {
         }
     }
 
-    /// Called on every frame; selectors with timed state update it.
+    /// Called on every frame. Selectors with timed state update it.
     pub fn tick(&mut self) {
         if let Selector::Session(selector) = self {
             selector.tick();
@@ -315,7 +315,7 @@ pub struct ModelSelector {
     /// The models of the current scope.
     models: Vec<Model>,
     all: Vec<Model>,
-    /// The session's scope, in its order; empty when it has none.
+    /// The session's scope, in its order, or empty when it has none.
     scoped: Vec<Model>,
     in_scope: bool,
     filtered: Vec<usize>,
@@ -803,7 +803,7 @@ impl ThinkingSelector {
         }
     }
 
-    /// Chooses `item`'s level; `default` also saves it.
+    /// Chooses `item`'s level. `default` also saves it.
     fn done(item: Option<&SelectItem>, default: bool) -> Outcome {
         item.and_then(|item| ThinkingLevel::parse(&item.value))
             .map_or(Outcome::None, |level| {
@@ -962,7 +962,7 @@ pub struct TrustSelector {
 
 impl TrustSelector {
     /// The selector for `cwd`, with its stored decision and whether this
-    /// session trusts it; the stored decision's option starts selected.
+    /// session trusts it. The stored decision's option starts selected.
     pub fn new(
         cwd: &std::path::Path,
         saved: Option<(PathBuf, bool)>,

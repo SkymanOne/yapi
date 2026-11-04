@@ -97,7 +97,7 @@ impl Find {
         };
         let mut command = tokio::process::Command::new(&fd);
         command.args(["--glob", "--color=never", "--hidden"]);
-        // Outside a git repository fd would ignore .gitignore files; inside one, its
+        // Outside a git repository fd would ignore .gitignore files. Inside one, its
         // own rules stop parent rules at nested repositories.
         if !search.ancestors().any(|dir| dir.join(".git").exists()) {
             command.arg("--no-require-git");

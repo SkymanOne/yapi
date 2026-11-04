@@ -148,8 +148,8 @@ pub async fn resolve(config: &str, env: Option<&ProviderEnv>, cache: bool) -> Op
     resolve_template(config, env)
 }
 
-/// Resolves a template value; `None` for a `!command` or when a variable it
-/// reads is not set.
+/// Resolves a template value, or returns `None` for a `!command` or when a
+/// variable it reads is not set.
 pub fn resolve_template(config: &str, env: Option<&ProviderEnv>) -> Option<String> {
     if is_command(config) {
         return None;
@@ -200,8 +200,8 @@ async fn run_command(command: &str, cache: bool) -> Option<String> {
 }
 
 /// The environment variables holding a provider's API key, in priority order.
-/// Anthropic's `ANTHROPIC_AUTH_TOKEN` is a bearer token, not a key; see
-/// [`BEARER_TOKEN_ENV`].
+/// Anthropic's `ANTHROPIC_AUTH_TOKEN` is a bearer token, not a key (see
+/// [`BEARER_TOKEN_ENV`]).
 pub fn api_key_env_vars(provider: &str) -> &'static [&'static str] {
     crate::providers::info(provider)
         .and_then(|info| info.api_key)
@@ -231,8 +231,9 @@ fn has_vertex_adc_credentials(env: Option<&ProviderEnv>) -> bool {
 }
 
 /// Ambient credentials that authenticate a provider without an API key: AWS
-/// profiles, keys, tokens and roles for Bedrock; ADC with a project and location
-/// for Vertex. Returns the variable that makes it so.
+/// profiles, keys, tokens and roles for Bedrock, and Application Default
+/// Credentials with a project and location for Vertex. Returns the variable that
+/// makes it so.
 fn ambient_credentials(provider: &str, env: Option<&ProviderEnv>) -> Option<&'static str> {
     let set = |name: &str| provider_env_value(name, env).is_some();
     match provider {

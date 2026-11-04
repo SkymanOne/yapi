@@ -1,7 +1,7 @@
 //! Project trust: whether yapi may load a project's `.yapi` settings and resources.
 //!
 //! Port of `trust-manager.ts` and `project-trust.ts` in pi `v1.0.0`. Decisions live
-//! in `<agent>/trust.json`, keyed by directory; the nearest decided ancestor wins.
+//! in `<agent>/trust.json`, keyed by directory. The nearest decided ancestor wins.
 
 use std::path::{Path, PathBuf};
 
@@ -61,8 +61,8 @@ impl TrustStore {
         }
     }
 
-    /// The stored decisions; none when the file is missing, an error when it
-    /// cannot be read or is not a JSON object, as pi's `readTrustFile`.
+    /// The stored decisions, as pi's `readTrustFile`: none when the file is
+    /// missing, and an error when it cannot be read or is not a JSON object.
     fn read(&self) -> std::io::Result<Map<String, Value>> {
         let failed = |message: String| {
             std::io::Error::other(format!(
@@ -85,14 +85,14 @@ impl TrustStore {
         }
     }
 
-    /// The decision for `cwd` from it or its nearest decided ancestor; an
+    /// The decision for `cwd` from it or its nearest decided ancestor, or an
     /// error when the store cannot be read.
     pub fn get(&self, cwd: &Path) -> std::io::Result<Option<bool>> {
         Ok(self.entry(cwd)?.map(|(_, decision)| decision))
     }
 
-    /// The nearest decided directory at or above `cwd`, and its decision; an
-    /// error when the store cannot be read.
+    /// The nearest decided directory at or above `cwd`, and its decision, or
+    /// an error when the store cannot be read.
     pub fn entry(&self, cwd: &Path) -> std::io::Result<Option<(PathBuf, bool)>> {
         let data = self.read()?;
         Ok(canonical(cwd).ancestors().find_map(|dir| {
@@ -102,7 +102,7 @@ impl TrustStore {
         }))
     }
 
-    /// Records a decision for `cwd`; `None` clears it. Keys are written sorted.
+    /// Records a decision for `cwd`. `None` clears it. Keys are written sorted.
     pub fn set(&self, cwd: &Path, decision: Option<bool>) -> std::io::Result<()> {
         self.set_many(&[(cwd.to_path_buf(), decision)])
     }
@@ -141,14 +141,14 @@ pub struct TrustOption {
     pub label: String,
     /// Whether choosing it trusts the project.
     pub trusted: bool,
-    /// The decisions it stores; `None` clears one.
+    /// The decisions it stores, where `None` clears one.
     pub updates: Vec<(PathBuf, Option<bool>)>,
     /// The directory whose stored decision it stands for.
     pub saved_path: Option<PathBuf>,
 }
 
-/// pi's `getProjectTrustOptions`: trust the project or its parent, or not;
-/// with `session_only`, also trust or distrust for this session only.
+/// pi's `getProjectTrustOptions`: trust the project or its parent, or not.
+/// With `session_only`, also trust or distrust for this session only.
 pub fn trust_options(cwd: &Path, session_only: bool) -> Vec<TrustOption> {
     let path = canonical(cwd);
     let option = |label: String, trusted: bool, updates: Vec<(PathBuf, Option<bool>)>| {
@@ -218,7 +218,7 @@ pub fn needs_prompt(
 }
 
 /// Resolves trust without a UI: an explicit override, no resources needing trust,
-/// a stored decision, then the `defaultProjectTrust` setting; `ask` without a UI
+/// a stored decision, then the `defaultProjectTrust` setting. `ask` without a UI
 /// means untrusted. A store that must be read and cannot be is an error, as in
 /// pi, never trust.
 pub fn resolve_trusted(

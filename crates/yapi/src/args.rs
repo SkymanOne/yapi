@@ -29,7 +29,7 @@ pub enum FlagValue {
 /// A problem with the arguments.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
-    /// Errors stop the run; warnings do not.
+    /// Errors stop the run, but warnings do not.
     pub error: bool,
     /// What is wrong.
     pub message: String,
@@ -77,7 +77,7 @@ pub struct Args {
     pub tui_mode: Option<String>,
     pub verbose: bool,
     pub project_trust_override: Option<bool>,
-    /// yapi's `--project-dir`; absolute once `main` has checked it.
+    /// yapi's `--project-dir`, absolute once `main` has checked it.
     pub project_dir: Option<std::path::PathBuf>,
     /// yapi's `--enable-logging`.
     pub enable_logging: bool,

@@ -1,16 +1,16 @@
 //! Fuzzy matching for selectors and filters.
 //!
 //! Port of `packages/tui/src/fuzzy.ts` in pi `v1.0.0`: characters must appear in
-//! order; lower scores are better.
+//! order, and lower scores are better.
 
 use crate::text::is_js_whitespace;
 
-/// Whether `query` matches `text`, and how well; lower scores are better.
+/// Whether `query` matches `text`, and how well. Lower scores are better.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FuzzyMatch {
     /// All query characters were found in order.
     pub matches: bool,
-    /// Match quality; lower is better.
+    /// Match quality, where lower is better.
     pub score: f64,
 }
 

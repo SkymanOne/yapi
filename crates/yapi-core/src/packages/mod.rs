@@ -23,7 +23,7 @@ use crate::config::PROJECT_DIR;
 use crate::settings::{Scope, SettingsError, SettingsManager};
 pub use source::{Source, parse};
 
-/// Why a package operation failed; the message is pi's where pi has one.
+/// Why a package operation failed, with pi's message where pi has one.
 #[derive(Debug, thiserror::Error)]
 pub enum PackageError {
     /// A failure with pi's message.
@@ -534,7 +534,7 @@ impl PackageManager {
     }
 
     /// pi's `removeAndPersist`: uninstalls `source` from the scope and drops
-    /// its settings entries; `false` when settings did not list it.
+    /// its settings entries. Returns `false` when settings did not list it.
     pub async fn remove(&mut self, source: &str, local: bool) -> Result<bool, PackageError> {
         let scope = Self::scope(local);
         self.assert_writable(scope)?;

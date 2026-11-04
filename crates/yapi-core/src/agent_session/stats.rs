@@ -11,7 +11,7 @@ use super::AgentSession;
 /// How full the context window is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ContextUsage {
-    /// Estimated context tokens; unknown right after a compaction.
+    /// Estimated context tokens, unknown right after a compaction.
     pub tokens: Option<u64>,
     /// The model's context window.
     pub context_window: u64,
@@ -55,7 +55,7 @@ pub struct SessionStats {
     pub tool_calls: usize,
     /// Tool results.
     pub tool_results: usize,
-    /// Cost and tokens by `provider/model`, costliest first; summaries and
+    /// Cost and tokens by `provider/model`, costliest first. Summaries and
     /// tool usage are grouped as `Tools/summaries`.
     pub breakdown: Vec<(String, f64, u64)>,
 }

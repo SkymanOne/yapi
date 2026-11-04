@@ -44,7 +44,7 @@ impl ModelsStore {
         &self.path
     }
 
-    /// Every stored entry; an unreadable file reads as empty.
+    /// Every stored entry. An unreadable file reads as empty.
     pub fn read_all(&self) -> Map<String, Value> {
         std::fs::read_to_string(&self.path)
             .ok()
@@ -164,8 +164,8 @@ fn typed_models(provider: &str, models: &Value) -> ProviderModels {
     typed
 }
 
-/// The models a stored entry contributes: a Radius catalog as stored; pi.dev's
-/// overlay only when it is newer than the built-in catalog.
+/// The models a stored entry contributes: a Radius catalog as stored, and
+/// pi.dev's overlay only when it is newer than the built-in catalog.
 pub fn restore(provider: &str, source: &Source, entry: &Value) -> ProviderModels {
     match source {
         Source::Radius { .. } | Source::Llama { .. } => typed_models(provider, &entry["models"]),
@@ -205,9 +205,9 @@ pub fn cancel_after(timeout: std::time::Duration) -> CancellationToken {
 /// What a refresh does.
 #[derive(Clone, Debug)]
 pub struct RefreshOptions {
-    /// Only these providers; all refreshable ones when `None`.
+    /// Only these providers, or all refreshable ones when `None`.
     pub providers: Option<Vec<String>>,
-    /// Whether to fetch; stored catalogs are restored either way.
+    /// Whether to fetch. Stored catalogs are restored either way.
     pub allow_network: bool,
     /// Fetch even when the stored catalog is fresh.
     pub force: bool,

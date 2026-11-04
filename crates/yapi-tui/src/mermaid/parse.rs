@@ -3,7 +3,7 @@
 //! Source text to diagram model.
 //!
 //! Every `parse_x` returns `None` when the source is not that kind of diagram,
-//! or when it exceeds a cap; `render` tries the parser the header names and
+//! or when it exceeds a cap. `render` tries the parser the header names and
 //! gives up on the whole diagram when it declines.
 
 use super::graph::{
@@ -90,9 +90,9 @@ pub(super) enum DiagramKind {
 /// The kind of diagram `src` declares, or `None` if its header names no type
 /// this renderer draws.
 ///
-/// Reads the header only; it says nothing about whether the body parses. Each
-/// branch mirrors the header test in the matching `parse_x`, so the two always
-/// agree on what they recognise.
+/// Reads the header only, so it says nothing about whether the body parses.
+/// Each branch mirrors the header test in the matching `parse_x`, so the two
+/// always agree on what they recognise.
 pub(super) fn diagram_kind(src: &str) -> Option<DiagramKind> {
     let kind = header_kind(&statements_of(src))?;
     if kind == "graph" || kind == "flowchart" {
@@ -288,7 +288,7 @@ fn parse_node(chars: &[char], start: usize, graph: &mut Graph) -> Option<(usize,
     }
     let index = graph.node_index(&id, shaped.label.as_deref(), shaped.shape)?;
 
-    // `id:::name` (after any shape) attaches a style class; swallow it so the
+    // `id:::name` (after any shape) attaches a style class. Skip it so the
     // statement keeps parsing, where upstream drops the rest of the line.
     let mut next = shaped.after;
     if style_tag_at(chars, next) {
@@ -305,7 +305,7 @@ fn style_tag_at(chars: &[char], i: usize) -> bool {
     chars.get(i) == Some(&':') && chars.get(i + 1) == Some(&':') && chars.get(i + 2) == Some(&':')
 }
 
-/// End of the name after the `:::` at `i`; equal to `i + 3` when it is empty.
+/// End of the name after the `:::` at `i`, or `i + 3` when it is empty.
 fn style_tag_end(chars: &[char], i: usize) -> usize {
     let mut k = i + 3;
     while k < chars.len() && (is_id_char(chars[k]) || chars[k] == '-') {
@@ -424,7 +424,7 @@ struct Link {
 /// Read a link operator and its label.
 ///
 /// Labels come in two forms: `-->|text|` and the inline `-- text -->`, the
-/// latter only when the first operator carried no head.
+/// latter only when the first operator had no head.
 fn parse_link(chars: &[char], start: usize) -> Option<Link> {
     let mut i = skip_spaces(chars, start);
     let mut left = Head::None;
@@ -576,7 +576,7 @@ pub(super) fn parse_state(src: &str) -> Option<Graph> {
         } else if first == "state" {
             parse_state_decl(&st, &mut graph)?;
         } else if ["classdef", "class", "hide", "scale", "}", "--"].contains(&first.as_str()) {
-            // Styling and composite-state punctuation carry no layout meaning.
+            // Styling and composite-state punctuation have no layout meaning.
         } else if st.contains("-->") {
             parse_transition(&st, &mut graph)?;
         } else {
@@ -1007,7 +1007,7 @@ fn strip_cardinality_prefix(s: &str) -> (&str, &str) {
     (t, "")
 }
 
-/// Mermaid writes generics as `List~T~`; show them as `List<T>`.
+/// Mermaid writes generics as `List~T~`. Show them as `List<T>`.
 pub(super) fn display_generics(s: &str) -> String {
     let mut out = String::new();
     let mut open = false;
@@ -1158,7 +1158,7 @@ fn er_card(tok: &str) -> Option<&'static str> {
     }
 }
 
-/// ER attributes are `type name`; a trailing quoted comment is dropped.
+/// ER attributes are `type name`. A trailing quoted comment is dropped.
 fn push_er_attribute(info: &mut ClassInfo, raw: &str) {
     let mut parts: Vec<&str> = Vec::new();
     for tok in js_words(raw) {
@@ -1265,7 +1265,7 @@ pub(super) fn parse_sequence(src: &str) -> Option<Sequence> {
     let mut seq = Sequence::new();
     let mut autonumber = false;
     let mut msg_count = 0usize;
-    // One entry per open block; `true` when it draws a divider on `end`.
+    // One entry per open block, `true` when it draws a divider on `end`.
     let mut blocks: Vec<bool> = Vec::new();
 
     for st in &statements[1..] {
@@ -1457,7 +1457,7 @@ fn parse_seq_message(st: &str, seq: &mut Sequence) -> Option<SeqMessage> {
     if from_id.is_empty() {
         return None;
     }
-    // `+`/`-` activate and deactivate the target; they carry no layout meaning.
+    // `+`/`-` activate and deactivate the target. They have no layout meaning.
     let after: String = chars[pos + op_len..].iter().collect();
     let rest = js_trim_start(&after).trim_start_matches(['+', '-']);
 

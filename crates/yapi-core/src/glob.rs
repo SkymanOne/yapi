@@ -161,7 +161,7 @@ fn match_tokens(tokens: &[Token], text: &[char]) -> bool {
 }
 
 /// minimatch's brace expansion: `{a,b}` alternatives and `{1..3}` ranges,
-/// nested; a brace with neither stays literal.
+/// nested. A brace with neither stays literal.
 fn expand_braces(pattern: &str) -> Vec<String> {
     let chars: Vec<char> = pattern.chars().collect();
     let mut depth = 0usize;

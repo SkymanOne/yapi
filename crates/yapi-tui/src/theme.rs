@@ -23,7 +23,7 @@ pub const DARK_THEME: &str = include_str!("../themes/dark.json");
 /// The built-in `light` theme document.
 pub(crate) const LIGHT_THEME: &str = include_str!("../themes/light.json");
 
-/// Background tokens; every other token is a foreground.
+/// Background tokens. Every other token is a foreground.
 pub const BACKGROUND_TOKENS: [&str; 7] = [
     "selectedBg",
     "searchMatchBg",
@@ -137,7 +137,7 @@ pub enum ThemeError {
         /// The parser's message.
         message: String,
     },
-    /// Required color tokens are missing; pi's schema message.
+    /// Required color tokens are missing, with pi's schema message.
     #[error(
         "Invalid theme \"{label}\":\n\nMissing required color tokens:\n{}\n\nPlease add these colors to your theme's \"colors\" object.\nSee the built-in themes (dark.json, light.json) for reference values.",
         tokens.iter().map(|token| format!("  - {token}")).collect::<Vec<_>>().join("\n")
@@ -445,7 +445,7 @@ impl Theme {
 
     /// pi's `Theme.colors`: every token's concrete color, in pi's order.
     /// Tokens set to the terminal default take `foreground` or `background`,
-    /// guessed from the appearance (else `fallback`) when unknown; faint
+    /// guessed from the appearance (else `fallback`) when unknown. Faint
     /// tokens mix 40% toward the background.
     pub fn resolved_colors(
         &self,
@@ -496,7 +496,7 @@ impl Theme {
         self.dim.contains(token)
     }
 
-    /// The terminal color of `token`; the default color for tokens without
+    /// The terminal color of `token`, or the default color for tokens without
     /// one.
     pub fn color(&self, token: &str) -> ratatui_core::style::Color {
         match self.paints.get(token) {
@@ -505,7 +505,7 @@ impl Theme {
         }
     }
 
-    /// The style of foreground `token`; faint tokens also carry the dim modifier.
+    /// The style of foreground `token`. Faint tokens also have the dim modifier.
     pub fn fg(&self, token: &str) -> Style {
         let style = Style::new().fg(self.color(token));
         if self.dim.contains(token) {
@@ -1159,7 +1159,7 @@ fn relative_luminance(rgb: [f64; 3]) -> f64 {
     0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
 }
 
-/// WCAG 2 contrast ratio, 1 to 21.
+/// WCAG (Web Content Accessibility Guidelines) 2 contrast ratio, 1 to 21.
 pub(crate) fn wcag_contrast(first: [f64; 3], second: [f64; 3]) -> f64 {
     let (a, b) = (relative_luminance(first), relative_luminance(second));
     (a.max(b) + 0.05) / (a.min(b) + 0.05)

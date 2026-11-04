@@ -1,7 +1,7 @@
 //! `settings.json`, global and project scope.
 //!
 //! Mirrors the `Settings` interface in `packages/coding-agent/src/core/settings-manager.ts`
-//! in pi `v1.0.0`. Every field is optional; defaults belong to the code that reads them.
+//! in pi `v1.0.0`. Every field is optional. Defaults belong to the code that reads them.
 //! pi edits this file as a document and keeps unknown keys, so writes go through the
 //! document, not through [`Settings`].
 #![allow(
@@ -71,7 +71,7 @@ pub struct Settings {
     pub device_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub packages: Option<Vec<PackageSource>>,
-    /// Paths or patterns; `!`, `+` and `-` prefixes filter.
+    /// Paths or patterns. `!`, `+` and `-` prefixes filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -88,7 +88,7 @@ pub struct Settings {
     pub images: Option<ImageSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled_models: Option<Vec<String>>,
-    /// Tool names; `+name` and `-name` adjust the inherited list.
+    /// Tool names. `+name` and `-name` adjust the inherited list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_tools: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,12 +130,12 @@ pub struct Settings {
     pub session_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_proxy: Option<String>,
-    /// Milliseconds; pi also accepts a numeric string or `"disabled"`.
+    /// Milliseconds. pi also accepts a numeric string or `"disabled"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_idle_timeout_ms: Option<NumberOr<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_warming: Option<CacheWarming>,
-    /// Milliseconds; pi also accepts a numeric string or `"disabled"`.
+    /// Milliseconds. pi also accepts a numeric string or `"disabled"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_connect_timeout_ms: Option<NumberOr<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

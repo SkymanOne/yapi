@@ -80,7 +80,7 @@ pub enum RpcCommand {
     },
     CycleThinkingLevel,
     GetAvailableThinkingLevels,
-    /// pi saves `mode` as given, `null` included; an absent one removes the
+    /// pi saves `mode` as given, `null` included. An absent one removes the
     /// setting.
     SetSteeringMode {
         #[serde(default, deserialize_with = "crate::present")]
@@ -96,7 +96,7 @@ pub enum RpcCommand {
         custom_instructions: Option<String>,
     },
     /// pi saves `enabled` as given, `null` included, and reads it by
-    /// truthiness; an absent one removes the setting.
+    /// truthiness. An absent one removes the setting.
     SetAutoCompaction {
         #[serde(default, deserialize_with = "crate::present")]
         enabled: Option<Value>,
@@ -189,7 +189,7 @@ pub struct SessionState {
     pub thinking_level: ThinkingLevel,
     pub is_streaming: bool,
     pub is_compacting: bool,
-    /// The agent's mode as last set, any value; absent when set to nothing.
+    /// The agent's mode as last set, any value. Absent when set to nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steering_mode: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -199,7 +199,7 @@ pub struct SessionState {
     pub session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,
-    /// The setting as saved, any value; `true` when unset or `null`.
+    /// The setting as saved, any value. `true` when unset or `null`.
     pub auto_compaction_enabled: Value,
     pub message_count: usize,
     pub pending_message_count: usize,
@@ -216,7 +216,7 @@ pub struct TokenTotals {
     pub total: u64,
 }
 
-/// How full the context window is; `tokens` and `percent` are `null` while
+/// How full the context window is. `tokens` and `percent` are `null` while
 /// unknown.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -248,9 +248,9 @@ pub struct SessionStats {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BashResult {
-    /// Combined, sanitized output; the tail when truncated.
+    /// Combined, sanitized output, or its tail when truncated.
     pub output: String,
-    /// The exit code; absent when cancelled.
+    /// The exit code, absent when cancelled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
     /// The command was cancelled.
@@ -272,7 +272,7 @@ pub struct ForkMessage {
 
 /// Where a resource was found, as pi's `SourceInfo`: `source` is `auto` for
 /// discovered files, `cli` for command-line paths and the package for
-/// package resources; `scope` is `user`, `project` or `temporary`.
+/// package resources. `scope` is `user`, `project` or `temporary`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceInfo {

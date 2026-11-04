@@ -1,5 +1,6 @@
-//! OpenAI Codex (ChatGPT Plus/Pro) sign-in: PKCE with a loopback callback, or
-//! a device code. Port of `oauth/openai-codex.ts`.
+//! OpenAI Codex (ChatGPT Plus/Pro) sign-in: Proof Key for Code Exchange
+//! (PKCE) with a loopback callback, or a device code. Port of
+//! `oauth/openai-codex.ts`.
 
 use base64::Engine as _;
 use serde_json::{Map, Value};
@@ -19,17 +20,17 @@ const JWT_CLAIM_PATH: &str = "https://api.openai.com/auth";
 const DEVICE_CODE_TIMEOUT_SECONDS: f64 = 15.0 * 60.0;
 const BROWSER: &str = "browser";
 const DEVICE_CODE: &str = "device_code";
-/// The originator OpenAI expects from this client id; pi sends its own name.
+/// The originator OpenAI expects from this client id. pi sends its own name.
 const ORIGINATOR: &str = "pi";
 
 /// The Codex sign-in and its endpoints.
 #[derive(Clone, Debug)]
 pub struct CodexOAuth {
-    /// `https://auth.openai.com`; every endpoint is relative to it.
+    /// `https://auth.openai.com`. Every endpoint is relative to it.
     pub auth_base_url: String,
     /// Loopback callback port, shared with the Codex CLI.
     pub callback_port: u16,
-    /// Redirect URI for the browser flow; must reach the callback port.
+    /// Redirect URI for the browser flow, which must reach the callback port.
     pub redirect_uri: String,
 }
 
@@ -164,7 +165,8 @@ impl CodexOAuth {
         let state = yapi_types::time::try_random_bytes::<16>()
             .map(|bytes| yapi_types::time::hex(&bytes))
             .map_err(AuthError::random)?;
-        // Port 1455 is shared with the Codex CLI; when it is taken, the pasted redirect URL is used.
+        // Port 1455 is shared with the Codex CLI. When it is taken, the pasted
+        // redirect URL is used.
         let mut server = start_code_server(
             "OpenAI",
             &callback_host(),

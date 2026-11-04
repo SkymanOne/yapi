@@ -1,7 +1,7 @@
 //! Splitting raw terminal input into single key sequences and pastes.
 //!
 //! Port of `packages/tui/src/stdin-buffer.ts` in pi `v1.0.0`. Reads may end
-//! inside an escape sequence; the buffer holds the partial sequence until the
+//! inside an escape sequence. The buffer holds the partial sequence until the
 //! rest arrives or the caller's timer, set from [`InputBuffer::timeout`],
 //! elapses and [`InputBuffer::flush`] releases it as is.
 
@@ -106,7 +106,7 @@ fn split(buffer: &str) -> (Vec<String>, String) {
             return (sequences, rest.to_owned());
         };
         // WezTerm sends a Kitty Escape press as a raw ESC followed directly by the
-        // release sequence; split them rather than read ESC ESC as Alt+Escape.
+        // release sequence. Split them rather than read ESC ESC as Alt+Escape.
         if &rest[..end] == "\x1b\x1b" && rest[end..].starts_with(['[', ']', 'O', 'P', '_']) {
             sequences.push(ESC.to_string());
             rest = &rest[1..];
@@ -174,7 +174,7 @@ impl InputBuffer {
         }
         if let Some(start) = self.buffer.find(PASTE_START) {
             let before = self.buffer[..start].to_owned();
-            // A partial sequence just before the paste is dropped, as in pi.
+            // A partial sequence right before the paste is dropped, as in pi.
             for sequence in split(&before).0 {
                 self.emit(sequence, out);
             }
@@ -221,7 +221,7 @@ impl InputBuffer {
     }
 
     /// How long to wait for the rest of a buffered partial sequence before
-    /// calling [`InputBuffer::flush`]; `None` when nothing is buffered.
+    /// calling [`InputBuffer::flush`], or `None` when nothing is buffered.
     pub fn timeout(&self, escape_timeout: Duration) -> Option<Duration> {
         match self.buffer.as_str() {
             "" => None,

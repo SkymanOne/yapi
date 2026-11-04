@@ -164,7 +164,7 @@ async fn runs_and_declares_tools() {
         panic!("expected a tool result")
     };
     assert_eq!(result.content, vec![ContentBlock::text("hi")]);
-    // The second request carries the tool result.
+    // The second request includes the tool result.
     assert_eq!(faux.requests()[1].len(), 4);
 }
 

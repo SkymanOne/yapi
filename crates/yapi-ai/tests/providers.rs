@@ -974,7 +974,7 @@ async fn provider_quirks() {
                 "Server requested 3600s retry delay (max: 60s). 429 You exceeded your current quota",
             ),
         ),
-        // Google's SDK errors carry no headers, so retries back off regardless.
+        // Google's SDK errors have no headers, so retries back off regardless.
         (("google", "gemini-2.5-flash", "/v1beta"), google, None),
         // An empty finish_reason neither ends nor fails the message.
         (

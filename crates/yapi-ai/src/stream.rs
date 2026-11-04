@@ -31,7 +31,7 @@ pub trait Provider: Send + Sync {
 pub struct Request {
     /// The model to call.
     pub model: Model,
-    /// The transcript; the first message may be the system prompt.
+    /// The transcript. The first message may be the system prompt.
     pub messages: Vec<Message>,
     /// Request options.
     pub options: StreamOptions,
@@ -73,22 +73,22 @@ impl CacheRetention {
 /// Request options shared by every wire API.
 #[derive(Clone, Debug, Default)]
 pub struct StreamOptions {
-    /// Credential for the provider; some providers take headers instead.
+    /// Credential for the provider. Some providers take headers instead.
     pub api_key: Option<String>,
-    /// Extra headers; `None` removes a header the provider would otherwise send.
+    /// Extra headers. `None` removes a header the provider would otherwise send.
     pub headers: IndexMap<String, Option<String>>,
-    /// Thinking effort; `None` and `Off` disable thinking where the API allows.
+    /// Thinking effort. `None` and `Off` disable thinking where the API allows.
     pub reasoning: Option<ThinkingLevel>,
-    /// Output token limit; the model's limit when absent.
+    /// Output token limit, or the model's limit when absent.
     pub max_tokens: Option<u64>,
     /// Sampling temperature, where the model and thinking mode allow it.
     pub temperature: Option<f64>,
     /// Stable id for provider-side session affinity and caching.
     pub session_id: Option<String>,
-    /// Preferred transport for providers that offer more than one; the
+    /// Preferred transport for providers that offer more than one. The
     /// provider's default when absent.
     pub transport: Option<Transport>,
-    /// How long opening a WebSocket may take, in milliseconds; 0 waits
+    /// How long opening a WebSocket may take, in milliseconds. 0 waits
     /// forever. The provider's default when absent.
     pub websocket_connect_timeout_ms: Option<u64>,
     /// pi's `timeoutMs`: how long a request may wait, in milliseconds, as
@@ -96,15 +96,15 @@ pub struct StreamOptions {
     /// number, as the settings hold it, so a provider that validates it can
     /// report an invalid one as pi does.
     pub timeout_ms: Option<f64>,
-    /// Prompt cache retention; `PI_CACHE_RETENTION=long` or short when absent.
+    /// Prompt cache retention. `PI_CACHE_RETENTION=long` or short when absent.
     pub cache_retention: Option<CacheRetention>,
     /// Token budgets per level for budget-based thinking.
     pub thinking_budgets: ThinkingBudgets,
-    /// Retries for retryable HTTP errors before the first byte; 0 disables.
+    /// Retries for retryable HTTP errors before the first byte. 0 disables them.
     pub max_retries: u32,
-    /// Largest server-requested retry delay to honor; 0 means no limit.
+    /// Largest server-requested retry delay to honor. 0 means no limit.
     pub max_retry_delay_ms: Option<u64>,
-    /// Cancels the request; the stream then ends with an `aborted` error.
+    /// Cancels the request, and the stream then ends with an `aborted` error.
     pub cancel: CancellationToken,
     /// Provider settings from the credential, such as a Cloudflare account id
     /// or an AWS profile, read ahead of the process environment.
@@ -113,7 +113,7 @@ pub struct StreamOptions {
     pub hooks: RequestHooks,
 }
 
-/// Request headers; `None` removes a header the provider would send.
+/// Request headers. `None` removes a header the provider would send.
 pub type RequestHeaders = IndexMap<String, Option<String>>;
 
 /// A session's callback into its requests.
@@ -137,7 +137,7 @@ pub struct RequestHooks {
     /// the body to send.
     pub payload: Option<Hook<serde_json::Value, serde_json::Value>>,
     /// Sees the headers of each request, credentials' included, and returns
-    /// the headers to send; `None` removes one.
+    /// the headers to send. `None` removes one.
     pub headers: Option<Hook<RequestHeaders, RequestHeaders>>,
     /// Sees each successful response.
     pub response: Option<Hook<ProviderResponse, ()>>,
@@ -236,14 +236,14 @@ pub struct ThinkingBudgets {
     pub low: Option<u64>,
     /// Default 8192.
     pub medium: Option<u64>,
-    /// Default 16384; also used for `xhigh` and `max`.
+    /// Default 16384. Also used for `xhigh` and `max`.
     pub high: Option<u64>,
 }
 
 /// One step of a streamed response.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StreamEvent {
-    /// The response started; the message so far, with no content yet.
+    /// The response started, with the message so far and no content yet.
     Start(AssistantMessage),
     /// A content change, with the cumulative usage after it.
     Update {
@@ -254,7 +254,7 @@ pub enum StreamEvent {
     },
     /// Finished with `stop`, `length`, `toolUse` or `deferred`.
     Done(AssistantMessage),
-    /// Failed or aborted; the message carries what arrived and `errorMessage`.
+    /// Failed or aborted. The message holds what arrived and `errorMessage`.
     Error(AssistantMessage),
 }
 
@@ -271,7 +271,7 @@ impl EventStream {
         (EventSender { sender }, EventStream { receiver })
     }
 
-    /// The next event; `None` after the final one.
+    /// The next event, or `None` after the final one.
     pub async fn next(&mut self) -> Option<StreamEvent> {
         self.receiver.recv().await
     }
@@ -308,7 +308,7 @@ impl EventSender {
         });
     }
 
-    /// Appends `block` to `output` and sends its start event; returns its index.
+    /// Appends `block` to `output`, sends its start event and returns its index.
     pub(crate) fn start(&self, output: &mut AssistantMessage, block: ContentBlock) -> usize {
         let content_index = output.content.len();
         let event = match &block {

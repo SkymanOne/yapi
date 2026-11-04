@@ -1,7 +1,7 @@
 //! One `yapi-js` instance and the thread that owns it.
 //!
 //! The actor thread owns the wasmtime store and runs one guest export at a
-//! time. Calls and operation results arrive as commands; operations the guest
+//! time. Calls and operation results arrive as commands. Operations the guest
 //! starts run on the tokio runtime and come back as commands, so host code
 //! never calls into the guest while the guest is running.
 
@@ -64,7 +64,7 @@ pub trait Bridge: Send + Sync {
         Ok(())
     }
 
-    /// Starts operation `kind`; the guest gets its result when it completes.
+    /// Starts operation `kind`. The guest gets its result when it completes.
     fn start(&self, kind: &str, _payload: Value) -> BoxFuture<'static, Result<Value, String>> {
         let message = format!("{kind} is not available here");
         Box::pin(async move { Err(message) })
@@ -81,7 +81,7 @@ pub trait Bridge: Send + Sync {
     fn restarted(&self, _reason: &str) {}
 
     /// The update sink and cancellation of running extension tool call
-    /// `tool_call_id`, for the built-in tools it runs; `None` when no such
+    /// `tool_call_id`, for the built-in tools it runs, or `None` when no such
     /// call runs.
     fn caller(&self, _tool_call_id: &str) -> Option<(UpdateSink, CancellationToken)> {
         None
@@ -95,7 +95,7 @@ pub trait Bridge: Send + Sync {
 
     /// Streams `{model, context, options}` through the session's provider
     /// of the model, with the registry's credentials under the options'
-    /// own, as pi's `ModelRegistry.stream` does; `cancel` aborts it and
+    /// own, as pi's `ModelRegistry.stream` does. `cancel` aborts it and
     /// `hooks` observe it.
     fn stream_model(
         &self,
@@ -152,7 +152,7 @@ pub struct Options {
     /// granted: these alone, or with `None`, the process's own.
     pub environment: Option<std::collections::BTreeMap<String, String>>,
     /// The terminal's columns and rows while extensions load, in a mode that
-    /// draws on it; `None` without a terminal.
+    /// draws on it, or `None` without a terminal.
     pub terminal_size: Option<(usize, usize)>,
 }
 
@@ -252,7 +252,7 @@ enum Command {
 pub struct Instance {
     commands: mpsc::Sender<Command>,
     interrupt: Arc<AtomicBool>,
-    /// The actor thread; taken when the instance is dropped.
+    /// The actor thread, taken when the instance is dropped.
     thread: Option<JoinHandle<()>>,
 }
 
@@ -342,8 +342,8 @@ impl Instance {
         self.send_call(kind, payload);
     }
 
-    /// Queues dispatch `kind`; the receiver of its result, or `None` once the
-    /// instance stopped.
+    /// Queues dispatch `kind`. Returns the receiver of its result, or `None`
+    /// once the instance stopped.
     fn send_call(
         &self,
         kind: &str,
@@ -360,7 +360,7 @@ impl Instance {
         Some(result)
     }
 
-    /// The lines of component `handle` at `width` columns; empty when the
+    /// The lines of component `handle` at `width` columns, or none when the
     /// component or the instance is gone.
     pub async fn render(&self, handle: u32, width: u32) -> Vec<String> {
         let (reply, result) = oneshot::channel();
@@ -418,10 +418,10 @@ const STOP_WAIT: Duration = Duration::from_secs(2);
 /// Threads of dropped instances that may still be tearing down their stores.
 static STOPPING: Mutex<Vec<JoinHandle<()>>> = Mutex::new(Vec::new());
 
-/// Waits for the threads of dropped instances to finish, up to two seconds in
-/// total, and leaves behind those still running then. Call it before the
-/// process exits: exiting while a thread frees an instance's compiled code
-/// can abort the process.
+/// Waits for the threads of dropped instances to finish, up to 2s in total,
+/// and leaves behind those still running then. Call it before the process
+/// exits: exiting while a thread frees an instance's compiled code can abort
+/// the process.
 pub fn join_stopped() {
     let threads = std::mem::take(&mut *yapi_types::sync::lock(&STOPPING));
     let deadline = Instant::now() + STOP_WAIT;
@@ -911,7 +911,7 @@ mod tests {
         assert!(errors[1].ends_with(&stopped(CALL_LIMIT, "")), "{errors:?}");
     }
 
-    /// A long process reloads and binds once per session; a restart replays
+    /// A long process reloads and binds once per session. A restart replays
     /// the load, the flags, and the latest reload and binding only.
     #[test]
     fn replay_keeps_latest_reload() {

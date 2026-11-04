@@ -49,8 +49,8 @@ pub enum McpError {
     /// The server no longer knows the session (404 with a session id).
     #[error("MCP session expired")]
     SessionExpired,
-    /// The stored OAuth credentials cannot be used or refreshed; the user has
-    /// to sign in (again).
+    /// The stored OAuth credentials cannot be used or refreshed, so the user
+    /// has to sign in (again).
     #[error("MCP OAuth authorization requires user interaction")]
     SignInRequired,
     /// The request could not reach the server.
@@ -118,7 +118,7 @@ pub enum Incoming<'a> {
         /// Its parameters.
         params: Option<&'a Value>,
     },
-    /// A response to one of our requests.
+    /// A response to one of the client's requests.
     Response {
         /// The request's id.
         id: &'a Value,
@@ -132,7 +132,7 @@ pub fn is_id(value: &Value) -> bool {
     value.is_string() || value.as_f64().is_some_and(f64::is_finite)
 }
 
-/// Classifies a message; `None` when it is not valid JSON-RPC.
+/// Classifies a message, or `None` when it is not valid JSON-RPC.
 pub fn classify(value: &Value) -> Option<Incoming<'_>> {
     let object = value.as_object()?;
     if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {

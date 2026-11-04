@@ -3,9 +3,10 @@
 
 use std::cmp::Ordering;
 
-/// Primary weight of a character in ICU root collation: whitespace, then
-/// ASCII punctuation and symbols in DUCET order, then digits, then letters
-/// without case, and then any other character by code point.
+/// Primary weight of a character in ICU (International Components for
+/// Unicode) root collation: whitespace, then ASCII punctuation and symbols in
+/// DUCET (Default Unicode Collation Element Table) order, then digits, then
+/// letters without case, and then any other character by code point.
 fn primary(c: char) -> (u8, u32) {
     const PUNCTUATION: &str = "_-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$";
     if c.is_whitespace() {
@@ -74,7 +75,7 @@ const LETTERS: &[(char, &[Weight])] = &[
     ('ẞ', &[L('s', 0, 10), A(0x118, 4), L('s', 0, 10)]),
 ];
 
-/// The DUCET secondary weights of the combining marks U+0300 to U+0362; 0
+/// The DUCET secondary weights of the combining marks U+0300 to U+0362, or 0
 /// for one that is ignored.
 const MARKS: [u8; 0x63] = [
     0x25, 0x24, 0x27, 0x2D, 0x32, 0x3A, 0x26, 0x2E, 0x2B, 0x3B, 0x29, 0x2C, 0x28, 0x33, 0x33, 0x3C,
@@ -89,7 +90,7 @@ const MARKS: [u8; 0x63] = [
 /// The secondary and tertiary weights of a letter without accents.
 const COMMON: (u32, u8) = (0x20, 2);
 
-/// A collation element: the primary weight, none for an accent; and the
+/// A collation element: the primary weight (none for an accent), and the
 /// secondary and tertiary weights.
 type Element = (Option<(u8, u32)>, u32, u8);
 
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn sorts_like_locale_compare() {
         // Orders checked against Node's localeCompare over the whole catalog,
-        // and for names with accents and Latin letters such as ø, ß and þ;
+        // and for names with accents and Latin letters such as ø, ß and þ.
         // "e\u{301}" is the decomposed "é".
         let mut ids = vec![
             "gpt-4o",
@@ -231,7 +232,7 @@ mod tests {
                 "þorn"
             ]
         );
-        // Texts ICU weighs alike are equal; the table is sorted for its search.
+        // Texts ICU weighs alike are equal. The table is sorted for its search.
         assert_eq!(locale_compare("đ", "d\u{335}"), Ordering::Equal);
         assert!(LETTERS.windows(2).all(|pair| pair[0].0 < pair[1].0));
     }

@@ -733,7 +733,7 @@ impl Project {
                 });
                 continue;
             }
-            // Fresh and missing replays; anything else resolves anew.
+            // Fresh and missing replays. Anything else resolves anew.
             let resolve = !fresh || named;
             progress(&format!("Installing {}...", target.id));
             match self.stage(&target, resolve, npm, &mut work).await {
@@ -801,7 +801,7 @@ impl Project {
             .and_then(|patch| patch.path.as_deref())
             .or(path_source)
         {
-            // A patch leaves the lock as it was; a path entry locks its path.
+            // A patch leaves the lock as it was, and a path entry locks its path.
             let record = match target.patch {
                 Some(_) => locked.cloned(),
                 None => Some(Locked {

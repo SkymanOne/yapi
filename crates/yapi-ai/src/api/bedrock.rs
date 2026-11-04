@@ -2,8 +2,8 @@
 //!
 //! Port of `packages/ai/src/api/bedrock-converse-stream.ts` in pi `v1.0.0`,
 //! with the parts of the AWS SDK it relies on: endpoint and region
-//! resolution, SigV4 or bearer authentication, the standard retry strategy,
-//! error deserialization and the event stream.
+//! resolution, Signature Version 4 (SigV4) or bearer authentication, the
+//! standard retry strategy, error deserialization and the event stream.
 
 use std::time::Duration;
 
@@ -227,7 +227,7 @@ fn assistant_blocks(assistant: &AssistantMessage, model: &Model) -> Vec<Value> {
             })),
             ContentBlock::Thinking(thinking) => {
                 if thinking.redacted == Some(true) {
-                    // Encrypted reasoning replays as the opaque payload; one
+                    // Encrypted reasoning replays as the opaque payload. One
                     // that is not base64 is dropped.
                     if let Some(payload) = thinking
                         .thinking_signature
@@ -824,11 +824,11 @@ fn max_attempts(options: &StreamOptions) -> u32 {
 }
 
 /// The standard strategy's delay before retry `attempt` (1-based): full
-/// jitter over 100 ms (500 ms when throttled) doubling, at most 20 s.
+/// jitter over 100 ms (500 ms when throttled) doubling, at most 20s.
 fn retry_delay(attempt: u32, throttled: bool) -> Duration {
     let base: u64 = if throttled { 500 } else { 100 };
     let ceiling = (base << attempt.min(16)).min(20_000);
-    // Like the SDK's `Math.random`, jitter never fails; without the generator it is 0.
+    // Like the SDK's `Math.random`, jitter never fails. Without the generator it is 0.
     let random = u64::from_le_bytes(yapi_types::time::try_random_bytes().unwrap_or_default());
     let fraction = (random % 10_000) as f64 / 10_000.0;
     Duration::from_millis((ceiling as f64 * fraction) as u64)
@@ -1207,7 +1207,8 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     }
 }
 
-/// Builds and sends the request; the response once its status is a success.
+/// Builds and sends the request, and returns the response once its status is
+/// a success.
 async fn connect(
     model: &Model,
     messages: &[Message],

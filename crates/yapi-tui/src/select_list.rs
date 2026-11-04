@@ -20,7 +20,7 @@ const MIN_DESCRIPTION_WIDTH: usize = 10;
 pub struct SelectItem {
     /// The value returned on selection, and the filter key.
     pub value: String,
-    /// Display text; the value when empty.
+    /// Display text, or the value when empty.
     pub label: String,
     /// Shown in a second column when there is room.
     pub description: Option<String>,
@@ -206,9 +206,9 @@ impl SelectList {
 
     /// pi's `handleMouse`: the wheel moves the highlight a row without
     /// wrapping, a press highlights the item under it and a click chooses the
-    /// item pressed. `y` is a row of [`SelectList::render`]'s; `None` when
-    /// the list does not take the event, and [`SelectEvent::Ignored`] when it
-    /// takes it without moving the highlight.
+    /// item pressed. `y` is a row of [`SelectList::render`]'s. Returns `None`
+    /// when the list does not take the event, and [`SelectEvent::Ignored`]
+    /// when it takes it without moving the highlight.
     pub fn mouse(&mut self, kind: MouseKind, y: usize) -> Option<SelectEvent> {
         let count = self.items.len();
         if count == 0 {

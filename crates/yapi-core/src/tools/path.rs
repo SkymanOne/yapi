@@ -57,8 +57,8 @@ pub fn file_url(path: &Path) -> String {
         .unwrap_or_else(|_| format!("file://{}", path.display()))
 }
 
-/// The local path a `file:` URL names, the reverse of [`file_url`]; `None` for
-/// any other URL.
+/// The local path a `file:` URL names, the reverse of [`file_url`], or `None`
+/// for any other URL.
 pub fn file_url_path(url: &str) -> Option<PathBuf> {
     let url = url::Url::parse(url).ok()?;
     if url.scheme() != "file" {
@@ -124,7 +124,8 @@ pub fn resolve_to_cwd(path: &str, cwd: &Path) -> PathBuf {
 }
 
 /// Like [`resolve_to_cwd`], but when the file does not exist, tries the variants
-/// pi tries: narrow no-break space before AM/PM, NFD, curly apostrophes.
+/// pi tries: narrow no-break space before AM/PM, the decomposed Unicode form
+/// (NFD), curly apostrophes.
 pub fn resolve_read_path(path: &str, cwd: &Path) -> PathBuf {
     let resolved = resolve_to_cwd(path, cwd);
     if resolved.exists() {

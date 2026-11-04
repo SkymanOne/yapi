@@ -115,7 +115,8 @@ pub(crate) fn normalize_tool_call_id(id: &str) -> String {
 }
 
 /// Replaces every UTF-16 unit outside `[a-zA-Z0-9_-]` with `_`, as pi's id
-/// sanitizers do; a character outside the BMP becomes two underscores.
+/// sanitizers do. A character outside the Basic Multilingual Plane (BMP)
+/// becomes two underscores.
 pub(crate) fn sanitize_id_part(text: &str) -> String {
     text.chars()
         .flat_map(|c| {
@@ -181,8 +182,8 @@ pub(crate) fn copilot_headers(messages: &[Message]) -> Vec<(&'static str, String
     headers
 }
 
-/// The classifier and image APIs a provider an extension registers
-/// implements; pi-ai's `classify` and `generateImages` of the provider.
+/// The classifier and image APIs that a provider registered by an extension
+/// implements (pi-ai's `classify` and `generateImages` of the provider).
 pub trait ModelOperations: Send + Sync {
     /// Classifies `context` with `model`. Failures are in the result.
     fn classify<'a>(
@@ -217,9 +218,9 @@ impl Apis {
     }
 
     /// Streams the models of `provider` whose API is `implementation`'s with
-    /// `implementation`, ahead of every other implementation of that API;
-    /// pi's `streamSimple` of an extension's provider, which may serve
-    /// several APIs.
+    /// `implementation`, ahead of every other implementation of that API
+    /// (pi's `streamSimple` of an extension's provider, which may serve
+    /// several APIs).
     pub fn register_for(&mut self, provider: &str, implementation: Arc<dyn Provider>) {
         let key = (provider.to_owned(), implementation.api().to_owned());
         self.providers.insert(key, implementation);

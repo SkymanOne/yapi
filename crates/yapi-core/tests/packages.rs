@@ -1135,8 +1135,8 @@ async fn npm_tree_replays() {
 
 /// Files served over HTTP by path, in any order and many at once, which
 /// remembers the most requests it held at the same time. While `gather` is
-/// set, each request waits up to 5 s for another before it is answered, so
-/// that downloads made one at a time show as one, then up to 1 s more until
+/// set, each request waits up to 5s for another before it is answered, so
+/// that downloads made one at a time show as one, then up to 1s more until
 /// nine are held, so that more than replay's eight at once show. A slow
 /// machine can only make fewer overlap.
 #[derive(Clone, Default)]
@@ -1148,7 +1148,7 @@ struct Mirror {
 }
 
 impl Mirror {
-    /// Serves until the process exits; the base URL.
+    /// Serves until the process exits, and returns the base URL.
     fn serve(&self) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());

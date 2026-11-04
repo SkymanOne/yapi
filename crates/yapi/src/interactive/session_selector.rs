@@ -69,9 +69,8 @@ fn canonical(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// pi's `formatSessionDate`.
-/// The session pi loads first: in one folder, the file named last; across
-/// folders, the file modified last.
+/// The session pi loads first: in one folder, the file named last, and
+/// across folders, the file modified last.
 fn first_loaded(sessions: &[SessionSummary], scope: Scope) -> Option<&SessionSummary> {
     let name = |session: &SessionSummary| session.path.file_name().map(ToOwned::to_owned);
     match scope {
@@ -329,7 +328,7 @@ pub struct SessionSelector {
 }
 
 impl SessionSelector {
-    /// A selector over `sources`; `current_file` is the open session.
+    /// A selector over `sources`. `current_file` is the open session.
     /// `rename` enables renaming.
     pub fn new(
         sources: Sources,
@@ -366,7 +365,7 @@ impl SessionSelector {
     fn load(&mut self, scope: Scope) {
         let sessions = self.sources.load(scope);
         // pi lists sessions as they load and first shows only the one loaded
-        // first, which a moved selection lands on and then follows.
+        // first, which a moved selection stops on and then follows.
         if scope == self.scope
             && let Some(first) = first_loaded(&sessions, scope)
         {

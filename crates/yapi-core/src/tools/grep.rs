@@ -75,7 +75,7 @@ struct Match {
     text: Option<String>,
 }
 
-/// Lines of a file with `\r\n` and `\r` as line ends; empty when unreadable.
+/// Lines of a file with `\r\n` and `\r` as line ends, empty when unreadable.
 fn file_lines(path: &Path) -> Vec<String> {
     match std::fs::read(path) {
         Ok(bytes) => String::from_utf8_lossy(&bytes)

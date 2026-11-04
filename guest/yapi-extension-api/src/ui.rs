@@ -28,8 +28,8 @@ pub trait Component {
     /// has focus. [`parse_key`] names common keys.
     fn handle_input(&mut self, _data: &str) {}
 
-    /// pi-tui's `TuiMouseEvent` `event`, in fullscreen mode; whether the
-    /// component took it.
+    /// Handles pi-tui's `TuiMouseEvent` `event` in fullscreen mode, and
+    /// returns whether the component took it.
     fn handle_mouse(&mut self, _event: &Value) -> bool {
         false
     }
@@ -153,7 +153,8 @@ pub(crate) fn input(handle: u32, data: &str) {
     }
 }
 
-/// The `mouse` call: `{"handle", "event"}`; whether the component took it.
+/// The `mouse` call: `{"handle", "event"}`, answered with whether the
+/// component took it.
 pub(crate) fn mouse(payload: &Value) -> bool {
     let handle = payload["handle"]
         .as_u64()
@@ -185,7 +186,7 @@ pub(crate) fn reset() {
 }
 
 /// The `editor` call: operation `{"handle", "op", ...}` for the editor
-/// component; see [`EditorComponent`].
+/// component. See [`EditorComponent`].
 pub(crate) fn editor_op(payload: &Value) {
     let editor = COMPONENTS.with(|components| {
         let components = components.borrow();
@@ -253,13 +254,13 @@ pub(crate) fn transcript(
     json!({"handle": handle})
 }
 
-/// Sends the text an [`EditorComponent`] now holds, paste markers expanded,
-/// so yapi's own editor keeps a copy; pi's `onChange`.
+/// pi's `onChange`: sends the text an [`EditorComponent`] now holds, paste
+/// markers expanded, so yapi's own editor keeps a copy.
 pub fn editor_changed(text: &str) {
     let _ = request("ui.editorChange", &json!({"text": text}));
 }
 
-/// Submits the prompt an [`EditorComponent`] holds; pi's `onSubmit`.
+/// pi's `onSubmit`: submits the prompt an [`EditorComponent`] holds.
 pub fn editor_submit(text: &str) {
     let _ = request("ui.editorSubmit", &json!({"text": text}));
 }
@@ -270,14 +271,15 @@ pub fn editor_action(action: &str) {
     let _ = request("ui.editorAction", &json!({"action": action}));
 }
 
-/// Runs the extension shortcut raw input `data` is bound to; whether there
-/// was one.
+/// Runs the extension shortcut raw input `data` is bound to, and returns
+/// whether there was one.
 pub fn editor_shortcut(data: &str) -> bool {
     request("ui.editorShortcut", &json!({"data": data})).is_ok_and(|ran| ran == true)
 }
 
 /// The terminal's size in columns and rows, as pi-tui's `terminal.columns`
-/// and `terminal.rows` give it; `None` without a terminal, as in print mode.
+/// and `terminal.rows` give it, or `None` without a terminal, as in print
+/// mode.
 pub fn terminal_size() -> Option<(usize, usize)> {
     let size = request("ui.terminalSize", &json!({})).ok()?;
     let dimension = |key: &str| size[key].as_u64().map(|value| value as usize);
@@ -300,7 +302,7 @@ pub fn request_render() {
     let _ = request("ui.requestRender", &json!({}));
 }
 
-/// Where a widget goes; pi's `WidgetPlacement`.
+/// pi's `WidgetPlacement`: where a widget goes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Placement {
     /// Above the editor.
@@ -318,8 +320,8 @@ pub enum Widget {
     Component(Box<dyn Component>),
 }
 
-/// How [`Context::custom`] shows its component; the options of pi's
-/// `ctx.ui.custom`.
+/// The options of pi's `ctx.ui.custom`: how [`Context::custom`] shows its
+/// component.
 #[derive(Clone, Default)]
 pub struct CustomOptions {
     /// Over the screen instead of in the editor's place.
@@ -327,8 +329,8 @@ pub struct CustomOptions {
     /// pi's `OverlayOptions`, such as `{"width": 70, "anchor": "center"}`.
     /// Without them an overlay takes the component's [`Component::width`].
     pub overlay_options: Value,
-    /// Receives the component's [`OverlayHandle`] once it is shown; pi's
-    /// `onHandle`.
+    /// pi's `onHandle`: receives the component's [`OverlayHandle`] once it
+    /// is shown.
     pub on_handle: Option<Rc<dyn Fn(OverlayHandle)>>,
 }
 
@@ -501,7 +503,7 @@ struct Custom<T> {
     waker: Option<Waker>,
 }
 
-/// Ends a [`Context::custom`] interaction; pi's `done` callback.
+/// pi's `done` callback: ends a [`Context::custom`] interaction.
 pub struct Done<T>(Rc<RefCell<Custom<T>>>);
 
 impl<T> Clone for Done<T> {

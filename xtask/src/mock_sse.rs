@@ -22,14 +22,14 @@ pub struct Args {
     /// Cassette file to serve.
     #[arg(long, required_unless_present = "record", conflicts_with = "record")]
     cassette: Option<PathBuf>,
-    /// Record instead: forward requests to this base URL, such as
-    /// https://api.anthropic.com. Credentials are never written to disk.
+    /// Record instead: forward requests to this base URL, such as Anthropic's
+    /// `https://api.anthropic.com`. Recording never writes credentials to disk.
     #[arg(long, requires = "out")]
     record: Option<String>,
     /// Where to write the recorded cassette on exit.
     #[arg(long, requires = "record")]
     out: Option<PathBuf>,
-    /// Port on 127.0.0.1; 0 picks a free port.
+    /// Port on 127.0.0.1, where 0 picks a free port.
     #[arg(long, default_value_t = 0)]
     port: u16,
     /// Write the received requests to this file as JSON on exit.

@@ -131,7 +131,7 @@ impl Docked {
         }
     }
 
-    /// `event` at row `y` of the dock; whether the component took it, and
+    /// `event` at row `y` of the dock: whether the component took it, and
     /// what it reports as pi's callbacks do.
     fn mouse(&mut self, event: MouseEvent, y: usize, events: &mut Vec<String>) -> bool {
         match self {

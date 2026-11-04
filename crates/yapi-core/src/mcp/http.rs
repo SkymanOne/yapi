@@ -26,7 +26,7 @@ const RECONNECT_MAX_RETRIES: u32 = 5;
 /// The current token of a pi provider (`/login`), by provider id.
 pub type ProviderToken = Arc<dyn Fn(String) -> BoxFuture<'static, Option<String>> + Send + Sync>;
 
-/// Where a server's bearer token comes from; pi's `AuthProvider`.
+/// pi's `AuthProvider`: where a server's bearer token comes from.
 #[derive(Clone)]
 pub enum HttpAuth {
     /// OAuth credentials, refreshed after a 401.
@@ -35,7 +35,7 @@ pub enum HttpAuth {
     Provider {
         /// The provider id.
         provider: String,
-        /// Reads the token; without it, none is sent.
+        /// Reads the token. Without it, no token is sent.
         token: Option<ProviderToken>,
     },
 }
@@ -63,7 +63,7 @@ pub struct HttpOptions {
     pub auth: Option<HttpAuth>,
 }
 
-/// A streamable HTTP connection. Cheap to clone; clones share it.
+/// A streamable HTTP connection. Cheap to clone, and clones share it.
 #[derive(Clone)]
 pub struct HttpTransport {
     inner: Arc<Inner>,
@@ -183,8 +183,8 @@ struct Cursor {
     received: bool,
 }
 
-/// pi-mcp's SSE reader: LF-separated lines with an optional CR, `id` reported
-/// for every event, events without data dropped.
+/// pi-mcp's reader of server-sent events (SSE): LF-separated lines with an
+/// optional CR, `id` reported for every event, events without data dropped.
 #[derive(Default)]
 struct SseParser {
     buffer: Vec<u8>,
@@ -315,7 +315,7 @@ impl HttpTransport {
         }
     }
 
-    /// Posts one message; its reply arrives as events.
+    /// Posts one message. Its reply arrives as events.
     pub async fn send(&self, message: &Value) -> Result<(), McpError> {
         if !self.inner.started.load(Ordering::SeqCst) || self.inner.closed.load(Ordering::SeqCst) {
             return Err(McpError::closed());
@@ -385,7 +385,7 @@ impl HttpTransport {
         }
     }
 
-    /// Ends the session: pending reads stop and the server is told with DELETE.
+    /// Ends the session: pending reads stop, and a DELETE tells the server.
     pub async fn close(&self) {
         if self.inner.closed.swap(true, Ordering::SeqCst) {
             return;
@@ -539,8 +539,8 @@ impl HttpTransport {
         }
     }
 
-    /// Reads an event stream to its end; whether it carried the response to
-    /// `request_id`.
+    /// Reads an event stream to its end. Returns whether it carried the
+    /// response to `request_id`.
     async fn consume(
         &self,
         mut response: reqwest::Response,
@@ -593,8 +593,8 @@ impl HttpTransport {
     }
 
     /// The stream answering one request. When it ends or breaks first and the
-    /// server assigned event ids, it is resumed with `Last-Event-ID`;
-    /// otherwise the request fails.
+    /// server assigned event ids, it resumes with `Last-Event-ID`. Otherwise
+    /// the request fails.
     async fn read_response(&self, response: reqwest::Response, request_id: Value) {
         let mut cursor = Cursor::default();
         let mut stream = Some(response);
@@ -711,7 +711,7 @@ impl HttpTransport {
         }
     }
 
-    /// Opens a GET stream; `None` when the server answers 405.
+    /// Opens a GET stream, or `None` when the server answers 405.
     async fn open_stream(
         &self,
         last_event_id: Option<String>,

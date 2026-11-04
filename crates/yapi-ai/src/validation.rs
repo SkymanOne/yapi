@@ -2,7 +2,7 @@
 //! JSON schema with TypeBox's error messages.
 //!
 //! Port of `packages/ai/src/utils/validation.ts` in pi `v1.0.0`. The checker covers
-//! the JSON Schema keywords tool schemas use; `$ref`, `format` and `pattern` are
+//! the JSON Schema keywords tool schemas use. `$ref`, `format` and `pattern` are
 //! accepted without checking.
 
 use serde_json::{Map, Value};

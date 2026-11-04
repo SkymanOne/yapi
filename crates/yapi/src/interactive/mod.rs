@@ -84,7 +84,8 @@ use self::tools::ToolView;
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
-/// pi-tui's OSC 9;4 sequences: indeterminate progress, and none.
+/// pi-tui's OSC (operating system command) 9;4 sequences: indeterminate
+/// progress, and none.
 const PROGRESS_ACTIVE: &str = "\x1b]9;4;3\x07";
 const PROGRESS_CLEAR: &str = "\x1b]9;4;0\x07";
 /// How often pi-tui repeats the active sequence, which some terminals expire.
@@ -172,7 +173,7 @@ struct Replaced {
 /// it could not be built.
 type Replacing = Box<dyn FnOnce(&mut App, Result<(), String>) + Send>;
 
-/// Events the loop handles. Session events carry the epoch of the session
+/// Events the loop handles. Session events include the epoch of the session
 /// that sent them, so a replaced session's late events are dropped.
 enum Event {
     Input(Vec<u8>),
@@ -187,7 +188,7 @@ enum Event {
     /// An extension error line and the error's stack, shown whichever
     /// session's extension failed, as pi shows a replaced runner's errors.
     ExtensionError(String, Option<String>),
-    /// Extension completions arrived; the editor asks again.
+    /// Extension completions arrived, so the editor asks again.
     RefreshCompletions(u64),
     /// A request from the sign-in with this id.
     Auth(u64, yapi_ai::auth::AuthRequest),
@@ -314,7 +315,7 @@ pub struct Options {
     pub use_theme: Option<String>,
     /// Why the startup model differs from the session's, or that there is none.
     pub model_fallback: Option<String>,
-    /// Whether model catalogs may be fetched; pi's `PI_OFFLINE` unset.
+    /// Whether model catalogs may be fetched: pi's `PI_OFFLINE` unset.
     pub model_network: bool,
 }
 
@@ -354,7 +355,7 @@ fn terminal_enter(protocol: &mut KeyboardProtocol) -> String {
     )
 }
 
-/// The sequences that hand the terminal back: bracketed paste and the
+/// The sequences that release the terminal: bracketed paste and the
 /// keyboard protocol off, the cursor shown.
 fn terminal_leave(protocol: &mut KeyboardProtocol) -> String {
     format!("{BRACKETED_PASTE_DISABLE}{}\x1b[?25h", protocol.disable())
@@ -391,7 +392,7 @@ impl TerminalInput {
         }
     }
 
-    /// Decodes `bytes` just read, writing back the protocol's replies.
+    /// Decodes the `bytes` of a new read, writing back the protocol's replies.
     fn decode(&mut self, protocol: &mut KeyboardProtocol, bytes: &[u8]) -> Vec<String> {
         self.decoded += 1;
         let inputs = self.buffer.push(bytes);
@@ -400,8 +401,8 @@ impl TerminalInput {
         self.filter(protocol, inputs)
     }
 
-    /// How long until the next held piece is due; `None` when nothing is held
-    /// or a read is still queued.
+    /// How long until the next held piece is due, or `None` when nothing is
+    /// held or a read is still queued.
     fn wait(&self) -> Option<Duration> {
         if self.reads.load(Ordering::SeqCst) > self.decoded {
             return None;
@@ -566,7 +567,7 @@ async fn hyperlinks(setting: Option<bool>) -> bool {
 }
 
 /// `PI_HYPERLINKS` as `1` or `0`, else whether the terminal the environment
-/// names shows OSC 8 hyperlinks, as pi-tui detects it; `None` inside tmux.
+/// names shows OSC 8 hyperlinks, as pi-tui detects it, or `None` inside tmux.
 fn known_hyperlinks(var: impl Fn(&str) -> String) -> Option<bool> {
     match var("PI_HYPERLINKS").as_str() {
         "1" => return Some(true),
@@ -625,7 +626,7 @@ async fn tmux_forwards_hyperlinks() -> bool {
     }
 }
 
-/// The home directory paths are shown relative to; `None` when empty.
+/// The home directory paths are shown relative to, or `None` when empty.
 fn home_dir() -> Option<PathBuf> {
     Some(yapi_core::tools::path::home_dir()).filter(|home| !home.as_os_str().is_empty())
 }
@@ -780,8 +781,8 @@ struct App {
     starting: bool,
     /// pi's `OverlayOptions` when the open custom component is an overlay.
     overlay: Option<Value>,
-    /// Overlays an open overlay covers, bottom first, with their options;
-    /// each gets the keys again once those above it close, as in pi-tui.
+    /// Overlays an open overlay covers, bottom first, with their options.
+    /// Each gets the keys again once those above it close, as in pi-tui.
     overlays_below: Vec<(extension_ui::RemoteView, Value)>,
     /// The startup header shows (`quietStartup` is not `true`).
     show_header: bool,
@@ -1037,7 +1038,7 @@ impl App {
     fn extension_error(&mut self, message: String, stack: Option<&str>) {
         let line = lines::styled(message, self.theme.fg("error"));
         self.text_item(vec![line], false, (1, 0));
-        // V8 stacks start with the message, which pi skips; QuickJS's start
+        // V8 stacks start with the message, which pi skips, but QuickJS's start
         // with the first frame. The runtime's own frames are left out.
         let frames: Vec<String> = stack
             .unwrap_or_default()
@@ -1075,7 +1076,7 @@ impl App {
         self.tool_items.clear();
     }
 
-    /// Inserts `item` at `index`; the indices of later items shift up.
+    /// Inserts `item` at `index`. The indices of later items shift up.
     fn insert_item(&mut self, index: usize, item: Item) {
         self.chat.insert(index, item);
         self.cache.insert(index, None);
@@ -1090,7 +1091,7 @@ impl App {
         self.flat_key = None;
     }
 
-    /// Removes the item at `index`; the indices of later items shift down.
+    /// Removes the item at `index`. The indices of later items shift down.
     fn remove_item(&mut self, index: usize) {
         self.chat.remove(index);
         self.cache.remove(index);
@@ -1232,8 +1233,8 @@ impl App {
         self.extension_issues = issues;
     }
 
-    /// Mirrors the key bindings and shortcuts for extensions; see
-    /// [`ExtensionUi::keybindings`](yapi_core::extensions::ExtensionUi::keybindings).
+    /// Mirrors the key bindings and shortcuts for extensions (see
+    /// [`ExtensionUi::keybindings`](yapi_core::extensions::ExtensionUi::keybindings)).
     fn mirror_keys(&self) {
         let bindings: Map<String, Value> = self
             .keys
@@ -1281,7 +1282,7 @@ impl App {
     }
 
     /// Renders the current branch's context, with the latest compaction
-    /// where it happened when `in_place`; returns the user prompts for the
+    /// where it happened when `in_place`. Returns the user prompts for the
     /// editor history.
     fn render_entries(&mut self, in_place: bool) -> Vec<String> {
         let mut history: Vec<String> = Vec::new();
@@ -1734,7 +1735,7 @@ impl App {
         }
         parts.push((std::mem::take(&mut out), 0));
         let cursor;
-        // An overlay draws over the screen; the editor stays below it.
+        // An overlay draws over the screen. The editor stays below it.
         let overlaid = self.overlay.is_some() && matches!(self.selector, Some(Selector::Remote(_)));
         // An extension's editor gets the built-in one's settings and status.
         let custom = self.ext.editor.is_some().then(|| {
@@ -2239,7 +2240,7 @@ impl App {
                 entry: yapi_types::session::FileEntry::Usage(entry),
             } if entry.kind == "cache_warm" => self.cache_warmed_notice(&entry),
             // A compaction an extension staged at a turn boundary redraws the
-            // transcript, as one that just finished does.
+            // transcript, as a finished one does.
             AgentEvent::EntryAppended {
                 entry: yapi_types::session::FileEntry::Compaction(entry),
             } => {
@@ -2585,7 +2586,7 @@ impl App {
         }
     }
 
-    /// Runs extension command `text` beside the loop; held messages wait for
+    /// Runs extension command `text` beside the loop. Held messages wait for
     /// it when it takes its turn.
     fn run_command(&mut self, text: String, in_turn: bool) {
         self.commands += usize::from(in_turn);
@@ -2789,13 +2790,13 @@ impl App {
     /// Keys of one read, as decoded: through the extensions'
     /// `onTerminalInput` listeners first while there are any, as pi-tui's
     /// input listeners see input before everything else. The listeners run
-    /// beside the loop; later keys wait behind them, in order.
+    /// beside the loop, and later keys wait behind them, in order.
     fn on_keys(&mut self, keys: Vec<String>, terminal: &mut Terminal) {
         self.input_queue.extend(keys);
         self.pump_input(terminal);
     }
 
-    /// Hands the waiting keys to the listeners, or handles them when no
+    /// Passes the waiting keys to the listeners, or handles them when no
     /// extension listens.
     fn pump_input(&mut self, terminal: &mut Terminal) {
         if self.listening || self.input_queue.is_empty() {
@@ -2806,7 +2807,7 @@ impl App {
             self.handle_keys(keys, terminal);
             return;
         }
-        // The focus these keys meet goes out ahead of them.
+        // Extensions hear of the focus these keys meet before they get the keys.
         self.share_terminal();
         self.listening = true;
         let (tx, listeners) = (self.tx.clone(), self.ext.listeners.clone());
@@ -2860,7 +2861,8 @@ impl App {
         }
     }
 
-    /// Handles a key; whether it may have changed more than the editor.
+    /// Handles a key and returns whether it may have changed more than the
+    /// editor.
     fn dispatch_key(&mut self, data: &str, terminal: &mut Terminal) -> bool {
         if self.fullscreen && self.handle_viewport_key(data) {
             return true;
@@ -3165,7 +3167,7 @@ impl App {
         self.warn_anthropic_subscription(Some(&model));
     }
 
-    /// Fullscreen scrolling and mouse selection; returns whether the key was
+    /// Fullscreen scrolling and mouse selection. Returns whether the key was
     /// consumed.
     fn handle_viewport_key(&mut self, data: &str) -> bool {
         let (presses, columns, ext_rows) = (&mut self.presses, self.size.0, &self.ext_rows);
@@ -3833,7 +3835,7 @@ impl App {
     }
 
     /// pi's `newSession`, linked to `parent` when given, which runs `setup`
-    /// before the new session shows; `/new` also says so.
+    /// before the new session shows. `/new` also says so.
     fn new_session(&mut self, parent: Option<String>, setup: Option<Setup>, reply: Reply) {
         self.indicator = None;
         self.unless_cancelled(SessionChange::New, reply, |app, reply| {
@@ -3948,7 +3950,7 @@ impl App {
         );
     }
 
-    /// pi's prompt for a session whose working directory is gone; `dialog`
+    /// pi's prompt for a session whose working directory is gone. `dialog`
     /// takes the answer.
     fn ask_missing_cwd(&mut self, dialog: Dialog, session_cwd: &Path, fallback: &Path) {
         self.dialog = Some(dialog);
@@ -4046,7 +4048,7 @@ impl App {
     }
 
     /// pi's external editor: it runs beside the loop, which draws nothing
-    /// until [`Event::EditorClosed`] brings its text back.
+    /// until [`Event::EditorClosed`] returns its text.
     fn external_editor(&mut self, terminal: &mut Terminal) {
         if terminal.released() {
             return;
@@ -4289,7 +4291,7 @@ fn resume_command(file: &Path, id: &str, default_dir: &Path) -> String {
 /// Runs interactive mode until the user quits. Returns the exit code.
 pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options) -> u8 {
     // SIGTERM, or SIGHUP when the terminal goes away, caught before the
-    // terminal changes; it ends the loop, which restores the terminal.
+    // terminal changes. It ends the loop, which restores the terminal.
     let terminated = crate::modes::rpc::termination();
     tokio::pin!(terminated);
     #[cfg(unix)]
@@ -4337,7 +4339,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     let mut query = ColorQuery::new();
     emit(&terminal_enter(&mut terminal.protocol));
 
-    // Wait briefly for the color replies; keys typed meanwhile are kept.
+    // Wait up to `COLOR_QUERY_TIMEOUT` for the color replies. Keys typed
+    // meanwhile are kept.
     let mut early: Vec<String> = Vec::new();
     let mut early_events: Vec<Event> = Vec::new();
     let deadline = Instant::now() + COLOR_QUERY_TIMEOUT;
@@ -4480,7 +4483,7 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
                     Event::Input(bytes) => {
                         let mut keys = input.decode(&mut terminal.protocol, &bytes);
                         // A pointer move changes at most the scrollbar's
-                        // hover; a frame is drawn only when it does.
+                        // hover, so a frame is drawn only when it does.
                         let (decoded, mut hovered) = (keys.len(), false);
                         if app.fullscreen {
                             keys.retain(|key| {
@@ -4534,8 +4537,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
             _ = tokio::time::sleep(flush_wait), if dirty => {}
         }
         app.start_binding();
-        // Nothing is drawn while another program has the terminal; taking it
-        // back redraws everything.
+        // Nothing is drawn while another program has the terminal, and taking
+        // it back redraws everything.
         if terminal.released() {
             dirty = false;
         } else if dirty && last_draw.elapsed() >= FRAME_INTERVAL {
@@ -4551,8 +4554,8 @@ pub async fn run(session: AgentSession, agent_dir: PathBuf, mut options: Options
     yapi_core::tools::bash::kill_tracked_children();
     app.indicator = None;
     app.selector = None;
-    // pi's `stop` clears progress when the setting is on; pi-tui's clears a
-    // repeating sequence the setting no longer covers.
+    // pi's `stop` clears progress when the setting is on, and pi-tui's clears
+    // a repeating sequence the setting no longer covers.
     let mut out = String::new();
     if app.progress_enabled() {
         app.progress = None;
@@ -4640,7 +4643,8 @@ impl App {
                 Some(yapi_types::settings::BoolOr::Bool(true))
                     | Some(yapi_types::settings::BoolOr::Other(_))
             );
-        // `quietStartup: true` hides the header too; `"header"` only the details.
+        // `quietStartup: true` hides the header too, and `"header"` only the
+        // details.
         let show_header =
             options.verbose || !matches!(quiet, Some(yapi_types::settings::BoolOr::Bool(true)));
         let mut editor = Editor::new(
@@ -4836,7 +4840,7 @@ impl App {
     }
 
     /// Carries out an extension command's session change as pi's
-    /// interactive mode does; its outcome goes to `reply` once the change is
+    /// interactive mode does. Its outcome goes to `reply` once the change is
     /// done, with the replacement's extensions started.
     fn on_action(&mut self, (action, reply): crate::runtime::ActionRequest) {
         let reply = Some(reply);
@@ -4887,8 +4891,8 @@ impl App {
     /// Handles everything but input.
     fn on_event(&mut self, event: Event) {
         self.footer_cache = None;
-        // pi draws an extension's footer every frame; its stats change with
-        // the agent's events.
+        // pi draws an extension's footer every frame, since its stats change
+        // with the agent's events.
         if matches!(event, Event::Agent(..))
             && let Some(view) = &self.ext.footer
         {
@@ -4972,7 +4976,7 @@ impl App {
                 self.bound = true;
                 // A session change an extension command asked for is
                 // reported once the command's own work on the replacement
-                // is done; others at once.
+                // is done, and others at once.
                 match reply {
                     Some(reply) => answer(Some(reply), Ok(false)),
                     None => self.run_on_bound(),
@@ -5010,8 +5014,8 @@ enum LinkTarget {
     File(PathBuf),
 }
 
-/// What a click on `url` opens; `None` for any other link, whose app could run
-/// a program, as a `file:` link to a script or app would if opened.
+/// What a click on `url` opens, or `None` for any other link, whose app could
+/// run a program, as a `file:` link to a script or app would if opened.
 fn link_target(url: &str) -> Option<LinkTarget> {
     let (scheme, _) = url.split_once(':')?;
     match scheme.to_ascii_lowercase().as_str() {
@@ -5124,7 +5128,7 @@ mod tests {
         }
     }
 
-    /// The next event, failing the test after a few seconds without one.
+    /// The next event, failing the test after 5s without one.
     async fn next(events: &mut UnboundedReceiver<Event>) -> Event {
         tokio::time::timeout(Duration::from_secs(5), events.recv())
             .await
@@ -5262,7 +5266,7 @@ mod tests {
         app.set_editor_text("hello world");
         let (dock, _) = app.dock(40);
         app.alt.frame(&[], &dock, None, 40, 12);
-        // The editor's text row is below its top border; `w` is column 7.
+        // The editor's text row is below its top border. `w` is column 7.
         let (top, _, _) = app.editor_rows.unwrap();
         for report in ["\x1b[<0;7;{}M", "\x1b[<0;7;{}m"] {
             assert!(app.handle_viewport_key(&report.replace("{}", &(top + 2).to_string())));
@@ -5270,8 +5274,8 @@ mod tests {
         assert_eq!(app.editor.cursor(), (0, 6));
     }
 
-    /// Draws the fullscreen frame; the column and row of the first cell
-    /// showing `needle`.
+    /// Draws the fullscreen frame and returns the column and row of the first
+    /// cell showing `needle`.
     fn find_on_screen(app: &mut App, needle: &str) -> (usize, usize) {
         let (width, height) = app.size;
         let (dock, cursor) = app.dock(width);
@@ -5670,7 +5674,7 @@ mod tests {
     }
 
     /// Code blocks show plain until the extensions answer, then as the
-    /// first renderer in load order that draws them; a renderer that fails
+    /// first renderer in load order that draws them. A renderer that fails
     /// is reported once and passed over.
     #[tokio::test]
     async fn renders_code_after_frame() {
@@ -5722,7 +5726,7 @@ mod tests {
     }
 
     /// While a code block grows, it keeps the colors of the lines it had and
-    /// shows the new ones plain until the renderer answers; nothing is
+    /// shows the new ones plain until the renderer answers. Nothing is
     /// asked for a block that did not change.
     #[tokio::test]
     async fn growing_code_keeps_colors() {
@@ -6088,7 +6092,7 @@ mod tests {
         assert!(app.ext.footer.is_none() && app.ext.header.is_none());
     }
 
-    /// The rows of each transcript component at width 20; asks for a render
+    /// The rows of each transcript component at width 20. Asks for a render
     /// when they are stale.
     fn transcript_rows(app: &App) -> Vec<Vec<String>> {
         app.transcript_views()
@@ -6179,7 +6183,7 @@ mod tests {
         editor.render(20);
         assert_eq!(redrawn(&mut app, &mut events, &kept).await, 1);
         assert!(app.ext.editor.is_none());
-        // A render the stopped runtime answered may carry the key of the
+        // A render the stopped runtime answered may have the key of the
         // note's new component, as handles start over. The note keeps its rows.
         let key = app.transcript_views()[0].1.key();
         app.on_event(Event::Rendered(app.epoch, key, u64::MAX, 20, Vec::new()));
@@ -6213,7 +6217,7 @@ mod tests {
             border("● Working", 3, 40),
             "── ● Working ── ↑ 3 more ───────────────"
         );
-        // Otherwise only the spinner keeps the label company.
+        // Otherwise only the spinner shows beside the label.
         assert_eq!(
             border("● Working hard", 3, 26),
             "── ● ─── ↑ 3 more ────────"

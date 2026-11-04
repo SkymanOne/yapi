@@ -91,7 +91,7 @@ pub fn block_images(messages: Vec<Message>) -> Vec<Message> {
 }
 
 /// Converts session messages to provider roles: bash executions, custom messages
-/// and summaries become user messages; `!!` executions are dropped.
+/// and summaries become user messages. `!!` executions are dropped.
 pub fn convert_to_llm(messages: Vec<Message>) -> Vec<Message> {
     messages
         .into_iter()

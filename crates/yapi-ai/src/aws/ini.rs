@@ -103,7 +103,7 @@ pub fn credentials_path(env: &AwsEnv) -> PathBuf {
     )
 }
 
-/// Reads both files; a missing file counts as empty.
+/// Reads both files. A missing file counts as empty.
 pub async fn load(env: &AwsEnv) -> Profiles {
     let read = |path: PathBuf| async move {
         tokio::fs::read_to_string(path)

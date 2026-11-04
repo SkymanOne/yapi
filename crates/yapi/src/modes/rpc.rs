@@ -1,4 +1,4 @@
-//! RPC mode: JSON commands on stdin; responses and events on stdout. Port of
+//! RPC mode: JSON commands on stdin, responses and events on stdout. Port of
 //! `modes/rpc/rpc-mode.ts` in pi `v1.0.0`.
 //!
 //! Lines are framed by LF only. Every line starts a command task at once, as
@@ -103,7 +103,7 @@ struct Rpc {
     unanswered: Cell<usize>,
 }
 
-/// A command read whose response is not out yet; counted in
+/// A command read whose response is not out yet, counted in
 /// [`Rpc::unanswered`] until dropped.
 struct Unanswered(Rc<Rpc>);
 
@@ -122,8 +122,8 @@ impl Drop for Unanswered {
 
 type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<ExtensionUiResponse>>>>;
 
-/// Extension dialogs as `extension_ui_request` lines, answered by
-/// `extension_ui_response` lines; pi's RPC `ExtensionUIContext`.
+/// pi's RPC `ExtensionUIContext`: extension dialogs as `extension_ui_request`
+/// lines, answered by `extension_ui_response` lines.
 struct RpcUi {
     out: Output,
     pending: Pending,
@@ -158,9 +158,9 @@ impl RpcUi {
         self.send(&uuid_v4(), object(request));
     }
 
-    /// Writes a request and waits for its response; `None` when the request
-    /// or the response is cancelled, the request times out or the session
-    /// ends. A timeout is part of the request.
+    /// Writes a request and waits for its response. Returns `None` when the
+    /// request or the response is cancelled, the request times out or the
+    /// session ends. A timeout is part of the request.
     fn ask(
         &self,
         mut request: Map<String, Value>,
@@ -301,7 +301,7 @@ impl ExtensionUi for RpcUi {
         self.send(&uuid_v4(), request);
     }
 
-    /// Only lines reach RPC clients; component widgets are not sent.
+    /// Only lines reach RPC clients. Component widgets are not sent.
     fn set_widget(&self, key: &str, widget: Option<Widget>, placement: Option<Placement>) {
         let mut request = object(json!({"method": "setWidget", "widgetKey": key}));
         match widget {
@@ -355,7 +355,7 @@ impl Rpc {
     }
 }
 
-/// The `type` of a command line, for its response; `None` without one.
+/// The `type` of a command line, for its response, or `None` without one.
 fn command_name(value: &Value) -> Option<String> {
     match value.get("type") {
         Some(Value::String(name)) => Some(name.clone()),
@@ -364,7 +364,7 @@ fn command_name(value: &Value) -> Option<String> {
     }
 }
 
-/// pi hands commands to its handlers untyped. Fails with pi's error for a
+/// pi passes commands to its handlers untyped. Fails with pi's error for a
 /// field its handler cannot read, and otherwise rewrites fields to what pi's
 /// handler makes of them, so the typed command takes what pi takes.
 fn as_pi_reads(name: &str, command: &mut Map<String, Value>) -> Result<(), String> {
@@ -438,7 +438,7 @@ async fn settle(session: &AgentSession) -> u64 {
     calls
 }
 
-/// Runs command `line`; `unanswered` counts it until its response is out.
+/// Runs command `line`. `unanswered` counts it until its response is out.
 async fn handle_line(rpc: Rc<Rpc>, line: String, unanswered: Unanswered) {
     let mut parsed: Value = match serde_json::from_str(&line) {
         Ok(parsed) => parsed,
@@ -852,8 +852,8 @@ fn stats(session: &AgentSession) -> SessionStats {
     }
 }
 
-/// Runs RPC mode until stdin closes or a termination signal arrives; returns
-/// the exit code.
+/// Runs RPC mode until stdin closes or a termination signal arrives, and
+/// returns the exit code.
 pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
     let (out, writer) = Output::start();
     let ui = Arc::new(RpcUi {
@@ -866,7 +866,7 @@ pub async fn run(session: AgentSession, factory: SessionFactory) -> u8 {
             &yapi_core::config::agent_dir(),
         )),
     });
-    // The current session's number; listeners of older ones stay silent.
+    // The current session's number. Listeners of older ones stay silent.
     let epoch = Arc::new(AtomicU64::new(0));
     let bind: runtime::Bind = {
         let (out, ui) = (out.clone(), Arc::clone(&ui));

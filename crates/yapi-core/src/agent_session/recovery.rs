@@ -32,12 +32,12 @@ enum CompactionCheck {
 }
 
 impl AgentSession {
-    /// Cancels the wait before an automatic retry; the failed response stands.
+    /// Cancels the wait before an automatic retry. The failed response stands.
     pub fn abort_retry(&self) {
         let cancel = lock(&self.inner.retry_cancel).clone();
         if let Some(cancel) = cancel {
             // The retry's end is reported before this returns, as pi reports
-            // it before answering `abort_retry`; the waiting retry then finds
+            // it before answering `abort_retry`. The waiting retry then finds
             // nothing left to report.
             self.finish_cancelled_retry();
             cancel.cancel();
@@ -62,7 +62,7 @@ impl AgentSession {
         RetryPolicy::resolve(lock(&self.inner.settings).settings())
     }
 
-    /// Whether the run that just ended will be retried, for `agent_end`.
+    /// Whether the finished run will be retried, for `agent_end`.
     pub(super) fn will_retry_after(&self, messages: &[Message]) -> bool {
         let cancelled = lock(&self.inner.cancel)
             .as_ref()
@@ -453,7 +453,7 @@ impl AgentSession {
 
     /// What manual and automatic compaction share: pi's
     /// `session_before_compact` event, which may cancel the compaction or
-    /// supply its summary; otherwise a summary of `preparation`. The
+    /// supply its summary, else a summary of `preparation`. The
     /// compaction is recorded with the estimate after it and reported as
     /// `session_compact`, unless `cancel` fired meanwhile.
     async fn run_compaction(

@@ -1,7 +1,7 @@
 //! `auth.json`: stored credentials keyed by provider id.
 //!
 //! Port of `core/auth-storage.ts` in pi `v1.0.0`. Reads use a cached
-//! document that reloads when the file's revision changes; changes re-read
+//! document that reloads when the file's revision changes. Changes re-read
 //! the file under the lock and write it back as pi does, so other entries keep
 //! their bytes.
 
@@ -117,7 +117,7 @@ impl CredentialStore {
         state
     }
 
-    /// Why the file cannot be read now, as pi's store reports it; reads
+    /// Why the file cannot be read now, as pi's store reports it. Reads
     /// meanwhile see the last document that could be.
     pub fn read_error(&self) -> Option<String> {
         self.state().error.clone()
@@ -146,7 +146,7 @@ impl CredentialStore {
     }
 
     /// Replaces `provider`'s credential with what `change` returns for the
-    /// current one, under the lock; `None` leaves the file untouched. Returns the
+    /// current one, under the lock. `None` leaves the file untouched. Returns the
     /// credential now stored.
     pub async fn modify<F, Fut>(
         &self,
@@ -289,7 +289,7 @@ fn write(path: &Path, document: &Document) -> Result<(), AuthError> {
     write_text(path, &text)
 }
 
-/// Writes with mode 0600 when creating; an existing file keeps its mode.
+/// Writes with mode 0600 when creating. An existing file keeps its mode.
 fn write_text(path: &Path, text: &str) -> Result<(), AuthError> {
     write_atomic(path, text.as_bytes(), 0o600).map_err(failed)
 }

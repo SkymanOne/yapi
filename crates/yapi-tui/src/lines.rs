@@ -3,7 +3,7 @@
 //! Ports of `wrapTextWithAnsi`, `truncateToWidth` and `applyBackgroundToLine`
 //! in `packages/tui/src/utils.ts`, and of the `Text`, `TruncatedText`, `Box`,
 //! `Spacer` and `DynamicBorder` components, in pi `v1.0.0`. Styles live on
-//! spans, so a style that crosses a line break simply continues.
+//! spans, so a style that crosses a line break continues.
 
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
@@ -60,7 +60,7 @@ pub fn width(line: &Line<'_>) -> usize {
 
 /// A line of plain text, which may contain newlines for [`wrap`] to split.
 ///
-/// ratatui's `Line::from(&str)` drops newlines; this keeps them.
+/// ratatui's `Line::from(&str)` drops newlines, but this keeps them.
 pub fn raw(text: impl Into<String>) -> StyledLine {
     Line::from(Span::raw(text.into()))
 }
@@ -177,8 +177,8 @@ fn wrap_cells(line: Vec<Cell>, width: usize) -> Vec<Vec<Cell>> {
 }
 
 /// Wraps a line, which may contain newlines, to `width` columns: breaks fall
-/// between words or beside CJK characters, words wider than a line break by
-/// grapheme, and trailing spaces are dropped.
+/// between words or beside CJK (Chinese, Japanese and Korean) characters,
+/// words wider than a line break by grapheme, and trailing spaces are dropped.
 pub fn wrap(line: &Line<'_>, width: usize) -> Vec<StyledLine> {
     let width = width.max(1);
     split_lines(line)
@@ -238,10 +238,10 @@ pub fn truncate(line: &Line<'_>, max_width: usize, ellipsis: &str) -> StyledLine
 }
 
 /// pi-tui's `compositeTuiLine`: `top`, cut or padded to `width` columns,
-/// drawn over `base` from column `col`; the base shows before and after it.
-/// A wide character cut by the left edge becomes spaces; one cut by the
-/// right edge is dropped, so the rest of the base moves left and the line is
-/// padded at its end. Spaces that reach `col` keep the style of the base's
+/// drawn over `base` from column `col`, with the base showing before and
+/// after it. A wide character cut by the left edge becomes spaces. One cut by
+/// the right edge is dropped, so the rest of the base moves left and the line
+/// is padded at its end. Spaces that reach `col` keep the style of the base's
 /// last cell before it, as pi's do. The result is no wider than `total`.
 pub(crate) fn composite(
     base: &Line<'_>,
@@ -374,7 +374,7 @@ pub(crate) fn pad(mut line: StyledLine, width: usize) -> StyledLine {
     line
 }
 
-/// `spans` with `style` under each; a span's own style wins.
+/// `spans` with `style` under each, where a span's own style wins.
 pub(crate) fn under(spans: Vec<Span<'static>>, style: Style) -> Vec<Span<'static>> {
     spans
         .into_iter()
@@ -460,7 +460,7 @@ pub fn truncated_text(content: &Line<'_>, width: usize, px: usize) -> StyledLine
     pad(line, width)
 }
 
-/// pi-tui's `Box`: `children` were rendered at `width - 2 * px`; each row is
+/// pi-tui's `Box`: `children` were rendered at `width - 2 * px`. Each row is
 /// indented by `px`, padded to `width` over `bg`, with `py` padding rows.
 /// Renders nothing when the children are empty.
 pub fn boxed(

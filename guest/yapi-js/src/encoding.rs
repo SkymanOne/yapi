@@ -17,7 +17,7 @@ const LENIENT: GeneralPurpose = GeneralPurpose::new(
         .with_decode_allow_trailing_bits(true),
 );
 
-/// Runs `f` on the bytes `array` views; a detached array has none.
+/// Runs `f` on the bytes `array` views. A detached array has none.
 fn with_bytes<T>(array: &TypedArray<'_, u8>, f: impl FnOnce(&[u8]) -> T) -> T {
     // SAFETY: `f` runs no JS, so nothing can write to, detach or resize the
     // buffer while the slice is borrowed.

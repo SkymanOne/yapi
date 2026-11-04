@@ -1,6 +1,6 @@
 //! `/overlay-test` shows an overlay with inline text inputs, and lines of
-//! wide characters, styled text and emoji that test how overlays are drawn
-//! over the screen.
+//! wide characters, styled text and emoji that test how yapi draws
+//! overlays over the screen.
 //!
 //! A port of pi's `overlay-test.ts`. The overlay takes the component's
 //! width, 70 columns, as no overlay options are given.

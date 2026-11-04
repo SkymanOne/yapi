@@ -109,8 +109,8 @@ impl AgentSession {
         Ok(preview)
     }
 
-    /// Queued messages the next turn would take, then extension messages
-    /// waiting for the turn to end; pi's `_getPendingBoundaryMessages`.
+    /// pi's `_getPendingBoundaryMessages`: queued messages the next turn
+    /// would take, then extension messages waiting for the turn to end.
     fn pending_boundary_messages(&self) -> Vec<Message> {
         let (steering_all, follow_up_all) = self.drains_all();
         let peek = |queue: &std::sync::Mutex<std::collections::VecDeque<Message>>, all| {

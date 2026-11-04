@@ -2,7 +2,7 @@
 //! archive, the summary the current model writes and the GitHub issue.
 //!
 //! A port of `core/bug-report.ts` in pi `v1.0.0`. pi uploads the report to
-//! its own service; yapi always writes the zip and can post a public issue
+//! its own service. yapi always writes the zip and can post a public issue
 //! with the GitHub CLI.
 
 use std::ffi::OsStr;
@@ -83,8 +83,8 @@ fn scheme_len(text: &str) -> Option<usize> {
 }
 
 /// pi's `redactUrl`: `value` without the user info and the values of
-/// secret-looking query parameters of the URL it is; unchanged when it is
-/// no URL or has neither.
+/// secret-looking query parameters of the URL it is, or unchanged when it
+/// is no URL or has neither.
 fn redact_url(value: &str) -> String {
     // A package source such as `git:https://...` wraps a URL in a scheme.
     if let Some(prefix) = scheme_len(value) {
@@ -212,7 +212,7 @@ fn environment() -> Value {
             "ssh": ssh,
             "ci": env("CI").is_some(),
         },
-        // Names help diagnose configuration; values never leave the machine.
+        // Names help diagnose configuration, and values never leave the machine.
         "piEnvironmentVariables": names,
     })
 }
@@ -564,7 +564,7 @@ fn dos_time(ms: u64) -> (u16, u16) {
 
 /// pi's `createZipArchive`: a classic zip of deflated `files` with UTF-8
 /// names, stamped `(time, date)`.
-// shortcut: no ZIP64, so sizes over 4 GiB wrap; add ZIP64 if a report ever gets that large.
+// shortcut: no ZIP64, so sizes over 4 GiB wrap, add ZIP64 if a report ever gets that large.
 fn zip(files: &[(&str, String)], (time, date): (u16, u16)) -> io::Result<Vec<u8>> {
     let mut out = Vec::new();
     let mut directory = Vec::new();
@@ -575,7 +575,7 @@ fn zip(files: &[(&str, String)], (time, date): (u16, u16)) -> io::Result<Vec<u8>
         let mut crc = flate2::Crc::new();
         crc.update(data.as_bytes());
         let offset = out.len() as u32;
-        // From "version needed" to the extra field's length; both headers share it.
+        // From "version needed" to the extra field's length, which both headers share.
         let fields = |header: &mut Vec<u8>| {
             for value in [20, 0x0800, 8, time, date] {
                 header.extend(value.to_le_bytes());

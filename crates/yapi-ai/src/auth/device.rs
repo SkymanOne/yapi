@@ -37,7 +37,7 @@ pub(crate) fn positive(value: &Value) -> Option<f64> {
 pub(crate) enum Poll<T> {
     /// Not yet authorized.
     Pending,
-    /// Poll less often; the server may name the new interval.
+    /// Poll less often. The server may name the new interval.
     SlowDown(Option<f64>),
     /// The flow failed with this message.
     Failed(String),
@@ -130,7 +130,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(value, "token");
-        // 1 s before the first poll, 1 s after pending, 6 s after slow_down.
+        // 1s before the first poll, 1s after pending, 6s after slow_down.
         assert_eq!(started.elapsed().as_secs(), 8);
     }
 

@@ -174,7 +174,7 @@ impl yapi_core::extensions::ExtensionUi for Notes {
     }
 }
 
-/// Waits up to ten seconds for `done`, checking every 10 ms.
+/// Waits up to 10s for `done`, checking every 10 ms.
 pub async fn eventually(what: &str, done: impl Fn() -> bool) {
     for _ in 0..1000 {
         if done() {

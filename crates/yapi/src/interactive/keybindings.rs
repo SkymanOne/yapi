@@ -263,8 +263,8 @@ fn migrated_name(key: &str) -> &str {
         .map_or(key, |(_, id)| id)
 }
 
-/// Rewrites legacy action names; returns the document in definition order and
-/// whether anything changed. A new id beats its legacy name.
+/// Rewrites legacy action names. Returns the document in definition order,
+/// and whether anything changed. A new id beats its legacy name.
 pub fn migrate(raw: &Map<String, Value>) -> (Map<String, Value>, bool) {
     let mut config = Map::new();
     let mut migrated = false;

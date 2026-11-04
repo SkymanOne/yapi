@@ -5,8 +5,8 @@
 //! access token and, after a 401, try the stored refresh token. When that is
 //! not possible they fail with [`McpError::SignInRequired`], and the user
 //! signs in with `/mcp login` or `yapi mcp login`, which run the
-//! authorization code flow (PKCE, dynamic client registration) against a
-//! loopback callback.
+//! authorization code flow with Proof Key for Code Exchange (PKCE) and
+//! dynamic client registration against a loopback callback.
 //!
 //! Credentials live in `<agent-dir>/mcp-auth.json`, keyed by server name and
 //! URL, in pi's format, so pi and yapi share sign-ins.
@@ -104,8 +104,8 @@ impl CredentialStore {
         }
     }
 
-    /// Runs `change` on the stored states under the file lock; writes them
-    /// back when it returns true.
+    /// Runs `change` on the stored states under the file lock, and writes
+    /// them back when it returns true.
     async fn with_states<T>(
         &self,
         change: impl FnOnce(&mut Object) -> (T, bool),
@@ -134,7 +134,7 @@ impl CredentialStore {
         .await
     }
 
-    /// Removes the server's credentials; whether any were stored.
+    /// Removes the server's credentials. Returns whether any were stored.
     pub async fn remove(&self, name: &str, server_url: &str) -> Result<bool, McpError> {
         let (key, legacy) = store_keys(name, server_url);
         self.with_states(|states| {
@@ -245,7 +245,7 @@ fn callback_settings(settings: &OAuthConfig) -> CallbackSettings {
         _ => None,
     };
     CallbackSettings {
-        // `localhost` is served on 127.0.0.1; browsers fall back to it when ::1 refuses.
+        // `localhost` is served on 127.0.0.1, which browsers fall back to when ::1 refuses.
         host: if address == "localhost" {
             CALLBACK_HOST.to_owned()
         } else {
@@ -303,7 +303,7 @@ fn has_refresh_token(state: Option<&Object>) -> bool {
         .is_some_and(|token| !token.is_empty())
 }
 
-/// What a sign-in asks of the user; pi's `McpSignInPrompt`.
+/// pi's `McpSignInPrompt`: what a sign-in asks of the user.
 pub struct SignInPrompt {
     /// Shows the authorization URL and opens it in a browser.
     pub show_authorization_url: Box<dyn Fn(&str) + Send + Sync>,
@@ -329,8 +329,8 @@ pub struct McpAuth {
     server_url: String,
     store: ServerStore,
     config: OAuthConfig,
-    /// The server's last challenge; sign-in uses its resource metadata URL
-    /// and scope.
+    /// The server's last challenge, whose resource metadata URL and scope
+    /// sign-in uses.
     challenge: Mutex<Option<Challenge>>,
     refreshing: tokio::sync::Mutex<()>,
 }
@@ -525,7 +525,7 @@ impl McpAuth {
                 .and_then(|challenge| challenge.resource_metadata_url.clone()),
             authorization_server_metadata_url: settings.auth_server_metadata_url.clone(),
             scope: merge_scopes(&[settings.scope.as_deref(), granted, challenged]),
-            // A refresh keeps the granted scope; more scope needs the browser flow.
+            // A refresh keeps the granted scope, so more scope needs the browser flow.
             skip_refresh: step_up,
             ..FlowOptions::default()
         };

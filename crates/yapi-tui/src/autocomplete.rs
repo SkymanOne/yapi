@@ -34,7 +34,7 @@ pub struct Completion {
 
 /// Supplies and applies completions. Cursor columns are byte offsets.
 pub trait AutocompleteProvider {
-    /// Completions at the cursor; `force` is set for an explicit Tab outside a
+    /// Completions at the cursor. `force` is set for an explicit Tab outside a
     /// trigger context.
     fn suggestions(
         &self,
@@ -65,7 +65,7 @@ pub trait AutocompleteProvider {
     }
 
     /// Whether the last [`AutocompleteProvider::suggestions`] call is still
-    /// working in the background; the host asks again when it is done.
+    /// working in the background. The host asks again when it is done.
     fn pending(&self) -> bool {
         false
     }
@@ -95,7 +95,7 @@ pub struct CombinedProvider {
     base_path: PathBuf,
     fd_path: Option<PathBuf>,
     home: Option<PathBuf>,
-    /// The latest background `fd` search; see [`CombinedProvider::notify_with`].
+    /// The latest background `fd` search. See [`CombinedProvider::notify_with`].
     search: Arc<Mutex<Option<FileSearch>>>,
     /// Called from the search thread when its results are ready.
     notify: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -140,7 +140,7 @@ fn at_token_start(text: &str) -> bool {
         .is_none_or(is_autocomplete_separator)
 }
 
-/// Byte offset just past the last delimiter, or 0.
+/// Byte offset right after the last delimiter, or 0.
 fn after_last_delimiter(text: &str) -> usize {
     text.char_indices()
         .rfind(|(_, c)| is_path_delimiter(*c) || is_autocomplete_separator(*c))
@@ -284,7 +284,7 @@ struct FoundPath {
 }
 
 /// Runs `command` to completion unless `cancelled` is set first, which
-/// kills it; its output, or `None`.
+/// kills it. Returns its output, or `None`.
 fn run_cancellable(
     command: &mut std::process::Command,
     cancelled: &AtomicBool,
@@ -368,7 +368,7 @@ fn walk_with_fd(
 }
 
 /// pi's two `fd` passes for a fuzzy `@` query: direct children first, then
-/// the whole tree; `None` when cancelled.
+/// the whole tree. `None` when cancelled.
 fn search_with_fd(
     fd: &Path,
     base: &Path,
@@ -426,7 +426,7 @@ impl CombinedProvider {
     }
 
     /// Runs `@` file searches in the background, as pi does, calling
-    /// `notify` when one finishes; the host then asks for suggestions again.
+    /// `notify` when one finishes. The host then asks for suggestions again.
     /// Without it they run to completion before returning.
     pub fn notify_with(mut self, notify: Arc<dyn Fn() + Send + Sync>) -> CombinedProvider {
         self.notify = Some(notify);
@@ -645,7 +645,7 @@ impl CombinedProvider {
         suggestions
     }
 
-    /// pi's fuzzy `@` suggestions; `None` while their search runs.
+    /// pi's fuzzy `@` suggestions, or `None` while their search runs.
     fn fuzzy_file_suggestions(&self, query: &str, quoted: bool) -> Option<Vec<SelectItem>> {
         let Some(fd) = &self.fd_path else {
             return Some(Vec::new());

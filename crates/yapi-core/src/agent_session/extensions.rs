@@ -59,8 +59,8 @@ fn ui_prompt<'a>(kind: &'a str, title: Option<&'a str>) -> UiPrompt<'a> {
 }
 
 /// A loop event as pi's extension event (`_emitExtensionEvent` in pi's agent
-/// session), when `wanted` takes its type; `None` for events extensions do
-/// not see.
+/// session), when `wanted` takes its type, or `None` for events extensions
+/// do not see.
 fn extension_event(
     event: &AgentEvent,
     turn_index: u64,
@@ -157,8 +157,9 @@ impl AgentHooks for Hooks {
             if matches!(event, AgentEvent::TurnEnd { .. }) {
                 self.turn_index.fetch_add(1, Ordering::SeqCst);
             }
-            // As in pi, extensions see the event first, then listeners; then the
-            // session records it, so entries extensions append come before it.
+            // As in pi, extensions see the event first, then listeners. The
+            // session records it last, so entries extensions append come before
+            // it.
             if let Some(extension_event) =
                 extension_event(event, turn_index, |kind| session.has_handlers(kind))
             {
@@ -302,7 +303,7 @@ impl AgentHooks for Hooks {
     }
 
     fn auth<'a>(&'a self, model: &'a Model) -> BoxFuture<'a, Auth> {
-        // The registry is read under a short lock; credential commands run outside it.
+        // The registry is read under a short lock. Credential commands run outside it.
         let registry = self.session.registry();
         Box::pin(async move { registry.auth(model).await })
     }
@@ -631,7 +632,6 @@ impl AgentSession {
         (ui, mode)
     }
 
-    /// The extensions with handlers for pi events of type `kind`.
     /// Whether a result of `extension`'s `event` handler applies: always
     /// when `granted`, else never, and the extension is warned once per
     /// event that the result needs `missing`, such as the session grant.
@@ -837,7 +837,7 @@ impl AgentSession {
 
     /// pi's `emitContext`: `context` handlers see the conversation without
     /// system messages, which come back as the current prompt when they
-    /// change it; `context_with_system` handlers then see and return the
+    /// change it. `context_with_system` handlers then see and return the
     /// whole transcript.
     async fn context_handlers(
         &self,
@@ -899,7 +899,7 @@ impl AgentSession {
     }
 
     /// pi's `before_provider_headers`: the headers after handlers changed
-    /// them in place; a null value removes a header.
+    /// them in place. A null value removes a header.
     pub(super) async fn before_provider_headers(
         &self,
         headers: yapi_ai::stream::RequestHeaders,
@@ -919,7 +919,7 @@ impl AgentSession {
     }
 
     /// A blocking extension dialog of `kind` (`select`, `confirm`, `input`,
-    /// `editor` or `custom`) with `title` opens; extensions hear of the
+    /// `editor` or `custom`) with `title` opens. Extensions hear of the
     /// outermost as pi's `ui_prompt_start`.
     pub fn ui_prompt_opened(&self, kind: &str, title: Option<&str>) {
         let title = title.filter(|title| !title.is_empty()).map(str::to_owned);
@@ -937,7 +937,7 @@ impl AgentSession {
         )));
     }
 
-    /// A blocking extension dialog closed; when it was the outermost,
+    /// A blocking extension dialog closed. When it was the outermost,
     /// extensions hear of it as pi's `ui_prompt_end`.
     pub fn ui_prompt_closed(&self) {
         let (kind, title) = {
@@ -976,7 +976,7 @@ impl AgentSession {
 
     /// Sets the MCP servers that extension runtime `owner` registered, and
     /// announces `mcp_servers_change` when they changed after the extensions
-    /// started. Reports before then, as runtimes bind, hold the servers
+    /// started. Before then, as runtimes bind, the reports hold the servers
     /// registered while extensions loaded, which the MCP extension reads
     /// when the session starts. Nothing changes when a server's name, or its
     /// tools' namespace, belongs to another runtime, and the error is pi's
@@ -1367,7 +1367,7 @@ impl AgentSession {
         self.release_resources().await;
     }
 
-    /// Stops extensions before a session replaces this one for `reason`;
+    /// Stops extensions before a session replaces this one for `reason`.
     /// `target` is the replacement's session file, which pi does not report
     /// on reload.
     pub async fn shutdown_for(&self, reason: Replacement, target: Option<String>) {
@@ -1478,7 +1478,7 @@ impl AgentSession {
         crate::extensions::resolve_shortcuts(&self.inner.extensions, builtin)
     }
 
-    /// Runs an extension shortcut's handler; the error is the handler's.
+    /// Runs an extension shortcut's handler and returns the handler's error.
     pub async fn run_shortcut(
         &self,
         binding: &crate::extensions::ShortcutBinding,
@@ -1490,8 +1490,8 @@ impl AgentSession {
             .await
     }
 
-    /// The extensions' commands in load order, each with the name it is
-    /// invoked by; pi's `resolveRegisteredCommands`. A name registered more
+    /// pi's `resolveRegisteredCommands`: the extensions' commands in load
+    /// order, each with the name it is invoked by. A name registered more
     /// than once is invoked as `name:1`, `name:2` and so on.
     pub fn extension_commands(&self) -> Vec<crate::extensions::ResolvedCommand> {
         let all: Vec<(Arc<dyn Extension>, crate::extensions::Command)> = self
@@ -1587,8 +1587,8 @@ impl AgentSession {
             .any(|command| command.invocation == name)
     }
 
-    /// Runs `/name args` when an extension command is invoked by `name`;
-    /// whether it did. Errors are the extension's to report.
+    /// Runs `/name args` when an extension command is invoked by `name`, and
+    /// returns whether it did. Errors are the extension's to report.
     pub(super) async fn run_extension_command(&self, text: &str) -> bool {
         let Some(rest) = text.strip_prefix('/') else {
             return false;

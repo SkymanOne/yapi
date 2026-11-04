@@ -251,7 +251,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
         );
 
         // Headers: SDK defaults and auth, then pi's defaults, the model's and
-        // the caller's; later entries win and `None` removes.
+        // the caller's. Later entries win and `None` removes.
         let mut headers = Headers::default();
         headers.set("anthropic-version", Some("2023-06-01"));
         headers.set("content-type", Some("application/json"));
@@ -346,8 +346,7 @@ pub(super) async fn run(request: Request, sender: EventSender) {
     }
 }
 
-/// Bearer auth with a federated token, adding the OAuth beta to any others.
-/// The Anthropic SDK's message for a failed status, which carries the body.
+/// The Anthropic SDK's message for a failed status, which includes the body.
 fn sdk_message(status: u16, body: &str) -> String {
     match serde_json::from_str::<Value>(body) {
         Ok(json) => http::sdk_status_message(status, Some(&json), None),
@@ -355,6 +354,7 @@ fn sdk_message(status: u16, body: &str) -> String {
     }
 }
 
+/// Bearer auth with a federated token, adding the OAuth beta to any others.
 fn federated_headers(headers: &mut Headers, token: &str) {
     headers.set("authorization", Some(format!("Bearer {token}")));
     let beta = headers.get("anthropic-beta").map(str::to_owned);
