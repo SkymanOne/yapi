@@ -23,7 +23,7 @@ To use the skills without the rest of the repository, copy their folders into a 
 cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 ```
 
-With [chest](chest.md), add the skills to a project's `chest.toml`, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:
+With [chest](chest-skills.md), add the skills to a project's `chest.toml`, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:
 
 ```sh
 chest add git:github.com/SkymanOne/yapi@v0.3.1 --skill --name yapi-skills

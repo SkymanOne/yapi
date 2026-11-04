@@ -16,7 +16,7 @@ The [Quickstart](quickstart.md) covers installation, connecting a model and a fi
 ## Customize yapi
 
 - [Packages](packages.md) bundle extensions, skills, prompt templates and themes, and install from npm, git or a local path.
-- [chest](chest.md) pins a project's skills, subagents and extensions in a manifest and lock, with capabilities per extension, for yapi and other agents.
+- [chest](chest.md) pins a project's skills, subagents and extensions in a manifest and lock. Skills and subagents work with any agent. Extensions load in yapi, each with the capabilities its entry grants.
 - [MCP servers](mcp.md) connect external tools.
 - [Extensions](extensions.md) add tools, commands, event handlers and interface components. Pi extensions run unchanged, and [native extensions](native-extensions.md) are written in Rust. [Choose an extension type](extensions.md#choose-an-extension-type) compares the two.
 

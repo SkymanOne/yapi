@@ -115,7 +115,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 ```
 
-`chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports `wasi:sockets` or `wasi:http`. yapi does not provide `wasi:http`, so such a component does not load, and it refuses every `wasi:sockets` call. Reach the network through the SDK's `fetch` with the `net` feature. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [chest](chest.md#publish-skills-subagents-and-extensions).
+`chest check` fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports `wasi:sockets` or `wasi:http`. yapi does not provide `wasi:http`, so such a component does not load, and it refuses every `wasi:sockets` call. Reach the network through the SDK's `fetch` with the `net` feature. A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [Check a native extension](chest-publish.md#check-a-native-extension).
 
 Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.
 

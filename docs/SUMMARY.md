@@ -20,8 +20,18 @@
 
 - [Configure yapi](configuration.md)
 - [Use packages](packages.md)
-- [Manage project packages with chest](chest.md)
 - [Connect MCP servers](mcp.md)
+
+# Manage packages with chest
+
+- [Get started with chest](chest.md)
+- [Share skills and subagents](chest-skills.md)
+- [Run yapi extensions](chest-extensions.md)
+- [Lock, verify and update](chest-lock.md)
+- [Environments, global packages and patches](chest-environments.md)
+- [Publish a package](chest-publish.md)
+- [chest commands](chest-commands.md)
+- [chest.toml reference](chest-manifest.md)
 
 # Build on yapi
 
@@ -33,7 +43,6 @@
 # Reference
 
 - [Differences from Pi](compat.md)
-- [chest.toml reference](chest-manifest.md)
 - [Roadmap](roadmap.md)
 - [Performance](performance.md)
 - [Troubleshooting](troubleshooting.md)

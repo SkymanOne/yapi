@@ -120,7 +120,7 @@ chest install --frozen                       # CI: fail on drift, write nothing
 chest verify                                 # check installed copies against the lock
 ```
 
-`all` is the only capability that runs programs, and it is full access. See https://skymanone.github.io/yapi/chest.html.
+Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it is full access. See https://skymanone.github.io/yapi/chest.html and https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities.
 
 ## Troubleshooting
 

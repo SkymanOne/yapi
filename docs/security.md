@@ -108,7 +108,7 @@ When routing keeps an event from an extension that listens on its channel, yapi 
 
 ## Project trust
 
-Files in a project's `.yapi` folder can change how yapi behaves and can run code: `settings.json`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md`, as well as an `.agents/skills` folder in the project or a parent folder, and a [chest](packages.md#project-packages-with-chest) manifest that installs anything. Until the project is trusted, yapi loads none of them, and no project extension runs.
+Files in a project's `.yapi` folder can change how yapi behaves and can run code: `settings.json`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md`, as well as an `.agents/skills` folder in the project or a parent folder, and a [chest](chest-extensions.md#how-yapi-loads-a-manifest) manifest that installs anything. Until the project is trusted, yapi loads none of them, and no project extension runs.
 
 The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.
 

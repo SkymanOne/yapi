@@ -15,7 +15,7 @@
 
 # yapi
 
-yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](https://pi.dev) `v1.0.0`, reads Pi's settings, sessions, credentials and packages without conversion, and ships as a single native binary with no Node.js dependency. It also ships `chest`, a package manager for skills, subagents and extensions.
+yapi is a coding agent for the terminal, written in Rust. It reimplements [Pi](https://pi.dev) `v1.0.0`, reads Pi's settings, sessions, credentials and packages without conversion, and ships as a single native binary with no Node.js dependency. It also ships [`chest`](#manage-packages-with-chest), a package manager for skills, subagents and extensions that works with other agents too.
 
 ![yapi in a terminal, answering a question about this repository](assets/screenshot.png)
 
@@ -61,15 +61,18 @@ Compatibility is tested against Pi itself. All 79 of Pi's example extensions, an
 
 Pi extensions in TypeScript or JavaScript run unchanged in a bundled QuickJS-NG runtime, so existing Pi packages work without Node.js. Native extensions are written in Rust and compiled to WebAssembly components. They run in an instance of their own as compiled code, at the cost of a build step and an API that is unstable until yapi 1.0. `yapi new` creates one. [Choose an extension type](https://skymanone.github.io/yapi/extensions.html#choose-an-extension-type) compares the two.
 
-## Project packages with chest
+## Manage packages with chest
 
-`chest` keeps a project's skills, subagents and extensions in one manifest, `chest.toml`, and pins what they resolved to in a lock, `chest.lock`, with a content hash of every installed item. Each extension runs with only the capabilities its entry grants. Skills and subagents go into the folders each agent reads, so one manifest serves yapi, Claude Code, Codex and other agents.
+`chest` is a package manager for coding agents. It installs with yapi as a separate binary, and you can use it without yapi. List a project's skills, subagents and extensions in `chest.toml`. chest pins what they resolved to in `chest.lock`, with a content hash for every installed item. Commit both files, and everyone who clones the project installs the same set.
+
+- **Any agent.** chest places skills and subagents in the folders each agent reads, such as `.agents/skills` and `.claude/skills`. One manifest serves Claude Code, Codex, Cursor, GitHub Copilot, OpenCode and yapi. The lock, `chest install --frozen` in CI, `chest verify` and `chest update` work the same for all of them.
+- **yapi only.** Extensions, both Pi packages and native WebAssembly extensions, load only in yapi. Each one runs with only the capabilities its entry grants. yapi also puts back missing locked entries when it starts in a trusted project.
 
 ```sh
-chest init
-chest add git:github.com/anthropics/skills --path skills/pdf
-chest add npm:@acme/pi-subagent --grant all
-chest install --frozen    # in CI, or after cloning
+chest init                                                     # chest.toml with folders for the agents it finds
+chest add git:github.com/anthropics/skills --path skills/pdf   # a skill, for any agent
+chest add git:github.com/acme/pi-todo@4f1c2e9 --grant fs       # an extension, for yapi
+chest install --frozen                                         # in CI, or after cloning
 ```
 
 ```toml
@@ -83,7 +86,7 @@ pdf = { git = "https://github.com/anthropics/skills", rev = "v1.2.0", path = "sk
 todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"] }
 ```
 
-[Manage project packages with chest](https://skymanone.github.io/yapi/chest.html) is the guide.
+[Learn how to use chest](https://skymanone.github.io/yapi/chest.html)
 
 ## Security model and sandboxing
 

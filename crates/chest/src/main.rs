@@ -1,6 +1,6 @@
 //! `chest`: one manifest and lock for agent skills, subagents and yapi
 //! extensions, built on the engine in `yapi_core::chest`. The commands and
-//! their exit codes are described in docs/chest.md.
+//! their exit codes are described in docs/chest-commands.md.
 
 mod add;
 mod check;

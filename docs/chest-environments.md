@@ -1,0 +1,65 @@
+# Environments, global packages and patches
+
+> **Any agent**, except the sections marked yapi only.
+
+## Keep a manifest per environment
+
+> **Any agent.**
+
+A manifest's lock sits beside it, with `.lock` in place of `.toml`. Keep an environment's entries in a separate, complete manifest, such as `chest.dev.toml`, which locks in `chest.dev.lock`. Select it with `--manifest`:
+
+```sh
+chest --manifest chest.dev.toml install
+```
+
+`CHEST_MANIFEST` sets the default for `--manifest`, as a file name or a path inside the current folder. A value that is absolute, starts with `~` or uses `..` is an error. `-g` ignores the variable.
+
+```sh
+export CHEST_MANIFEST=chest.dev.toml
+chest install
+```
+
+Several manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`.
+
+## How yapi reads `CHEST_MANIFEST`
+
+> **yapi only.** Other agents read only the folders chest fills, so the variable means nothing to them.
+
+yapi reads the same variable, relative to the project folder, and loads only a manifest inside the project. For a value that is absolute, starts with `~` or uses `..`, yapi warns and loads no project manifest. The global manifest still loads. chest refuses the same values, so chest and yapi always agree on the manifest. [Configure yapi](configuration.md#chest) lists the files yapi reads.
+
+## Global packages
+
+> **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project.
+
+`-g` uses `~/.chest/chest.toml` instead of the project's manifest. Its folders can be anywhere under your home folder, such as `~/.claude/skills`. Its extensions go to `~/.chest/store`, and it writes no `.gitignore`. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.
+
+With `-g`, `chest init` looks for each agent's folder in your home folder:
+
+| Agent | Found by | Skills | Subagents |
+|---|---|---|---|
+| Agent Skills (Codex, Cursor, Copilot, OpenCode, Pi) | `~/.agents` | `~/.agents/skills` | |
+| Claude Code | `~/.claude` | `~/.claude/skills` | `~/.claude/agents` |
+| Codex | `~/.codex` | `~/.agents/skills` | `~/.codex/agents` |
+| Cursor | `~/.cursor` | `~/.cursor/skills` | `~/.cursor/agents` |
+| GitHub Copilot | `~/.copilot` | `~/.copilot/skills` | `~/.copilot/agents` |
+| OpenCode | `~/.config/opencode` | `~/.config/opencode/skills` | `~/.config/opencode/agent` |
+| yapi | `~/.yapi` | `~/.agents/skills` | `~/.yapi/agent/agents` |
+
+When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`.
+
+For both the project and the global manifest, chest keeps its download cache and its record of what it placed in `~/.chest`.
+
+## Develop a package locally
+
+> **Any agent.**
+
+`[patch]` installs an entry from a local folder instead of its source, without changing the lock:
+
+```toml
+[patch]
+todo = { path = "../pi-todo" }
+```
+
+A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself. It also refuses an extension's path source or patch whose folder is or holds the home folder, the agent folder, the filesystem's root or the project, because the extension could load any file there.
+
+yapi loads a patched entry without a lock entry, as [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) describes.

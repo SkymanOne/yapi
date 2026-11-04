@@ -24,11 +24,11 @@ yapi found no credentials. Set a provider's API key or run `/login`. See [Choose
 
 ## A chest lock is stale
 
-chest warns that entries are not locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` does not pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`. `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. See [Lock and reproduce](chest.md#lock-and-reproduce).
+chest warns that entries are not locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` does not pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`. `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. See [Lock, verify and update](chest-lock.md).
 
 ## An extension's call is refused
 
-An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant. Packages from `yapi install` have every grant. For an extension from a [chest](packages.md#project-packages-with-chest) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
+An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant. Packages from `yapi install` have every grant. For an extension from a [chest](chest-extensions.md#grant-capabilities) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
 
 ## An extension misses events
 

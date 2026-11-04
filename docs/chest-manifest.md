@@ -1,8 +1,12 @@
 # chest.toml reference
 
-This page lists every key of `chest.toml`, the rules chest checks, and the format of `chest.lock`. [Manage project packages with chest](chest.md) shows how to use them.
+> **Any agent**, except the keys and sections marked yapi only.
+
+This page lists every key of `chest.toml`, the rules chest checks, and the format of `chest.lock`. [Get started with chest](chest.md) and the pages after it show how to use them.
 
 ## Which manifest
+
+> **Any agent.** yapi reads `CHEST_MANIFEST` too, as [How yapi reads CHEST_MANIFEST](chest-environments.md#how-yapi-reads-chest_manifest) describes.
 
 - chest uses `chest.toml` in the current folder, and only there.
 - `--manifest <path>` names another, and `CHEST_MANIFEST` sets the default for it.
@@ -14,6 +18,8 @@ Paths in a manifest are relative to the manifest's folder. A project manifest ke
 
 ## `capabilities-defaults`
 
+> **yapi only.**
+
 A list of capabilities that every `[extensions]` entry of this manifest gets on top of its own. Default: none.
 
 ```toml
@@ -21,6 +27,8 @@ capabilities-defaults = ["env"]
 ```
 
 ## `[folders]`
+
+> **Any agent**, except `extensions`, the store that only yapi loads from.
 
 | Key | Type | Meaning |
 |---|---|---|
@@ -38,6 +46,8 @@ extensions = ".yapi/chest"
 Each folder must name a folder, so `.` is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without `..` or `~`. A section with entries needs its folders set.
 
 ## `[skills]`, `[agents]` and `[extensions]`
+
+> **Any agent**, except `[extensions]` and the extension keys, which only yapi loads.
 
 Each entry is a name with an inline table, or a `[section.name]` table. The source is one of these:
 
@@ -61,6 +71,10 @@ reviewer = { git = "github.com/acme/agents", rev = "main", path = "reviewer.md" 
 - `path` inside a git or npm package stays inside it, without `..`. A path source may use `..` to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with `~`.
 - With `path`, a skills or agents entry installs one item under the entry's name. A subagent is a `.md` file, placed as `<name>.md`. Without `path`, it installs every skill or subagent the package provides, each under its own name.
 
+### Extension keys
+
+> **yapi only.**
+
 Extension entries take three more kinds of keys:
 
 | Key | Type | Meaning |
@@ -80,6 +94,8 @@ An extension from a path loads where it is. Others install into the store. A git
 
 ## `[patch]`
 
+> **Any agent.**
+
 A patch installs an entry from a local path instead of its source. It takes `path` only, and the lock keeps what it recorded for the entry.
 
 ```toml
@@ -88,6 +104,8 @@ todo = { path = "../pi-todo" }
 ```
 
 ## `[package]`
+
+> **Any agent**, except `capabilities`, `events`, and the `extensions`, `prompts` and `themes` lists, which only yapi uses.
 
 What a package says about itself. Every key is optional.
 
@@ -103,12 +121,16 @@ What a package says about itself. Every key is optional.
 
 ## Names and paths
 
+> **Any agent.**
+
 - Entry names match `[a-z0-9][a-z0-9._-]*` and are unique across `[skills]`, `[agents]` and `[extensions]`.
 - Unknown keys are errors. Errors name the entry and the key, as in this one for a path entry with a revision: skills.notes: `rev` needs `git`.
 - Every item a package provides, and every `path` inside a git or npm package, must lie inside the package once links are followed.
 - A skill holding a symbolic link is refused.
 
 ## Capabilities
+
+> **yapi only.**
 
 | Capability | Allows |
 |---|---|
@@ -127,6 +149,8 @@ What a package says about itself. Every key is optional.
 
 ## Event bus
 
+> **yapi only.**
+
 An event from extension S on channel C reaches extension R when S and R have identical grants, or when S may send C and R may hear C.
 
 | `events` | Sends | Hears |
@@ -139,6 +163,8 @@ A pattern is a channel name, a prefix ending in `*` such as `todo:*`, or `*` for
 
 ## Package metadata
 
+> **Any agent**, except capabilities, which only yapi uses.
+
 For each kind of resource, the first of these that lists it wins: the package's `chest.toml` `[package]`, then `package.json`'s `yapi` key, then its `pi` key. When a `pi` key exists, or `[package]` or `yapi` lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: `skills`, `agents`, `extensions`, `prompts` and `themes`.
 
 Capabilities come from `[package]`, else `yapi.capabilities`, else none. Name, version, description and authors come from `[package]`, else from `package.json`.
@@ -146,6 +172,8 @@ Capabilities come from `[package]`, else `yapi.capabilities`, else none. Name, v
 chest reports a package's `chest.toml` that does not parse, or a `[package]` with an unknown key, and `chest check` and `chest add` fail on it. yapi warns about it and resolves the package as if the file were absent.
 
 ## `chest.lock`
+
+> **Any agent.**
 
 chest writes the lock. Do not edit it. It holds `version = 1` and one table per entry, in `[[skill]]`, `[[agent]]` and `[[extension]]`, sorted by name:
 

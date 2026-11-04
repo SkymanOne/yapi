@@ -63,7 +63,7 @@ Use `/resume` to choose another session. See [Manage sessions](sessions.md).
 - [Use yapi in the terminal](interactive.md) covers keys, commands and queued messages.
 - [Configure yapi](configuration.md) covers settings and project instructions in `AGENTS.md`.
 - [Coming from Pi](migrating.md) shows how to copy a Pi setup with `yapi import pi`.
-- [Manage project packages with chest](chest.md) pins a project's skills, subagents and extensions so everyone who clones it gets the same set.
+- [Get started with chest](chest.md) shows how to pin a project's skills, subagents and extensions so everyone who clones it gets the same set. Skills and subagents work with any agent.
 
 ### Choose how to customize yapi
 
