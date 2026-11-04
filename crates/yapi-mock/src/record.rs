@@ -46,7 +46,7 @@ pub(crate) struct Recorder {
     recorded: Vec<Interaction>,
 }
 
-/// Where to forward requests; cheap to clone out of the server state.
+/// Where to forward requests, cheap to clone out of the server state.
 #[derive(Clone, Debug)]
 pub(crate) struct Upstream {
     base: Arc<str>,

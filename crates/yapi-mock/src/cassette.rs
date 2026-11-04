@@ -79,7 +79,7 @@ pub struct RequestMatch {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Response {
-    /// HTTP status code; 200 when omitted. 101 makes the interaction a
+    /// HTTP status code, 200 when omitted. 101 makes the interaction a
     /// WebSocket exchange: it answers one message from the client on a socket
     /// upgraded at the request's method and path, the message is the recorded
     /// request's body, and each chunk is a text message sent in reply. An
@@ -89,7 +89,7 @@ pub struct Response {
     /// Response headers in order. The server chooses the transfer encoding.
     #[serde(default)]
     pub headers: IndexMap<String, String>,
-    /// Body chunks; for SSE, events may span chunk boundaries.
+    /// Body chunks. Server-sent events may span chunk boundaries.
     #[serde(default)]
     pub chunks: Vec<String>,
     /// A binary body, base64-encoded, sent after the chunks.

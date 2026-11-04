@@ -87,13 +87,13 @@ pub struct RecordedRequest {
     pub method: String,
     /// Path without the query string.
     pub path: String,
-    /// Query string without the leading `?`; key parameters are redacted.
+    /// Query string without the leading `?`, with key parameters redacted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
-    /// Headers with lowercase names; repeated headers are joined with `, `.
+    /// Headers with lowercase names. Repeated headers are joined with `, `.
     /// Credential headers hold [`REDACTED`].
     pub headers: IndexMap<String, String>,
-    /// Body as text; invalid UTF-8 is replaced.
+    /// Body as text, with invalid UTF-8 replaced.
     pub body: String,
 }
 
@@ -140,8 +140,8 @@ enum Mode {
 }
 
 impl MockServer {
-    /// Starts serving `cassette` on `addr`; port 0 picks a free port. Must be called
-    /// inside a Tokio runtime.
+    /// Starts serving `cassette` on `addr`, where port 0 picks a free port. Must be
+    /// called inside a Tokio runtime.
     pub async fn start(addr: SocketAddr, cassette: Cassette) -> Result<Self, Error> {
         Self::listen(addr, |_| Mode::Replay(cassette.interactions.into())).await
     }
@@ -206,7 +206,7 @@ impl MockServer {
         lock(&self.state).requests.clone()
     }
 
-    /// Interactions recorded so far, as a cassette; empty when replaying. An
+    /// Interactions recorded so far, as a cassette, or empty when replaying. An
     /// interaction is added once its response has been fully received.
     pub fn recording(&self) -> Cassette {
         match &lock(&self.state).mode {
@@ -260,7 +260,7 @@ async fn accept(listener: TcpListener, state: Arc<Mutex<State>>) {
         let state = Arc::clone(&state);
         connections.spawn(async move {
             let service = service_fn(move |request| respond(Arc::clone(&state), request));
-            // A client closing mid-stream ends the connection with an error; that is
+            // A client closing mid-stream ends the connection with an error, which is
             // the client's choice, not a cassette mismatch.
             let _ = http1::Builder::new()
                 .serve_connection(TokioIo::new(stream), service)
