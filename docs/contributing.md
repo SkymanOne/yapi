@@ -81,7 +81,15 @@ A release takes these steps, in order:
 5. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
 6. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
 7. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run doesn't prove main's. A flaky test is a bug to fix, not a run to repeat.
-8. Push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive. Then it publishes `yapi-types`, `yapi-tui`, `yapi-ai`, `yapi-agent`, `yapi-core`, `chest-cli` and `yapi-extension-api` to crates.io with trusted publishing, so the repository stores no token. It skips each crate that crates.io already has at its version. Each crate has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
+8. Create the tag `v<version>` on the merge commit, signed with your key, and push it. Sign it before you push it, because pushing a replacement starts the Release workflow again:
+
+   ```sh
+   git tag -s v<version> -m "yapi <version>" <merge commit>
+   git verify-tag v<version>
+   git push origin v<version>
+   ```
+
+   The Release workflow builds and publishes the binaries and the documentation archive. Then it publishes `yapi-types`, `yapi-tui`, `yapi-ai`, `yapi-agent`, `yapi-core`, `chest-cli` and `yapi-extension-api` to crates.io with trusted publishing, so the repository stores no token. It skips each crate that crates.io already has at its version. Each crate has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
 
 ### Publish a new crate for the first time
 
