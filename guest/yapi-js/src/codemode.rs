@@ -70,7 +70,7 @@ fn method<'js>(
     Ok((This(api), method))
 }
 
-/// The prelude's `bridge(kind, a, b, c)`; called with primitives only.
+/// The prelude's `bridge(kind, a, b, c)`, called with primitives only.
 fn bridge(kind: String, args: Rest<Value<'_>>) {
     let arg = |index: usize| args.0.get(index);
     match kind.as_str() {

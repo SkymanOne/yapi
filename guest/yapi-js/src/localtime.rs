@@ -78,7 +78,7 @@ pub unsafe extern "C" fn localtime_r(time: *const i64, tm: *mut Tm) -> *mut Tm {
     };
     let local = time.saturating_add(i64::from(offset));
     // SAFETY: `local` lives through the call and the caller passes a valid
-    // `tm`; `gmtime_r` returns it filled in, or null.
+    // `tm`. `gmtime_r` returns it filled in, or null.
     unsafe {
         let result = gmtime_r(&local, tm);
         if !result.is_null() {
