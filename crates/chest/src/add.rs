@@ -305,7 +305,7 @@ fn grants(
 }
 
 /// The event policy the person picks: shared, the declared channels, or
-/// isolated. Shared, unasked.
+/// isolated. Shared when chest asks nothing.
 fn events(prompt: &Prompt, meta: &PackageMeta) -> Option<EventPolicy> {
     if !prompt.interactive() {
         return None;
