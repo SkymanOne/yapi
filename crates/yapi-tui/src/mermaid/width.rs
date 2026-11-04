@@ -6,9 +6,10 @@
 //! sized for exactly what gets drawn into it. Splitting those two (sizing by
 //! cluster but painting by code point) makes `👨‍👩‍👧` overflow its border.
 //!
-//! Clustering follows UAX #29 through `unicode-segmentation`, which handles ZWJ
-//! sequences, skin-tone modifiers, variation selectors, keycaps, flags and
-//! Hangul. Per-code-point widths come from the table in `width_data.rs`.
+//! Clustering follows UAX #29 (Unicode Text Segmentation) through
+//! `unicode-segmentation`, which handles ZWJ (zero-width joiner) sequences,
+//! skin-tone modifiers, variation selectors, keycaps, flags and Hangul.
+//! Per-code-point widths come from the table in `width_data.rs`.
 
 use super::width_data::WIDTHS;
 use unicode_segmentation::UnicodeSegmentation;
@@ -19,7 +20,7 @@ fn is_regional_indicator(cp: u32) -> bool {
     (0x1f1e6..=0x1f1ff).contains(&cp)
 }
 
-/// Width of one code point; the table covers the whole code point space.
+/// Width of one code point. The table covers the whole code point space.
 fn code_point_width(cp: u32) -> usize {
     let (mut lo, mut hi) = (0usize, WIDTHS.len());
     while lo < hi {

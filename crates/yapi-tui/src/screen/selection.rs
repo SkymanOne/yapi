@@ -3,10 +3,10 @@
 //!
 //! Port of the mouse handling of `packages/tui/src/tui-alt-screen.ts` in pi
 //! `v1.0.0`. A press starts a selection in the transcript, in content rows
-//! so it scrolls with the text, or on the screen elsewhere; a drag extends
-//! it and scrolls the transcript while held at its edge; a release finishes
-//! it. Double and triple clicks select words and lines. Components under the
-//! pointer get presses, clicks and the wheel first.
+//! so it scrolls with the text, or on the screen elsewhere. A drag extends
+//! it and scrolls the transcript while held at its edge, and a release
+//! finishes it. Double and triple clicks select words and lines. Components
+//! under the pointer get presses, clicks and the wheel first.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -76,8 +76,8 @@ pub(super) struct Selection {
     autoscroll: Option<(isize, usize, usize, Instant)>,
     /// The pointer moved since the press.
     dragged: bool,
-    /// The link under the press, opened if it ends as a click; pi's
-    /// `pressedUrl`.
+    /// The link under the press, opened if it ends as a click (pi's
+    /// `pressedUrl`).
     url: Option<Arc<str>>,
     /// A press a component took: where, and whether the pointer moved since.
     press: Option<(usize, usize, bool)>,
@@ -123,7 +123,7 @@ pub struct MouseEvent {
     /// as pi's scroll view passes its content row to the chat.
     pub row: Option<usize>,
     /// For a click, pi's `clickCount`: 1, 2 or 3 for a single, double or
-    /// triple click; 0 otherwise.
+    /// triple click, or 0 otherwise.
     pub clicks: u8,
 }
 
@@ -158,7 +158,7 @@ pub struct WheelScroll {
 const BURST_GAP_MS: f64 = 5.0;
 /// A longer pause ends a spin.
 const GESTURE_GAP_MS: f64 = 200.0;
-/// The average gap that scrolls one row per event; faster spins scale up.
+/// The average gap that scrolls one row per event. Faster spins scale up.
 const REFERENCE_GAP_MS: f64 = 100.0;
 const MAX_AUTO_LINES: f64 = 6.0;
 
@@ -280,7 +280,7 @@ impl AltScreen {
             clicks,
         };
         if button & 64 != 0 {
-            // Wheel up or down; horizontal wheels do nothing.
+            // Wheel up or down. Horizontal wheels do nothing.
             let direction = match button & 3 {
                 0 => -1,
                 1 => 1,
@@ -339,7 +339,7 @@ impl AltScreen {
             self.selection.press = Some((x, y, false));
             return MouseAction::Handled;
         }
-        // The left button; some terminals release with button 3.
+        // The left button. Some terminals release with button 3.
         if button & 3 != 0 && !(release && button & 3 == 3) {
             return MouseAction::Handled;
         }
@@ -423,7 +423,7 @@ impl AltScreen {
 
     /// pi's handling of a pointer move with no button held, which changes
     /// only the scrollbar's hover: for such a report, whether that changed,
-    /// so the screen needs drawing; `None` for any other input.
+    /// so the screen needs drawing. `None` for any other input.
     pub fn pointer_moved(&mut self, data: &str) -> Option<bool> {
         let (button, x, y, release) = parse(data)?;
         if release
@@ -537,7 +537,7 @@ impl AltScreen {
         self.scroll_to(top);
     }
 
-    /// The selected text, one line per row without trailing whitespace;
+    /// The selected text, one line per row without trailing whitespace, or
     /// `None` when nothing is selected. `transcript` is the one last drawn.
     pub fn selected_text(&self, transcript: &[StyledLine]) -> Option<String> {
         let (start, end) = self.bounds()?;

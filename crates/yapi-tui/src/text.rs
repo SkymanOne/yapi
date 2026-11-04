@@ -1,14 +1,15 @@
 //! Display width, truncation and character classes shared by the widgets.
 //!
 //! Ports of the helpers in `packages/tui/src/utils.ts` in pi `v1.0.0` that
-//! apply to plain text; styled text is handled by ratatui spans.
+//! apply to plain text. ratatui spans handle styled text.
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// Terminal columns occupied by `text`, which has no escape sequences.
 pub fn visible_width(text: &str) -> usize {
-    // Printable ASCII is one column per byte; skips grapheme segmentation, as pi does.
+    // Printable ASCII is one column per byte, so this skips grapheme
+    // segmentation, as pi does.
     if text.bytes().all(|b| (0x20..0x7f).contains(&b)) {
         return text.len();
     }
@@ -180,7 +181,7 @@ pub(crate) fn is_cjk(c: char) -> bool {
     )
 }
 
-/// Whether a grapheme contains a CJK character.
+/// Whether a grapheme contains a CJK (Chinese, Japanese and Korean) character.
 pub(crate) fn has_cjk(text: &str) -> bool {
     text.chars().any(is_cjk)
 }

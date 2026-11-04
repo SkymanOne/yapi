@@ -106,7 +106,7 @@ impl KeyboardProtocol {
         }
     }
 
-    /// Takes one input sequence. Negotiation replies are consumed; anything to
+    /// Takes one input sequence. Negotiation replies are consumed. Anything to
     /// send to the terminal is appended to `write`.
     pub fn filter(&mut self, sequence: &str, write: &mut String) -> Filtered {
         let mut forward = Vec::new();
@@ -221,7 +221,7 @@ fn osc_color(value: &str) -> Option<[f64; 3]> {
     Some([hex_channel(r)?, hex_channel(g)?, hex_channel(b)?])
 }
 
-/// Which color an OSC reply reports.
+/// Which color an OSC (Operating System Command) reply reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ColorTarget {
     /// OSC 10.
@@ -232,7 +232,7 @@ pub(crate) enum ColorTarget {
     Palette(usize),
 }
 
-/// Parses an OSC 10, 11 or 4 reply; the color is `None` when unparseable.
+/// Parses an OSC 10, 11 or 4 reply. The color is `None` when unparseable.
 pub(crate) fn parse_osc_color(sequence: &str) -> Option<(ColorTarget, Option<[f64; 3]>)> {
     let body = sequence.strip_prefix("\x1b]")?;
     let body = body
@@ -279,7 +279,7 @@ impl ColorQuery {
         self.done
     }
 
-    /// Takes a sequence; returns whether it was a reply to this query.
+    /// Takes a sequence and returns whether it was a reply to this query.
     pub fn consume(&mut self, sequence: &str) -> bool {
         if self.done {
             return false;
@@ -371,8 +371,8 @@ impl Drop for RawMode {
     }
 }
 
-/// Stops the process group, as the terminal's suspend key would; returns once
-/// the group is continued.
+/// Stops the process group, as the terminal's suspend key would, and returns
+/// once the group is continued.
 #[cfg(unix)]
 pub fn suspend() {
     let _ = rustix::process::kill_current_process_group(rustix::process::Signal::TSTP);

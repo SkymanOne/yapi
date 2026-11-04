@@ -5,7 +5,7 @@
 //! Follows the Sugiyama outline: assign ranks along the flow axis, reorder
 //! within ranks to cut crossings, then relax positions on the cross axis so
 //! chains stay straight. Edges between adjacent ranks share horizontal "bus"
-//! rows; everything else is routed around the diagram through vertical "lanes".
+//! rows. Everything else is routed around the diagram through vertical "lanes".
 //!
 //! `BT` and `RL` reuse the `TD`/`LR` layouts and flip the finished canvas, so
 //! text never ends up mirrored.
@@ -31,7 +31,7 @@ pub(super) const MAX_CANVAS_CELLS: usize = 1 << 21;
 /// A laid-out canvas, or `None` when the diagram is empty or over the cell cap.
 pub(super) type CanvasResult = Option<Canvas>;
 
-/// Saturating subtraction; Rust's `usize` arithmetic never goes negative.
+/// Saturating subtraction, as Rust's `usize` arithmetic never goes negative.
 pub(super) fn sat(a: usize, b: usize) -> usize {
     a.saturating_sub(b)
 }
@@ -71,7 +71,7 @@ pub(super) enum NodeExtra {
 struct RoutePlan {
     canvas_w: usize,
     canvas_h: usize,
-    /// Coordinate just past each rank's boxes, where its bus rows begin.
+    /// Coordinate right after each rank's boxes, where its bus rows begin.
     band_end: Vec<usize>,
     /// Bus track offset per edge.
     edge_bus: Vec<usize>,
@@ -308,7 +308,7 @@ fn assign_positions(
         min_left = 0.0;
     }
     // `f64::round` and `Math.round` agree on the non-negative values that
-    // survive the clamp; a negative one clamps to zero either way.
+    // survive the clamp. A negative one clamps to zero either way.
     (0..n)
         .map(|v| (pos[v] - min_left).round().max(0.0) as usize)
         .collect()
@@ -423,7 +423,7 @@ fn bus_spans(
     out
 }
 
-/// Edges skipping a rank or running backwards; these go around in a lane.
+/// Edges skipping a rank or running backwards, which go around in a lane.
 fn lane_spans(graph: &Graph, ranks: &[usize], placed: &[Placed], vertical: bool) -> Vec<Span5> {
     let mut out = Vec::new();
     for (i, e) in graph.edges.iter().enumerate() {
@@ -471,7 +471,8 @@ fn place_td(
     let rank_h: Vec<usize> = by_rank
         .iter()
         .map(|row| {
-            // An empty rank cannot arise from `compute_ranks`; 3 mirrors the source.
+            // An empty rank cannot arise from `compute_ranks`. The 3 mirrors
+            // the source.
             row.iter()
                 .map(|&i| sizes.box_h[i] + sizes.extra_h[i])
                 .max()
@@ -867,8 +868,8 @@ type ScopeEdges = HashMap<Option<usize>, Vec<(ItemKey, ItemKey, usize)>>;
 /// Lay out a flowchart that uses `subgraph`.
 ///
 /// Each subgraph becomes a framed box holding its own independently laid-out
-/// canvas. An edge is drawn in the innermost scope containing both endpoints;
-/// one crossing a subgraph boundary attaches to the frame instead of the node.
+/// canvas. An edge is drawn in the innermost scope containing both endpoints.
+/// One crossing a subgraph boundary attaches to the frame instead of the node.
 pub(super) fn layout_grouped(graph: &Graph) -> CanvasResult {
     // A node whose id matches a subgraph id stands in for that subgraph.
     let mut proxy: HashMap<usize, usize> = HashMap::new();
@@ -895,7 +896,7 @@ pub(super) fn layout_grouped(graph: &Graph) -> CanvasResult {
         }
     };
 
-    // Edges bucketed by the scope that draws them; `None` is the top level.
+    // Edges bucketed by the scope that draws them, where `None` is the top level.
     let mut scope_edges: ScopeEdges = HashMap::new();
     let mut referenced = vec![false; graph.groups.len()];
     for (ei, e) in graph.edges.iter().enumerate() {
@@ -1012,7 +1013,7 @@ fn build_scope(
         });
     }
 
-    // Layout only reads nodes/edges/dir, so a bare Graph carrying those is enough.
+    // Layout only reads nodes/edges/dir, so a bare Graph with those is enough.
     let mut synth = Graph::new(graph.dir);
     synth.nodes = nodes;
     synth.edges = edges;
@@ -1125,7 +1126,7 @@ fn head_glyph(head: Head, arrow: &'static str) -> &'static str {
 /// Adjacent ranks, top-down: drop, jog along the bus row, drop into the head.
 fn route_forward(canvas: &mut Canvas, from: &Placed, to: &Placed, edge: &Edge, bus: usize) {
     let tx = to.cx;
-    // A jog of one column reads as a kink; snap straight instead.
+    // A jog of one column reads as a kink, so snap straight instead.
     let bx = if from.cx.abs_diff(tx) <= 1 {
         tx
     } else {

@@ -145,7 +145,7 @@ fn buffers_input_like_pi() {
 fn keeps_astral_characters_whole() {
     use yapi_tui::input::{Input, InputBuffer};
 
-    // pi splits these into UTF-16 halves; yapi emits the character.
+    // pi splits these into UTF-16 halves, while yapi emits the character.
     assert_eq!(
         InputBuffer::new().push("😀".as_bytes()),
         vec![Input::Key("😀".into())]

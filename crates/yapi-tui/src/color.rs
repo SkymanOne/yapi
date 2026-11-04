@@ -2,8 +2,8 @@
 //! quantization.
 //!
 //! Port of `packages/tui/src/colors.ts` and `packages/tui/src/oklab.ts` in pi
-//! `v1.0.0`. The Oklab and OKHSL conversions follow Björn Ottosson's reference
-//! implementation (<https://bottosson.github.io/posts/colorpicker/>),
+//! `v1.0.0`. The Oklab and OKHSL conversions follow Björn Ottosson's
+//! [reference implementation](https://bottosson.github.io/posts/colorpicker/),
 //! Copyright (c) 2021 Björn Ottosson, MIT License.
 
 use std::f64::consts::PI;
@@ -282,7 +282,7 @@ fn oklch_to_rgb(l: f64, c: f64, h: f64) -> [f64; 3] {
 }
 
 /// Twenty halvings of the interval between `good` and `bad`, moving `good`
-/// to each midpoint `ok` accepts; the last such `good`.
+/// to each midpoint `ok` accepts. Returns the last such `good`.
 pub(crate) fn bisect(mut good: f64, mut bad: f64, ok: impl Fn(f64) -> bool) -> f64 {
     for _ in 0..20 {
         let middle = (good + bad) / 2.0;

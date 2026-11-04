@@ -1,11 +1,12 @@
 //! Port of `src/graph.ts` of grok-mermaid 0.2.3.
 //!
-//! The shared diagram model. Flowchart, state, class and ER sources all parse
-//! into a `Graph`; only sequence diagrams have their own model.
+//! The shared diagram model. Flowchart, state, class and ER (entity
+//! relationship) sources all parse into a `Graph`. Only sequence diagrams have
+//! their own model.
 
 use std::collections::HashMap;
 
-/// Caps that keep layout bounded; exceeding one makes the parse give up.
+/// Caps that keep layout bounded. Exceeding one makes the parse give up.
 pub(super) const MAX_NODES: usize = 128;
 pub(super) const MAX_EDGES: usize = 512;
 pub(super) const MAX_GROUPS: usize = 24;
@@ -78,7 +79,7 @@ pub(super) struct ClassInfo {
     pub(super) methods: Vec<String>,
 }
 
-/// `LR`/`RL`/`BT` as written in a header or `direction` statement; else `Down`.
+/// `LR`/`RL`/`BT` as written in a header or `direction` statement, else `Down`.
 pub(super) fn parse_dir(token: &str) -> Dir {
     match token.to_ascii_uppercase().as_str() {
         "LR" => Dir::Right,
@@ -97,7 +98,7 @@ pub(super) struct Graph {
     /// Innermost subgraph each node was declared in, parallel to `nodes`.
     pub(super) node_group: Vec<Option<usize>>,
     pub(super) cur_group: Option<usize>,
-    /// Set when a cap was hit; the caller abandons the parse.
+    /// Set when a cap was reached. The caller then abandons the parse.
     pub(super) over_cap: bool,
     /// Text the flowchart grammar could not read and silently discarded.
     ///
@@ -123,7 +124,7 @@ impl Graph {
         }
     }
 
-    /// Index of `id`, creating the node if new. A later declaration carrying a
+    /// Index of `id`, creating the node if new. A later declaration with a
     /// label overwrites the placeholder one an edge created. Returns `None`
     /// once `MAX_NODES` is reached, which aborts the parse.
     pub(super) fn node_index(

@@ -6,9 +6,9 @@
 use super::width::{measured, string_width};
 use crate::text::is_js_whitespace;
 
-/// Node labels wrap to at most this many display columns per line ...
+/// Node labels wrap to at most this many display columns per line …
 pub(super) const WRAP_WIDTH: usize = 24;
-/// ... and at most this many lines; overflow is truncated with an ellipsis.
+/// … and at most this many lines. Overflow is truncated with an ellipsis.
 pub(super) const MAX_LINES: usize = 4;
 /// Edge labels are truncated to this many columns.
 pub(super) const MAX_LABEL: usize = 28;
@@ -19,7 +19,7 @@ pub(super) const LABEL_BREAK_CHARS: [char; 4] = ['_', '-', '.', '/'];
 
 // ------------------------------------------------- JavaScript string helpers
 //
-// The TS code leans on `String.prototype.trim` and the regex class `\s`, whose
+// The TS code uses `String.prototype.trim` and the regex class `\s`, whose
 // whitespace set (WhiteSpace plus LineTerminator) is not Rust's `White_Space`:
 // it includes U+FEFF and excludes U+0085.
 
@@ -51,8 +51,8 @@ pub(super) fn js_words(s: &str) -> Vec<&str> {
 /// read.
 ///
 /// They measure one column and paint none, so a box sized around one is drawn
-/// a column short of its own border; NUL also collides with the `CONT`
-/// sentinel and is dropped after layout has already paid for its cell; ESC
+/// a column short of its own border. NUL also collides with the `CONT`
+/// sentinel and is dropped after layout has already reserved its cell. ESC
 /// would inject ANSI into the caller's scrollback. `decode_entity_body`
 /// refuses to decode an entity into one, and this closes the same hole for
 /// literals.
@@ -86,7 +86,7 @@ pub(super) fn is_id_char(c: char) -> bool {
 const ENTITY_LOOKAHEAD: usize = 10;
 
 // Upstream also decodes `&toString;` and `&__proto__;` into JS object text through
-// a plain-object lookup; yapi leaves them as written.
+// a plain-object lookup, but yapi leaves them as written.
 fn decode_entity_body(body: &str) -> Option<char> {
     match body {
         "lt" => return Some('<'),
@@ -175,7 +175,7 @@ pub(super) fn strip_markdown(s: &str) -> String {
     js_trim(&out).to_string()
 }
 
-/// Inline formatting tags that carry no meaning in a terminal. Anything else
+/// Inline formatting tags that have no meaning in a terminal. Anything else
 /// that looks like a tag (`Vec<String>`, `<id>`) is left alone.
 const HTML_FORMAT_TAGS: [&str; 25] = [
     "b", "strong", "i", "em", "u", "s", "strike", "del", "ins", "mark", "small", "big", "sub",
