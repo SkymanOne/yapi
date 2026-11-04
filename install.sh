@@ -5,16 +5,21 @@
 # docs for the model the same way into yapi's agent directory, replacing the
 # previous copy. It can install yapi or chest alone instead. Without that
 # choice, it asks when it runs in a terminal and installs both otherwise.
+# With --from-source, it builds the release's tag with cargo instead of
+# downloading the archive.
 #
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --only chest
+#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --from-source
 #
 # Options, or the environment variables that set them:
 #   --version <tag>   YAPI_VERSION       release to install (default: the latest)
 #   --to <dir>        YAPI_INSTALL_DIR   where to put yapi and chest (default: ~/.local/bin)
 #   --only <name>     YAPI_INSTALL_ONLY  yapi, or chest without the docs, or both
 #                                        (default: ask in a terminal, else both)
+#   --from-source     YAPI_FROM_SOURCE=1 build the release's tag with cargo instead
+#                                        of downloading its archive
 #   --no-docs         YAPI_NO_DOCS=1     skip the docs for the model
 #   YAPI_CODING_AGENT_DIR                where the docs go, under docs/
 #                                        (default: ~/.yapi/agent)
@@ -28,6 +33,10 @@ dir="${YAPI_INSTALL_DIR:-}"
 case "${YAPI_NO_DOCS:-}" in
     1 | true | TRUE | True | yes | YES | Yes) docs= ;;
     *) docs=yes ;;
+esac
+case "${YAPI_FROM_SOURCE:-}" in
+    1 | true | TRUE | True | yes | YES | Yes) build=yes ;;
+    *) build= ;;
 esac
 only="${YAPI_INSTALL_ONLY:-}"
 
@@ -53,13 +62,17 @@ while [ $# -gt 0 ]; do
             only=$2
             shift 2
             ;;
+        --from-source)
+            build=yes
+            shift
+            ;;
         --no-docs)
             docs=
             shift
             ;;
         -h | --help)
             cat <<EOF
-Usage: install.sh [--version <tag>] [--to <dir>] [--only yapi|chest|both] [--no-docs]
+Usage: install.sh [--version <tag>] [--to <dir>] [--only yapi|chest|both] [--from-source] [--no-docs]
 
 Installs yapi and chest from a GitHub release, checked against its SHA-256,
 and the release's docs for the model into ~/.yapi/agent/docs, or
@@ -69,6 +82,8 @@ install both or one.
   --version <tag>   release to install (default: the latest), or YAPI_VERSION
   --to <dir>        where to put yapi and chest (default: ~/.local/bin), or YAPI_INSTALL_DIR
   --only <name>     yapi, or chest without the docs, or both, or YAPI_INSTALL_ONLY
+  --from-source     build the release's tag with cargo instead of downloading
+                    its archive, or YAPI_FROM_SOURCE=1
   --no-docs         skip the docs, or YAPI_NO_DOCS=1
 EOF
             exit 0
@@ -84,6 +99,9 @@ case "$only" in
     '' | yapi | chest | both) ;;
     *) fail "--only and YAPI_INSTALL_ONLY take yapi, chest or both, not '$only'" ;;
 esac
+if [ -n "$build" ]; then
+    command -v cargo >/dev/null 2>&1 || fail "needs cargo to build from source. Install Rust with rustup: https://rustup.rs"
+fi
 
 # Asks only when someone can answer: stdout is a terminal and /dev/tty opens.
 # With curl | sh, stdin holds the script, so the answer comes from /dev/tty.
@@ -111,6 +129,7 @@ case "$only" in
     *) binaries="yapi chest" crates="yapi chest-cli" ;;
 esac
 from_source="cargo install --locked --git https://github.com/SkymanOne/yapi $crates"
+rebuild="Build from source: run this script with --from-source, or run $from_source"
 
 command -v curl >/dev/null 2>&1 || fail "needs curl"
 command -v tar >/dev/null 2>&1 || fail "needs tar"
@@ -122,48 +141,6 @@ else
     fail "needs sha256sum or shasum to check the download"
 fi
 
-# The release target for this system.
-os=$(uname -s)
-arch=$(uname -m)
-case "$arch" in
-    x86_64 | amd64) arch=x86_64 ;;
-    aarch64 | arm64) arch=aarch64 ;;
-    *) fail "no release build for $arch. Build from source: $from_source" ;;
-esac
-case "$os" in
-    Linux)
-        if ldd --version 2>&1 | grep -qi musl; then
-            fail "release builds need glibc, and this system uses musl. Build from source: $from_source"
-        fi
-        glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc //')
-        case "$glibc" in
-            2.[0-9] | 2.[0-9].* | 2.[12][0-9] | 2.[12][0-9].* | 2.3[0-4] | 2.3[0-4].*)
-                fail "release builds need glibc 2.35 or newer, and this system has $glibc. Build from source: $from_source"
-                ;;
-        esac
-        target="$arch-unknown-linux-gnu"
-        ;;
-    Darwin)
-        # A shell under Rosetta reports x86_64 on Apple silicon.
-        if [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
-            arch=aarch64
-        fi
-        target="$arch-apple-darwin"
-        ;;
-    *) fail "no release build for $os. Build from source: $from_source" ;;
-esac
-
-# Release archives have no version in their names, so the latest release's
-# archive has a fixed URL.
-if [ "$version" = latest ]; then
-    download="$releases/latest/download"
-    release="the latest release"
-else
-    download="$releases/download/v${version#v}"
-    release="release v${version#v}"
-fi
-
-name="yapi-$target.tar.gz"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -182,19 +159,89 @@ fetch_checked() {
     return 1
 }
 
-echo "Downloading $name from $release"
-fetch_checked "$name" || fail "$problem. Build from source: $from_source"
+if [ -n "$build" ]; then
+    if [ "$version" = latest ]; then
+        # GitHub redirects the latest release's page to its tag's page.
+        latest=$(curl -fsS -o /dev/null -w '%{redirect_url}' "$releases/latest") || latest=
+        version=${latest##*/}
+        case "$version" in
+            v[0-9]*) ;;
+            *) fail "found no latest release at $releases. Choose one with --version <tag>." ;;
+        esac
+    fi
+    tag="v${version#v}"
+    download="$releases/download/$tag"
+    release="release $tag"
+    name="the build of $release"
+    case "$tag" in
+        # These releases predate chest.
+        v0.1.0 | v0.2.0 | v0.3.0 | v0.3.1)
+            [ "$only" != chest ] || fail "$release has no chest, which shipped after it. Choose a newer release with --version <tag>."
+            binaries=yapi crates=yapi
+            ;;
+    esac
+    echo "Building $crates from $release with cargo"
+    # shellcheck disable=SC2086 # $crates is a list of names without spaces.
+    cargo install --locked --git https://github.com/SkymanOne/yapi --tag "$tag" --root "$work/build" $crates ||
+        fail "cargo could not build $crates from $release"
+    new="$work/build/bin" got=built
+else
+    # The release target for this system.
+    os=$(uname -s)
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64 | amd64) arch=x86_64 ;;
+        aarch64 | arm64) arch=aarch64 ;;
+        *) fail "no release build for $arch. $rebuild" ;;
+    esac
+    case "$os" in
+        Linux)
+            if ldd --version 2>&1 | grep -qi musl; then
+                fail "release builds need glibc, and this system uses musl. $rebuild"
+            fi
+            glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | sed 's/^glibc //')
+            case "$glibc" in
+                2.[0-9] | 2.[0-9].* | 2.[12][0-9] | 2.[12][0-9].* | 2.3[0-4] | 2.3[0-4].*)
+                    fail "release builds need glibc 2.35 or newer, and this system has $glibc. $rebuild"
+                    ;;
+            esac
+            target="$arch-unknown-linux-gnu"
+            ;;
+        Darwin)
+            # A shell under Rosetta reports x86_64 on Apple silicon.
+            if [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
+                arch=aarch64
+            fi
+            target="$arch-apple-darwin"
+            ;;
+        *) fail "no release build for $os. $rebuild" ;;
+    esac
 
-mkdir "$work/unpacked"
-tar -xzf "$work/$name" -C "$work/unpacked"
+    # Release archives have no version in their names, so the latest release's
+    # archive has a fixed URL.
+    if [ "$version" = latest ]; then
+        download="$releases/latest/download"
+        release="the latest release"
+    else
+        download="$releases/download/v${version#v}"
+        release="release v${version#v}"
+    fi
+    name="yapi-$target.tar.gz"
+    echo "Downloading $name from $release"
+    fetch_checked "$name" || fail "$problem. $rebuild"
+    mkdir "$work/unpacked"
+    tar -xzf "$work/$name" -C "$work/unpacked"
+    new="$work/unpacked" got=downloaded
+fi
+
 if [ "$only" != chest ]; then
-    [ -f "$work/unpacked/yapi" ] || fail "$name does not contain yapi"
-    installed=$("$work/unpacked/yapi" --version) || fail "the downloaded yapi does not run on this system"
+    [ -f "$new/yapi" ] || fail "$name does not contain yapi"
+    installed=$("$new/yapi" --version) || fail "the $got yapi does not run on this system"
 fi
 if [ "$only" = yapi ]; then
     :
-elif [ -f "$work/unpacked/chest" ]; then
-    chest=$("$work/unpacked/chest" --version) || fail "the downloaded chest does not run on this system"
+elif [ -f "$new/chest" ]; then
+    chest=$("$new/chest" --version) || fail "the $got chest does not run on this system"
 elif [ "$only" = chest ]; then
     fail "$name holds no chest, because releases before chest shipped hold yapi alone. Build chest from source: $from_source"
 else
@@ -204,7 +251,7 @@ fi
 mkdir -p "$dir"
 for binary in $binaries; do
     # Copy, then rename, so a running binary is replaced rather than overwritten.
-    cp "$work/unpacked/$binary" "$dir/.$binary.$$"
+    cp "$new/$binary" "$dir/.$binary.$$"
     chmod 755 "$dir/.$binary.$$"
     mv -f "$dir/.$binary.$$" "$dir/$binary"
 done

@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 yapi --version
 ```
 
-With Cargo, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer. Use `chest-cli` in place of the last `yapi` for chest:
+Add `--from-source` to build the release with Cargo instead of downloading it. With Cargo directly, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer. Use `chest-cli` in place of the last `yapi` for chest:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi

@@ -30,6 +30,7 @@ Press Enter to install both. The script puts the executables in `~/.local/bin`, 
 | `--only <name>` | `YAPI_INSTALL_ONLY` | Install `yapi`, `chest` or `both` without asking |
 | `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.3.1` |
 | `--to <dir>` | `YAPI_INSTALL_DIR` | Install into `<dir>` |
+| `--from-source` | `YAPI_FROM_SOURCE=1` | Build the release with Cargo instead of downloading it, as [Build from source](#build-from-source) shows |
 | `--no-docs` | `YAPI_NO_DOCS=1` | Skip the documentation for the model |
 
 Pass options after `sh -s --`. This installs `chest` alone, such as for another agent, without the documentation for the model:
@@ -79,11 +80,24 @@ sha256sum -c "yapi-$target.tar.gz.sha256"
 tar xzf "yapi-$target.tar.gz" -C ~/.local/bin yapi chest
 ```
 
-To install one executable, end the `tar` command with only `yapi` or only `chest`. On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `latest/download` with `download/<tag>`. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see [macOS blocks a downloaded binary](troubleshooting.md#macos-blocks-a-downloaded-binary).
+To install one executable, end the `tar` command with only `yapi` or only `chest`. On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `latest/download` with `download/<tag>`. Systems with an older glibc, or with musl such as Alpine, need to [build from source](#build-from-source). If macOS refuses to open a binary downloaded in a browser, see [macOS blocks a downloaded binary](troubleshooting.md#macos-blocks-a-downloaded-binary).
 
 ## Build from source
 
-yapi and chest build with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs). The first command below builds `yapi`, and the second builds `chest` from its crate, `chest-cli`. Run one or both:
+yapi and chest build with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs), then build with the install script or with Cargo.
+
+With `--from-source`, the install script builds a release's tag with Cargo instead of downloading its archive. It builds the latest release, or the one `--version` names, and never the `main` branch. Then it installs the executables in `~/.local/bin`, and the documentation for the model with `yapi`. The first command builds both, the second `yapi` alone and the third `chest` alone. Run one:
+
+```sh
+script=https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh
+curl -fsSL "$script" | sh -s -- --from-source --only both
+curl -fsSL "$script" | sh -s -- --from-source --only yapi
+curl -fsSL "$script" | sh -s -- --from-source --only chest
+```
+
+Without `--only`, the script asks in a terminal what to build. It builds `yapi` alone from releases before chest shipped, and stops with an error when you choose `chest` alone from them.
+
+To build with Cargo, name a release's tag. The first command below builds `yapi`, and the second builds `chest` from its crate, `chest-cli`. Run one or both:
 
 ```sh
 repo=https://github.com/SkymanOne/yapi
@@ -128,7 +142,7 @@ yapi doesn't update itself. `yapi update` prints how to upgrade, `yapi update --
 
 | Installed with | Upgrade |
 |---|---|
-| Install script | Run the script again and make the same choice. From another script, pass the same `--only`, because without a terminal it installs both. |
+| Install script | Run the script again and make the same choice, with `--from-source` if you built from source. From another script, pass the same `--only`, because without a terminal it installs both. |
 | cargo-binstall | Run the same `cargo binstall` commands again. |
 | Release archive | Unpack the executables you installed from the new archive over the old ones. |
 | Cargo | Run the same `cargo install` commands again with the new release's tag. |
@@ -143,7 +157,7 @@ In the terminal, yapi checks at startup for a newer release and for package upda
 
 How you remove the binaries depends on how you installed them:
 
-- **Install script or release archive**: delete `~/.local/bin/yapi`, `~/.local/bin/chest` or both, or the same files in the folder you chose.
+- **Install script or release archive**: delete `~/.local/bin/yapi`, `~/.local/bin/chest` or both, or the same files in the folder you chose. This also applies to builds with `--from-source`.
 - **cargo-binstall or Cargo**: run `cargo uninstall yapi` to remove yapi, and `cargo uninstall chest-cli` to remove chest.
 
 To remove settings, credentials, sessions, packages and caches as well, delete `~/.yapi`, or `YAPI_CODING_AGENT_DIR` when set, and each project's `.yapi` folder. chest keeps its global manifest, store and records in `~/.chest`.

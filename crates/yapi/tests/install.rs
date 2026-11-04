@@ -11,6 +11,7 @@ mod common;
 
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
@@ -84,8 +85,8 @@ fn release_with(site: &Path, version: &str, chest: Option<&str>) {
 }
 
 /// Serves `site` over HTTP until the process exits, redirecting the latest
-/// release's downloads to release `latest` as GitHub does, or answering them
-/// with 404 when there is no release.
+/// release's page and downloads to release `latest` as GitHub does, or
+/// answering them with 404 when there is no release.
 fn serve(site: PathBuf, latest: Option<&'static str>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -101,6 +102,11 @@ fn serve(site: PathBuf, latest: Option<&'static str>) -> String {
                 (Some(file), Some(tag)) => (
                     "302 Found",
                     format!("Location: {host}/releases/download/v{tag}/{file}\r\n"),
+                    Vec::new(),
+                ),
+                (None, Some(tag)) if path == "/releases/latest" => (
+                    "302 Found",
+                    format!("Location: {host}/releases/tag/v{tag}\r\n"),
                     Vec::new(),
                 ),
                 _ => match std::fs::read(site.join(path.trim_start_matches('/'))) {
@@ -131,6 +137,7 @@ fn script(releases: &str, home: &Path, args: &[&str]) -> Command {
         .env_remove("YAPI_VERSION")
         .env_remove("YAPI_INSTALL_DIR")
         .env_remove("YAPI_INSTALL_ONLY")
+        .env_remove("YAPI_FROM_SOURCE")
         .env_remove("YAPI_NO_DOCS")
         .env_remove("YAPI_CODING_AGENT_DIR");
     command
@@ -467,7 +474,8 @@ fn refuses_bad_checksum() {
 fn suggests_source_build() {
     let dir = scratch("none");
     let releases = serve(dir.join("site"), None);
-    // The build names the crates of the binaries chosen.
+    // The script's own build comes first, then cargo's command for the
+    // crates of the binaries chosen.
     for (args, crates) in [
         (&[][..], "yapi chest-cli"),
         (&["--only", "yapi"], "yapi"),
@@ -477,8 +485,137 @@ fn suggests_source_build() {
         assert_eq!(output.status.code(), Some(1));
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.contains("in the latest release at"), "{stderr}");
-        let build = "cargo install --locked --git https://github.com/SkymanOne/yapi";
+        let build = "Build from source: run this script with --from-source, or run cargo install --locked --git https://github.com/SkymanOne/yapi";
         assert!(stderr.ends_with(&format!("{build} {crates}\n")), "{stderr}");
+    }
+}
+
+/// `--from-source` and `YAPI_FROM_SOURCE=1` build the chosen crates from
+/// the release's tag, the latest release's by default, with cargo into a
+/// temporary root. The script installs the binaries and docs from there as
+/// it does downloads.
+#[test]
+fn builds_from_source() {
+    let dir = scratch("source");
+    let site = dir.join("site");
+    release(&site, "9.9.8");
+    release(&site, "9.9.9");
+    let releases = serve(site, Some("9.9.9"));
+    // A cargo that records its arguments and builds each crate as a script
+    // that prints the tag's version.
+    let fake = dir.join("fake");
+    std::fs::create_dir_all(&fake).unwrap();
+    let cargo = fake.join("cargo");
+    std::fs::write(
+        &cargo,
+        r#"#!/bin/sh
+printf '%s\n' "$@" >"$(dirname "$0")/args"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --tag) version=${2#v} ;;
+        --root) mkdir -p "$2/bin" && bin=$2/bin ;;
+        yapi) printf '#!/bin/sh\necho %s\n' "$version" >"$bin/yapi" ;;
+        chest-cli) printf '#!/bin/sh\necho chest %s\n' "$version" >"$bin/chest" ;;
+    esac
+    shift
+done
+chmod 755 "$bin"/*
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
+    let logged = fake.join("args");
+    let git = "https://github.com/SkymanOne/yapi";
+    for (case, (args, variable, tag, crates, installed)) in [
+        (
+            &["--from-source", "--only", "chest"][..],
+            None,
+            "v9.9.9",
+            &["chest-cli"][..],
+            &["chest"][..],
+        ),
+        (
+            &["--from-source", "--only", "yapi", "--version", "9.9.8"],
+            None,
+            "v9.9.8",
+            &["yapi"],
+            &["yapi"],
+        ),
+        (
+            &["--only", "both"],
+            Some("1"),
+            "v9.9.9",
+            &["yapi", "chest-cli"],
+            &["chest", "yapi"],
+        ),
+        // A release from before chest shipped builds yapi alone.
+        (
+            &["--from-source", "--version", "v0.3.1"],
+            None,
+            "v0.3.1",
+            &["yapi"],
+            &["yapi"],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let home = dir.join(format!("case-{case}"));
+        let mut command = script(&releases, &home, args);
+        command.env("PATH", &path);
+        if let Some(value) = variable {
+            command.env("YAPI_FROM_SOURCE", value);
+        }
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{case}: {output:?}");
+        let text = std::fs::read_to_string(&logged).unwrap();
+        std::fs::remove_file(&logged).unwrap();
+        let ran: Vec<&str> = text.lines().collect();
+        let root = ran.get(7).copied().unwrap_or_default();
+        let options = [
+            "install", "--locked", "--git", git, "--tag", tag, "--root", root,
+        ];
+        assert_eq!(ran, [&options[..], crates].concat(), "{case}");
+        assert!(!Path::new(root).exists(), "{case}: the root stays");
+        let bin = home.join(".local/bin");
+        assert_eq!(listing(&bin), installed, "{case}");
+        let version = tag.trim_start_matches('v');
+        for binary in installed {
+            let printed = installed_version(&bin.join(binary));
+            assert_eq!(printed.trim_start_matches("chest "), version, "{case}");
+        }
+        // The site has docs for its own releases only.
+        let docs =
+            (installed.contains(&"yapi") && tag != "v0.3.1").then(|| format!("# yapi {version}\n"));
+        assert_eq!(docs_index(&home.join(".yapi/agent")), docs, "{case}");
+    }
+
+    // chest alone needs a release that has it, and a build needs cargo.
+    let sh_only = dir.join("sh-only");
+    std::fs::create_dir_all(&sh_only).unwrap();
+    std::os::unix::fs::symlink("/bin/sh", sh_only.join("sh")).unwrap();
+    for (version, path, message) in [
+        (
+            "v0.3.1",
+            path.as_str(),
+            "release v0.3.1 has no chest, which shipped after it. Choose a newer release with --version <tag>.",
+        ),
+        (
+            "v9.9.9",
+            sh_only.to_str().unwrap(),
+            "needs cargo to build from source. Install Rust with rustup: https://rustup.rs",
+        ),
+    ] {
+        let home = dir.join(format!("fails-{version}"));
+        let args = ["--from-source", "--only", "chest", "--version", version];
+        let mut command = script(&releases, &home, &args);
+        let output = command.env("PATH", path).output().unwrap();
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert_eq!(stderr, format!("install.sh: {message}\n"));
+        assert!(!logged.exists(), "cargo ran");
+        assert!(!home.join(".local").exists());
     }
 }
 
