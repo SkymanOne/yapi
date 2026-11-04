@@ -55,7 +55,7 @@ NEWLINE: /\r?\n/
 SOURCE: /[\s\S]+/
 ";
 
-/// What a script sees of `tool`; pi's `toCodemodeDeclaration`.
+/// What a script sees of `tool` (pi's `toCodemodeDeclaration`).
 fn declaration(tool: &RegisteredTool) -> Declaration {
     let own = tool.tool.declaration();
     Declaration {
@@ -125,10 +125,10 @@ pub struct CodemodeExtension {
 
 impl CodemodeExtension {
     /// The extension. Scripts run on `engine`, such as the one extensions
-    /// run on, or without one, on an engine compiled on first use, with
-    /// compiled runtimes cached in `cache_dir`. With `docs`, where pi's
-    /// `codemode.md` is, which the description points to, scripts reach
-    /// `models`, pi's classifiers and image models.
+    /// run on. Without one, they run on an engine compiled on first use,
+    /// with compiled runtimes cached in `cache_dir`. With `docs`, the
+    /// location of pi's `codemode.md` that the description points to,
+    /// scripts reach `models`, pi's classifiers and image models.
     pub fn new(
         engine: Option<crate::Engine>,
         cache_dir: Option<PathBuf>,

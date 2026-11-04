@@ -588,7 +588,7 @@ async fn modules_need_filesystem_grant() {
             }
         }
     }
-    // With the file grant alone, a file that is not there is just missing.
+    // With the file grant alone, a file that is not there reads as missing.
     let probe = package.join("probe.js");
     let absent = dir.join("absent.txt").display().to_string();
     std::fs::write(
@@ -790,10 +790,10 @@ export default function (pi) {
     );
 }
 
-/// `dns.lookup` resolves through the host, as SSRF guards such as
-/// pi-web-access's expect before they fetch, and needs the network grant,
-/// as `fetch` does. The grep and find tools, which run and may download
-/// ripgrep and fd, need more than the file grant.
+/// `dns.lookup` resolves through the host, as server-side request forgery
+/// (SSRF) guards such as pi-web-access's expect before they fetch, and needs
+/// the network grant, as `fetch` does. The grep and find tools, which run
+/// and may download ripgrep and fd, need more than the file grant.
 /// Only `localhost` and address literals resolve here, so the test needs no
 /// network.
 #[tokio::test(flavor = "multi_thread")]
@@ -882,7 +882,7 @@ export default async function (pi) {
     );
 }
 
-/// Scripts without module syntax load as CommonJS, imports may carry a
+/// Scripts without module syntax load as CommonJS, imports may include a
 /// query, and TypeScript grammar checks do not stop a module, as with pi's
 /// loader.
 #[tokio::test(flavor = "multi_thread")]
@@ -1218,8 +1218,8 @@ async fn join_stopped_waits() {
 }
 
 /// `child_process.spawn` streams output, takes input and signals, as in
-/// Node; `pi.exec` stops at its signal; Pi's local bash operations stream
-/// their output; `process.execPath` is the yapi binary; and a tool's
+/// Node. `pi.exec` stops at its signal, Pi's local bash operations stream
+/// their output, `process.execPath` is the yapi binary, and a tool's
 /// `signal` aborts when the host aborts the call.
 #[tokio::test(flavor = "multi_thread")]
 async fn process_streaming_and_abort() {

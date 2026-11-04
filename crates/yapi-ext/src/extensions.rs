@@ -1,7 +1,7 @@
 //! pi extensions loaded into one `yapi-js` instance, as yapi-core extensions.
 //!
 //! The instance loads every extension once. Each session gets one
-//! [`Extension`] per file that loaded; before a later session is built, the
+//! [`Extension`] per file that loaded. Before a later session is built, the
 //! guest runs the extensions' factories again, as pi does for every session.
 
 use std::collections::{HashMap, VecDeque};
@@ -342,15 +342,15 @@ pub struct ExtensionHost {
     apis: Mutex<Vec<String>>,
     /// The files that failed to load in the latest run of the factories.
     errors: Mutex<Vec<LoadError>>,
-    /// Sessions handed extensions so far.
+    /// Sessions given extensions so far.
     sessions: AtomicU64,
     /// Runs of the factories since the extensions loaded.
     runs: AtomicU64,
     /// The session generation the latest run of the factories is for: the
     /// extensions of earlier sessions are stale.
     serves: AtomicU64,
-    /// One more than the session generation the guest is bound to; 0 before
-    /// the first binding.
+    /// One more than the session generation the guest is bound to, or 0
+    /// before the first binding.
     bound: tokio::sync::Mutex<u64>,
     /// Sends the bound session's terminal state to the guest as it changes.
     terminal: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -378,8 +378,8 @@ pub(crate) type Bus = Arc<Mutex<Vec<Weak<ExtensionHost>>>>;
 const QUEUED_EVENTS: usize = 64;
 
 /// How long a native tool that waits for its abort has to return before it
-/// is dropped: twice the 5 seconds pi's `subagent` example and yapi give a
-/// process between SIGTERM and SIGKILL, so the tool can stop one and report.
+/// is dropped: twice the 5s pi's `subagent` example and yapi give a process
+/// between SIGTERM and SIGKILL, so the tool can stop one and report.
 const ABORT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl std::fmt::Debug for ExtensionHost {
@@ -392,7 +392,7 @@ impl std::fmt::Debug for ExtensionHost {
 
 impl ExtensionHost {
     /// Loads pi extension files (TypeScript or JavaScript) into a new
-    /// instance of the JS runtime; each source's `path` names the file, and
+    /// instance of the JS runtime. Each source's `path` names the file, and
     /// the rest says where it comes from.
     pub async fn load(
         engine: &Engine,
@@ -871,7 +871,7 @@ impl ExtensionHost {
             // and the JS runtime's bind ignores that too.
             let _ = self.bridge.set_mcp_servers(servers);
         }
-        // The guest reads the state as it binds; later states follow it.
+        // The guest reads the state as it binds, and later states follow it.
         let terminal = ctx.ui.terminal().map(|state| self.forward_terminal(state));
         if let Some(previous) = std::mem::replace(&mut *lock(&self.terminal), terminal) {
             previous.abort();
@@ -1205,7 +1205,7 @@ struct JsOperations {
 
 impl JsOperations {
     /// Runs guest call `kind` with `payload` as an operation that `cancel`
-    /// aborts; its result, or why it failed.
+    /// aborts. Returns its result, or why it failed.
     async fn call<T: serde::de::DeserializeOwned>(
         &self,
         kind: &str,
@@ -1545,7 +1545,7 @@ impl JsExtension {
 
     /// `provider`'s chat models as its legacy `oauth.modifyModels` in the
     /// guest makes them for the stored OAuth credential, from its own models
-    /// with the refreshed `lists`; `None` without an OAuth credential.
+    /// with the refreshed `lists`, or `None` without an OAuth credential.
     async fn modify_models(
         &self,
         provider: &str,
@@ -1609,9 +1609,10 @@ impl Extension for JsExtension {
         }
     }
 
-    /// pi awaits `getArgumentCompletions`; the editor asks synchronously, so
-    /// a request the guest has not answered yet starts it in the background,
-    /// is pending, and has the editor ask again once it is answered.
+    /// pi awaits `getArgumentCompletions`, but the editor asks synchronously,
+    /// so a request the guest has not answered yet starts it in the
+    /// background, is pending, and has the editor ask again once it is
+    /// answered.
     fn complete(&self, command: &str, prefix: &str) -> ArgumentCompletions {
         let completes = list(&self.description["commands"])
             .iter()
@@ -2045,7 +2046,7 @@ fn tool_info(tool: &RegisteredTool) -> Value {
     }))
 }
 
-/// A tool an extension registered; runs in the guest.
+/// A tool an extension registered, which runs in the guest.
 struct JsTool {
     shared: Weak<ExtensionHost>,
     extension: u64,
@@ -2176,8 +2177,8 @@ const OUTPUT_LINES: usize = 200;
 /// The most bytes of one kept line, before the note of what was cut.
 const OUTPUT_LINE_BYTES: usize = 4096;
 
-/// Extension output kept off the terminal, oldest first; `None` while it
-/// goes to stderr.
+/// Extension output kept off the terminal, oldest first, or `None` while
+/// it goes to stderr.
 static OUTPUT: Mutex<Option<VecDeque<String>>> = Mutex::new(None);
 
 /// Keeps extension output off the terminal from now on, for a mode that draws
@@ -2309,7 +2310,7 @@ impl SessionBridge {
         lock(&self.session).upgrade()
     }
 
-    /// Hands `event`, `{channel, data}` emitted with `pi.events` in this
+    /// Passes `event`, `{channel, data}` emitted with `pi.events` in this
     /// runtime, to the listeners of every other runtime that may hear it
     /// from this one. This runtime's own listeners have heard it already. A
     /// runtime that listens on the channel but may not hear it is warned of
@@ -2388,8 +2389,8 @@ impl SessionBridge {
 
     /// pi's `sendMessage` (`kind` `session.sendMessage`) or `sendUserMessage`
     /// with request `payload`, up to the first await of the run it starts:
-    /// the message is delivered, queued or deferred now. The rest of the
-    /// work, unless there is none: pi defers a run started while
+    /// the message is delivered, queued or deferred now. Returns the rest of
+    /// the work, unless there is none: pi defers a run started while
     /// `agent_settled` handlers run until they return, and the call
     /// resolves at once.
     fn send(
@@ -2903,7 +2904,8 @@ fn setup(owner: Weak<ExtensionHost>, id: u64) -> Setup {
             };
             // The guest's requests reach the replacement, which binds next.
             *lock(&host.bridge.session) = session.downgrade();
-            // The guest rethrows setup's error from `newSession`; a restart reports a trap.
+            // The guest rethrows setup's error from `newSession`, and a restart
+            // reports a trap.
             let _ = host.instance.call("setup", &json!({ "id": id })).await;
         })
     })
@@ -3212,7 +3214,7 @@ impl Bridge for SessionBridge {
                     .is_using_oauth(&text(&payload["provider"])),
             )),
             "models.error" => Ok(to_json(session.registry().error())),
-            // pi's `AuthStatus`; `login_status` names the source or the
+            // pi's `AuthStatus`, where `login_status` names the source or the
             // environment it comes from.
             "models.authStatus" => Ok(match session.registry().login_status(&text(&payload["provider"])) {
                 None => json!({"configured": false}),
@@ -3663,7 +3665,7 @@ impl Bridge for SessionBridge {
                     let auth = match &model {
                         Some(model) => Some(registry.auth(model).await),
                         // shortcut: a model the registry lacks gets its provider's
-                        // credentials without its own headers; pass the guest's model to match pi.
+                        // credentials without its own headers, pass the guest's model to match pi.
                         None => registry.provider_level_auth(&provider).await,
                     }
                     .unwrap_or_default();
@@ -3695,8 +3697,9 @@ impl Bridge for SessionBridge {
                         "env": auth.env,
                     })))
                 }
-                // pi's `copyToClipboard`. OSC 52 reaches the terminal only in
-                // interactive mode, where stdout is not the mode's output.
+                // pi's `copyToClipboard`. The operating system command (OSC) 52
+                // sequence reaches the terminal only in interactive mode, where
+                // stdout is not the mode's output.
                 "clipboard.copy" => {
                     let terminal = session.extension_binding().1 == Mode::Tui;
                     let emit = |sequence: &str| {

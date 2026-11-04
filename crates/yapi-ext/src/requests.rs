@@ -1,6 +1,6 @@
 //! Requests and operations the runtime itself answers: modules, the process
 //! environment, randomness, hashing, processes, HTTP, yapi's wire APIs and
-//! JSON helpers. Grants gate the ones that reach outside the instance;
+//! JSON helpers. Grants gate the ones that reach outside the instance, and
 //! everything else goes to the [`Bridge`](crate::Bridge).
 
 use std::collections::HashMap;
@@ -59,16 +59,16 @@ struct Running {
 }
 
 /// What `ai.next` reads of a request: the events of a stream and the calls
-/// of the extension's callbacks; an image request ends with a call that
-/// carries its result.
+/// of the extension's callbacks. An image request ends with a call that
+/// includes its result.
 struct Reading {
     events: Option<EventStream>,
     calls: mpsc::UnboundedReceiver<Value>,
 }
 
 impl Reading {
-    /// The next item as `ai.next` sends it, waiting for one; `None` once the
-    /// stream ended. Events that arrived come first, as a callback call
+    /// The next item as `ai.next` sends it, waiting for one, or `None` once
+    /// the stream ended. Events that arrived come first, as a callback call
     /// follows them in the request.
     async fn wait(&mut self) -> Option<Value> {
         match &mut self.events {
@@ -94,7 +94,7 @@ impl Reading {
 
 /// pi-ai's `onPayload`, `onResponse` and `onProviderStreamEvent` an extension
 /// passed to one request. The guest reads each call through `ai.next`, runs
-/// the callback and answers with `ai.callback`; the request waits for the
+/// the callback and answers with `ai.callback`. The request waits for the
 /// answer, as pi's wire APIs await the callback.
 struct Callbacks {
     calls: mpsc::UnboundedSender<Value>,
@@ -271,8 +271,8 @@ impl AiStreams {
         self.clears.load(Ordering::Relaxed)
     }
 
-    /// Keeps a request, which `cancel` aborts, for `ai.next`; its id. A
-    /// request started before the set was cleared, when it counted
+    /// Keeps a request, which `cancel` aborts, for `ai.next`, and returns its
+    /// id. A request started before the set was cleared, when it counted
     /// `clears`, is cancelled instead: the runtime that asked for it is gone.
     fn insert(
         &self,
@@ -301,7 +301,7 @@ impl AiStreams {
     }
 
     /// What request `id` sent that has arrived, waiting for at least one
-    /// item: events, callback calls and an image request's result; none
+    /// item: events, callback calls and an image request's result, or none
     /// once the request has ended.
     async fn next(&self, id: u64) -> Value {
         let Some(mut reading) = lock(&self.running)
@@ -586,7 +586,7 @@ impl Host {
                 self.bridge.request(kind, &servers)
             }
             "builtin.tool" => {
-                // Declaring a tool needs no grant; running it does.
+                // Declaring a tool needs no grant, but running it does.
                 let tool = self.builtin_tool(payload, false)?;
                 Ok(json!({
                     "name": tool.name(),
@@ -758,7 +758,7 @@ impl Host {
         Ok(yapi_core::mcp::config::resolve_exposure_aliases(config))
     }
 
-    /// Built-in tool `{name}` for `{cwd}`; with `run`, only when the grants
+    /// Built-in tool `{name}` for `{cwd}`. With `run`, only when the grants
     /// allow running it.
     fn builtin_tool(&self, payload: &Value, run: bool) -> Result<RegisteredTool, String> {
         let name = text(payload, "name");

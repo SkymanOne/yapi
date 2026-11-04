@@ -21,14 +21,14 @@ const YAPI_JS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/yapi-js.wasm.de
 /// instead of trapping.
 pub(crate) const WASM_STACK: usize = 8 * 1024 * 1024;
 
-/// How often the epoch advances; guest time limits are checked at this rate.
+/// How often the epoch advances. Guest time limits are checked at this rate.
 const TICK: Duration = Duration::from_millis(10);
 
 wasmtime::component::bindgen!({ path: "../../wit/since_v0.1.0", world: "extension" });
 
 /// A wasmtime engine with the `yapi-js` component compiled and linked. Cloning
-/// shares it; instances start from it in milliseconds. The extension hosts
-/// started from one engine share Pi's `pi.events` bus.
+/// shares it, and instances start from it in milliseconds. The extension
+/// hosts started from one engine share pi's `pi.events` bus.
 #[derive(Clone)]
 pub struct Engine {
     pub(crate) engine: wasmtime::Engine,
@@ -128,7 +128,7 @@ fn compile(
     let path = cache_path(engine, key, dir, name);
     if path.is_file() {
         // SAFETY: the file holds a component precompiled from the wasm `key`
-        // identifies, by an engine with this configuration; its name carries
+        // identifies, by an engine with this configuration. Its name includes
         // both hashes.
         // Writing it takes write access to the agent directory, which already
         // grants everything an extension could do.
@@ -144,7 +144,7 @@ fn compile(
         remove_stale(dir, &path, name);
     }
     // SAFETY: `compiled` was produced by `precompile_component` on this engine
-    // just above.
+    // above.
     unsafe { Component::deserialize(engine, &compiled) }.map_err(Error::compile)
 }
 
