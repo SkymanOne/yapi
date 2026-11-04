@@ -193,7 +193,7 @@ pub fn parse_pattern(pattern: &str, models: &[Model], allow_invalid_level: bool)
 pub struct ScopedModel {
     /// The model.
     pub model: Model,
-    /// The level from a `:level` suffix; `None` keeps the session's level.
+    /// The level from a `:level` suffix. `None` keeps the session's level.
     pub thinking_level: Option<ThinkingLevel>,
 }
 
@@ -201,7 +201,7 @@ pub struct ScopedModel {
 /// `models`, in pattern order without duplicates, and a warning for each
 /// pattern that selects nothing or names an invalid level. A pattern is a
 /// glob over `provider/id` or the id, ignoring case, or a model pattern as
-/// `--model` takes; either may end in `:level`.
+/// `--model` takes. Either may end in `:level`.
 pub fn resolve_model_scope(
     patterns: &[String],
     models: &[Model],

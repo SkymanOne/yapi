@@ -2,8 +2,9 @@
 //! versions from the registry, verifies and unpacks tarballs into
 //! `node_modules` and installs dependencies, hoisting them where Node's
 //! resolution allows. It runs no lifecycle scripts, so native addons stay
-//! unbuilt; an extension that loads one fails then. Installs return the tree
-//! they unpacked as pins, which [`replay`] reproduces without the registry.
+//! unbuilt, and an extension that loads one fails then. Installs return the
+//! tree they unpacked as pins, which [`replay`] reproduces without the
+//! registry.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
@@ -17,7 +18,7 @@ use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
 use yapi_ai::auth::lock::{FileLock, LockError};
 
-/// Packages yapi provides to extensions itself; installing them is wasted work.
+/// Packages yapi provides to extensions itself, so installing them is wasted work.
 const HOST_PACKAGES: [&str; 10] = [
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-ai",
@@ -196,7 +197,7 @@ pub(crate) fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
     let staging = dir.with_file_name(format!(".{name}-staging"));
     let parent = dir.parent().unwrap_or(dir);
     std::fs::create_dir_all(parent).map_err(io(parent))?;
-    // Left over by a stopped install; the root's lock keeps other installs out.
+    // Left over by a stopped install. The root's lock keeps other installs out.
     remove_path(&staging).map_err(io(&staging))?;
     std::fs::create_dir(&staging).map_err(io(&staging))?;
     Ok(staging)
@@ -376,7 +377,7 @@ fn requirements(range: &str) -> Option<Vec<semver::VersionReq>> {
             let text = if let Some((low, high)) = alternative.split_once(" - ") {
                 format!(">={}, <={}", without_v(low.trim()), without_v(high.trim()))
             } else {
-                // npm separates comparators with spaces; `semver` with commas.
+                // npm separates comparators with spaces, and `semver` with commas.
                 let mut parts: Vec<String> = Vec::new();
                 for token in alternative.split_whitespace() {
                     let token = without_v(token);
@@ -1083,7 +1084,7 @@ fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmEr
     let mut reached = vec![false; pins.len()];
     for (dependent, manifest) in &dependents {
         for (name, spec, optional) in dependencies(manifest) {
-            // As `place` reads it; an invalid name installs nothing.
+            // As `place` reads it. An invalid name installs nothing.
             let Some((package, range)) = check_name(name).ok().and_then(|()| wanted(name, spec))
             else {
                 continue;
@@ -1353,7 +1354,7 @@ pub struct Installed {
 
 /// Installs `name` (at `range`, else the latest version) into the npm root
 /// `root`, and records it in the root's `package.json`. The caller holds the
-/// root's [`lock_root`].
+/// root's `lock_root`.
 pub async fn install(
     npm: &mut Npm,
     root: &Path,
@@ -1478,7 +1479,7 @@ const REPLAY_DOWNLOADS: usize = 8;
 /// place nor add one. A tree with a package at its top therefore needs a
 /// `root/package.json` that depends on it. The tree is built beside
 /// `root/node_modules` and swapped in only once complete, so a failure
-/// leaves `root` as it was. The caller holds the root's [`lock_root`].
+/// leaves `root` as it was. The caller holds the root's `lock_root`.
 pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
     let mut pins = pins
         .iter()
@@ -1494,7 +1495,7 @@ pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmEr
             Ok((pin.path.to_ascii_lowercase(), parent, pin))
         })
         .collect::<Result<Vec<_>, NpmError>>()?;
-    // Parents first, so that nested packages land in their parent's folder.
+    // Parents first, so that nested packages unpack into their parent's folder.
     pins.sort_by(|a, b| a.0.cmp(&b.0));
     if let Some(pair) = pins.windows(2).find(|pair| pair[0].0 == pair[1].0) {
         return Err(NpmError::Refused(format!(
@@ -1535,7 +1536,7 @@ pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmEr
         let mut downloads = futures_util::stream::iter(downloads).buffered(REPLAY_DOWNLOADS);
         while let Some((pin, bytes)) = downloads.next().await {
             let bytes = bytes?;
-            // `pin_names` checked that the path starts so; `staging` stands for it.
+            // `pin_names` checked that the path starts so, and `staging` stands for it.
             let relative = pin.path.strip_prefix("node_modules/").unwrap_or(&pin.path);
             let dir = staging.join(relative);
             // A bundled copy in the parent's tarball gives way to the pinned one.
@@ -1808,8 +1809,8 @@ mod tests {
     }
 
     /// Entries that climb out of the package, absolute paths and links stay
-    /// out of the folder, and nothing lands beside it. Files keep their bytes
-    /// and executable bits, however large.
+    /// out of the folder, and nothing is written beside it. Files keep their
+    /// bytes and executable bits, however large.
     #[test]
     fn unpack_stays_inside() {
         use tar::EntryType;

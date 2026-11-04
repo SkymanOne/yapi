@@ -1,6 +1,6 @@
 //! `yapi import pi`: copies pi's state into yapi's directories. yapi reads pi's
 //! formats unchanged, so files are copied as they are, except pi's
-//! `lastChangelogVersion` and sign-ins; files yapi already has are kept.
+//! `lastChangelogVersion` and sign-ins. Files yapi already has are kept.
 
 use std::path::{Path, PathBuf};
 
@@ -170,7 +170,7 @@ fn settings(path: &Path) -> Option<Map<String, Value>> {
 
 /// Removes the sign-ins from the copied credentials `file` at `path`: OAuth
 /// credentials of `auth.json`, servers holding tokens in `mcp-auth.json`.
-/// Returns their providers or server names; a file without any is untouched.
+/// Returns their providers or server names. A file without any is untouched.
 fn drop_sign_ins(path: &Path, file: ConfigFile) -> std::io::Result<Vec<String>> {
     let Some(mut document) = settings(path) else {
         return Ok(Vec::new());
@@ -207,8 +207,8 @@ fn drop_sign_ins(path: &Path, file: ConfigFile) -> std::io::Result<Vec<String>> 
 /// two installs never mix. Entries `from` lacks are skipped. A `settings.json` that
 /// holds only the version yapi recorded on its first start is replaced, and
 /// pi's `lastChangelogVersion`, a pi version, is not copied. Nor are the
-/// sign-ins of a copied `auth.json` or `mcp-auth.json`; see
-/// [`Imported::signed_out`].
+/// sign-ins of a copied `auth.json` or `mcp-auth.json` (see
+/// [`Imported::signed_out`]).
 pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<Imported>> {
     let mut out = Vec::new();
     for entry in entries {

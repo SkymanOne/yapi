@@ -45,7 +45,7 @@ fn now() -> SystemTime {
 use tests::now;
 
 /// When to refresh an entry that lives `ttl_ms`: at 90% of its lifetime,
-/// keeping at least ten seconds of margin.
+/// keeping at least 10s of margin.
 fn delay_ms(ttl_ms: f64) -> Option<u64> {
     (ttl_ms > 10_000.0).then(|| (ttl_ms * 0.9).min(ttl_ms - 10_000.0).floor().max(1.0) as u64)
 }
@@ -343,8 +343,8 @@ impl AgentSession {
         self.schedule_cache_refresh(&mut warmer);
     }
 
-    /// pi's `onAgentSettled`: in streaming mode warming stops; otherwise it
-    /// continues in the idle phase within its shorter limit.
+    /// pi's `onAgentSettled`: in streaming mode warming stops, and otherwise
+    /// it continues in the idle phase within its shorter limit.
     pub(super) fn cache_warming_settled(&self) {
         let mode = self.cache_warming_mode();
         let mut warmer = lock(&self.inner.cache_warmer);
@@ -451,7 +451,7 @@ impl AgentSession {
         run.refreshing = false;
         run.next_warm_at = now + run.delay;
         // A timer can fire late after sleep or a blocked runtime. Half of the
-        // planned margin before expiry is kept for that and the request; a
+        // planned margin before expiry is kept for that and the request. A
         // later refresh would likely write the cache at full price.
         let margin = ((run.ttl_ms - run.delay.as_millis() as f64) / 2.0).floor();
         run.refresh_deadline = run.next_warm_at + Duration::from_millis(margin as u64);
@@ -479,8 +479,8 @@ impl AgentSession {
         });
     }
 
-    /// pi's `validateRun`: whether run `id` is still current and wanted;
-    /// otherwise warming stops for the reason it is not.
+    /// pi's `validateRun`: whether run `id` is still current and wanted.
+    /// Otherwise warming stops for the reason it is not.
     fn cache_run_valid(&self, warmer: &mut CacheWarmer, id: u64) -> bool {
         let mode = self.cache_warming_mode();
         let Some(run) = warmer.run(id) else {
@@ -619,7 +619,7 @@ impl AgentSession {
     }
 
     /// Sends `request` again with a one-token output cap and fresh
-    /// credentials; its response, unless it could not be sent.
+    /// credentials, and returns its response unless it could not be sent.
     async fn send_cache_refresh(
         &self,
         mut request: Request,
@@ -922,7 +922,7 @@ mod tests {
         })
     }
 
-    /// A refresh of the five-minute cache is due 270 s after the request.
+    /// A refresh of the five-minute cache is due 270s after the request.
     const REFRESH: Duration = Duration::from_secs(271);
 
     #[tokio::test(start_paused = true)]
@@ -994,8 +994,8 @@ mod tests {
             Some("agent run settled")
         );
 
-        // The second response takes 400 s; its request's cache entry is
-        // refreshed at 270 s, priced from the first response's prompt.
+        // The second response takes 400s. Its request's cache entry is
+        // refreshed at 270s, priced from the first response's prompt.
         let run = tokio::spawn({
             let session = session.clone();
             async move { session.prompt("second", Vec::new()).await }
@@ -1096,8 +1096,8 @@ mod tests {
         let provider = Cached::default();
         let session = warming_session(cached_model(), &provider, Vec::new(), CacheWarming::Idle);
         session.prompt("hi", Vec::new()).await.unwrap();
-        // The refresh due at 270 s may go out until 285 s. The machine
-        // sleeps for 16 s while the timer waits.
+        // The refresh due at 270s may go out until 285s. The machine
+        // sleeps for 16s while the timer waits.
         sleep_through(Duration::from_secs(16));
         tokio::time::sleep(REFRESH).await;
         assert_eq!(provider.caps(), [None]);
@@ -1134,7 +1134,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn extensions_override_decision() {
-        // pi would warm; an extension stops it, which needs no grant.
+        // pi would warm. An extension stops it, which needs no grant.
         let no_session = Grants {
             session: false,
             ..Grants::default()
@@ -1158,7 +1158,7 @@ mod tests {
                 .starts_with("Stopped (extension override, 15% continuation probability")
         );
 
-        // pi would stop between runs at Anthropic's prices; an extension
+        // pi would stop between runs at Anthropic's prices. An extension
         // warms anyway, and the refresh is noted as its override.
         let mut model = cached_model();
         model.cost.cache_read = 0.3;

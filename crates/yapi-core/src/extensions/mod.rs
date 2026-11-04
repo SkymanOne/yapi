@@ -4,7 +4,7 @@
 //!
 //! This is the part of pi's `ExtensionAPI` that the built-in extensions use.
 //! The wasm host in `yapi-ext` implements [`Extension`] for loaded packages with
-//! the same contract. Each session gets its own extension instances; a
+//! the same contract. Each session gets its own extension instances. A
 //! replaced session receives `session_shutdown` before its successor starts.
 
 pub mod codemode;
@@ -39,7 +39,7 @@ use crate::agent_session::WeakSession;
 use crate::tools::RegisteredTool;
 use crate::tools::registry::ToolRegistry;
 
-/// The mode a session runs in; pi's `ExtensionMode`.
+/// pi's `ExtensionMode`: the mode a session runs in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
     /// The interactive terminal UI.
@@ -53,7 +53,7 @@ pub enum Mode {
     Json,
 }
 
-/// A tool as extensions see it; pi's `ToolInfo`.
+/// pi's `ToolInfo`: a tool as extensions see it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolInfo {
     /// Name.
@@ -141,8 +141,8 @@ pub struct Command {
     pub description: String,
 }
 
-/// An extension command with the name it is invoked by; pi's
-/// `ResolvedCommand`.
+/// pi's `ResolvedCommand`: an extension command with the name it is
+/// invoked by.
 #[derive(Clone)]
 pub struct ResolvedCommand {
     /// `name`, or `name:N` when several extensions register `name`.
@@ -153,7 +153,7 @@ pub struct ResolvedCommand {
     pub extension: Arc<dyn Extension>,
 }
 
-/// A key an extension binds; pi's `registerShortcut`.
+/// A key an extension binds with pi's `registerShortcut`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shortcut {
     /// The key id, such as `alt+u`.
@@ -177,8 +177,8 @@ pub struct ShortcutBinding {
     pub extension: Arc<dyn Extension>,
 }
 
-/// Actions whose keys extensions may not take; pi's
-/// `RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS`.
+/// pi's `RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS`: actions whose keys
+/// extensions may not take.
 pub const RESERVED_ACTIONS: [&str; 18] = [
     "app.interrupt",
     "app.clear",
@@ -202,7 +202,7 @@ pub const RESERVED_ACTIONS: [&str; 18] = [
 
 /// pi's `getShortcuts`: the shortcuts of `extensions` in load order, given
 /// the keys bound to each built-in action. A key a reserved action uses is
-/// refused; another built-in key, or one an earlier extension took, goes to
+/// refused. Another built-in key, or one an earlier extension took, goes to
 /// the later extension. Returns the bindings and pi's warnings, each with the
 /// path of the extension it concerns.
 pub fn resolve_shortcuts(
@@ -276,8 +276,8 @@ pub fn resolve_shortcuts(
     (bindings, warnings)
 }
 
-/// How an extension draws one of its tools; pi's `renderCall`,
-/// `renderResult` and `renderShell`.
+/// pi's `renderCall`, `renderResult` and `renderShell`: how an extension
+/// draws one of its tools.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ToolRenderers {
     /// It draws the call.
@@ -288,7 +288,7 @@ pub struct ToolRenderers {
     pub own_shell: bool,
 }
 
-/// The tools a loadout hook sees; pi's `ToolLoadout`.
+/// pi's `ToolLoadout`: the tools a loadout hook sees.
 #[derive(Clone, Default)]
 pub struct Loadout {
     /// The active tools in activation order, with their own descriptions.
@@ -297,7 +297,7 @@ pub struct Loadout {
     pub callable: Vec<RegisteredTool>,
 }
 
-/// What a loadout hook changes; pi's `ToolLoadoutChanges`.
+/// pi's `ToolLoadoutChanges`: what a loadout hook changes.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LoadoutChanges {
     /// Descriptions for declared tools, by name, replacing their own.
@@ -360,7 +360,7 @@ pub trait Extension: Send + Sync {
         Vec::new()
     }
 
-    /// Runs the handler of shortcut `key`; the error is the handler's.
+    /// Runs the handler of shortcut `key` and returns the handler's error.
     fn run_shortcut<'a>(
         &'a self,
         _key: &'a str,
@@ -398,13 +398,13 @@ pub trait Extension: Send + Sync {
     }
 
     /// Session `session_id` ended or another replaced it, after its
-    /// `session_shutdown`; not on reload. pi disposes the session's
+    /// `session_shutdown`, but not on reload. pi disposes the session's
     /// resources then, with pi-ai's `cleanupSessionResources`.
     fn end_session<'a>(&'a self, _session_id: &'a str) -> BoxFuture<'a, ()> {
         Box::pin(async {})
     }
 
-    /// A prompt is about to run; `sections` are extra system prompt sections
+    /// A prompt is about to run. `sections` are extra system prompt sections
     /// by tag name, which the extension may change.
     fn before_agent_start<'a>(
         &'a self,
@@ -426,9 +426,8 @@ pub trait Extension: Send + Sync {
         Box::pin(async { None })
     }
 
-    /// How the next request presents the declared tools; pi's
-    /// `prepareLoadout` hook of a tool it registered. Runs before every
-    /// request.
+    /// pi's `prepareLoadout` hook of a tool it registered: how the next
+    /// request presents the declared tools. Runs before every request.
     fn prepare_loadout(&self, _loadout: &Loadout) -> LoadoutChanges {
         LoadoutChanges::default()
     }
@@ -467,7 +466,7 @@ pub trait Extension: Send + Sync {
 
     /// The lines its code renderer draws for `request`, `{"code", "lang",
     /// "width"}` with `lang` possibly `null`, as text with escape sequences.
-    /// `Ok(None)` leaves the code to yapi; an error is the renderer's.
+    /// `Ok(None)` leaves the code to yapi, and an error is the renderer's.
     fn render_code<'a>(
         &'a self,
         _request: &'a Value,
@@ -475,7 +474,7 @@ pub trait Extension: Send + Sync {
         Box::pin(async { Ok(None) })
     }
 
-    /// A tool is about to run; `Some(reason)` blocks it.
+    /// A tool is about to run. `Some(reason)` blocks it.
     fn tool_call<'a>(
         &'a self,
         _ctx: &'a Context,
@@ -487,7 +486,7 @@ pub trait Extension: Send + Sync {
 
     /// Runs `command` in `cwd` through the operations its `user_bash`
     /// handler returned as `handle`, sending output to `output`, until the
-    /// command ends or `cancel` fires; returns the exit code.
+    /// command ends or `cancel` fires, and returns the exit code.
     fn run_bash<'a>(
         &'a self,
         _handle: &'a Value,
@@ -521,7 +520,7 @@ pub trait Extension: Send + Sync {
 pub type Setup =
     Box<dyn FnOnce(crate::agent_session::AgentSession) -> BoxFuture<'static, ()> + Send>;
 
-/// A session change an extension command asks for; one of pi's
+/// A session change an extension command asks for, one of pi's
 /// `ExtensionCommandContextActions`.
 pub enum SessionAction {
     /// `newSession`, linked to a parent session file when given.
@@ -531,7 +530,7 @@ pub enum SessionAction {
         /// What to write to the new session before it starts.
         setup: Option<Setup>,
     },
-    /// `fork` at an entry; `at` keeps the entry, as `/clone` does.
+    /// `fork` at an entry. `at` keeps the entry, as `/clone` does.
     Fork {
         /// The entry.
         entry_id: String,
@@ -552,8 +551,8 @@ pub enum SessionAction {
     },
     /// `reload`.
     Reload,
-    /// The extension finished its `withSession` work after a replacement;
-    /// the mode reports the change now, as pi does once it returns.
+    /// The extension finished its `withSession` work after a replacement.
+    /// The mode reports the change now, as pi does once it returns.
     Replaced,
 }
 
@@ -562,8 +561,8 @@ pub enum SessionAction {
 pub type SessionActions =
     Arc<dyn Fn(SessionAction) -> BoxFuture<'static, Result<bool, String>> + Send + Sync>;
 
-/// Operations a `user_bash` handler returned to run a `!` command with; pi's
-/// `BashOperations`.
+/// pi's `BashOperations`: operations a `user_bash` handler returned to run a
+/// `!` command with.
 #[derive(Clone)]
 pub struct BashOperations {
     /// The extension whose handler returned them.
@@ -581,7 +580,7 @@ pub enum ModelUpdate {
     /// The list its `refreshModels` returned.
     Definitions(Vec<ModelDefinition>),
     /// Its chat models as its legacy `oauth.modifyModels` made them for the
-    /// stored OAuth credential; `None` without one.
+    /// stored OAuth credential, or `None` without one.
     Modified(Option<Vec<Model>>),
     /// What its API key `check`, `filterModels` and `filterAllModels` make
     /// available for the stored credential.

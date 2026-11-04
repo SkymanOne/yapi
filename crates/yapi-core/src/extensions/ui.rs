@@ -1,5 +1,5 @@
-//! What extensions show: dialogs, notifications, footer statuses, widgets,
-//! the editor and custom components; pi's `ExtensionUIContext`.
+//! What extensions show, as pi's `ExtensionUIContext`: dialogs,
+//! notifications, footer statuses, widgets, the editor and custom components.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,12 +37,12 @@ pub struct TerminalState {
     /// Its size in columns and rows.
     pub size: (usize, usize),
     /// The prompt editor, or an extension's editor in its place, has the
-    /// keyboard, rather than a selector, a dialog or an extension component;
-    /// what pi-tui's `focusedComponent` tells.
+    /// keyboard, rather than a selector, a dialog or an extension component,
+    /// as pi-tui's `focusedComponent` tells.
     pub editor_focused: bool,
 }
 
-/// When a dialog closes on its own; pi's `ExtensionUIDialogOptions`.
+/// pi's `ExtensionUIDialogOptions`: when a dialog closes on its own.
 #[derive(Clone, Debug, Default)]
 pub struct DialogOptions {
     /// Closes the dialog as cancelled after this long. Interactive dialogs
@@ -52,7 +52,7 @@ pub struct DialogOptions {
     pub cancel: Option<CancellationToken>,
 }
 
-/// Where a widget goes; pi's `WidgetPlacement`.
+/// pi's `WidgetPlacement`: where a widget goes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Placement {
     /// Above the editor.
@@ -65,10 +65,10 @@ pub enum Placement {
 /// pi's `WorkingIndicatorOptions`: the animation shown while the agent works.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct WorkingIndicator {
-    /// Frames drawn as given, escape sequences included; `None` keeps the
+    /// Frames drawn as given, escape sequences included. `None` keeps the
     /// default spinner frames, and an empty list hides the indicator.
     pub frames: Option<Vec<String>>,
-    /// Milliseconds per frame; `None` keeps the default.
+    /// Milliseconds per frame, or `None` for the default.
     pub interval_ms: Option<u64>,
 }
 
@@ -150,7 +150,7 @@ impl RemoteComponent {
         (self.runtime, self.handle)
     }
 
-    /// Its lines at `width` columns; see [`ComponentHost::render`].
+    /// Its lines at `width` columns (see [`ComponentHost::render`]).
     pub fn render(&self, width: u16) -> BoxFuture<'static, Vec<String>> {
         self.host.render(self.handle, width)
     }
@@ -160,18 +160,19 @@ impl RemoteComponent {
         self.host.input(self.handle, data);
     }
 
-    /// Delivers a mouse event; see [`ComponentHost::mouse`].
+    /// Delivers a mouse event (see [`ComponentHost::mouse`]).
     pub fn mouse(&self, event: &Value) -> BoxFuture<'static, bool> {
         self.host.mouse(self.handle, event)
     }
 
-    /// Sends an operation to the editor it is; see [`ComponentHost::editor_op`].
+    /// Sends an operation to the editor it is, as
+    /// [`ComponentHost::editor_op`] describes.
     pub fn editor_op(&self, op: &Value) {
         self.host.editor_op(self.handle, op);
     }
 }
 
-/// How a custom component is shown; the options of pi's `custom`.
+/// The options of pi's `custom`: how a custom component is shown.
 #[derive(Clone, Debug, Default)]
 pub struct CustomOptions {
     /// Over the screen instead of in the editor's place.
@@ -180,8 +181,8 @@ pub struct CustomOptions {
     pub overlay_options: Value,
 }
 
-/// pi's `ExtensionUIContext` as a mode provides it. Dialogs a mode cannot
-/// show resolve as cancelled; everything else does nothing by default.
+/// pi's `ExtensionUIContext` as a mode implements it. Dialogs a mode cannot
+/// show resolve as cancelled. Everything else does nothing by default.
 pub trait ExtensionUi: Send + Sync {
     /// Whether a person can answer dialogs.
     fn has_ui(&self) -> bool;
@@ -192,13 +193,13 @@ pub trait ExtensionUi: Send + Sync {
     /// Shows a message.
     fn notify(&self, message: &str, kind: NotifyKind);
 
-    /// Shows a message that names no kind; hosts show it as information,
+    /// Shows a message that names no kind. Hosts show it as information,
     /// and RPC forwards it without a kind, as pi does.
     fn notify_untyped(&self, message: &str) {
         self.notify(message, NotifyKind::Info);
     }
 
-    /// Asks to pick one of `options`; `None` when cancelled.
+    /// Asks to pick one of `options`, resolving to `None` when cancelled.
     fn select(
         &self,
         _title: &str,
@@ -208,7 +209,7 @@ pub trait ExtensionUi: Send + Sync {
         Box::pin(async { None })
     }
 
-    /// Asks for a line of text; `None` when cancelled.
+    /// Asks for a line of text, resolving to `None` when cancelled.
     fn input(
         &self,
         _title: &str,
@@ -218,7 +219,7 @@ pub trait ExtensionUi: Send + Sync {
         Box::pin(async { None })
     }
 
-    /// Asks a yes or no question; `false` when cancelled.
+    /// Asks a yes or no question, resolving to `false` when cancelled.
     fn confirm(
         &self,
         _title: &str,
@@ -228,8 +229,8 @@ pub trait ExtensionUi: Send + Sync {
         Box::pin(async { false })
     }
 
-    /// Asks for multi-line text starting from `prefill`; `None` when
-    /// cancelled.
+    /// Asks for multi-line text starting from `prefill`, resolving to `None`
+    /// when cancelled.
     fn editor(&self, _title: &str, _prefill: Option<&str>) -> BoxFuture<'static, Option<String>> {
         Box::pin(async { None })
     }
@@ -250,7 +251,7 @@ pub trait ExtensionUi: Send + Sync {
     /// Sets the terminal title.
     fn set_title(&self, _title: &str) {}
 
-    /// Completions an extension computed in the background are ready; the
+    /// Completions an extension computed in the background are ready. The
     /// editor asks for its suggestions again.
     fn refresh_completions(&self) {}
 
@@ -306,7 +307,7 @@ pub trait ExtensionUi: Send + Sync {
     fn set_terminal_input(&self, _runtime: u64, _listeners: Option<Arc<dyn ComponentHost>>) {}
 
     /// Completes through the providers composed with
-    /// `addAutocompleteProvider`, which `providers` runs; `triggers` open
+    /// `addAutocompleteProvider`, which `providers` runs. `triggers` open
     /// completion too. They replace the providers of the runtime that set
     /// them before.
     fn set_autocomplete(&self, _providers: Arc<dyn ComponentHost>, _triggers: Vec<String>) {}
@@ -350,7 +351,7 @@ pub trait ExtensionUi: Send + Sync {
     fn drop_components(&self, _runtime: u64) {}
 
     /// Shows a screen of the `/mcp` manager with keyboard focus, opening the
-    /// manager; [`McpScreen::Close`] closes it. Without the TUI the screen
+    /// manager. [`McpScreen::Close`] closes it. Without the TUI the screen
     /// is dropped, which closes its menu.
     ///
     /// [`McpScreen::Close`]: crate::mcp::extension::McpScreen::Close
@@ -360,7 +361,7 @@ pub trait ExtensionUi: Send + Sync {
     fn request_render(&self) {}
 
     /// An extension registered transcript renderers or a Markdown
-    /// transformer after its session started; what draws next uses them.
+    /// transformer after its session started. What draws next uses them.
     fn renderers_changed(&self) {}
 
     /// Whether tool output is expanded.
@@ -371,7 +372,7 @@ pub trait ExtensionUi: Send + Sync {
     /// Expands or collapses tool output.
     fn set_tools_expanded(&self, _expanded: bool) {}
 
-    /// The terminal's state, kept current as it changes; `None` without a
+    /// The terminal's state, kept current as it changes, or `None` without a
     /// terminal, as in print, JSON and RPC modes.
     fn terminal(&self) -> Option<tokio::sync::watch::Receiver<TerminalState>> {
         None
@@ -391,7 +392,7 @@ pub trait ExtensionUi: Send + Sync {
         Value::Null
     }
 
-    /// The theme called `name`, as [`ExtensionUi::theme`] describes it;
+    /// The theme called `name`, as [`ExtensionUi::theme`] describes it, or
     /// `Null` when there is none.
     fn get_theme(&self, _name: &str) -> Value {
         Value::Null
@@ -412,7 +413,8 @@ pub trait ExtensionUi: Send + Sync {
     }
 
     /// A handler of extension `path` failed on `event`, with the error's
-    /// stack when the runtime gave one; print mode's report by default.
+    /// stack when the runtime gave one. By default it reports as print mode
+    /// does.
     fn extension_error(&self, path: &str, _event: &str, error: &str, _stack: Option<&str>) {
         use std::io::Write as _;
         let _ = writeln!(std::io::stderr(), "Extension error ({path}): {error}");

@@ -71,7 +71,7 @@ pub struct Resolved {
     pub enabled: bool,
 }
 
-/// Resolved resources by kind; pi's `ResolvedPaths`.
+/// pi's `ResolvedPaths`: resolved resources by kind.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResolvedPaths {
     /// Extensions.
@@ -195,7 +195,7 @@ fn base_name(path: &Path) -> String {
 }
 
 /// pi's `matchesAnyPattern`: a glob against the path relative to `base`,
-/// the file name or the whole path; for `SKILL.md`, its directory too.
+/// the file name or the whole path, and for `SKILL.md` its directory too.
 fn matches_any_pattern(file: &Path, patterns: &[String], base: &Path) -> bool {
     let rel = relative(base, file);
     let name = base_name(file);
@@ -223,7 +223,7 @@ fn matches_any_pattern(file: &Path, patterns: &[String], base: &Path) -> bool {
 }
 
 /// pi's `matchesAnyExactPattern`: the path relative to `base` or the whole
-/// path, without a leading `./`; for `SKILL.md`, its directory too.
+/// path, without a leading `./`, and for `SKILL.md` its directory too.
 fn matches_any_exact_pattern(file: &Path, patterns: &[String], base: &Path) -> bool {
     if patterns.is_empty() {
         return false;
@@ -352,7 +352,7 @@ fn apply_autoload_disabled_patterns(
 }
 
 /// The rules of `.gitignore`, `.ignore` and `.fdignore` files met while
-/// walking a directory; a subset of the `ignore` package pi uses.
+/// walking a directory, as a subset of the `ignore` package pi uses.
 #[derive(Clone, Debug, Default)]
 struct Ignore {
     rules: Vec<(String, bool)>,
@@ -409,7 +409,7 @@ impl Ignore {
 }
 
 /// One rule against a relative path. A rule with a `/` is anchored to the
-/// root; one without matches a name at any depth. Walks skip dot entries
+/// root, and one without matches a name at any depth. Walks skip dot entries
 /// before asking, so wildcards need not match them.
 fn rule_matches(pattern: &str, path: &str, dir: bool) -> bool {
     let (pattern, dir_only) = match pattern.strip_suffix('/') {
@@ -489,8 +489,8 @@ enum SkillMode {
     Agents,
 }
 
-/// pi's `collectSkillEntries`: a directory with a `SKILL.md` is one skill;
-/// otherwise its `.md` files (by mode) and the skills of its directories.
+/// pi's `collectSkillEntries`: a directory with a `SKILL.md` is one skill.
+/// Otherwise, its `.md` files (by mode) and the skills of its directories.
 fn collect_skill_entries(
     dir: &Path,
     mode: SkillMode,
@@ -616,9 +616,9 @@ pub(crate) struct Manifest {
 }
 
 impl Manifest {
-    /// The manifest of the package at `root`; `None` when no source decides
-    /// its resources, so the conventional folders apply. With it, why its
-    /// `chest.toml` was left out, as [`read_package_meta`] says.
+    /// The manifest of the package at `root`, or `None` when no source
+    /// decides its resources, so the conventional folders apply. With it, why
+    /// its `chest.toml` was left out, as [`read_package_meta`] says.
     pub(crate) fn read(root: &Path) -> (Option<Manifest>, Option<ChestError>) {
         let (meta, problem) = read_package_meta(root);
         let lists = ResourceType::ALL.map(|kind| meta.resources.get(kind.key()).cloned());
@@ -681,7 +681,7 @@ fn metadata(source: &str, scope: &str, origin: &str, base_dir: Option<&Path>) ->
     }
 }
 
-/// pi's `collectPackageResources`; whether the package provided anything.
+/// pi's `collectPackageResources`: whether the package provided anything.
 fn collect_package_resources(
     root: &Path,
     acc: &mut ResolvedPaths,
@@ -872,8 +872,8 @@ fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
 }
 
 /// pi's `addAutoDiscoveredResources`: the project's resources when it is
-/// trusted, then the user's; for each scope its extensions, skills, `.agents`
-/// skills, prompts and themes.
+/// trusted, then the user's, each scope with its extensions, skills,
+/// `.agents` skills, prompts and themes.
 fn auto_discovered(input: &ResolveInput<'_>, acc: &mut ResolvedPaths) {
     let user_agents = input.home.join(".agents").join("skills");
     let project_agents: Vec<PathBuf> = if input.project_trusted {
@@ -989,7 +989,7 @@ pub fn package_resources(
 }
 
 /// pi's `resolve`: packages, then settings entries, then discovered files,
-/// then built-in extensions; ordered by precedence without repeats.
+/// then built-in extensions, ordered by precedence without repeats.
 pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
     let mut acc = ResolvedPaths::default();
     for package in &input.packages {
@@ -1076,8 +1076,8 @@ pub fn settings_lists(document: &serde_json::Map<String, serde_json::Value>) -> 
     ResourceType::ALL.map(|kind| string_list(document, kind.key()))
 }
 
-/// The strings in list `key` of a settings document or package entry;
-/// entries of other types are skipped.
+/// The strings in list `key` of a settings document or package entry,
+/// skipping entries of other types.
 pub fn string_list(
     document: &serde_json::Map<String, serde_json::Value>,
     key: &str,

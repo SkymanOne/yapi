@@ -118,8 +118,8 @@ pub fn delivers(
     receiver: (&Grants, &EventPolicy),
     channel: &str,
 ) -> bool {
-    // shortcut: identical grants ignore filesystem roots, which only codemode narrows;
-    // path-scoped file grants must compare roots too.
+    // shortcut: identical grants ignore filesystem roots, which only codemode narrows,
+    // compare roots too once file grants are path-scoped.
     sender.0 == receiver.0 || sender.1.sends(channel) && receiver.1.receives(channel)
 }
 

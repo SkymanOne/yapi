@@ -32,7 +32,7 @@ pub enum State {
     Connecting,
     /// Connected.
     Connected,
-    /// The connection dropped; the next call reconnects.
+    /// The connection dropped, and the next call reconnects.
     Disconnected,
     /// The server needs a sign-in.
     NeedsAuth,
@@ -119,10 +119,11 @@ pub(super) async fn resolve_value(value: &str, description: &str) -> Result<Stri
 }
 
 impl Connection {
-    /// A connection for `entry`, not yet connected. `on_tools` learns of tool
-    /// and resource changes; `readable_resources` tells whether the resource
-    /// tools reach a server; `provider_token` reads the token of servers with
-    /// `auth.provider`. OAuth credentials are kept in `agent_dir`.
+    /// A connection for `entry`, not yet connected, with OAuth credentials
+    /// kept in `agent_dir`. Its callbacks:
+    /// - `on_tools`: learns of tool and resource changes
+    /// - `readable_resources`: tells whether the resource tools reach a server
+    /// - `provider_token`: reads the token of servers with `auth.provider`
     pub fn new(
         entry: ServerEntry,
         cwd: PathBuf,
@@ -147,7 +148,7 @@ impl Connection {
                         oauth.clone().unwrap_or_default(),
                     ))))
                 } else {
-                    // Read on every request, so the provider's refreshes apply; MCP stores no copy.
+                    // Read on every request, so the provider's refreshes apply. MCP stores no copy.
                     auth_provider.clone().map(|provider| HttpAuth::Provider {
                         provider,
                         token: provider_token,
@@ -194,7 +195,7 @@ impl Connection {
         }
     }
 
-    /// Signs in to an OAuth server; the caller reconnects afterwards.
+    /// Signs in to an OAuth server. The caller reconnects afterwards.
     pub async fn sign_in(&self, prompt: &SignInPrompt) -> Result<(), yapi_ai::auth::AuthError> {
         match self.oauth() {
             Some(auth) => auth.sign_in(prompt).await,
@@ -205,8 +206,8 @@ impl Connection {
         }
     }
 
-    /// Removes the server's stored OAuth credentials; whether any were
-    /// stored.
+    /// Removes the server's stored OAuth credentials. Returns whether any
+    /// were stored.
     pub async fn remove_credentials(&self) -> Result<bool, McpError> {
         match self.oauth_url() {
             Some(url) => self.credentials.remove(&self.entry.name, url).await,
@@ -404,7 +405,7 @@ impl Connection {
         }
     }
 
-    /// One attempt; on failure, the error and a stdio server's stderr.
+    /// One attempt. On failure, the error and a stdio server's stderr.
     async fn connect_once(self: &Arc<Self>) -> Result<McpClient, Box<(McpError, Option<String>)>> {
         let transport = self
             .transport()
@@ -543,7 +544,7 @@ impl Connection {
         }
     }
 
-    /// The transport dropped; the next call reconnects.
+    /// The transport dropped, and the next call reconnects.
     fn client_closed(&self, client: &McpClient) {
         let mut current = lock(&self.client);
         if !current.as_ref().is_some_and(|current| current.same(client))
@@ -589,7 +590,7 @@ impl Connection {
     }
 
     /// Runs a request, reconnecting when needed. Read-only requests are
-    /// retried once after a transient HTTP error; any request is retried once
+    /// retried once after a transient HTTP error. Any request is retried once
     /// on a new session when the server forgot the old one.
     async fn with_client<T, F>(
         self: &Arc<Self>,
@@ -671,8 +672,8 @@ impl Connection {
         .await
     }
 
-    /// One page of resources or resource templates; no templates for servers
-    /// without the method.
+    /// One page of resources or resource templates, with no templates for
+    /// servers without the method.
     pub async fn resources_page(
         self: &Arc<Self>,
         kind: ResourceKind,
@@ -689,8 +690,8 @@ impl Connection {
         .await
     }
 
-    /// Every resource or resource template; no templates for servers without
-    /// the method.
+    /// Every resource or resource template, with no templates for servers
+    /// without the method.
     pub async fn all_resources(
         self: &Arc<Self>,
         kind: ResourceKind,
@@ -747,7 +748,7 @@ fn without_templates<T>(
 }
 
 /// Resources at connect time, for the counts in `/mcp`. Failures leave the
-/// list empty; the resource tools list on demand.
+/// list empty, and the resource tools list on demand.
 async fn fetch_resources(client: &McpClient) -> Vec<Value> {
     client
         .list_resources(ResourceKind::Resources, RequestOptions::default())

@@ -1,7 +1,7 @@
 //! What chest placed on this machine in one project, or in the home folder
 //! for the global manifest, kept outside the repository: the hash of what
 //! each path held and the manifests whose entries put it there. A recorded
-//! path whose content still has that hash is chest's to replace or remove; a
+//! path whose content still has that hash is chest's to replace or remove. A
 //! committed lock never makes a path chest's by itself.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -156,7 +156,7 @@ impl Record {
     }
 
     /// Records what `path` holds once placed: where it points for a link,
-    /// else `hash`, the content just written. Forgets it when nothing is
+    /// else `hash`, the new content. Forgets it when nothing is
     /// there.
     pub(super) fn noted(&mut self, path: &Path, hash: &str) {
         let key = self.key(path);
@@ -202,8 +202,8 @@ impl Record {
         placed.is_some_and(|placed| placed.by.iter().any(|by| *by != self.manifest))
     }
 
-    /// Lets this manifest go of `path`, which stays recorded for any other
-    /// that occupies it, and is forgotten otherwise.
+    /// Releases this manifest's hold on `path`, which stays recorded for any
+    /// other that occupies it, and is forgotten otherwise.
     pub(super) fn release(&mut self, path: &Path) {
         let key = self.key(path);
         if let Some(placed) = self.placed.get_mut(&key) {

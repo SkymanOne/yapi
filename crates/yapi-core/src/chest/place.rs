@@ -412,7 +412,7 @@ mod tests {
         assert!(folders[0].join("pdf/SKILL.md").exists());
         assert!(folders[1].join("mine/SKILL.md").exists());
 
-        // The block is rebuilt in place; lines around it, CRLF ones too, stay.
+        // The block is rebuilt in place, and lines around it, CRLF ones too, stay.
         let ignore = root.join(".gitignore");
         let handwritten = "target/\r\n# mine\n# BEGIN chest (chest.toml)\nold/path\n# END chest\n.env\n# BEGIN chest (chest.dev.toml)\ndev/path\n# END chest\nlast";
         std::fs::write(&ignore, handwritten).unwrap();

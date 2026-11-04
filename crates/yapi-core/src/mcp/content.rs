@@ -4,7 +4,7 @@
 use serde_json::Value;
 use yapi_types::message::{ContentBlock, ImageContent};
 
-/// A text block.
+/// An image block.
 fn image(data: &str, mime_type: &str) -> ContentBlock {
     ContentBlock::Image(ImageContent {
         data: data.to_owned(),
@@ -46,7 +46,7 @@ pub fn block_to_llm(block: &Value) -> ContentBlock {
     }
 }
 
-/// A tool result's content blocks; without blocks, its `structuredContent` as
+/// A tool result's content blocks. Without blocks, its `structuredContent` as
 /// JSON, since servers should but do not always mirror it as text.
 pub fn to_llm_content(result: &Value) -> Vec<ContentBlock> {
     let mut content: Vec<ContentBlock> = result

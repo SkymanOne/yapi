@@ -1,4 +1,5 @@
-//! `edit`: exact text replacements in one file, preserving BOM and line endings.
+//! `edit`: exact text replacements in one file, preserving its byte order
+//! mark (BOM) and line endings.
 
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};

@@ -62,7 +62,7 @@ impl StdioTransport {
         String::from_utf8_lossy(&lock(&self.stderr)).into_owned()
     }
 
-    /// Starts the server; its messages and exit go to `events`.
+    /// Starts the server and sends its messages and exit to `events`.
     pub async fn start(&self, events: Events) -> Result<(), McpError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(McpError::closed());

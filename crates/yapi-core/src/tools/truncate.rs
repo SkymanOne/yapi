@@ -185,7 +185,7 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
     }
 }
 
-/// Keeps whole lines from the end; a single over-long last line keeps its tail.
+/// Keeps whole lines from the end. A single over-long last line keeps its tail.
 pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Truncation {
     let lines = count_lines(content);
     let total_bytes = content.len();

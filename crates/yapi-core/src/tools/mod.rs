@@ -100,7 +100,7 @@ impl ToolEnv {
     }
 }
 
-/// How a tool reaches the model; pi's `ToolExposure`.
+/// pi's `ToolExposure`: how a tool reaches the model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Exposure {
@@ -108,7 +108,7 @@ pub enum Exposure {
     Direct,
     /// Declared while active, but not callable from other tools.
     ModelOnly,
-    /// Callable from codemode scripts; never declared.
+    /// Callable from codemode scripts, and never declared.
     Codemode,
     /// Declared once `tool_search` loads it.
     Deferred,
@@ -134,7 +134,7 @@ pub struct Namespace {
     pub instructions: Option<String>,
 }
 
-/// A tool declared with another description; everything else is the tool's.
+/// A tool declared with another description. Everything else is the tool's.
 pub struct Described {
     tool: Arc<dyn Tool>,
     declaration: ToolDeclaration,
@@ -192,7 +192,8 @@ impl Tool for Described {
 pub struct RegisteredTool {
     /// The tool.
     pub tool: Arc<dyn Tool>,
-    /// One-line summary for the prompt's tool list; absent tools are not listed.
+    /// One-line summary for the prompt's tool list, which leaves out tools
+    /// without one.
     pub snippet: Option<String>,
     /// Bullets added to the prompt's rules.
     pub guidelines: Vec<String>,
@@ -204,7 +205,7 @@ pub struct RegisteredTool {
     pub default_active: bool,
     /// pi's `ToolAnnotations`, such as `readOnlyHint`.
     pub annotations: Option<Value>,
-    /// The extension that registered it; `None` for a built-in tool.
+    /// The extension that registered it, or `None` for a built-in tool.
     pub source: Option<yapi_types::rpc::SourceInfo>,
 }
 
@@ -321,7 +322,7 @@ fn check_abort(cancel: &CancellationToken) -> Result<(), String> {
     }
 }
 
-/// Sleeps until `deadline`; without one, never wakes.
+/// Sleeps until `deadline`, or forever without one.
 pub(crate) async fn sleep_until_opt(deadline: Option<std::time::Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
@@ -362,8 +363,8 @@ pub fn js_number(value: f64) -> String {
 }
 
 /// The result of output capped at the default byte limit with no line limit,
-/// then pi's bracketed notices: `before`, the byte limit if hit, `after`. The
-/// truncation joins `details` when it applied; empty details are left out.
+/// then pi's bracketed notices: `before`, the byte limit if reached, `after`.
+/// The truncation joins `details` when it applied. Empty details are left out.
 fn capped_output(
     raw: &str,
     before: Vec<String>,

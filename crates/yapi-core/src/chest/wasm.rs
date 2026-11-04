@@ -246,7 +246,8 @@ mod tests {
         );
         assert_eq!(declared.unsupported, ["wasi:sockets/tcp@0.2.6"]);
         assert_eq!(declared.unknown, ["exec:git"]);
-        // Many unknown lines are each kept once, in order, in linear time.
+        // 100,000 unknown lines, each given twice, are kept once each, in
+        // order, in linear time.
         let lines: String = (0..100_000).map(|n| format!("x{n}\nx{n}\n")).collect();
         let custom = section(0x00, &[&name(SECTION)[..], lines.as_bytes()].concat());
         let many = capabilities(&[&EMPTY[..], &custom].concat()).unwrap();

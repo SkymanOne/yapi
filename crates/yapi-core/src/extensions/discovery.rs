@@ -1,4 +1,4 @@
-//! Which files load as extensions; pi's extension entry rules
+//! Which files load as extensions: pi's extension entry rules
 //! (`core/extensions/loader.ts` in pi `v1.0.0`).
 
 use std::path::{Path, PathBuf};

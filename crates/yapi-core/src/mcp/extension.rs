@@ -1,18 +1,18 @@
 //! The built-in MCP extension: connects the servers in `mcp.json` and those
 //! extensions register with `pi.registerMcpServer` when a session starts, and
 //! servers registered later right away. A server in `mcp.json` takes
-//! precedence over a registered one of the same name. Tools are registered
-//! as `mcp__<server>__<tool>`. Port of `extensions/mcp/index.ts` in pi
+//! precedence over a registered one of the same name. The extension registers
+//! tools as `mcp__<server>__<tool>`. Port of `extensions/mcp/index.ts` in pi
 //! `v1.0.0`.
 //!
 //! Connections run in the background. The first prompt waits only for servers
-//! with `direct` tools; `tool_search` and the resource tools wait for the
+//! with `direct` tools. `tool_search` and the resource tools wait for the
 //! servers they need when they run. Servers whose tools are not declared are
 //! listed in the `mcp_servers` system prompt section. In the TUI `/mcp` opens
 //! a manager to sign in, reconnect, enable or disable servers and change
 //! their exposure, saved to the `mcp.json` that defines the server or, for
-//! servers extensions registered, kept for the session. Elsewhere
-//! it reports the status; `/mcp login` signs in to OAuth servers.
+//! servers extensions registered, kept for the session. Elsewhere it reports
+//! the status, and `/mcp login` signs in to OAuth servers.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -72,7 +72,7 @@ const EXPOSURES: [(McpExposure, &str); 3] = [
     ),
 ];
 
-/// A menu of the `/mcp` manager; pi's `McpMenu`.
+/// pi's `McpMenu`: a menu of the `/mcp` manager.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct McpMenu {
     /// The title.
@@ -93,7 +93,7 @@ pub struct McpMenu {
     pub cancel_label: String,
 }
 
-/// A screen of the `/mcp` manager; pi's `McpUi`.
+/// pi's `McpUi`: a screen of the `/mcp` manager.
 #[derive(Debug)]
 pub enum McpScreen {
     /// A menu, rebuilt through the receiver while it is open, keeping the
@@ -109,7 +109,7 @@ pub enum McpScreen {
     Close,
 }
 
-/// A configured server; disabled servers have no connection.
+/// A configured server. A disabled server has no connection.
 struct Server {
     entry: ServerEntry,
     connection: Option<Arc<Connection>>,
@@ -199,7 +199,7 @@ struct Shared {
     /// The exposure the resource tools were last registered with.
     resource_tools_exposure: Option<McpExposure>,
     tools: Option<Tools>,
-    /// Between `session_start` and `session_shutdown`; registrations before
+    /// Between `session_start` and `session_shutdown`. Registrations before
     /// that are read on `session_start`.
     active: bool,
 }
@@ -330,7 +330,7 @@ fn script_needs_server(code: &str, server: &str) -> bool {
         || code.contains(&namespace(server))
 }
 
-/// Short state for lists; `with_error` appends the first line of a failure.
+/// Short state for lists. `with_error` appends the first line of a failure.
 fn describe_state(server: &Server, with_error: bool) -> String {
     if !server.entry.config.is_enabled() {
         return "disabled".into();
@@ -375,7 +375,7 @@ impl McpExtension {
     }
 
     /// pi's `registerTools`: names, exposure and namespace for each of the
-    /// server's tools; tools it dropped are re-registered as hidden.
+    /// server's tools. Tools it dropped are re-registered as hidden.
     fn register_tools(&self, connection: &Arc<Connection>) {
         let Some(tools) = self.tools() else {
             return;
@@ -482,7 +482,7 @@ impl McpExtension {
     }
 
     /// Registers the resource tools with the widest exposure of the servers
-    /// they reach; hidden when none has resources.
+    /// they reach, or as hidden when none has resources.
     fn sync_resource_tools(&self) {
         let Some(tools) = self.tools() else {
             return;
@@ -897,8 +897,8 @@ impl McpExtension {
         }
     }
 
-    /// pi's `signOut`: removes the stored credentials and disconnects;
-    /// whether any were stored.
+    /// pi's `signOut`: removes the stored credentials and disconnects.
+    /// Returns whether any were stored.
     async fn sign_out(&self, name: &str) -> Result<bool, McpError> {
         let Some(connection) = self.connection(name) else {
             return Ok(false);
@@ -934,7 +934,7 @@ impl McpExtension {
         let (menus, receiver) = watch::channel(build());
         let (reply, mut answer) = oneshot::channel();
         ui.mcp_manager(McpScreen::Menu(receiver, reply));
-        // ponytail: polls instead of pi's change events; a listener on
+        // shortcut: polls instead of pi's change events, add a listener on
         // `Connection` state changes if polling ever shows in a profile.
         let mut refresh = tokio::time::interval(MENU_REFRESH);
         loop {
@@ -1082,7 +1082,7 @@ impl McpExtension {
         })
     }
 
-    /// pi's `showTools`; `None` when the manager closed.
+    /// pi's `showTools`. `None` when the manager closed.
     async fn show_tools(&self, ui: &dyn ExtensionUi, name: &str) -> Option<()> {
         let build = || {
             self.server(name, |server| {
@@ -1128,8 +1128,8 @@ impl McpExtension {
         Self::menu(ui, build).await.map(drop)
     }
 
-    /// pi's `chooseExposure`: why the choice could not be saved; `None` when
-    /// the manager closed.
+    /// pi's `chooseExposure`: why the choice could not be saved, or `None`
+    /// when the manager closed.
     async fn choose_exposure(&self, ctx: &Context, name: &str) -> Option<Option<String>> {
         let Some((current, details)) = self.server(name, |server| {
             let source = server.entry.source.display();
@@ -1168,7 +1168,7 @@ impl McpExtension {
         Some(exposure.and_then(|exposure| self.set_exposure(ctx, name, exposure)))
     }
 
-    /// pi's `runAction`; `None` when the manager closed.
+    /// pi's `runAction`. `None` when the manager closed.
     async fn run_action(&self, ctx: &Context, name: &str, action: &str) -> Option<()> {
         let ui = ctx.ui.as_ref();
         let status = |title: String, message: &str| {
@@ -1221,8 +1221,8 @@ impl McpExtension {
     }
 
     /// pi's `saveConfig`: saves `patch` to the `mcp.json` that defines the
-    /// server, unless an extension registered it, and applies it; why it
-    /// could not be saved.
+    /// server, unless an extension registered it, and applies it. Returns
+    /// why it could not be saved.
     fn save_config(&self, name: &str, patch: ConfigPatch) -> Option<String> {
         let (source, scope) = self.server(name, |server| {
             (server.entry.source.clone(), server.entry.scope)
@@ -1243,7 +1243,7 @@ impl McpExtension {
         None
     }
 
-    /// pi's `setEnabled`: why the config could not be saved; connection
+    /// pi's `setEnabled`: why the config could not be saved. Connection
     /// errors show in the state.
     async fn set_enabled(&self, ctx: &Context, name: &str, enabled: bool) -> Option<String> {
         if let Some(failed) = self.save_config(name, ConfigPatch::Enabled(enabled)) {
@@ -1280,7 +1280,7 @@ impl McpExtension {
             self.register_tools(&connection);
         }
         self.sync_resource_tools();
-        // Tools no longer exposed directly leave the declared set; direct
+        // Tools no longer exposed directly leave the declared set. Direct
         // tools are activated on registration.
         let indirect: HashSet<String> = ctx
             .tools
@@ -1336,7 +1336,7 @@ impl McpExtension {
 fn login_prompt(ctx: &Context, name: &str) -> SignInPrompt {
     let (ui, server, tui) = (Arc::clone(&ctx.ui), name.to_owned(), ctx.mode == Mode::Tui);
     let show_authorization_url = Box::new(move |url: &str| {
-        // pi links both lines; yapi shows the text and the terminal detects the URL.
+        // pi links both lines, while yapi shows the text and the terminal detects the URL.
         let lines = match tui {
             true if cfg!(target_os = "macos") => format!("{url}\nCmd+click to open"),
             true => format!("{url}\nCtrl+click to open"),

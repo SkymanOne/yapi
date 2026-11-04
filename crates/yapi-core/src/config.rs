@@ -11,7 +11,7 @@ pub const APP_NAME: &str = "yapi";
 pub const PROJECT_DIR: &str = ".yapi";
 /// Environment variable overriding the agent directory.
 pub const AGENT_DIR_ENV: &str = "YAPI_CODING_AGENT_DIR";
-/// Environment variable overriding the session directory; `--session-dir` wins.
+/// Environment variable overriding the session directory. `--session-dir` wins.
 pub const SESSION_DIR_ENV: &str = "YAPI_CODING_AGENT_SESSION_DIR";
 
 /// Set once offline mode is on for the process.

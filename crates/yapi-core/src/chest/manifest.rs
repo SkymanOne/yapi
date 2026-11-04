@@ -201,13 +201,13 @@ impl Manifest {
     ///
     /// Unknown keys are errors. Entry names match `[a-z0-9][a-z0-9._-]*` and
     /// are unique across `[skills]`, `[agents]` and `[extensions]`. An entry
-    /// takes `git` or `npm`, each with an optional `path`, or `path` alone;
-    /// `rev` only with `git` and `version` only with `npm`. A `[patch]` entry
-    /// takes `path` alone. Capability lists must parse as [`Grants`]. In a
-    /// project manifest, `[folders]` paths are relative, without `..` or a
-    /// leading `~`, so they stay inside the project. The user's global
-    /// manifest may name any folder here, but installs only under the home
-    /// folder.
+    /// takes `git` or `npm`, each with an optional `path`, or `path` alone.
+    /// It takes `rev` only with `git` and `version` only with `npm`. A
+    /// `[patch]` entry takes `path` alone. Capability lists must parse as
+    /// [`Grants`]. In a project manifest, `[folders]` paths are relative,
+    /// without `..` or a leading `~`, so they stay inside the project. The
+    /// user's global manifest may name any folder here, but installs only
+    /// under the home folder.
     pub fn parse(text: &str, scope: Scope) -> Result<Manifest, ChestError> {
         let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
         Manifest::from_document(&document, scope)

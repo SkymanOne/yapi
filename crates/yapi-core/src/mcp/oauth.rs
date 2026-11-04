@@ -1,7 +1,8 @@
 //! OAuth for MCP servers: protected resource and authorization server
 //! discovery, dynamic client registration, the authorization code flow with
-//! PKCE, and refresh. Port of `oauth/` in pi-mcp `v1.0.0`, which adapts the
-//! MCP TypeScript SDK, limited to what pi's coding agent uses.
+//! Proof Key for Code Exchange (PKCE), and refresh. Port of `oauth/` in
+//! pi-mcp `v1.0.0`, which adapts the MCP TypeScript SDK, limited to what pi's
+//! coding agent uses.
 //!
 //! Metadata, client registrations and tokens are JSON objects kept as read,
 //! so the state pi and yapi share in `mcp-auth.json` keeps its fields and
@@ -24,7 +25,7 @@ pub type Object = Map<String, Value>;
 /// Why an OAuth step failed. Messages match pi-mcp's.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
 pub enum OAuthError {
-    /// An OAuth error response; pi's `OAuthError`.
+    /// pi's `OAuthError`: an OAuth error response.
     #[error("{message}")]
     Response {
         /// The `error` code.
@@ -112,7 +113,7 @@ fn optional_url(value: Option<&Value>, name: &str) -> Result<Option<Value>, OAut
 }
 
 /// `compact({...input, key: value, ...})`: each field replaces its namesake in
-/// place or is appended; `None` removes it.
+/// place or is appended, and `None` removes it.
 fn spread<'a>(
     input: &Object,
     fields: impl IntoIterator<Item = (&'a str, Option<Value>)>,
@@ -220,7 +221,7 @@ fn parse_authorization_server_metadata(value: &Value) -> Result<Object, OAuthErr
     Ok(spread(input, fields))
 }
 
-/// `Number(value)` for `expires_in`; `None` when it is not a number.
+/// `Number(value)` for `expires_in`, or `None` when it is not a number.
 fn js_number(value: &Value) -> Option<f64> {
     match value {
         Value::Number(number) => number.as_f64(),
@@ -307,7 +308,7 @@ fn list<'a>(object: &'a Object, key: &str) -> Option<Vec<&'a str>> {
 // Discovery (discovery.ts)
 // ---------------------------------------------------------------------------
 
-/// A `WWW-Authenticate` challenge; pi's `OAuthChallenge`.
+/// pi's `OAuthChallenge`: a `WWW-Authenticate` challenge.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Challenge {
     /// `resource_metadata`, when it is a URL.
@@ -329,7 +330,8 @@ fn field(header: &str, name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-/// pi's `parseWwwAuthenticate`: the fields of a Bearer or DPoP challenge.
+/// pi's `parseWwwAuthenticate`: the fields of a Bearer or DPoP (Demonstrating
+/// Proof of Possession) challenge.
 pub fn parse_www_authenticate(header: Option<&str>) -> Challenge {
     let Some(header) = header.filter(|header| !header.is_empty()) else {
         return Challenge::default();
@@ -412,7 +414,7 @@ fn is_discovery_miss(status: u16) -> bool {
     (400..500).contains(&status) || status == 502
 }
 
-/// The path suffix for `/.well-known/<kind><path>`; empty for the root path.
+/// The path suffix for `/.well-known/<kind><path>`, empty for the root path.
 fn path_suffix(path: &str) -> &str {
     path.strip_suffix('/').unwrap_or(path)
 }
@@ -796,7 +798,7 @@ fn with_scope(mut tokens: Object, scope: Option<&str>) -> Object {
     tokens
 }
 
-/// What one run of the flow needs; pi's `OAuthFlowOptions`.
+/// pi's `OAuthFlowOptions`: what one run of the flow needs.
 #[derive(Clone, Debug, Default)]
 pub struct FlowOptions {
     /// The MCP server.
@@ -844,7 +846,7 @@ pub struct Provider<'a> {
 }
 
 impl<'a> Provider<'a> {
-    /// A provider for `server_url` that redirects to `redirect_url`;
+    /// A provider for `server_url` that redirects to `redirect_url`.
     /// `client_id` and `client_secret` name a pre-registered client.
     pub fn new(
         server_url: &str,
@@ -1026,7 +1028,7 @@ fn start_authorization(
         Some(endpoint) => parse_url(endpoint)?,
         None => join(&parse_url(authorization_server_url)?, "/authorize")?,
     };
-    // The page opens without a click, and another scheme could launch an app (Pi opens any).
+    // The page opens without a click, and another scheme could launch an app (pi opens any).
     if !matches!(url.scheme(), "http" | "https") {
         return Err(other("Invalid authorization endpoint"));
     }
