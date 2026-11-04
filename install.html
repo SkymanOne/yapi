@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7fc5baf4.js";
+            window.path_to_searchindex_js = "searchindex-71fa135f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ffe27126.js"></script>
@@ -202,7 +202,7 @@ Choose 1, 2 or 3 [1]:
 </thead>
 <tbody>
 <tr><td><code>--only &lt;name&gt;</code></td><td><code>YAPI_INSTALL_ONLY</code></td><td>Install <code>yapi</code>, <code>chest</code> or <code>both</code> without asking</td></tr>
-<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.3.1</code></td></tr>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.4.0</code></td></tr>
 <tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
 <tr><td><code>--from-source</code></td><td><code>YAPI_FROM_SOURCE=1</code></td><td>Build the release with Cargo instead of downloading it, as <a href="#build-from-source">Build from source</a> shows</td></tr>
 <tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
@@ -213,9 +213,9 @@ Choose 1, 2 or 3 [1]:
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 </code></pre>
-<p>This installs both from <code>v0.3.1</code> into <code>/usr/local/bin</code>, without the question:</p>
+<p>This installs both from <code>v0.4.0</code> into <code>/usr/local/bin</code>, without the question:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
-  | sh -s -- --only both --version v0.3.1 --to /usr/local/bin
+  | sh -s -- --only both --version v0.4.0 --to /usr/local/bin
 </code></pre>
 <h2 id="install-with-cargo-binstall"><a class="header" href="#install-with-cargo-binstall">Install with cargo-binstall</a></h2>
 <p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the release executables into <code>~/.cargo/bin</code>, one per command. The first command installs <code>yapi</code>, and the second installs <code>chest</code> from its crate on crates.io, <code>chest-cli</code>. Run one or both:</p>
@@ -261,13 +261,13 @@ curl -fsSL "$script" | sh -s -- --from-source --only chest
 </code></pre>
 <p>To build from the repository instead, name a release’s tag. The first command below builds <code>yapi</code>, and the second builds <code>chest</code> from its crate, <code>chest-cli</code>. Run one or both:</p>
 <pre><code class="language-sh">repo=https://github.com/SkymanOne/yapi
-cargo install --locked --git "$repo" --tag v0.3.1 yapi
-cargo install --locked --git "$repo" --tag v0.3.1 chest-cli
+cargo install --locked --git "$repo" --tag v0.4.0 yapi
+cargo install --locked --git "$repo" --tag v0.4.0 chest-cli
 </code></pre>
 <p>Cargo installs the executables in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>.</p>
 <p>To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it, or <code>--path crates/chest</code> for chest. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
-<p>Each executable prints its version. yapi’s version matches the release’s tag, such as <code>0.3.1</code> for <code>v0.3.1</code>. chest has its own version, which <code>chest --version</code> prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:</p>
+<p>Each executable prints its version. yapi’s version matches the release’s tag, such as <code>0.4.0</code> for <code>v0.4.0</code>. chest has its own version, which <code>chest --version</code> prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:</p>
 <pre><code class="language-sh">yapi --version
 chest --version
 </code></pre>

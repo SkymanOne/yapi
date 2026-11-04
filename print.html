@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7fc5baf4.js";
+            window.path_to_searchindex_js = "searchindex-71fa135f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ffe27126.js"></script>
@@ -287,7 +287,7 @@ Choose 1, 2 or 3 [1]:
 </thead>
 <tbody>
 <tr><td><code>--only &lt;name&gt;</code></td><td><code>YAPI_INSTALL_ONLY</code></td><td>Install <code>yapi</code>, <code>chest</code> or <code>both</code> without asking</td></tr>
-<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.3.1</code></td></tr>
+<tr><td><code>--version &lt;tag&gt;</code></td><td><code>YAPI_VERSION</code></td><td>Install that release, such as <code>v0.4.0</code></td></tr>
 <tr><td><code>--to &lt;dir&gt;</code></td><td><code>YAPI_INSTALL_DIR</code></td><td>Install into <code>&lt;dir&gt;</code></td></tr>
 <tr><td><code>--from-source</code></td><td><code>YAPI_FROM_SOURCE=1</code></td><td>Build the release with Cargo instead of downloading it, as <a href="#build-from-source">Build from source</a> shows</td></tr>
 <tr><td><code>--no-docs</code></td><td><code>YAPI_NO_DOCS=1</code></td><td>Skip the documentation for the model</td></tr>
@@ -298,9 +298,9 @@ Choose 1, 2 or 3 [1]:
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 </code></pre>
-<p>This installs both from <code>v0.3.1</code> into <code>/usr/local/bin</code>, without the question:</p>
+<p>This installs both from <code>v0.4.0</code> into <code>/usr/local/bin</code>, without the question:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
-  | sh -s -- --only both --version v0.3.1 --to /usr/local/bin
+  | sh -s -- --only both --version v0.4.0 --to /usr/local/bin
 </code></pre>
 <h2 id="install-with-cargo-binstall"><a class="header" href="#install-with-cargo-binstall">Install with cargo-binstall</a></h2>
 <p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the release executables into <code>~/.cargo/bin</code>, one per command. The first command installs <code>yapi</code>, and the second installs <code>chest</code> from its crate on crates.io, <code>chest-cli</code>. Run one or both:</p>
@@ -346,13 +346,13 @@ curl -fsSL "$script" | sh -s -- --from-source --only chest
 </code></pre>
 <p>To build from the repository instead, name a release’s tag. The first command below builds <code>yapi</code>, and the second builds <code>chest</code> from its crate, <code>chest-cli</code>. Run one or both:</p>
 <pre><code class="language-sh">repo=https://github.com/SkymanOne/yapi
-cargo install --locked --git "$repo" --tag v0.3.1 yapi
-cargo install --locked --git "$repo" --tag v0.3.1 chest-cli
+cargo install --locked --git "$repo" --tag v0.4.0 yapi
+cargo install --locked --git "$repo" --tag v0.4.0 chest-cli
 </code></pre>
 <p>Cargo installs the executables in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>.</p>
 <p>To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it, or <code>--path crates/chest</code> for chest. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
-<p>Each executable prints its version. yapi’s version matches the release’s tag, such as <code>0.3.1</code> for <code>v0.3.1</code>. chest has its own version, which <code>chest --version</code> prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:</p>
+<p>Each executable prints its version. yapi’s version matches the release’s tag, such as <code>0.4.0</code> for <code>v0.4.0</code>. chest has its own version, which <code>chest --version</code> prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:</p>
 <pre><code class="language-sh">yapi --version
 chest --version
 </code></pre>
@@ -1786,7 +1786,7 @@ export default function (pi: ExtensionAPI) {
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.3.1
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.4.0
 ├── README.md
 ├── chest.toml           the capabilities the extension asks for
 ├── extensions/          where the built extension goes
@@ -1794,12 +1794,12 @@ export default function (pi: ExtensionAPI) {
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
 <p>The package takes the folder’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
-<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.3.1 \
+<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.0 \
   crates/yapi/templates/extension
 </code></pre>
 <p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = "0.3.1"
+yapi-extension-api = "0.4.0"
 </code></pre>
 <p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures. This <code>src/lib.rs</code> registers a <code>shout</code> tool and a <code>/hello</code> command:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1852,7 +1852,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 </div>
 <p>The template starts with <code>session</code>, which its <code>hello</code> code needs:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.3.1", features = ["session"] }
+yapi-extension-api = { version = "0.4.0", features = ["session"] }
 </code></pre>
 <p>Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature doesn’t exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
@@ -2108,7 +2108,7 @@ impl Component for Confirm {
 <h3 id="pi-tui-widgets"><a class="header" href="#pi-tui-widgets">pi-tui widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.3.1", features = ["widgets"] }
+yapi-extension-api = { version = "0.4.0", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds the widgets:</p>
 <ul>
@@ -2596,14 +2596,14 @@ api.on("session_start", |_event, ctx| async move {
 </div>
 <h2 id="install-the-skills"><a class="header" href="#install-the-skills">Install the skills</a></h2>
 <p>In yapi or Pi, install the repository at a release tag as a package:</p>
-<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.3.1
+<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.4.0
 </code></pre>
 <p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
 <p>To use the skills without the rest of the repository, copy their folders into a skills folder, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
 <pre><code class="language-sh">cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 </code></pre>
 <p>With <a href="#share-skills-and-subagents">chest</a>, add the skills to a project’s <code>chest.toml</code>, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:</p>
-<pre><code class="language-sh">chest add git:github.com/SkymanOne/yapi@v0.3.1 --skill --name yapi-skills
+<pre><code class="language-sh">chest add git:github.com/SkymanOne/yapi@v0.4.0 --skill --name yapi-skills
 </code></pre>
 <p><code>--path skills/yapi</code> picks one skill instead. Add <code>-g</code> to install them for every project.</p>
 <h2 id="use-the-skills"><a class="header" href="#use-the-skills">Use the skills</a></h2>
