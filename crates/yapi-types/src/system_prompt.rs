@@ -1,4 +1,4 @@
-//! pi's system prompt inputs, as `before_agent_start` hands them to extensions.
+//! pi's system prompt inputs, as `before_agent_start` passes them to extensions.
 //!
 //! Mirrors `NormalizedBuildSystemPromptOptions` in
 //! `packages/coding-agent/src/core/system-prompt.ts` and `Skill` in
@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpc::SourceInfo;
 
-/// pi's normalized `BuildSystemPromptOptions`. Handlers edit it and hand it
-/// back, so a key they removed takes its empty value.
+/// pi's normalized `BuildSystemPromptOptions`. Handlers edit it and return
+/// it, so a key they removed takes its empty value.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SystemPromptOptions {
@@ -25,14 +25,14 @@ pub struct SystemPromptOptions {
     pub force_system_prompt: Option<String>,
     /// Active tool names, in order.
     pub selected_tools: Vec<String>,
-    /// One-line summaries by tool name; tools without one are not listed.
+    /// One-line summaries by tool name. Tools without one are not listed.
     pub tool_snippets: IndexMap<String, String>,
     /// Rule bullets by tool name.
     pub tool_guidelines: IndexMap<String, Vec<String>>,
     /// Extra rule bullets.
     pub prompt_guidelines: Vec<String>,
-    /// Appended after the rules (`APPEND_SYSTEM.md`, `--append-system-prompt`);
-    /// empty for none.
+    /// Appended after the rules (`APPEND_SYSTEM.md`, `--append-system-prompt`),
+    /// or empty for none.
     pub append_system_prompt: String,
     /// Extra sections from extensions, by tag name.
     pub sections: IndexMap<String, String>,
@@ -54,7 +54,7 @@ pub struct ContextFile {
 }
 
 /// A skill: instructions the model reads on demand. A handler may add one
-/// with only the fields the prompt shows; the others take their empty value.
+/// with only the fields the prompt shows, and the others take their empty value.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Skill {
@@ -69,7 +69,7 @@ pub struct Skill {
     /// Where it was found.
     #[serde(rename = "sourceInfo")]
     pub source: SourceInfo,
-    /// Hidden from the prompt; only usable as `/skill:name`.
+    /// Hidden from the prompt and only usable as `/skill:name`.
     pub disable_model_invocation: bool,
 }
 

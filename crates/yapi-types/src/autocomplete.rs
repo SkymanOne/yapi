@@ -1,6 +1,6 @@
 //! pi-tui's autocomplete shapes, as extensions' providers and command
-//! argument completions exchange them; `packages/tui/src/autocomplete.ts` in
-//! pi `v1.0.0`.
+//! argument completions exchange them. Mirrors
+//! `packages/tui/src/autocomplete.ts` in pi `v1.0.0`.
 
 use serde::{Deserialize, Serialize};
 
@@ -50,9 +50,9 @@ impl From<ItemJson> for AutocompleteItem {
 /// `getArgumentCompletions`, which may still be computing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArgumentCompletions {
-    /// Completions; `None` or empty offers none.
+    /// Completions. `None` or empty offers none.
     Ready(Option<Vec<AutocompleteItem>>),
-    /// Still being computed; the editor asks again once they are ready.
+    /// Still being computed. The editor asks again once they are ready.
     Pending,
 }
 

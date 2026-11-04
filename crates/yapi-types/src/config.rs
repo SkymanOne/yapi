@@ -40,8 +40,8 @@ impl ConfigFile {
     }
 
     /// Serializes `document` as pi writes this file: two-space indent, then the
-    /// trailing newline policy. pi re-detects the indent of an existing `mcp.json`;
-    /// two spaces is its default.
+    /// trailing newline policy. pi re-detects the indent of an existing `mcp.json`,
+    /// and two spaces is its default.
     pub fn render<T: Serialize + ?Sized>(self, document: &T) -> serde_json::Result<String> {
         let mut text = json::to_string_pretty(document, "  ")?;
         if self.trailing_newline() {

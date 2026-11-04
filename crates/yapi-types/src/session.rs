@@ -1,7 +1,7 @@
 //! Lines of a session file: one header, then entries forming a tree.
 //!
 //! Mirrors `packages/coding-agent/src/core/session-manager.ts` in pi `v1.0.0`. Each
-//! line is one JSON object; [`crate::json::to_string`] plus `\n` writes it.
+//! line is one JSON object, which [`crate::json::to_string`] plus `\n` writes.
 #![allow(
     missing_docs,
     reason = "fields mirror pi's TypeScript types; contracts are noted where they differ from the name"
@@ -28,9 +28,9 @@ pub enum FileEntry {
     Usage(UsageEntry),
     Compaction(CompactionEntry),
     BranchSummary(BranchSummaryEntry),
-    /// Extension state; not part of the model context.
+    /// Extension state, not part of the model context.
     Custom(CustomEntry),
-    /// Extension message; part of the model context.
+    /// Extension message, part of the model context.
     CustomMessage(CustomMessageEntry),
     ContextEdit(ContextEditEntry),
     Label(LabelEntry),
@@ -119,8 +119,8 @@ pub struct CompactionEntry {
     #[serde(flatten)]
     pub meta: EntryMeta,
     pub summary: String,
-    /// `Some(None)` when nothing is kept; `None` in migrated v1 files whose kept index
-    /// pointed past the end.
+    /// `Some(None)` when nothing is kept, and `None` in migrated v1 files whose kept
+    /// index pointed past the end.
     #[serde(
         default,
         deserialize_with = "present",
@@ -139,7 +139,7 @@ pub struct CompactionEntry {
     /// Produced by an extension hook rather than pi's summarizer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_hook: Option<bool>,
-    /// System prompt checkpoint at the cut; always a system message.
+    /// System prompt checkpoint at the cut, always a system message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_message: Option<Box<Message>>,
 }
@@ -231,7 +231,7 @@ pub struct SessionInfoEntry {
 }
 
 impl FileEntry {
-    /// The id, parent and timestamp of a session entry; `None` for the header.
+    /// The id, parent and timestamp of a session entry, or `None` for the header.
     pub fn meta(&self) -> Option<&EntryMeta> {
         Some(match self {
             FileEntry::Session(_) => return None,

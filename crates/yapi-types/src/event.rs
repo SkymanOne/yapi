@@ -3,8 +3,8 @@
 //! Mirrors `AssistantMessageEvent` in `packages/ai/src/types.ts`, `AgentEvent` in
 //! `packages/agent/src/types.ts` and `AgentSessionEvent` with `toJsonEvent` in
 //! `packages/coding-agent/src/modes/json-event.ts` in pi `v1.0.0`. pi's in-process
-//! events also carry the live partial message; on the wire it is replaced by the
-//! cumulative usage, and `toolcall_start` gains the call's id and tool name.
+//! events also include the live partial message. On the wire the cumulative usage
+//! replaces it, and `toolcall_start` gains the call's id and tool name.
 #![allow(
     missing_docs,
     reason = "variants mirror pi's TypeScript types; contracts are noted where they differ from the name"
@@ -19,7 +19,7 @@ use crate::session::FileEntry;
 /// One step of a streamed assistant message, as carried by `message_update`.
 ///
 /// `contentIndex` addresses the message's `content`. Text and thinking blocks start
-/// empty and grow by deltas until the authoritative `*_end`; tool-call arguments
+/// empty and grow by deltas until the authoritative `*_end`. Tool-call arguments
 /// stream as JSON text.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(
