@@ -11,9 +11,11 @@ repository = "https://github.com/SkymanOne/yapi"
 publish = false
 
 [workspace.dependencies]
-yapi-agent = { path = "crates/yapi-agent", version = "0.3.1" }
-yapi-ai = { path = "crates/yapi-ai", version = "0.3.1" }
-yapi-core = { path = "crates/yapi-core", version = "0.3.1" }
+# The internal crates have no stable API, so a published crate requires the
+# exact versions it was built with.
+yapi-agent = { path = "crates/yapi-agent", version = "=0.3.1" }
+yapi-ai = { path = "crates/yapi-ai", version = "=0.3.1" }
+yapi-core = { path = "crates/yapi-core", version = "=0.3.1" }
 yapi-ext = { path = "crates/yapi-ext" }
 yapi-mock = { path = "crates/yapi-mock" }
 yapi-tui = { path = "crates/yapi-tui", version = "0.3.1" }

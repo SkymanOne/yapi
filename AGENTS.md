@@ -73,7 +73,7 @@ Dependency direction:
 - `yapi-mock` is never a dependency of a shipped crate.
 - `chest` depends on `yapi-ai`, `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
-- `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. So are `chest-cli` and the crates it builds on, `yapi-ai`, `yapi-agent` and `yapi-core`, which are internal libraries with no stable API. `chest-cli` has its own version, raised only when chest changes, and a release publishes it only at a version crates.io lacks. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
+- `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. So are `chest-cli` and the crates it builds on, `yapi-ai`, `yapi-agent` and `yapi-core`, which are internal libraries with no stable API, required at exact versions. `chest-cli` has its own version, raised only when chest changes, and a release publishes it only at a version crates.io lacks. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
 ### Boundary traits
 
