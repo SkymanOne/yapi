@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Share skills and subagents - yapi</title>
+        <title>Share Skills and Subagents - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,13 +181,14 @@
                     <main>
                         <h1 id="share-skills-and-subagents"><a class="header" href="#share-skills-and-subagents">Share skills and subagents</a></h1>
 <blockquote>
-<p><strong>Any agent.</strong> chest places skills and subagents in the folders each agent reads. You do not need yapi. Only the last section is about yapi.</p>
+<p><strong>Any agent.</strong> chest places skills and subagents in the folders each agent reads. You don’t need yapi. Only the last section is about yapi.</p>
 </blockquote>
-<p>A skill is a folder with a <code>SKILL.md</code>. A subagent is a <code>.md</code> file. List them under <code>[skills]</code> and <code>[agents]</code> in <code>chest.toml</code>, or add them with <code>chest add</code>:</p>
+<p>A skill is a folder with a <code>SKILL.md</code>, and a subagent is a <code>.md</code> file. This page covers adding them, choosing the folders chest fills for each agent, how chest places and tracks items, and importing from skills.sh.</p>
+<p>List skills and subagents under <code>[skills]</code> and <code>[agents]</code> in <code>chest.toml</code>, or add them with <code>chest add</code>:</p>
 <pre><code class="language-sh">chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 </code></pre>
-<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it cannot tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides.</p>
+<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides.</p>
 <h2 id="choose-folders-for-your-agents"><a class="header" href="#choose-folders-for-your-agents">Choose folders for your agents</a></h2>
 <p><code>chest init</code> looks for each agent’s folder in the project and offers its skill and subagent folders:</p>
 <div class="table-wrapper">
@@ -208,21 +209,26 @@ chest add git:github.com/acme/agents --path reviewer.md
 </div>
 <p>At a terminal, <code>chest init</code> lists the folders by number, with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
 <p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to.</p>
-<h2 id="copies-and-links"><a class="header" href="#copies-and-links">Copies and links</a></h2>
-<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where links cannot be made.</p>
+<h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
+<p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
 <h2 id="the-gitignore-block"><a class="header" href="#the-gitignore-block">The <code>.gitignore</code> block</a></h2>
-<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. Each line is escaped so that it matches only its own path, whatever characters a folder name holds.</p>
-<p>The block also ignores two kinds of folder that an interrupted install can leave where chest copies. A <code>.*-staging</code> folder holds a copy that chest had not finished. A <code>.*-old</code> folder holds an item’s previous copy when chest stopped while replacing it. The next install removes both.</p>
-<h2 id="hand-written-skills"><a class="header" href="#hand-written-skills">Hand-written skills</a></h2>
-<p>Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it did not record when that copy already holds exactly what the lock pins. chest keeps its record in <code>~/.chest/state</code>, outside the project.</p>
+<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. chest escapes each line so that it matches only its own path, whatever characters a folder name holds.</p>
+<p>The block also ignores two kinds of folder that an interrupted install can leave where chest copies:</p>
+<ul>
+<li><strong><code>.*-staging</code></strong>: a copy that chest hadn’t finished</li>
+<li><strong><code>.*-old</code></strong>: an item’s previous copy, when chest stopped while replacing it</li>
+</ul>
+<p>The next install removes both.</p>
+<h2 id="keep-hand-written-skills-in-the-same-folders"><a class="header" href="#keep-hand-written-skills-in-the-same-folders">Keep hand-written skills in the same folders</a></h2>
+<p>Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it didn’t record when that copy already holds exactly what the lock pins. chest keeps its record in <code>~/.chest/state</code>, outside the project.</p>
 <p>When someone edits an item after chest installed it, chest leaves the item as it is and asks you to remove or restore it.</p>
 <h2 id="import-from-skillssh"><a class="header" href="#import-from-skillssh">Import from skills.sh</a></h2>
 <p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. chest computes its own hashes, so it drops the file’s. Run <code>chest install</code> after importing.</p>
-<h2 id="in-yapi"><a class="header" href="#in-yapi">In yapi</a></h2>
+<h2 id="what-yapi-adds"><a class="header" href="#what-yapi-adds">What yapi adds</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
 </blockquote>
-<p>yapi does more with the same entries. In a trusted project, it puts back missing skills and subagents when it starts. It also loads skills from folders it does not read on its own. <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes it.</p>
+<p>yapi does more with the same entries. In a trusted project, it puts back missing skills and subagents when it starts. It also loads skills from folders it doesn’t read on its own. <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes it.</p>
 
                     </main>
 

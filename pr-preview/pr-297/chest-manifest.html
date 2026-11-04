@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>chest.toml reference - yapi</title>
+        <title>chest.toml Reference - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -184,16 +184,17 @@
 <p><strong>Any agent</strong>, except the keys and sections marked yapi only.</p>
 </blockquote>
 <p>This page lists every key of <code>chest.toml</code>, the rules chest checks, and the format of <code>chest.lock</code>. <a href="chest.html">Get started with chest</a> and the pages after it show how to use them.</p>
-<h2 id="which-manifest"><a class="header" href="#which-manifest">Which manifest</a></h2>
+<h2 id="which-manifest-chest-uses"><a class="header" href="#which-manifest-chest-uses">Which manifest chest uses</a></h2>
 <blockquote>
 <p><strong>Any agent.</strong> yapi reads <code>CHEST_MANIFEST</code> too, as <a href="chest-environments.html#how-yapi-reads-chest_manifest">How yapi reads CHEST_MANIFEST</a> describes.</p>
 </blockquote>
+<p>chest picks one manifest per command:</p>
 <ul>
 <li>chest uses <code>chest.toml</code> in the current folder, and only there.</li>
 <li><code>--manifest &lt;path&gt;</code> names another, and <code>CHEST_MANIFEST</code> sets the default for it.</li>
 <li>An environment’s manifest is a complete manifest of its own, such as <code>chest.dev.toml</code>. Its lock is the same name with <code>.lock</code> for <code>.toml</code>, here <code>chest.dev.lock</code>.</li>
 <li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>.</li>
-<li>A <code>chest.toml</code> or <code>chest.lock</code> that is a symbolic link is refused, so a cloned project cannot point chest at a file outside it.</li>
+<li>chest refuses a <code>chest.toml</code> or <code>chest.lock</code> that’s a symbolic link, so a cloned project can’t point chest at a file outside it.</li>
 </ul>
 <p>Paths in a manifest are relative to the manifest’s folder. A project manifest keeps every folder inside the project. The global manifest may use <code>~</code> and absolute paths, and installs only inside your home folder.</p>
 <h2 id="capabilities-defaults"><a class="header" href="#capabilities-defaults"><code>capabilities-defaults</code></a></h2>
@@ -207,6 +208,7 @@
 <blockquote>
 <p><strong>Any agent</strong>, except <code>extensions</code>, the store that only yapi loads from.</p>
 </blockquote>
+<p>The <code>[folders]</code> table sets where chest places each kind of item:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -224,7 +226,7 @@ skills = [".agents/skills", ".claude/skills"]
 agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 </code></pre>
-<p>Each folder must name a folder, so <code>.</code> is refused. No folder may hold another or the store. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
+<p>Each folder must name a folder, so chest refuses <code>.</code>. No folder may hold another or the store. In a project manifest a folder is a relative path without <code>..</code> or <code>~</code>. A section with entries needs its folders set.</p>
 <h2 id="skills-agents-and-extensions"><a class="header" href="#skills-agents-and-extensions"><code>[skills]</code>, <code>[agents]</code> and <code>[extensions]</code></a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except <code>[extensions]</code> and the extension keys, which only yapi loads.</p>
@@ -242,14 +244,22 @@ extensions = ".yapi/chest"
 </tbody>
 </table>
 </div>
+<p>These entries use both forms. <code>pdf</code> is a skill from git at a tag, <code>review</code> one from npm, <code>notes</code> a local folder, and <code>reviewer</code> a subagent:</p>
 <pre><code class="language-toml">[skills]
-pdf    = { git = "https://github.com/anthropics/skills", rev = "v1.2.0", path = "skills/pdf" }
 review = { npm = "@acme/agent-skills", version = "^2.1", path = "review" }
-notes  = { path = "tools/skills/notes" }
+notes = { path = "tools/skills/notes" }
 
-[agents]
-reviewer = { git = "github.com/acme/agents", rev = "main", path = "reviewer.md" }
+[skills.pdf]
+git = "https://github.com/anthropics/skills"
+rev = "v1.2.0"
+path = "skills/pdf"
+
+[agents.reviewer]
+git = "github.com/acme/agents"
+rev = "main"
+path = "reviewer.md"
 </code></pre>
+<p>These rules apply to every source:</p>
 <ul>
 <li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>.</li>
 <li><code>path</code> inside a git or npm package stays inside it, without <code>..</code>. A path source may use <code>..</code> to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with <code>~</code>.</li>
@@ -266,16 +276,27 @@ reviewer = { git = "github.com/acme/agents", rev = "main", path = "reviewer.md" 
 <tr><th>Key</th><th>Type</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td><code>capabilities</code></td><td>list</td><td>What the extension may reach, on top of <code>capabilities-defaults</code>. Default: nothing. See <a href="#capabilities">Capabilities</a>.</td></tr>
-<tr><td><code>events</code></td><td><code>"shared"</code>, <code>"isolated"</code> or <code>{ send, receive }</code></td><td>Which <code>pi.events</code> channels cross to extensions with other grants. Default: <code>"shared"</code>. See <a href="#event-bus">Event bus</a>.</td></tr>
+<tr><td><code>capabilities</code></td><td>list</td><td>What the extension may reach, on top of <code>capabilities-defaults</code>. Default: nothing. See <a href="#what-each-capability-allows">What each capability allows</a>.</td></tr>
+<tr><td><code>events</code></td><td><code>"shared"</code>, <code>"isolated"</code> or <code>{ send, receive }</code></td><td>Which <code>pi.events</code> channels cross to extensions with other grants. Default: <code>"shared"</code>. See <a href="#event-bus-routing">Event bus routing</a>.</td></tr>
 <tr><td><code>skills</code>, <code>prompts</code>, <code>themes</code></td><td>lists of patterns</td><td>Which of the package’s resources load, as the filters of a <code>settings.json</code> package.</td></tr>
 </tbody>
 </table>
 </div>
+<p>Here <code>subagent</code> gets every capability, <code>todo</code> gets file access, its own event channels and a skill filter, and <code>shout</code> loads a local <code>.wasm</code> file:</p>
 <pre><code class="language-toml">[extensions]
-subagent = { npm = "@acme/pi-subagent", version = "^1.4", capabilities = ["all"] }
-todo = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"], events = { send = ["todo:*"], receive = [] }, skills = ["!legacy/**"] }
 shout = { path = "ext/shout.wasm" }
+
+[extensions.subagent]
+npm = "@acme/pi-subagent"
+version = "^1.4"
+capabilities = ["all"]
+
+[extensions.todo]
+git = "https://github.com/acme/pi-todo"
+rev = "4f1c2e9"
+capabilities = ["fs"]
+events = { send = ["todo:*"], receive = [] }
+skills = ["!legacy/**"]
 </code></pre>
 <p>An extension from a path loads where it is. Others install into the store. A git extension’s <code>path</code> names the folder that holds it, and an npm extension takes no <code>path</code>, since it loads its whole package.</p>
 <h2 id="patch"><a class="header" href="#patch"><code>[patch]</code></a></h2>
@@ -307,20 +328,22 @@ todo = { path = "../pi-todo" }
 </tbody>
 </table>
 </div>
-<h2 id="names-and-paths"><a class="header" href="#names-and-paths">Names and paths</a></h2>
+<h2 id="rules-for-names-and-paths"><a class="header" href="#rules-for-names-and-paths">Rules for names and paths</a></h2>
 <blockquote>
 <p><strong>Any agent.</strong></p>
 </blockquote>
+<p>chest checks these rules on every manifest:</p>
 <ul>
 <li>Entry names match <code>[a-z0-9][a-z0-9._-]*</code> and are unique across <code>[skills]</code>, <code>[agents]</code> and <code>[extensions]</code>.</li>
 <li>Unknown keys are errors. Errors name the entry and the key, as in this one for a path entry with a revision: skills.notes: <code>rev</code> needs <code>git</code>.</li>
 <li>Every item a package provides, and every <code>path</code> inside a git or npm package, must lie inside the package once links are followed.</li>
-<li>A skill holding a symbolic link is refused.</li>
+<li>chest refuses a skill that holds a symbolic link.</li>
 </ul>
-<h2 id="capabilities"><a class="header" href="#capabilities">Capabilities</a></h2>
+<h2 id="what-each-capability-allows"><a class="header" href="#what-each-capability-allows">What each capability allows</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
 </blockquote>
+<p>An extension entry’s <code>capabilities</code> list takes these values:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -328,22 +351,23 @@ todo = { path = "../pi-todo" }
 </thead>
 <tbody>
 <tr><td><code>fs</code></td><td>File access, imports from outside the folders of the packages that share its instance, <code>context.files</code>, and the built-in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> tools</td></tr>
-<tr><td><code>net</code></td><td><code>fetch</code>, streamed fetch and DNS, model calls, reading provider credentials, HTTP MCP servers, and refreshing model catalogs over the network</td></tr>
+<tr><td><code>net</code></td><td><code>fetch</code>, streamed fetch and DNS, model calls, reading provider credentials, HTTP Model Context Protocol (MCP) servers, and refreshing model catalogs over the network</td></tr>
 <tr><td><code>env</code></td><td>Reading environment variables, and the environment key fallback when calling a model</td></tr>
 <tr><td><code>session</code></td><td>Starting, steering and stopping turns, and changing the session, its files or the model’s setup</td></tr>
 <tr><td><code>all</code></td><td>Everything above, plus running programs, stdio MCP servers, the <code>bash</code>, <code>grep</code> and <code>find</code> tools, registering model providers, and registering terminal input listeners and autocomplete providers</td></tr>
-<tr><td><code>none</code></td><td>Nothing beyond the baseline. It cannot be combined with other values.</td></tr>
+<tr><td><code>none</code></td><td>Nothing beyond the baseline. Don’t combine it with other values.</td></tr>
 </tbody>
 </table>
 </div>
+<p>The table leaves out some rules and the requests that need no capability:</p>
 <ul>
-<li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> is not a capability.</li>
+<li>Only <code>all</code> runs programs, because a program runs as you, outside the sandbox. <code>process</code> isn’t a capability.</li>
 <li>Registering a terminal input listener with <code>ctx.ui.onTerminalInput</code>, or an autocomplete provider, needs <code>all</code>. What they return reaches yapi’s own input, where <code>!</code> runs a shell command and <code>/</code> a slash command.</li>
-<li>Calling a tool that is not built in needs <code>all</code>.</li>
+<li>Calling a tool that isn’t built in needs <code>all</code>.</li>
 <li>A native extension declares the capabilities it uses with the <a href="native-extensions.html#declare-capabilities">features of yapi-extension-api</a> of the same names.</li>
 <li>Always allowed: registering tools, commands, flags, shortcuts and renderers, UI dialogs, widgets and notifications, reading session state, the clock, loading the package’s own modules, and <code>pi.events</code> as its <code>events</code> allows.</li>
 </ul>
-<h2 id="event-bus"><a class="header" href="#event-bus">Event bus</a></h2>
+<h2 id="event-bus-routing"><a class="header" href="#event-bus-routing">Event bus routing</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
 </blockquote>
@@ -367,12 +391,12 @@ todo = { path = "../pi-todo" }
 </blockquote>
 <p>For each kind of resource, the first of these that lists it wins: the package’s <code>chest.toml</code> <code>[package]</code>, then <code>package.json</code>’s <code>yapi</code> key, then its <code>pi</code> key. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: <code>skills</code>, <code>agents</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code>.</p>
 <p>Capabilities come from <code>[package]</code>, else <code>yapi.capabilities</code>, else none. Name, version, description and authors come from <code>[package]</code>, else from <code>package.json</code>.</p>
-<p>chest reports a package’s <code>chest.toml</code> that does not parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
+<p>chest reports a package’s <code>chest.toml</code> that doesn’t parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
 <h2 id="chestlock"><a class="header" href="#chestlock"><code>chest.lock</code></a></h2>
 <blockquote>
 <p><strong>Any agent.</strong></p>
 </blockquote>
-<p>chest writes the lock. Do not edit it. It holds <code>version = 1</code> and one table per entry, in <code>[[skill]]</code>, <code>[[agent]]</code> and <code>[[extension]]</code>, sorted by name:</p>
+<p>chest writes the lock, so don’t edit it. It holds <code>version = 1</code> and one table per entry, in <code>[[skill]]</code>, <code>[[agent]]</code> and <code>[[extension]]</code>, sorted by name:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -390,43 +414,59 @@ todo = { path = "../pi-todo" }
 </tbody>
 </table>
 </div>
-<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. A pinned tarball must lie on the registry configured for its name, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from the configured registry when that is a mirror.</p>
+<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. A pinned tarball must lie on the registry configured for its name, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from the configured registry when that’s a mirror.</p>
 <p>The lock is up to date when every entry has a record with the same section and name, the same source kind, location and subpath, and the same <code>rev</code>, and its locked npm version still satisfies the entry’s range. Capabilities, events and filters never make it stale.</p>
-<h3 id="content-hash"><a class="header" href="#content-hash">Content hash</a></h3>
+<h3 id="how-chest-computes-the-content-hash"><a class="header" href="#how-chest-computes-the-content-hash">How chest computes the content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>
-<li>List every regular file under the item’s folder, skipping anything named <code>.git</code> at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that is one file is a list of that file with an empty path.</li>
+<li>List every regular file under the item’s folder, skipping anything named <code>.git</code> at any depth, a folder or the file a worktree or submodule has. A symbolic link anywhere else fails the hash. An item that’s one file is a list of that file with an empty path.</li>
 <li>Sort the files by the bytes of their paths, relative to the item, with <code>/</code> between parts.</li>
 <li>For each file, feed one SHA-256 with its path in UTF-8, a zero byte, <code>x</code> when any execute bit is set or <code>-</code> otherwise, and the 32-byte SHA-256 of its contents.</li>
 <li>The result is that SHA-256, in hex.</li>
 </ol>
-<h2 id="a-complete-example"><a class="header" href="#a-complete-example">A complete example</a></h2>
+<h2 id="a-complete-manifest"><a class="header" href="#a-complete-manifest">A complete manifest</a></h2>
+<p>A project manifest can combine every section. This one starts with defaults and folders, then lists skills and a subagent:</p>
 <pre><code class="language-toml"># Every extension may read environment variables.
 capabilities-defaults = ["env"]
 
 [folders]
-skills = [".agents/skills", ".claude/skills"]   # .agents/skills holds the copies
+# .agents/skills holds the copies.
+skills = [".agents/skills", ".claude/skills"]
 agents = [".yapi/agents", ".claude/agents"]
 extensions = ".yapi/chest"
 
 [skills]
-pdf    = { git = "https://github.com/anthropics/skills", rev = "v1.2.0", path = "skills/pdf" }
 review = { npm = "@acme/agent-skills", version = "^2.1", path = "review" }
-notes  = { path = "tools/skills/notes" }
+notes = { path = "tools/skills/notes" }
 
-[agents]
-reviewer = { git = "github.com/acme/agents", rev = "main", path = "reviewer.md" }
+[skills.pdf]
+git = "https://github.com/anthropics/skills"
+rev = "v1.2.0"
+path = "skills/pdf"
 
-[extensions]
-subagent = { npm = "@acme/pi-subagent", version = "^1.4", capabilities = ["all"] }
-todo     = { git = "https://github.com/acme/pi-todo", rev = "4f1c2e9", capabilities = ["fs"], events = { send = ["todo:*"], receive = [] } }
-shout    = { path = "ext/shout.wasm" }
+[agents.reviewer]
+git = "github.com/acme/agents"
+rev = "main"
+path = "reviewer.md"
+</code></pre>
+<p>It goes on with three extensions, a patch that works on <code>todo</code> from a local checkout, and the <code>[package]</code> table that describes what the repository publishes for those who add it:</p>
+<pre><code class="language-toml">[extensions]
+shout = { path = "ext/shout.wasm" }
 
-# Work on todo from a local checkout.
+[extensions.subagent]
+npm = "@acme/pi-subagent"
+version = "^1.4"
+capabilities = ["all"]
+
+[extensions.todo]
+git = "https://github.com/acme/pi-todo"
+rev = "4f1c2e9"
+capabilities = ["fs"]
+events = { send = ["todo:*"], receive = [] }
+
 [patch]
 todo = { path = "../pi-todo" }
 
-# What this repository publishes, for those who add it.
 [package]
 name = "acme-tools"
 version = "0.1.0"

@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Lock, verify and update - yapi</title>
+        <title>Lock, Verify and Update Packages - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,30 +179,32 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="lock-verify-and-update"><a class="header" href="#lock-verify-and-update">Lock, verify and update</a></h1>
+                        <h1 id="lock-verify-and-update-packages"><a class="header" href="#lock-verify-and-update-packages">Lock, verify and update packages</a></h1>
 <blockquote>
 <p><strong>Any agent.</strong> The lock pins skills and subagents for every agent, and extensions for yapi.</p>
 </blockquote>
-<h2 id="the-lock"><a class="header" href="#the-lock">The lock</a></h2>
-<p><code>chest.lock</code> records each entry’s commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. chest writes it. Do not edit it. <a href="chest-manifest.html#chestlock">The reference</a> describes the format and the hash.</p>
-<p>A pinned tarball must come from the registry configured for its package, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from your registry when it is a mirror. chest refuses registries that keep tarballs elsewhere, such as GitHub Packages. It does so when <code>chest add</code> or <code>chest install</code> resolves the package, before it writes a lock.</p>
-<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<p><code>chest.lock</code> makes installs reproducible: every clone installs exactly what the lock pins. This page covers what the lock records, how installs use it, running chest in CI, verifying installed copies and updating entries.</p>
+<h2 id="what-the-lock-records"><a class="header" href="#what-the-lock-records">What the lock records</a></h2>
+<p><code>chest.lock</code> records each entry’s commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. chest writes it, so don’t edit it. <a href="chest-manifest.html#chestlock">The <code>chest.lock</code> reference</a> describes the format and the hash.</p>
+<p>A pinned tarball must come from the registry configured for its package, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from your registry when it’s a mirror. chest refuses registries that keep tarballs elsewhere, such as GitHub Packages. It does so when <code>chest add</code> or <code>chest install</code> resolves the package, before it writes a lock.</p>
+<h2 id="install-from-the-lock"><a class="header" href="#install-from-the-lock">Install from the lock</a></h2>
+<p><code>chest install</code> has two modes:</p>
 <ul>
-<li><code>chest install</code> keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
-<li><code>chest install --frozen</code> installs exactly what the lock pins, including what is missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
+<li><strong><code>chest install</code></strong>: keeps what’s locked and present, installs what’s locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
+<li><strong><code>chest install --frozen</code></strong>: installs exactly what the lock pins, including what’s missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
 </ul>
 <h2 id="run-chest-in-ci"><a class="header" href="#run-chest-in-ci">Run chest in CI</a></h2>
-<p><code>chest install</code> is frozen by default when <code>CI</code> is set to anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
-<h2 id="verify"><a class="header" href="#verify">Verify</a></h2>
-<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. It exits with 1 when one does not match.</p>
-<h2 id="update"><a class="header" href="#update">Update</a></h2>
+<p><code>chest install</code> runs frozen by default when <code>CI</code> holds anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
+<h2 id="verify-installed-copies"><a class="header" href="#verify-installed-copies">Verify installed copies</a></h2>
+<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn’t match.</p>
+<h2 id="update-entries"><a class="header" href="#update-entries">Update entries</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the warning about extension requests, which matters only in yapi.</p>
 </blockquote>
 <p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code>. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock.</p>
 <p>When an updated extension now requests capabilities or event channels beyond its grants, <code>chest update</code> warns and grants nothing more.</p>
 <h2 id="one-command-at-a-time"><a class="header" href="#one-command-at-a-time">One command at a time</a></h2>
-<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it is waiting. A command that stopped without letting go of its lock holds it for 30 seconds at most.</p>
+<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A command that stopped without letting go of its lock holds it for 30s at most.</p>
 
                     </main>
 

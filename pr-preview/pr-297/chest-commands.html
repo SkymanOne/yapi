@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>chest commands - yapi</title>
+        <title>chest Commands - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,7 +183,7 @@
 <blockquote>
 <p><strong>Any agent</strong>, except the parts that only matter in yapi: <code>chest check</code>, <code>chest import --settings</code>, and the extension options <code>--extension</code> and <code>--grant</code> of <code>chest add</code> and <code>--store</code> of <code>chest init</code>.</p>
 </blockquote>
-<p>Every command takes <code>-g</code>, for the global manifest, and <code>--manifest &lt;path&gt;</code>. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
+<p>This page lists every chest command with its flags, then chest’s exit codes. Every command takes <code>-g</code>, for the global manifest, and <code>--manifest &lt;path&gt;</code>. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -195,14 +195,15 @@
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it.</td></tr>
 <tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
 <tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows.</td></tr>
-<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, whether it is installed, its capabilities and description.</td></tr>
+<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, whether it’s installed, its capabilities and description.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
 <tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock.</td></tr>
 <tr><td><code>chest import</code></td><td><code>--settings</code> or <code>--skills-lock</code>, <code>[path]</code></td><td>Turns settings.json packages or a skills-lock.json into entries.</td></tr>
-<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> does not parse.</td></tr>
+<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> doesn’t parse.</td></tr>
 </tbody>
 </table>
 </div>
+<h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
 <p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error. Questions go to stderr, and chest asks them only at a terminal.</p>
 
                     </main>

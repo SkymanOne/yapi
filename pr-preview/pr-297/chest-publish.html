@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Publish a package - yapi</title>
+        <title>Publish a Package - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,6 +183,7 @@
 <blockquote>
 <p><strong>Any agent</strong>, except the sections marked yapi only.</p>
 </blockquote>
+<p>A package that others add with chest describes itself in its own <code>chest.toml</code>. This page covers the <code>[package]</code> table, requesting capabilities and events, and checking a native extension before you publish it.</p>
 <h2 id="describe-the-package"><a class="header" href="#describe-the-package">Describe the package</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except <code>capabilities</code>, <code>events</code>, and the <code>extensions</code>, <code>prompts</code> and <code>themes</code> lists, which only yapi uses.</p>
@@ -198,8 +199,9 @@ skills = ["skills/*"]
 agents = ["agents/*.md"]
 extensions = ["extensions/index.ts"]
 </code></pre>
-<p><code>chest add</code> and <code>chest list</code> show the name, version and description. <code>skills</code> and <code>agents</code> list what the package provides to any agent. Publish the package to npm or push it to a git repository, and others add it with <code>chest add</code>. <a href="chest-manifest.html#package">The reference</a> lists every key, and <a href="chest-manifest.html#package-metadata">Package metadata</a> explains how chest falls back to <code>package.json</code>.</p>
-<p>Entries in the package’s own <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code> sections are not installed for its consumers. <code>chest add</code> lists them so the consumer can add the ones they want.</p>
+<p><code>chest add</code> and <code>chest list</code> show the name, version and description. <code>skills</code> and <code>agents</code> list what the package provides to any agent. Publish the package to npm or push it to a git repository, and others add it with <code>chest add</code>.</p>
+<p>The <a href="chest-manifest.html#package"><code>[package]</code> reference</a> lists every key, and <a href="chest-manifest.html#package-metadata">Package metadata</a> explains how chest falls back to <code>package.json</code>.</p>
+<p>chest doesn’t install the entries in the package’s own <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code> sections for its consumers. <code>chest add</code> lists them so the consumer can add the ones they want.</p>
 <h2 id="request-capabilities-and-events"><a class="header" href="#request-capabilities-and-events">Request capabilities and events</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
@@ -212,17 +214,17 @@ extensions = ["extensions/index.ts"]
 <p>Before you publish a native extension, run <code>chest check</code> in the package folder. It compares the capabilities each <code>.wasm</code> extension uses with the ones the package requests:</p>
 <pre><code class="language-sh">chest check
 </code></pre>
-<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WASI interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. These are errors, and make chest exit with 1:</p>
+<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. These are errors, and make chest exit with 1:</p>
 <ul>
-<li>a capability the extension uses that the package does not request</li>
-<li>an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi does not support, because extensions reach the network through the SDK’s <code>fetch</code></li>
+<li>a capability the extension uses that the package doesn’t request</li>
+<li>an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi doesn’t support, because extensions reach the network through the SDK’s <code>fetch</code></li>
 </ul>
 <p><code>chest add</code> warns about such an import. These are warnings:</p>
 <ul>
 <li>a capability the package requests that no extension uses</li>
-<li>a capability the build records that this version of chest does not know, such as one a newer SDK adds, which chest does not check</li>
+<li>a capability the build records that this version of chest doesn’t know, such as one a newer SDK adds, which chest doesn’t check</li>
 </ul>
-<p>An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JS and TS extensions have nothing to read before they run, so yapi checks them only at runtime.</p>
+<p>An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JavaScript and TypeScript extensions have nothing to read before they run, so yapi checks them only at runtime.</p>
 
                     </main>
 

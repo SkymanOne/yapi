@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Get started with chest - yapi</title>
+        <title>Get Started with chest - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,55 +180,60 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="get-started-with-chest"><a class="header" href="#get-started-with-chest">Get started with chest</a></h1>
-<p>chest is a package manager for coding agents. It keeps a project’s skills, subagents and yapi extensions in one manifest, <code>chest.toml</code>, and pins what each one resolved to in a lock, <code>chest.lock</code>. Commit both files. Everyone who clones the project then installs the same bytes with <code>chest install</code>.</p>
+<p>chest is a package manager for coding agents. It keeps a project’s skills, subagents and yapi extensions in one manifest, <code>chest.toml</code>, and pins what each one resolved to in a lock, <code>chest.lock</code>. Commit both files, and everyone who clones the project installs the same bytes with <code>chest install</code>. This page covers which features need yapi, how to install chest and how to set up a first manifest.</p>
 <h2 id="any-agent-or-yapi-only"><a class="header" href="#any-agent-or-yapi-only">Any agent or yapi only</a></h2>
-<p>chest is a separate binary, and most of it works without yapi. Other agents never read <code>chest.toml</code>. They read the skills and subagents that chest places in their folders. yapi reads the manifest as well, so it can load extensions with only the capabilities you grant them.</p>
+<p>chest is a separate binary. Its skill and subagent features work with any agent, and its extension features work only in yapi. Other agents never read <code>chest.toml</code>. They read the skills and subagents that chest places in their folders, and yapi reads the manifest as well, so it can load extensions with only the capabilities you grant them.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Feature</th><th>Works with</th></tr>
 </thead>
 <tbody>
-<tr><td>The <code>chest</code> command</td><td>Any agent</td></tr>
-<tr><td>Skills and subagents, in <code>[skills]</code> and <code>[agents]</code>, placed in the folders each agent reads</td><td>Any agent</td></tr>
-<tr><td>The lock and its content hashes, <code>chest install --frozen</code> in CI, <code>chest verify</code>, <code>chest outdated</code> and <code>chest update</code></td><td>Any agent</td></tr>
-<tr><td>The <code>.gitignore</code> block that lists installed files</td><td>Any agent</td></tr>
-<tr><td>Environment manifests, global packages with <code>-g</code>, and <code>[patch]</code></td><td>Any agent</td></tr>
-<tr><td><code>chest import --skills-lock</code>, from a skills.sh <code>skills-lock.json</code></td><td>Any agent</td></tr>
-<tr><td>Publishing skills and subagents with <code>[package]</code></td><td>Any agent</td></tr>
-<tr><td>Extensions, in <code>[extensions]</code>: Pi packages and native <code>.wasm</code> extensions</td><td>yapi only</td></tr>
-<tr><td><code>capabilities</code>, <code>capabilities-defaults</code> and <code>events</code></td><td>yapi only</td></tr>
-<tr><td>Putting back missing locked entries at startup, in trusted projects</td><td>yapi only</td></tr>
-<tr><td>Loading placed skills from a folder the agent does not read on its own, such as <code>.claude/skills</code></td><td>yapi only</td></tr>
-<tr><td><code>CHEST_MANIFEST</code> choosing the manifest the agent loads</td><td>yapi only</td></tr>
-<tr><td><code>chest check</code>, which compares a native extension’s capabilities with its requests</td><td>yapi only</td></tr>
-<tr><td><code>chest import --settings</code>, from yapi’s <code>settings.json</code></td><td>yapi only</td></tr>
+<tr><td><a href="chest-commands.html">The <code>chest</code> command</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-skills.html">Skills and subagents</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-lock.html#what-the-lock-records">The lock and its content hashes</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-lock.html#run-chest-in-ci">Frozen installs in CI</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-lock.html#verify-installed-copies"><code>chest verify</code>, <code>outdated</code> and <code>update</code></a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-skills.html#the-gitignore-block">The <code>.gitignore</code> block</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-environments.html#keep-a-manifest-per-environment">Environment manifests</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-environments.html#install-global-packages">Global packages</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-environments.html#develop-a-package-locally">Local patches</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-skills.html#import-from-skillssh">Import from skills.sh</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-publish.html">Publishing skills and subagents</a></td><td>Any agent</td></tr>
+<tr><td><a href="chest-extensions.html">Extensions</a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-extensions.html#grant-capabilities">Capabilities and events</a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-extensions.html#how-yapi-loads-a-manifest">Putting back missing entries</a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-extensions.html#how-yapi-loads-a-manifest">Skills from other agents’ folders</a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-environments.html#how-yapi-reads-chest_manifest"><code>CHEST_MANIFEST</code> in yapi</a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-publish.html#check-a-native-extension"><code>chest check</code></a></td><td>yapi only</td></tr>
+<tr><td><a href="chest-extensions.html#import-packages-from-settingsjson">Import from <code>settings.json</code></a></td><td>yapi only</td></tr>
 </tbody>
 </table>
 </div>
 <p>With another agent, run <code>chest install</code> after you clone or pull. yapi puts back what the lock pins by itself, as <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes.</p>
 <p>Each page in this part starts with a note that says whether it applies to any agent or to yapi only. Where a page mixes both, each section has its own note.</p>
-<h2 id="chest-and-yapi-install"><a class="header" href="#chest-and-yapi-install">chest and <code>yapi install</code></a></h2>
+<h2 id="choose-between-chest-and-yapi-install"><a class="header" href="#choose-between-chest-and-yapi-install">Choose between chest and <code>yapi install</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> It compares chest with yapi’s own package commands.</p>
 </blockquote>
 <p><code>yapi install</code> and the <code>packages</code> list in <code>settings.json</code> work as in Pi. They have no lock, and every package can reach everything. Use chest when a project needs reproducible installs, narrow grants, or skills shared with other agents. You can use both side by side.</p>
-<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<h2 id="install-chest"><a class="header" href="#install-chest">Install chest</a></h2>
 <blockquote>
-<p><strong>Any agent.</strong> chest does not need yapi to run.</p>
+<p><strong>Any agent.</strong> chest doesn’t need yapi to run.</p>
 </blockquote>
-<p>yapi’s <a href="install.html#install-script">install script</a> and release archives install <code>chest</code> next to <code>yapi</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+<p>yapi’s <a href="install.html#run-the-install-script">install script</a> and release archives install <code>chest</code> next to <code>yapi</code>:</p>
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
+  | sh
 </code></pre>
 <p>To build it from source instead:</p>
 <pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi chest-cli
 </code></pre>
 <p>chest has its own npm client, so it needs neither Node.js nor npm. It reads registry settings from <code>~/.npmrc</code> and <code>npm_config_*</code> variables. Git sources need <code>git</code>.</p>
-<h2 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h2>
+<h2 id="set-up-a-projects-packages"><a class="header" href="#set-up-a-projects-packages">Set up a project’s packages</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the last <code>chest add</code>, which adds an extension that only yapi loads.</p>
 </blockquote>
-<p>In the project folder, with your own sources in place of the <code>acme</code> examples:</p>
+<p>In the project folder, run these commands with your own sources in place of the <code>acme</code> examples:</p>
 <pre><code class="language-sh">chest init
 chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
@@ -240,11 +245,12 @@ git commit -m "Add project packages"
 <p>Anyone who clones the project runs:</p>
 <pre><code class="language-sh">chest install
 </code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<h2 id="more-chest-guides"><a class="header" href="#more-chest-guides">More chest guides</a></h2>
+<p>The other pages in this part each cover one task:</p>
 <ul>
 <li><a href="chest-skills.html">Share skills and subagents</a> covers the folders chest fills for each agent.</li>
 <li><a href="chest-extensions.html">Run yapi extensions</a> covers capabilities, events and what yapi loads.</li>
-<li><a href="chest-lock.html">Lock, verify and update</a> covers reproducible installs and CI.</li>
+<li><a href="chest-lock.html">Lock, verify and update packages</a> covers reproducible installs and CI.</li>
 <li><a href="chest-environments.html">Environments, global packages and patches</a> covers more than one manifest and local work on a package.</li>
 <li><a href="chest-publish.html">Publish a package</a> covers the <code>[package]</code> table and <code>chest check</code>.</li>
 <li><a href="chest-commands.html">chest commands</a> and the <a href="chest-manifest.html">chest.toml reference</a> list every command and key.</li>

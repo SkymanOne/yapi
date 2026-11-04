@@ -8,7 +8,7 @@
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,9 +180,12 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install-yapi"><a class="header" href="#install-yapi">Install yapi</a></h1>
-<p>yapi is one executable. Releases ship it with <a href="chest.html">chest</a>, the package manager for skills, subagents and extensions, as a second executable. Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build them from source. Linux and macOS are fully supported. Windows support is best effort.</p>
-<h2 id="install-script"><a class="header" href="#install-script">Install script</a></h2>
-<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
+<p>yapi is one executable. Releases ship it with <a href="chest.html">chest</a>, the package manager for skills, subagents and extensions, as a second executable. This page covers the install script, cargo-binstall, release archives and building from source, then the documentation yapi reads, upgrades and uninstalling.</p>
+<p>Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build yapi from source. yapi fully supports Linux and macOS. Windows support is best effort.</p>
+<h2 id="run-the-install-script"><a class="header" href="#run-the-install-script">Run the install script</a></h2>
+<p>The install script installs both executables with one command:</p>
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
+  | sh
 </code></pre>
 <p>The script downloads the latest release for your system, verifies its SHA-256 checksum and installs <code>yapi</code> and <code>chest</code> in <code>~/.local/bin</code>. It also installs the <a href="#documentation-for-the-model">documentation for the model</a>. Releases before chest shipped install <code>yapi</code> alone.</p>
 <div class="table-wrapper">
@@ -197,15 +200,16 @@
 </tbody>
 </table>
 </div>
-<p>Pass options after <code>sh -s --</code>:</p>
-<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
+<p>Pass options after <code>sh -s --</code>. This installs <code>v0.3.1</code> into <code>/usr/local/bin</code>:</p>
+<pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
+  | sh -s -- --version v0.3.1 --to /usr/local/bin
 </code></pre>
-<h2 id="cargo-binstall"><a class="header" href="#cargo-binstall">cargo-binstall</a></h2>
-<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release’s <code>yapi</code> into <code>~/.cargo/bin</code>. It does not install <code>chest</code>:</p>
+<h2 id="install-with-cargo-binstall"><a class="header" href="#install-with-cargo-binstall">Install with cargo-binstall</a></h2>
+<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the same release’s <code>yapi</code> into <code>~/.cargo/bin</code>. It doesn’t install <code>chest</code>:</p>
 <pre><code class="language-sh">cargo binstall --git https://github.com/SkymanOne/yapi yapi
 </code></pre>
-<p>Keep <code>--git</code>, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on <code>main</code> names. If it reports that the release does not exist, use the install script.</p>
-<h2 id="release-archives"><a class="header" href="#release-archives">Release archives</a></h2>
+<p>Keep <code>--git</code>, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on <code>main</code> names. If it reports that the release doesn’t exist, use the install script.</p>
+<h2 id="install-from-a-release-archive"><a class="header" href="#install-from-a-release-archive">Install from a release archive</a></h2>
 <p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has a <code>yapi-&lt;target&gt;.tar.gz</code> archive per platform, with a <code>.sha256</code> checksum. The archive holds <code>yapi</code>, <code>chest</code> and their license files.</p>
 <div class="table-wrapper">
 <table>
@@ -220,31 +224,38 @@
 </tbody>
 </table>
 </div>
-<p>Download an archive, verify it and unpack <code>yapi</code> and <code>chest</code> into a directory on <code>PATH</code>:</p>
-<pre><code class="language-sh">curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz
-curl -fsSLO https://github.com/SkymanOne/yapi/releases/latest/download/yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
-sha256sum -c yapi-x86_64-unknown-linux-gnu.tar.gz.sha256
-tar xzf yapi-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/bin yapi chest
+<p>Set <code>target</code> to your system’s target from the table. These commands download its archive, verify it and unpack <code>yapi</code> and <code>chest</code> into <code>~/.local/bin</code>, or any folder on <code>PATH</code>:</p>
+<pre><code class="language-sh">target=x86_64-unknown-linux-gnu
+url=https://github.com/SkymanOne/yapi/releases/latest/download
+curl -fsSLO "$url/yapi-$target.tar.gz"
+curl -fsSLO "$url/yapi-$target.tar.gz.sha256"
+sha256sum -c "yapi-$target.tar.gz.sha256"
+tar xzf "yapi-$target.tar.gz" -C ~/.local/bin yapi chest
 </code></pre>
-<p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="troubleshooting.html#macos-blocks-a-downloaded-binary">Troubleshooting</a>.</p>
+<p>On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to build from source. If macOS refuses to open a binary downloaded in a browser, see <a href="troubleshooting.html#macos-blocks-a-downloaded-binary">macOS blocks a downloaded binary</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <p>yapi builds with Rust 1.99 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then run:</p>
 <pre><code class="language-sh">cargo install --locked --git https://github.com/SkymanOne/yapi --tag v0.3.1 yapi
 </code></pre>
-<p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Build <code>chest</code> the same way, with <code>chest-cli</code> in place of <code>yapi</code> at the end. Leave out <code>--tag</code> to build the latest commit on <code>main</code>. To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
+<p>Cargo installs <code>yapi</code> in <code>~/.cargo/bin</code>. Build <code>chest</code> the same way, with <code>chest-cli</code> in place of <code>yapi</code> at the end. Leave out <code>--tag</code> to build the latest commit on <code>main</code>.</p>
+<p>To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
+<p>Both executables print their version:</p>
 <pre><code class="language-sh">yapi --version
 chest --version
 </code></pre>
 <h2 id="documentation-for-the-model"><a class="header" href="#documentation-for-the-model">Documentation for the model</a></h2>
-<p>yapi reads its own documentation to answer questions about its features. The documentation holds these pages and Pi’s docs and examples, which describe the extension API. Each release publishes it as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code> when that is set.</p>
-<p>The install script installs the documentation with the binary. With any other method, yapi downloads it in the background on first start. Either way, the archive is verified against its checksum and replaces the previous copy. <code>YAPI_NO_DOCS=1</code>, <code>--offline</code> and <code>PI_OFFLINE=1</code> turn the download off. Until a copy for its own version is in place, yapi points the model to the online documentation. Pi’s pages use Pi’s names, such as <code>~/.pi/agent</code>, and <a href="migrating.html#names-that-change">Coming from Pi</a> lists yapi’s.</p>
-<p>To install it by hand, such as on a machine that runs offline:</p>
-<pre><code class="language-sh">mkdir -p ~/.yapi/agent/docs &amp;&amp; curl -fsSL https://github.com/SkymanOne/yapi/releases/latest/download/yapi-docs.tar.gz | tar xzf - -C ~/.yapi/agent/docs
+<p>yapi reads its own documentation to answer questions about its features. The documentation holds these pages and Pi’s docs and examples, which describe the extension API. Each release publishes it as <code>yapi-docs.tar.gz</code>, which goes to <code>~/.yapi/agent/docs</code>, or <code>docs</code> in <code>YAPI_CODING_AGENT_DIR</code> when that’s set.</p>
+<p>The install script installs the documentation with the binary. With any other method, yapi downloads it in the background on first start. Either way, yapi verifies the archive against its checksum, and the archive replaces the previous copy. <code>YAPI_NO_DOCS=1</code>, <code>--offline</code> and <code>PI_OFFLINE=1</code> turn the download off.</p>
+<p>Until a copy for its own version is in place, yapi points the model to the online documentation. Pi’s pages use Pi’s names, such as <code>~/.pi/agent</code>, and <a href="migrating.html#names-that-change">Names that change</a> lists yapi’s.</p>
+<p>To install the documentation by hand, such as on a machine that runs offline:</p>
+<pre><code class="language-sh">url=https://github.com/SkymanOne/yapi/releases/latest/download
+mkdir -p ~/.yapi/agent/docs
+curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 </code></pre>
 <p>For an older yapi, replace <code>latest/download</code> with <code>download/v&lt;version&gt;</code>, where <code>&lt;version&gt;</code> is what <code>yapi --version</code> prints. yapi replaces these files on upgrade, so keep your own notes elsewhere.</p>
-<h2 id="upgrade"><a class="header" href="#upgrade">Upgrade</a></h2>
-<p>yapi does not update itself. <code>yapi update</code> prints how to upgrade, <code>yapi update --extensions</code> updates packages and <code>yapi update --models</code> updates model catalogs. Upgrade yapi the same way you installed it:</p>
+<h2 id="upgrade-yapi"><a class="header" href="#upgrade-yapi">Upgrade yapi</a></h2>
+<p>yapi doesn’t update itself. <code>yapi update</code> prints how to upgrade, <code>yapi update --extensions</code> updates packages and <code>yapi update --models</code> updates model catalogs. Upgrade yapi the same way you installed it:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -258,13 +269,14 @@ chest --version
 </tbody>
 </table>
 </div>
-<p>Settings, credentials, sessions and packages are kept.</p>
+<p>Upgrades keep your settings, credentials, sessions and packages.</p>
 <p>In the terminal, yapi checks at startup for a newer release and for package updates, and shows a notice when it finds one. <code>PI_SKIP_VERSION_CHECK=1</code> turns off the release check. <code>--offline</code> and <code>PI_OFFLINE=1</code> turn off both.</p>
 <p><code>YAPI_RELEASES_URL</code> points the install script, the release check and the documentation download at another releases page, such as a mirror. It defaults to <code>https://github.com/SkymanOne/yapi/releases</code>.</p>
-<h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
+<h2 id="uninstall-yapi"><a class="header" href="#uninstall-yapi">Uninstall yapi</a></h2>
+<p>How you remove the binaries depends on how you installed them:</p>
 <ul>
-<li>Install script or release archive: delete <code>~/.local/bin/yapi</code> and <code>~/.local/bin/chest</code>, or the files in the directory you chose.</li>
-<li>cargo-binstall or Cargo: run <code>cargo uninstall yapi</code>, and <code>cargo uninstall chest-cli</code> if you built chest.</li>
+<li><strong>Install script or release archive</strong>: delete <code>~/.local/bin/yapi</code> and <code>~/.local/bin/chest</code>, or the files in the folder you chose.</li>
+<li><strong>cargo-binstall or Cargo</strong>: run <code>cargo uninstall yapi</code>, and <code>cargo uninstall chest-cli</code> if you built chest.</li>
 </ul>
 <p>To remove settings, credentials, sessions, packages and caches as well, delete <code>~/.yapi</code>, or <code>YAPI_CODING_AGENT_DIR</code> when set, and each project’s <code>.yapi</code> folder. chest keeps its global manifest, store and records in <code>~/.chest</code>.</p>
 

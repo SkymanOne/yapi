@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Environments, global packages and patches - yapi</title>
+        <title>Environments, Global Packages and Patches - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,6 +183,7 @@
 <blockquote>
 <p><strong>Any agent</strong>, except the sections marked yapi only.</p>
 </blockquote>
+<p>One project can keep more than one manifest, and one manifest in your home folder serves every project. This page covers manifests per environment, how yapi chooses a manifest, global packages and installing an entry from a local checkout.</p>
 <h2 id="keep-a-manifest-per-environment"><a class="header" href="#keep-a-manifest-per-environment">Keep a manifest per environment</a></h2>
 <blockquote>
 <p><strong>Any agent.</strong></p>
@@ -190,17 +191,18 @@
 <p>A manifest’s lock sits beside it, with <code>.lock</code> in place of <code>.toml</code>. Keep an environment’s entries in a separate, complete manifest, such as <code>chest.dev.toml</code>, which locks in <code>chest.dev.lock</code>. Select it with <code>--manifest</code>:</p>
 <pre><code class="language-sh">chest --manifest chest.dev.toml install
 </code></pre>
-<p><code>CHEST_MANIFEST</code> sets the default for <code>--manifest</code>, as a file name or a path inside the current folder. A value that is absolute, starts with <code>~</code> or uses <code>..</code> is an error. <code>-g</code> ignores the variable.</p>
+<p><code>CHEST_MANIFEST</code> sets the default for <code>--manifest</code>, as a file name or a path inside the current folder. A value that’s absolute, starts with <code>~</code> or uses <code>..</code> is an error. <code>-g</code> ignores the variable. This sets the same manifest for every command in the shell:</p>
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
-<p>Several manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
+<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
 <h2 id="how-yapi-reads-chest_manifest"><a class="header" href="#how-yapi-reads-chest_manifest">How yapi reads <code>CHEST_MANIFEST</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> Other agents read only the folders chest fills, so the variable means nothing to them.</p>
 </blockquote>
-<p>yapi reads the same variable, relative to the project folder, and loads only a manifest inside the project. For a value that is absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and loads no project manifest. The global manifest still loads. chest refuses the same values, so chest and yapi always agree on the manifest. <a href="configuration.html#chest">Configure yapi</a> lists the files yapi reads.</p>
-<h2 id="global-packages"><a class="header" href="#global-packages">Global packages</a></h2>
+<p>yapi reads the same variable, relative to the project folder, and loads only a manifest inside the project. For a value that’s absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and loads no project manifest. The global manifest still loads.</p>
+<p>chest refuses the same values, so chest and yapi always agree on the manifest. <a href="configuration.html#project-packages-from-chest">Project packages from chest</a> lists the files yapi reads.</p>
+<h2 id="install-global-packages"><a class="header" href="#install-global-packages">Install global packages</a></h2>
 <blockquote>
 <p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project.</p>
 </blockquote>
@@ -232,7 +234,8 @@ chest install
 <pre><code class="language-toml">[patch]
 todo = { path = "../pi-todo" }
 </code></pre>
-<p>A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself. It also refuses an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
+<p>A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself.</p>
+<p>chest also refuses an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
 <p>yapi loads a patched entry without a lock entry, as <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes.</p>
 
                     </main>

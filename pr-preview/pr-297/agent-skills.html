@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Agent skills - yapi</title>
+        <title>Add yapi&#x27;s Skills to Your Agent - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-22ab4ab6.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,15 +179,17 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="agent-skills"><a class="header" href="#agent-skills">Agent skills</a></h1>
-<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. yapi and Pi load them, and so do other agents that read Agent Skills, such as Claude Code.</p>
+                        <h1 id="add-yapis-skills-to-your-agent"><a class="header" href="#add-yapis-skills-to-your-agent">Add yapi’s skills to your agent</a></h1>
+<p>The repository ships two <a href="https://agentskills.io/specification">Agent Skills</a> that teach a coding agent to work with yapi. yapi and Pi load them, and so do other agents that read Agent Skills, such as Claude Code. This page covers what each skill does, how to install it and how to load it in a task.</p>
+<h2 id="what-each-skill-teaches"><a class="header" href="#what-each-skill-teaches">What each skill teaches</a></h2>
+<p>Each skill comes with a helper script:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Skill</th><th>Use it to</th></tr>
 </thead>
 <tbody>
-<tr><td><code>yapi</code></td><td>Install and run yapi, hand it tasks from scripts or other agents in print, JSON or RPC mode, choose models and credentials, and manage sessions, packages and settings. <code>scripts/ask.py</code> sends one prompt over RPC and prints the answer.</td></tr>
+<tr><td><code>yapi</code></td><td>Install and run yapi, hand it tasks from scripts or other agents in print, JSON or remote procedure call (RPC) mode, choose models and credentials, and manage sessions, packages and settings. <code>scripts/ask.py</code> sends one prompt over RPC and prints the answer.</td></tr>
 <tr><td><code>yapi-extension</code></td><td>Write, test and package Pi extensions in TypeScript and native extensions in Rust. It includes a template for Pi extensions and notes on where yapi’s runtime differs from Pi. <code>scripts/check-extension.py</code> loads extensions without a model and reports their commands and load errors.</td></tr>
 </tbody>
 </table>
@@ -197,7 +199,7 @@
 <pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.3.1
 </code></pre>
 <p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
-<p>To use the skills without the rest of the repository, copy their folders into a skills directory, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
+<p>To use the skills without the rest of the repository, copy their folders into a skills folder, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
 <pre><code class="language-sh">cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 </code></pre>
 <p>With <a href="chest-skills.html">chest</a>, add the skills to a project’s <code>chest.toml</code>, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:</p>
