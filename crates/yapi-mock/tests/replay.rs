@@ -113,6 +113,21 @@ async fn serves_interactions_in_order() {
     assert_eq!(second.text().await.unwrap(), "data: [DONE]\n\n");
 
     assert_eq!(server.finish().unwrap().len(), 2);
+
+    // For a client that sends requests at once, they match in any order.
+    let any = MockServer::local_any_order(|_| Cassette {
+        interactions: vec![
+            interaction("GET", "/a", reply(200, &["a"])),
+            interaction("GET", "/b", reply(200, &["b"])),
+        ],
+    })
+    .await
+    .unwrap();
+    for path in ["/b", "/a"] {
+        let response = reqwest::get(format!("{}{path}", any.url())).await.unwrap();
+        assert_eq!(response.text().await.unwrap(), &path[1..]);
+    }
+    assert_eq!(any.finish().unwrap().len(), 2);
 }
 
 #[tokio::test]

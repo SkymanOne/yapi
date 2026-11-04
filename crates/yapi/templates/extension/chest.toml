@@ -1,0 +1,4 @@
+# The capabilities the extension asks yapi for. Keep them equal to the
+# features of yapi-extension-api in Cargo.toml: `chest check` compares them.
+[package]
+capabilities = ["session"]

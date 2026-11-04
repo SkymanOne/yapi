@@ -20,6 +20,16 @@ wit-bindgen = "0.62"
 yapi-tui = { path = "../../crates/yapi-tui", version = "0.3.1", optional = true }
 
 [features]
+default = []
+# The capabilities the extension uses. Each enables the requests that need
+# that grant, and is recorded in the build's `yapi:capabilities` section,
+# which `chest check` compares with the package's `capabilities`.
+fs = []
+net = []
+env = []
+session = []
+# Everything, including running processes, which only `all` grants.
+all = ["fs", "net", "env", "session"]
 # pi-tui's widgets from yapi-tui, such as `SelectList` and `Editor`.
 widgets = ["dep:yapi-tui"]
 

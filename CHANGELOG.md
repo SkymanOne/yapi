@@ -4,9 +4,13 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and require native extensions to declare the capabilities they use with SDK features, as [Move to capability features](https://skymanone.github.io/yapi/native-extensions.html#move-to-capability-features) describes ([#293](https://github.com/SkymanOne/yapi/pull/293), [#294](https://github.com/SkymanOne/yapi/pull/294), [#295](https://github.com/SkymanOne/yapi/pull/295), [#296](https://github.com/SkymanOne/yapi/pull/296), [#297](https://github.com/SkymanOne/yapi/pull/297)).
+
 ### Fixes
 
-- Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270), [#292](https://github.com/SkymanOne/yapi/pull/292)).
+- Various bug fixes ([#263](https://github.com/SkymanOne/yapi/pull/263), [#264](https://github.com/SkymanOne/yapi/pull/264), [#265](https://github.com/SkymanOne/yapi/pull/265), [#266](https://github.com/SkymanOne/yapi/pull/266), [#267](https://github.com/SkymanOne/yapi/pull/267), [#268](https://github.com/SkymanOne/yapi/pull/268), [#269](https://github.com/SkymanOne/yapi/pull/269), [#270](https://github.com/SkymanOne/yapi/pull/270), [#292](https://github.com/SkymanOne/yapi/pull/292), [#294](https://github.com/SkymanOne/yapi/pull/294)).
 
 ## [0.3.1] - 2026-10-22
 

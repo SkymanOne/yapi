@@ -165,11 +165,20 @@ pub(crate) fn resolve(op: u64, value: Result<String, String>) {
 
 /// Starts host operation `kind` with JSON `payload` and resolves with its
 /// answer, `null` when the host answers nothing. The operation starts at
-/// once; dropping the future ignores its answer.
+/// once; dropping the future ignores its answer. A kind that needs a
+/// feature this build leaves out resolves at once with an error that names
+/// the feature, as [`request`](crate::request) fails.
 pub fn op(kind: &str, payload: &Value) -> impl Future<Output = Result<Value, String>> + 'static {
     let id = next_id();
-    OPS.with(|ops| ops.borrow_mut().insert(id, Slot::Waiting(None)));
-    host::start(id, kind, &payload.to_string());
+    match crate::capabilities::check(kind) {
+        Ok(()) => {
+            OPS.with(|ops| ops.borrow_mut().insert(id, Slot::Waiting(None)));
+            host::start(id, kind, &payload.to_string());
+        }
+        Err(message) => {
+            OPS.with(|ops| ops.borrow_mut().insert(id, Slot::Done(Err(message))));
+        }
+    }
     Op(id)
 }
 

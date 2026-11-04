@@ -1,10 +1,12 @@
-# yapi RPC mode
+# Drive yapi in RPC mode
 
-`yapi --mode rpc` reads one JSON command per line on stdin and writes JSON lines on stdout: a response for each command, with the command's `id`, and the same events as JSON mode. The protocol is Pi's, described in full in Pi's [RPC documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md).
+`yapi --mode rpc` speaks Pi's remote procedure call (RPC) protocol. It reads one JSON command per line on stdin and writes JSON lines on stdout: a response for each command, with the command's `id`, and the same events as JSON mode. Pi's [RPC documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md) describes the protocol in full. This reference covers a minimal client, the commands and extension dialogs.
 
-yapi exits when stdin closes. Keep stdin open until you have read what you need, for a prompt usually the `agent_end` event.
+yapi exits when stdin closes, so keep stdin open until you've read what you need. For a prompt, read until its `agent_end` event.
 
-## A minimal client
+## A minimal Python client
+
+The client starts yapi without saving a session and writes each command as one line:
 
 ```python
 import json
@@ -21,16 +23,27 @@ proc = subprocess.Popen(
 def send(command):
     proc.stdin.write(json.dumps(command) + "\n")
     proc.stdin.flush()
+```
 
+It sends a prompt, then reads lines until the run's `agent_end` event, raising on a failed response:
 
-send({"id": "1", "type": "prompt", "message": "Run the tests and summarize failures"})
+```python
+send({
+    "id": "1",
+    "type": "prompt",
+    "message": "Run the tests and summarize failures",
+})
 for line in proc.stdout:
     event = json.loads(line)
     if event.get("type") == "response" and not event.get("success", True):
         raise RuntimeError(event.get("error"))
     if event.get("type") == "agent_end":
         break
+```
 
+Then it asks for the last answer's text, prints it and closes stdin, which ends yapi:
+
+```python
 send({"id": "2", "type": "get_last_assistant_text"})
 for line in proc.stdout:
     event = json.loads(line)
@@ -42,7 +55,7 @@ proc.stdin.close()
 proc.wait()
 ```
 
-## Commands
+## RPC commands
 
 Every command is an object with `type` and an optional `id`, which the response repeats. Field names are camelCase.
 
@@ -75,6 +88,6 @@ Every command is an object with `type` and an optional `id`, which the response 
 | `export_html` | optional `outputPath` | |
 | `get_commands` | | Slash commands from extensions, prompt templates and skills |
 
-## Extension dialogs
+## Answer extension dialogs
 
-Extensions that open dialogs send `extension_ui_request` lines. Answer each with an `extension_ui_response` carrying its `id`, as Pi's [extension UI protocol](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc-extension-ui.md) describes, or start yapi with `-ne` when no extensions are needed.
+Extensions that open dialogs send `extension_ui_request` lines. Answer each with an `extension_ui_response` carrying its `id`, as Pi's [extension UI protocol](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc-extension-ui.md) describes, or start yapi with `-ne` when you need no extensions.

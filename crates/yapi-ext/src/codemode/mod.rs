@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use yapi_agent::{Tool, UpdateSink};
 use yapi_core::agent_session::WeakSession;
 use yapi_core::extensions::{
-    Context, Extension, Loadout, LoadoutChanges, Tools, builtin_source, codemode,
+    Context, Extension, Grants, Loadout, LoadoutChanges, Tools, builtin_source, codemode,
 };
 use yapi_core::tools::{Exposure, RegisteredTool};
 use yapi_types::event::ToolResult;
@@ -90,7 +90,10 @@ impl Tool for CodemodeTool {
         updates: UpdateSink,
     ) -> BoxFuture<'_, Result<ToolResult, String>> {
         let session = lock(&self.session).upgrade();
-        Box::pin(self.runner.execute(session, call_id, args, cancel, updates))
+        Box::pin(
+            self.runner
+                .execute(session, Grants::default(), call_id, args, cancel, updates),
+        )
     }
 }
 

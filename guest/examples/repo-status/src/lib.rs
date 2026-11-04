@@ -2,8 +2,8 @@
 //! starts in a repository with changes, a `/repo-status` command, and a
 //! `repo_status` tool the model can call.
 //!
-//! Shows `exec`, which runs a process and waits for it. The extension needs
-//! the process grant, which every extension has by default.
+//! Shows `exec`, which runs a process and waits for it. It needs the process
+//! grant, which packages from `yapi install` have and chest grants with `all`.
 
 use yapi_extension_api::{Api, Context, Tool, ToolResult, exec, json, notify};
 

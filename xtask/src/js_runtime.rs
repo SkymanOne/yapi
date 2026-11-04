@@ -76,9 +76,11 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
 
     fs::create_dir_all("target/guest")?;
     let target_dir = Path::new("target/guest").canonicalize()?;
+    let root = std::env::current_dir()?;
     // Each package builds on its own, so no package's features reach
     // another's dependencies, such as serde_json's from the SDK's widgets.
-    let build = |package: &str, sdk: Option<&Path>| -> anyhow::Result<()> {
+    // `checkout` is the path the guest workspace is reached through.
+    let build = |package: &str, sdk: Option<&Path>, checkout: &Path| -> anyhow::Result<()> {
         let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
         command
             .args([
@@ -89,7 +91,9 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                 TARGET,
                 "-p",
                 package,
+                "--manifest-path",
             ])
+            .arg(checkout.join("guest/Cargo.toml"))
             .current_dir("guest")
             .env("CARGO_TARGET_DIR", &target_dir);
         match sdk {
@@ -103,13 +107,16 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                         format!("--sysroot={}", sdk.join("share/wasi-sysroot").display()),
                     );
             }
-            // Panic messages name yapi-tui's files by this path, the same
-            // in every checkout.
+            // Panic messages name yapi-tui's files, and build outputs, by
+            // this path, the same in every checkout.
             None => {
-                let root = std::env::current_dir()?;
                 command.env(
-                    "RUSTFLAGS",
-                    format!("--remap-path-prefix={}=/yapi", root.display()),
+                    "CARGO_ENCODED_RUSTFLAGS",
+                    format!(
+                        "--remap-path-prefix={}=/yapi\x1f--remap-path-prefix={}=/yapi",
+                        checkout.display(),
+                        root.display()
+                    ),
                 );
             }
         }
@@ -139,7 +146,7 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
                 "set WASI_SDK_PATH or pass --wasi-sdk to a WASI SDK (https://github.com/WebAssembly/wasi-sdk)"
             );
         };
-        build("yapi-js", Some(&sdk))?;
+        build("yapi-js", Some(&sdk), &root)?;
         fs::copy(
             target_dir.join(TARGET).join("release/yapi_js.wasm"),
             ARTIFACT,
@@ -147,8 +154,9 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     }
     let examples = examples()?;
     fs::create_dir_all(FIXTURES)?;
+    let (checkout, _lock) = checkout_link(&root)?;
     for example in &examples {
-        build(example, None)?;
+        build(example, None, &checkout)?;
         let built = target_dir
             .join(TARGET)
             .join("release")
@@ -167,6 +175,34 @@ pub fn run(args: Args) -> anyhow::Result<ExitCode> {
     }
     eprintln!("wrote {RECORD}");
     Ok(ExitCode::SUCCESS)
+}
+
+/// A link to the checkout at `root` from a path that is the same in every
+/// checkout, and the lock that keeps another checkout from moving it while
+/// the examples build. Cargo hashes the absolute path of a path dependency
+/// outside the guest workspace, such as yapi-tui, into its symbol names,
+/// which order the code, so the examples build to the same bytes only
+/// through one path.
+#[cfg(unix)]
+fn checkout_link(root: &Path) -> anyhow::Result<(PathBuf, fs::File)> {
+    let dir = std::env::temp_dir();
+    let lock = fs::File::create(dir.join("yapi-guest.lock"))?;
+    lock.lock().context("locking the guest checkout link")?;
+    let link = dir.join("yapi-guest");
+    if let Err(err) = fs::remove_file(&link)
+        && err.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(err).with_context(|| format!("removing {}", link.display()));
+    }
+    std::os::unix::fs::symlink(root, &link)
+        .with_context(|| format!("linking {}", link.display()))?;
+    Ok((link, lock))
+}
+
+/// Without symbolic links the examples build from the checkout itself.
+#[cfg(not(unix))]
+fn checkout_link(root: &Path) -> anyhow::Result<(PathBuf, ())> {
+    Ok((root.to_path_buf(), ()))
 }
 
 /// The example and fixture crates, named after their directories, in name

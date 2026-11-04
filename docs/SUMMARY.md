@@ -1,38 +1,49 @@
 # Summary
 
-[Overview](index.md)
+[About yapi](index.md)
 
-# Get started
+# Get Started
 
-- [Quickstart](quickstart.md)
+- [Run Your First Task](quickstart.md)
 - [Install yapi](install.md)
-- [Coming from Pi](migrating.md)
+- [Move from Pi to yapi](migrating.md)
 
 # Run yapi
 
-- [Use yapi in the terminal](interactive.md)
-- [Choose a model](models.md)
-- [Manage sessions](sessions.md)
-- [Security model and sandboxing](security.md)
+- [Use yapi in the Terminal](interactive.md)
+- [Choose a Model](models.md)
+- [Manage Sessions](sessions.md)
+- [Security Model and Sandboxing](security.md)
 - [Automate yapi](automation.md)
 
 # Customize yapi
 
 - [Configure yapi](configuration.md)
-- [Use packages](packages.md)
-- [Connect MCP servers](mcp.md)
+- [Use Packages](packages.md)
+- [Connect MCP Servers](mcp.md)
+
+# Manage Packages with chest
+
+- [Get Started with chest](chest.md)
+- [Share Skills and Subagents](chest-skills.md)
+- [Run yapi Extensions](chest-extensions.md)
+- [Lock, Verify and Update Packages](chest-lock.md)
+- [Environments, Global Packages and Patches](chest-environments.md)
+- [Publish a Package](chest-publish.md)
+- [chest Commands](chest-commands.md)
+- [chest.toml Reference](chest-manifest.md)
 
 # Build on yapi
 
-- [Extensions](extensions.md)
-- [Native extensions in Rust](native-extensions.md)
-- [Native extension examples](native-examples.md)
-- [Agent skills](agent-skills.md)
+- [Extend yapi with Extensions](extensions.md)
+- [Write Native Extensions in Rust](native-extensions.md)
+- [Native Extension Examples](native-examples.md)
+- [Add yapi's Skills to Your Agent](agent-skills.md)
 
-# Reference
+# Reference and Support
 
 - [Differences from Pi](compat.md)
-- [Roadmap](roadmap.md)
-- [Performance](performance.md)
-- [Troubleshooting](troubleshooting.md)
-- [Contributing](contributing.md)
+- [Planned Work](roadmap.md)
+- [Performance Compared with Pi](performance.md)
+- [Fix Common Problems](troubleshooting.md)
+- [Contribute to yapi](contributing.md)

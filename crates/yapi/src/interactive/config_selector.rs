@@ -89,8 +89,17 @@ fn format_base_dir(dir: &str, home: &str) -> String {
     }
 }
 
-/// pi's `getGroupLabel`.
+/// Whether chest manages the resource `info` describes: its manifest turns
+/// it on and off, and settings cannot.
+fn managed(info: &SourceInfo) -> bool {
+    info.source.starts_with("chest:")
+}
+
+/// pi's `getGroupLabel`, and chest's packages as chest manages them.
 fn group_label(info: &SourceInfo, agent_dir: &Path, home: &str) -> String {
+    if managed(info) {
+        return format!("{} ({}, managed by chest)", info.source, info.scope);
+    }
     if info.origin == "package" {
         return format!("{} ({})", info.source, info.scope);
     }
@@ -676,7 +685,8 @@ impl ConfigSelector {
             return;
         };
         let item = self.groups()[g].subgroups[s].items[i].clone();
-        if !self.project && Self::item_scope(&item) != Scope::Global {
+        // A settings entry for it would never apply.
+        if managed(&item.info) || !self.project && Self::item_scope(&item) != Scope::Global {
             return;
         }
         let enabled = if self.project {
@@ -917,5 +927,53 @@ impl ConfigSelector {
             self.filter();
         }
         Outcome::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// chest's resources show which manifest entry they come from and that
+    /// chest manages them, so they are not toggled here.
+    #[test]
+    fn chest_items_read_only() {
+        let info = |source: &str| SourceInfo {
+            path: "/p/ext.ts".into(),
+            source: source.into(),
+            scope: "project".into(),
+            origin: "package".into(),
+            base_dir: None,
+        };
+        let label = |source| group_label(&info(source), Path::new("/agent"), "/home");
+        assert_eq!(
+            label("chest:todo"),
+            "chest:todo (project, managed by chest)"
+        );
+        assert_eq!(label("npm:todo"), "npm:todo (project)");
+        assert!(managed(&info("chest:todo")) && !managed(&info("npm:todo")));
+
+        // Space leaves a global chest extension on.
+        let dir = std::env::temp_dir().join(format!("yapi-config-chest-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let global = ResolvedPaths {
+            extensions: vec![yapi_core::packages::resolve::Resolved {
+                info: SourceInfo {
+                    scope: "user".into(),
+                    ..info("chest:todo")
+                },
+                enabled: true,
+            }],
+            ..ResolvedPaths::default()
+        };
+        let settings = SettingsManager::load(&dir, &dir, false);
+        let (cwd, agent) = (dir.clone(), dir.clone());
+        let none = ResolvedPaths::default();
+        let mut selector =
+            ConfigSelector::new(&global, &none, settings, cwd, agent, 24, false, false);
+        let item = |row: &Row| matches!(row, Row::Item(..));
+        selector.selected = selector.filtered.iter().position(item).unwrap();
+        selector.toggle();
+        assert!(selector.groups[0][0].subgroups[0].items[0].enabled);
     }
 }

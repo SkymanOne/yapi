@@ -22,12 +22,26 @@ use yapi_types::rpc::{CommandSource, SlashCommand, SourceInfo};
 use yapi_types::sync::{lock, write};
 use yapi_types::system_prompt::SystemPromptOptions;
 
-use crate::extensions::{Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers};
+use crate::extensions::{
+    Context, Extension, ExtensionUi, Mode, SessionActions, ToolRenderers, receives, tool_granted,
+};
 use crate::mcp::config::check_registration;
 use crate::messages::convert_to_llm;
 use crate::time::now_ms;
 
 use super::{AgentSession, InputSource, Replacement, SessionChange, drain};
+
+/// What a handler result that changes the session's conversation needs.
+pub(super) const SESSION: &str = "the session grant";
+
+/// The fields of a `tool_result` handler's result that change the result.
+const TOOL_RESULT_KEYS: [&str; 5] = [
+    "content",
+    "details",
+    "structuredContent",
+    "isError",
+    "usage",
+];
 
 pub(super) struct Hooks {
     pub(super) session: AgentSession,
@@ -316,8 +330,12 @@ impl AgentHooks for Hooks {
                     .tool_call(&ctx, &call.tool_call.name, &*call.args)
                     .await
                 {
+                    let granted = extension.grants().session;
                     return Some(yapi_agent::hooks::Block {
-                        reason: Some(reason),
+                        reason: self
+                            .session
+                            .applies(extension, "tool_call", granted, SESSION)
+                            .then_some(reason),
                         terminate: false,
                     });
                 }
@@ -330,17 +348,48 @@ impl AgentHooks for Hooks {
             }
             .to_value();
             // Handlers change the call's arguments by editing `event.input`,
-            // which later handlers see, as in pi.
+            // which later handlers see, as in pi. The arguments are what the
+            // model sees, and a handler changes them only when its grants
+            // would also let it run the tool itself.
+            let name = &call.tool_call.name;
+            let tool = self
+                .session
+                .inner
+                .tools
+                .with(|registry| registry.get(name).cloned());
             for extension in self.session.handlers_of("tool_call") {
                 let Some(result) = extension.handle(&ctx, &event).await else {
                     continue;
                 };
-                if let Some(input) = result.get("input").filter(|input| input.is_object()) {
-                    event["input"] = input.clone();
+                // The runtime reports the input whether or not a handler changed it.
+                if let Some(input) = result
+                    .get("input")
+                    .filter(|input| input.is_object() && **input != event["input"])
+                {
+                    let grants = extension.grants();
+                    let granted = grants.session
+                        && tool
+                            .as_ref()
+                            .map_or(grants.is_all(), |tool| tool_granted(&grants, tool));
+                    let missing =
+                        format!("the session grant and the grants to run the {name} tool");
+                    if self
+                        .session
+                        .applies(extension, "tool_call", granted, &missing)
+                    {
+                        event["input"] = input.clone();
+                    }
                 }
+                // A block always applies, but its reason is text the model
+                // reads, which needs the session grant.
                 if result["block"] == true {
+                    let granted = extension.grants().session;
+                    let reason = result["reason"].as_str().filter(|_| {
+                        self.session
+                            .applies(extension, "tool_call", granted, SESSION)
+                    });
                     return Some(yapi_agent::hooks::Block {
-                        reason: result["reason"].as_str().map(str::to_owned),
+                        reason: reason.map(str::to_owned),
                         terminate: result["terminate"] == true,
                     });
                 }
@@ -478,6 +527,17 @@ impl Hooks {
                 continue;
             };
             let given = |key: &str| result.get(key).filter(|value| !value.is_null());
+            let changes = TOOL_RESULT_KEYS.iter().any(|key| given(key).is_some());
+            if changes
+                && !self.session.applies(
+                    extension,
+                    "tool_result",
+                    extension.grants().session,
+                    SESSION,
+                )
+            {
+                continue;
+            }
             // As in pi, structured content not replaced along with the
             // content may no longer match it.
             if given("content").is_some()
@@ -486,13 +546,7 @@ impl Hooks {
             {
                 event.shift_remove("structuredContent");
             }
-            for key in [
-                "content",
-                "details",
-                "structuredContent",
-                "isError",
-                "usage",
-            ] {
+            for key in TOOL_RESULT_KEYS {
                 if let Some(value) = given(key)
                     && let Some(event) = event.as_object_mut()
                 {
@@ -510,6 +564,11 @@ impl Hooks {
             terminate: None,
         })
     }
+}
+
+/// Whether `extension` handles pi event `kind` and its grants let it hear it.
+fn hears(extension: &Arc<dyn Extension>, kind: &str) -> bool {
+    extension.handles(kind) && receives(kind, &extension.grants())
 }
 
 /// Sets `key` of a `tool_result` event where pi's event has it: pi's holds
@@ -573,20 +632,47 @@ impl AgentSession {
     }
 
     /// The extensions with handlers for pi events of type `kind`.
+    /// Whether a result of `extension`'s `event` handler applies: always
+    /// when `granted`, else never, and the extension is warned once per
+    /// event that the result needs `missing`, such as the session grant.
+    pub(super) fn applies(
+        &self,
+        extension: &Arc<dyn Extension>,
+        event: &str,
+        granted: bool,
+        missing: &str,
+    ) -> bool {
+        if !granted {
+            self.dropped(extension, event, missing);
+        }
+        granted
+    }
+
+    /// Warns `extension`, once per event, that the session ignored a result
+    /// of its `event` handler, which needs `missing`.
+    pub(super) fn dropped(&self, extension: &Arc<dyn Extension>, event: &str, missing: &str) {
+        let path = extension.source().path;
+        if lock(&self.inner.dropped_results).insert((path.clone(), event.to_owned())) {
+            extension.warn(&format!(
+                "Ignored a {event} result of extension {path}: it needs {missing}"
+            ));
+        }
+    }
+
     pub(super) fn handlers_of(&self, kind: &str) -> Vec<&Arc<dyn Extension>> {
         self.inner
             .extensions
             .iter()
-            .filter(|extension| extension.handles(kind))
+            .filter(|extension| hears(extension, kind))
             .collect()
     }
 
-    /// Whether any extension handles pi events of type `kind`.
+    /// Whether any extension handles pi events of type `kind` and may hear them.
     pub fn has_handlers(&self, kind: &str) -> bool {
         self.inner
             .extensions
             .iter()
-            .any(|extension| extension.handles(kind))
+            .any(|extension| hears(extension, kind))
     }
 
     /// Delivers pi event `event` to every extension that handles it, in
@@ -607,14 +693,31 @@ impl AgentSession {
         let before = kind.starts_with("session_before_");
         let mut result = None;
         for extension in handlers {
-            if let Some(next) = extension.handle(&ctx, event).await
-                && before
-            {
-                let cancelled = next["cancel"] == true;
-                result = Some(next);
-                if cancelled {
-                    break;
+            let Some(mut next) = extension.handle(&ctx, event).await else {
+                continue;
+            };
+            if !before {
+                continue;
+            }
+            let cancelled = next["cancel"] == true;
+            // Without the session grant, a handler may only cancel, such as
+            // a compaction it would otherwise summarize itself. Anything else
+            // counts as no result, so it never replaces a granted one.
+            if !extension.grants().session {
+                let changes = next
+                    .as_object()
+                    .is_some_and(|result| result.keys().any(|key| key != "cancel"));
+                if changes {
+                    self.dropped(extension, kind, SESSION);
                 }
+                if !cancelled {
+                    continue;
+                }
+                next = serde_json::json!({"cancel": true});
+            }
+            result = Some(next);
+            if cancelled {
+                break;
             }
         }
         result
@@ -670,6 +773,14 @@ impl AgentSession {
             else {
                 continue;
             };
+            if !self.applies(
+                extension,
+                "message_end",
+                extension.grants().session,
+                SESSION,
+            ) {
+                continue;
+            }
             if next["role"] != current["role"] {
                 report(
                     extension,
@@ -715,6 +826,8 @@ impl AgentSession {
             let event = serde_json::json!({"type": kind, field: value});
             if let Some(result) = extension.handle(&ctx, &event).await
                 && let Some(next) = result.get(field)
+                && *next != value
+                && self.applies(extension, kind, extension.grants().session, SESSION)
             {
                 value = next.clone();
             }
@@ -744,6 +857,7 @@ impl AgentSession {
                 && let Ok(returned) =
                     serde_json::from_value::<Vec<Message>>(result["messages"].clone())
                 && returned != visible
+                && self.applies(extension, "context", extension.grants().session, SESSION)
             {
                 let head = yapi_ai::transcript::current_system_message(&messages);
                 messages = head
@@ -760,7 +874,15 @@ impl AgentSession {
             }
             .to_value();
             if let Some(result) = extension.handle(&ctx, &event).await
-                && let Ok(returned) = serde_json::from_value(result["messages"].clone())
+                && let Ok(returned) =
+                    serde_json::from_value::<Vec<Message>>(result["messages"].clone())
+                && returned != messages
+                && self.applies(
+                    extension,
+                    "context_with_system",
+                    extension.grants().session,
+                    SESSION,
+                )
             {
                 messages = returned;
             }
@@ -994,7 +1116,9 @@ impl AgentSession {
             };
             match result["action"].as_str() {
                 Some("handled") => return None,
-                Some("transform") => {
+                Some("transform")
+                    if self.applies(extension, "input", extension.grants().session, SESSION) =>
+                {
                     if let Some(next) = result["text"].as_str() {
                         next.clone_into(&mut text);
                     }
@@ -1035,6 +1159,24 @@ impl AgentSession {
             let Some(result) = extension.handle(&ctx, &event).await else {
                 continue;
             };
+            // Without the session grant, no part of the result applies. The
+            // runtime reports the options and the forced prompt whether or not
+            // a handler changed them, so only a change is warned of.
+            if !extension.grants().session {
+                let edited = result["systemPromptOptions"].is_object()
+                    && SystemPromptOptions::deserialize(&result["systemPromptOptions"])
+                        .is_ok_and(|edited| edited != options);
+                let forced = result["systemPrompt"]
+                    .as_str()
+                    .is_some_and(|prompt| Some(prompt) != options.force_system_prompt.as_deref());
+                let added = result["messages"]
+                    .as_array()
+                    .is_some_and(|messages| !messages.is_empty());
+                if edited || forced || added {
+                    self.dropped(extension, "before_agent_start", SESSION);
+                }
+                continue;
+            }
             for message in result["messages"].as_array().into_iter().flatten() {
                 let content = match &message["content"] {
                     Value::Null => Value::Array(Vec::new()),
@@ -1136,6 +1278,25 @@ impl AgentSession {
             let Some(result) = extension.handle(&ctx, &event).await else {
                 continue;
             };
+            // The files it names load into the prompt and the commands.
+            let grants = extension.grants();
+            let names = ["skillPaths", "promptPaths", "themePaths"]
+                .iter()
+                .any(|kind| {
+                    result[*kind]
+                        .as_array()
+                        .is_some_and(|paths| !paths.is_empty())
+                });
+            if names
+                && !self.applies(
+                    extension,
+                    "resources_discover",
+                    grants.session && grants.filesystem,
+                    "the session and file grants",
+                )
+            {
+                continue;
+            }
             let origin = extension.source().path;
             let synthetic = origin.starts_with("builtin:") || origin.starts_with('<');
             let source = if synthetic {

@@ -1,6 +1,6 @@
 # Native extension examples
 
-The repository has nineteen native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Twelve are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side.
+The repository has 19 native extensions in [`guest/examples`](https://github.com/SkymanOne/yapi/tree/main/guest/examples). Twelve are ports of Pi's own examples, so you can read the Rust and TypeScript versions side by side. This page lists them, shows how to build one, then walks through each with an excerpt.
 
 | Example | Shows | Pi counterpart |
 |---|---|---|
@@ -21,12 +21,19 @@ The repository has nineteen native extensions in [`guest/examples`](https://gith
 | [`select-menu`](#select-menu) | A `SelectList` widget in a custom component | None |
 | [`input-hooks`](#input-hooks) | A terminal input listener that reads the editor, an autocomplete provider and a shortcut | None |
 | [`crash-recovery`](#crash-recovery) | What yapi does when an extension panics | None |
-| [`countdown`](#countdown) | A tool that stops with its own result when the run is aborted, and one that ignores aborts | None |
+| [`countdown`](#countdown) | A tool that stops with its own result when the user aborts the run, and one that ignores aborts | None |
 | [`code-renderer`](#code-renderer) | Colors Rust keywords with yapi's code renderer API, and bolds `TODO` with a Markdown transformer | None |
 
-Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature.
+Six of them, from `modal-editor` to `select-menu`, use the SDK's `widgets` feature. Each enables the [capability features](native-extensions.md#declare-capabilities) it uses in its `Cargo.toml`:
 
-## Build and try them
+| Feature | Examples |
+|---|---|
+| `session` | `hello`, `message-renderer`, `entry-renderer` and `crash-recovery`, which add messages or entries to the session |
+| `all` | `repo-status`, `package-scripts` and `subagent`, which run processes, and `input-hooks`, which adds a terminal input listener and an autocomplete provider |
+
+The others use no capability.
+
+## Build and try an example
 
 Build any example from the `guest` folder of a clone, then load it for one run:
 
@@ -38,9 +45,9 @@ yapi -e target/wasm32-wasip2/release/permission_gate.wasm
 
 Cargo names the file after the crate with underscores in place of dashes. `yapi install` takes the same path to keep the extension.
 
-## hello
+## `hello`
 
-The smallest complete extension. It registers a `shout` tool that repeats text in capitals, a `/hello` command, a `--shout-suffix` flag that the tool reads, a `session_start` handler that stores an entry in the session, and a `tool_call` handler that blocks empty input.
+The smallest complete extension. It registers a `shout` tool that repeats text in capitals, a `/hello` command, a `--shout-suffix` flag that the tool reads, a `session_start` handler that stores an entry in the session, and a `tool_call` handler that blocks empty input:
 
 ```rust
 api.on("tool_call", |event, _ctx| async move {
@@ -51,9 +58,9 @@ api.on("tool_call", |event, _ctx| async move {
 });
 ```
 
-## permission-gate
+## `permission-gate`
 
-Asks before dangerous `bash` commands run: recursive deletes, `sudo`, and `chmod` or `chown` with `777`. Returning `{"block": true, "reason": ...}` from a `tool_call` handler stops the call, and the model sees the reason as the tool's result. The handler awaits a dialog with `op`, and blocks the command when no one can answer, in print and JSON modes.
+Asks before dangerous `bash` commands run: recursive deletes, `sudo`, and `chmod` or `chown` with `777`. Returning `{"block": true, "reason": ...}` from a `tool_call` handler stops the call, and the model sees the reason as the tool's result. The handler awaits a dialog with `op`, and blocks the command when no one can answer, in print and JSON modes:
 
 ```rust
 api.on("tool_call", |event, ctx| async move {
@@ -68,7 +75,11 @@ api.on("tool_call", |event, ctx| async move {
         })));
     }
     let title = format!("⚠️ Dangerous command:\n\n  {command}\n\nAllow?");
-    let choice = op("ui.select", &json!({"title": title, "options": ["Yes", "No"]})).await?;
+    let choice = op(
+        "ui.select",
+        &json!({"title": title, "options": ["Yes", "No"]}),
+    )
+    .await?;
     if choice != "Yes" {
         return Ok(Some(json!({"block": true, "reason": "Blocked by user"})));
     }
@@ -76,9 +87,9 @@ api.on("tool_call", |event, ctx| async move {
 });
 ```
 
-## protected-paths
+## `protected-paths`
 
-Blocks `write` and `edit` calls on `.env`, `.git/` and `node_modules/`, and tells the user when a person is watching.
+Blocks `write` and `edit` calls on `.env`, `.git/` and `node_modules/`, and tells the user when a person is watching:
 
 ```rust
 const PROTECTED: [&str; 3] = [".env", ".git/", "node_modules/"];
@@ -94,37 +105,53 @@ api.on("tool_call", |event, ctx| async move {
     if ctx.has_ui() {
         notify(&format!("Blocked write to protected path: {path}"), "warning");
     }
-    Ok(Some(json!({"block": true, "reason": format!("Path \"{path}\" is protected")})))
+    Ok(Some(json!({
+        "block": true,
+        "reason": format!("Path \"{path}\" is protected"),
+    })))
 });
 ```
 
-## todo
+## `todo`
 
-A `todo` tool with `list`, `add`, `toggle` and `clear` actions, and a `/todos` command that shows the list in a component until Escape closes it. Each result carries the whole list in its details. When a session starts, or the user moves through the session tree with `/tree`, the extension reads the current branch and takes the list from the last `todo` result on it. Every branch therefore keeps its own list.
+A `todo` tool with `list`, `add`, `toggle` and `clear` actions, and a `/todos` command that shows the list in a component until Escape closes it. Each result carries the whole list in its details.
+
+When a session starts, or the user moves through the session tree with `/tree`, the extension reads the current branch and takes the list from the last `todo` result on it. Every branch therefore keeps its own list:
 
 ```rust
 fn rebuild() -> Result<(), String> {
-    let branch = request("session.read", &json!({"method": "getBranch", "args": []}))?;
+    let branch = request(
+        "session.read",
+        &json!({"method": "getBranch", "args": []}),
+    )?;
     let mut state = State { todos: Vec::new(), next_id: 1 };
     for entry in branch.as_array().into_iter().flatten() {
         let message = &entry["message"];
-        if entry["type"] == "message" && message["role"] == "toolResult" && message["toolName"] == "todo" {
+        if entry["type"] == "message"
+            && message["role"] == "toolResult"
+            && message["toolName"] == "todo"
+        {
             let details = &message["details"];
-            state.todos = details["todos"].as_array().cloned().unwrap_or_default();
+            state.todos =
+                details["todos"].as_array().cloned().unwrap_or_default();
             state.next_id = details["nextId"].as_u64().unwrap_or(1);
         }
     }
     STATE.with(|cell| *cell.borrow_mut() = state);
     Ok(())
 }
+```
 
+Two handlers rebuild the list, one when a session starts and one after `/tree`:
+
+```rust
 api.on("session_start", |_event, _ctx| async { rebuild().map(|()| None) });
 api.on("session_tree", |_event, _ctx| async { rebuild().map(|()| None) });
 ```
 
 The extension keeps its state in a `thread_local`, since each native extension runs in an instance of its own and calls into it one at a time.
 
-`/todos` shows the list with `custom`, which resolves once the component calls `finish` on its `Done`. Outside the interactive mode the command reports an error instead, as Pi's does.
+`/todos` shows the list with `custom`, which resolves once the component calls `finish` on its `Done`. Outside the interactive mode the command reports an error instead, as Pi's does:
 
 ```rust
 impl Component for TodoList {
@@ -144,16 +171,20 @@ let todos = STATE.with(|cell| cell.borrow().todos.clone());
 ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 ```
 
-## custom-footer
+## `custom-footer`
 
-`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it. `ui.footerData` is an internal request, so the example may need changes in a later release.
+`/footer` replaces the footer with the session's token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer.
+
+The footer is a component that reads the session's branch with `session.read` and the git branch with `ui.footerData` each time yapi renders it. `ui.footerData` is an internal request, so the example may need changes in a later release:
 
 ```rust
 api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
     let enabled = !ENABLED.get();
     ENABLED.set(enabled);
     if enabled {
-        let model = ctx.data()["model"]["id"].as_str().filter(|id| !id.is_empty());
+        let model = ctx.data()["model"]["id"]
+            .as_str()
+            .filter(|id| !id.is_empty());
         let model = model.unwrap_or("no-model").to_owned();
         ctx.set_footer(Some(Box::new(Footer { model })));
         notify("Custom footer enabled", "info");
@@ -165,9 +196,9 @@ api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
 });
 ```
 
-## repo-status
+## `repo-status`
 
-Runs `git` with `exec` to report the current branch and the files with uncommitted changes. It warns when a session starts in a repository with changes, answers `/repo-status`, and offers a `repo_status` tool to the model.
+Runs `git` with `exec` to report the current branch and the files with uncommitted changes. It warns when a session starts in a repository with changes, answers `/repo-status`, and offers a `repo_status` tool to the model:
 
 ```rust
 fn status(ctx: &Context) -> Option<(String, Vec<String>)> {
@@ -181,11 +212,13 @@ fn status(ctx: &Context) -> Option<(String, Vec<String>)> {
 }
 ```
 
-`exec` needs the process grant, which every extension has by default.
+`exec` needs the process grant. Packages from `yapi install` have it, and a chest entry gets it only with `all`, since it has no capabilities by default.
 
-## event-bus
+## `event-bus`
 
-Extensions talking over Pi's `pi.events`. A listener shows every `my:notification` event, from this extension or any other, native or Pi. `/emit [message]` emits one, and so does the start of a session. `/mute` stops the listener with its `Subscription`, and starts it again. Pi's example has no `/mute`.
+Extensions talking over Pi's `pi.events`. A listener shows every `my:notification` event, from this extension or any other, native or Pi.
+
+`/emit [message]` emits one, and so does the start of a session. `/mute` stops the listener with its `Subscription`, and starts it again. Pi's example has no `/mute`.
 
 ```rust
 fn listen() -> Subscription {
@@ -199,9 +232,11 @@ fn listen() -> Subscription {
 
 The extension's own listener hears its event while `events::emit` runs. Pi extensions and other native extensions hear it right after.
 
-## package-scripts
+## `package-scripts`
 
-`/script <name> [args]` runs `scripts/<name>` with `sh` and shows what it printed. The script comes from the root of the package the extension was installed from, or from the folder of its `.wasm` file when it was given with `-e`. `extension_path` says where both are. The script gets `EXTENSION_DIR`, the folder it came from, on top of the environment it inherits, so it still finds programs on `PATH`:
+`/script <name> [args]` runs `scripts/<name>` with `sh` and shows what it printed. The script comes from the root of the package the extension was installed from, or from the folder of its `.wasm` file when it was given with `-e`. `extension_path` says where both are.
+
+The script gets `EXTENSION_DIR`, the folder it came from, on top of the environment it inherits, so it still finds programs on `PATH`:
 
 ```rust
 let output = request(
@@ -215,20 +250,28 @@ let output = request(
 )?;
 ```
 
-## subagent
+## `subagent`
 
-A `subagent` tool that hands a task to another yapi run, with a context window of its own. The tool starts yapi in JSON mode with `Process` and reads its events as they arrive, as Pi's `subagent` example does with Pi. In the foreground the tool shows each answer of the subagent as progress and returns the last one. With `background`, the tool returns at once and `spawn` keeps the subagent running. Its answer arrives later as a message that starts a turn.
+A `subagent` tool that passes a task to another yapi run, with a context window of its own. The tool starts yapi in JSON mode with `Process` and reads its events as they arrive, as Pi's `subagent` example does with Pi.
+
+In the foreground the tool shows each answer of the subagent as progress and returns the last one. With `background`, the tool returns at once and `spawn` keeps the subagent running. Its answer arrives later as a message that starts a turn:
 
 ```rust
 spawn(async move {
-    let content = match run(&task, model.as_deref(), cwd.as_deref(), |_| {}).await {
+    let content = match run(&task, model.as_deref(), cwd.as_deref(), |_| {})
+        .await
+    {
         Ok(answer) => format!("Subagent finished:\n\n{answer}"),
         Err(error) => error,
     };
     let _ = request(
         "session.sendMessage",
         &json!({
-            "message": {"customType": "subagent", "content": content, "display": true},
+            "message": {
+                "customType": "subagent",
+                "content": content,
+                "display": true,
+            },
             "options": {"triggerTurn": true, "deliverAs": "followUp"},
         }),
     );
@@ -237,9 +280,11 @@ spawn(async move {
 
 `request("execPath", ...)` names the running yapi binary, so the subagent runs the same version. When the user aborts the run, yapi drops the foreground tool's future, and dropping the `Process` kills the subagent. Pi's own TypeScript example also runs unchanged in yapi, with each agent defined in `~/.yapi/agent/agents`.
 
-## modal-editor
+## `modal-editor`
 
-Vim-like modes for the prompt editor. Escape switches from insert to normal mode, where `hjkl` move the cursor, `0` and `$` go to the line's start and end, `x` deletes, and `i` and `a` switch back. The extension puts an `EditorComponent` in place of the built-in editor when the session starts. It wraps `widgets::CustomEditor`, which keeps the built-in editor's keys, history and completions, and turns normal mode's keys into the keys the editor knows.
+Vim-like modes for the prompt editor. Escape switches from insert to normal mode, where `hjkl` move the cursor, `0` and `$` go to the line's start and end, `x` deletes, and `i` and `a` switch back.
+
+The extension puts an `EditorComponent` in place of the built-in editor when the session starts. It wraps `widgets::CustomEditor`, which keeps the built-in editor's keys, history and completions, and turns normal mode's keys into the keys the editor knows:
 
 ```rust
 fn handle_input(&mut self, data: &str) {
@@ -260,9 +305,9 @@ api.on("session_start", |_event, ctx| async move {
 });
 ```
 
-## question
+## `question`
 
-A `question` tool for the model: the user picks one of its options in a component, or chooses "Type something." and writes an answer in an `Editor` widget. `render_call` and `render_result` draw the question and the answer in the transcript with `widgets::Text`.
+A `question` tool for the model: the user picks one of its options in a component, or chooses "Type something." and writes an answer in an `Editor` widget. `render_call` and `render_result` draw the question and the answer in the transcript with `widgets::Text`:
 
 ```rust
 .render_result(|result, _options, _ctx| {
@@ -273,21 +318,21 @@ A `question` tool for the model: the user picks one of its options in a componen
 })
 ```
 
-## overlay-test
+## `overlay-test`
 
 `/overlay-test` opens an overlay with inline text inputs and lines of wide characters, styled text and emoji. The component's `width` sets the overlay's, and the selected input puts pi-tui's cursor marker where the terminal's cursor belongs. `widgets::visible_width` pads styled text to the box's width.
 
-## message-renderer
+## `message-renderer`
 
 `/status [warn|error] message` adds a custom message that a message renderer draws in a box, colored by level. The box uses the `boxed` and `text` layouts of `widgets::tui::lines` over the theme's custom message background.
 
-## entry-renderer
+## `entry-renderer`
 
 `/status-card message` stores a status card that the model never sees, and an entry renderer draws it in a box. Expanded, it shows the time in UTC, where Pi shows local time.
 
-## select-menu
+## `select-menu`
 
-`/menu` opens a drinks menu: a `SelectList` between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi's own terminal scenarios use.
+`/menu` opens a drinks menu: a `SelectList` between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi's own terminal scenarios use:
 
 ```rust
 fn handle_input(&mut self, data: &str) {
@@ -299,9 +344,11 @@ fn handle_input(&mut self, data: &str) {
 }
 ```
 
-## input-hooks
+## `input-hooks`
 
-A terminal input listener sees every key before the editor does. In an empty prompt editor `?` shows help instead of being typed, and `editor_focused()` leaves it to dialogs and selectors. `a` becomes `A`, and Ctrl+G reports how many keys the listener saw and what the editor holds. `/quiet` drops the listener's `Subscription`, which stops it. An autocomplete provider completes environment variable names after `$` and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi.
+A terminal input listener sees every key before the editor does. In an empty prompt editor `?` shows help instead of being typed, and `editor_focused()` leaves it to dialogs and selectors. `a` becomes `A`, and Ctrl+G reports how many keys the listener saw and what the editor holds. `/quiet` drops the listener's `Subscription`, which stops it.
+
+An autocomplete provider completes environment variable names after `$` and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi. It builds with the `all` feature, which terminal input listeners and autocomplete providers need:
 
 ```rust
 fn listen(data: &str) -> TerminalInput {
@@ -324,9 +371,11 @@ api.on("session_start", |_event, ctx| async move {
 });
 ```
 
-## crash-recovery
+## `crash-recovery`
 
-An editor in place of the built-in one, a `/fragile` dialog, and notes that `/note` adds to the transcript, that panic when their text is `panic`. A panic stops the extension's runtime. yapi reports it, restarts the runtime and loads the extension again, without what it showed. The dialog closes and the built-in editor takes the keys. The editor that `session_start` installed stays away until the next session. Notes draw again, except one that panicked as it first drew.
+An editor in place of the built-in one, a `/fragile` dialog, and notes that `/note` adds to the transcript, each of which panics when its text is `panic`. A panic stops the extension's runtime. yapi reports it, restarts the runtime and loads the extension again, without what it showed.
+
+The dialog closes and the built-in editor takes the keys. The editor that `session_start` installed stays away until the next session. Notes draw again, except one that panicked as it first drew:
 
 ```rust
 fn render(&mut self, _width: usize) -> Vec<String> {
@@ -335,9 +384,11 @@ fn render(&mut self, _width: usize) -> Vec<String> {
 }
 ```
 
-## countdown
+## `countdown`
 
-A `countdown` tool that counts down from `seconds` and shows each second as progress. When the user aborts the run, it stops with its own result, such as `Stopped with 7 seconds left`, and its details name the call with `Context::tool_call_id`. Stopping takes `cleanup` seconds, as stopping a process can. With a `cleanup` over 10 seconds yapi drops the tool instead. A `wait` tool ignores aborts, so yapi drops it at once.
+A `countdown` tool that counts down from `seconds` and shows each second as progress. When the user aborts the run, it stops with its own result, such as `Stopped with 7 seconds left`, and its details name the call with `Context::tool_call_id`.
+
+Stopping takes `cleanup` seconds, as stopping a process can. With a `cleanup` over 10s yapi drops the tool instead. A `wait` tool ignores aborts, so yapi drops it at once:
 
 ```rust
 for left in (1..=seconds).rev() {
@@ -354,6 +405,6 @@ for left in (1..=seconds).rev() {
 
 `race` polls two futures until one finishes, so the tool needs no other crate. `futures::select!` does the same.
 
-## code-renderer
+## `code-renderer`
 
 Colors Rust keywords in code blocks and tool rows with yapi's code renderer API. A Markdown transformer makes each `TODO` in messages bold.

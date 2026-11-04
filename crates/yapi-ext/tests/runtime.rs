@@ -434,7 +434,12 @@ export default function (pi) {
 }
 
 /// Without the filesystem grant, as codemode runs, the loader reads no files
-/// either: an import cannot read what `fs` cannot.
+/// either: an import cannot read what `fs` cannot. Under a module root, an
+/// extension still loads its own files and its `node_modules`, but nothing
+/// that leads outside the root, even through a symlink inside it, and a
+/// missing file looks the same as one outside. `node:fs` fails with
+/// `EACCES`, naming the grant, while with the file grant alone a missing
+/// file is `ENOENT`.
 #[tokio::test(flavor = "multi_thread")]
 async fn modules_need_filesystem_grant() {
     let dir = scratch("modules-without-files");
@@ -448,27 +453,170 @@ async fn modules_need_filesystem_grant() {
         ),
     )
     .unwrap();
+    // A package with a sibling module and a dependency, and two ways out.
+    let package = dir.join("package");
+    let dependency = package.join("node_modules/dep");
+    std::fs::create_dir_all(&dependency).unwrap();
+    std::fs::write(
+        dependency.join("package.json"),
+        r#"{"name": "dep", "type": "module", "main": "index.js"}"#,
+    )
+    .unwrap();
+    std::fs::write(dependency.join("index.js"), "export const dep = \"dep\";\n").unwrap();
+    std::fs::write(
+        package.join("sibling.js"),
+        "export const sibling = \"sibling\";\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&secret, package.join("link.json")).unwrap();
+    let entry = |name: &str, imports: &str, description: &str| {
+        let path = package.join(name);
+        std::fs::write(
+            &path,
+            format!("{imports}\nexport default function (pi) {{ pi.registerCommand(\"x\", {{ description: {description}, handler() {{}} }}); }}\n"),
+        )
+        .unwrap();
+        path
+    };
+    // It also asks the loader directly, past the guest's module loader:
+    // through the link, through `..` under the root, relative, outside, and
+    // resolving out of the root, to a file there and to a missing one.
+    let own_path = package.join("own.js").display().to_string();
+    let path = |path: &Path| path.display().to_string();
+    let requests = json!([
+        ["module.source", {"path": path(&package.join("link.json"))}],
+        ["module.load", {"path": format!("{}/node_modules/../sibling.js", path(&package))}],
+        ["module.load", {"path": "sibling.js"}],
+        ["module.load", {"path": secret}],
+        ["module.resolve", {"specifier": "../auth.json", "referrer": own_path}],
+        ["module.resolve", {"specifier": "../missing.json", "referrer": own_path}],
+    ]);
+    let direct = format!(
+        "{requests}.map(([kind, payload]) => {{ try {{ globalThis.__yapi.request(kind, payload); return \"loaded\"; }} catch (error) {{ return error.message; }} }})"
+    );
+    // `node:fs` says why it reaches no file, rather than that none exists.
+    let read = format!(
+        "(() => {{ try {{ return fs.readFileSync({secret:?}, \"utf8\"); }} catch (error) {{ return `${{error.code}} ${{error.message}}`; }} }})()"
+    );
+    let own = entry(
+        "own.js",
+        "import { sibling } from \"./sibling.js\";\nimport { dep } from \"dep\";\nimport fs from \"node:fs\";",
+        &format!("[sibling, dep, ...{direct}, {read}].join(\";\")"),
+    );
+    let outside = entry(
+        "outside.js",
+        "import auth from \"../auth.json\";",
+        "auth.token",
+    );
+    let linked = entry(
+        "linked.js",
+        "import auth from \"./link.json\";",
+        "auth.token",
+    );
+    // A missing file answers as one outside the root, so imports probe nothing.
+    let missing = entry(
+        "missing.js",
+        "import auth from \"../missing.json\";",
+        "auth.token",
+    );
+    let denied = "Loading modules is not permitted for this extension";
+    let unreadable = format!("EACCES EACCES: file access needs the `fs` grant, open '{secret}'");
+    let own_description = ["sibling", "dep"]
+        .into_iter()
+        .chain(std::iter::repeat_n(denied, 6))
+        .chain([unreadable.as_str()])
+        .collect::<Vec<_>>()
+        .join(";");
+    for (roots, extensions, expected) in [
+        (Vec::new(), vec![main.clone()], vec![Err(denied)]),
+        (
+            vec![package.clone()],
+            vec![
+                own.clone(),
+                outside.clone(),
+                linked.clone(),
+                missing.clone(),
+            ],
+            vec![
+                Ok(own_description.as_str()),
+                Err(denied),
+                Err(denied),
+                Err(denied),
+            ],
+        ),
+    ] {
+        let mut options = Options::new(dir.clone());
+        options.grants = Grants::none();
+        options.filesystem_roots = Vec::new();
+        options.module_roots = roots;
+        let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
+            .await
+            .unwrap();
+        let entries: Vec<Value> = extensions
+            .iter()
+            .enumerate()
+            .map(|(id, path)| json!({"id": id + 1, "path": path}))
+            .collect();
+        let loaded = instance
+            .call("load", &json!({"cwd": dir, "extensions": entries}))
+            .await
+            .unwrap();
+        assert!(!loaded.to_string().contains("s3cret"), "{loaded}");
+        assert_eq!(
+            loaded["extensions"].as_array().unwrap().len(),
+            expected.len()
+        );
+        for (extension, expected) in loaded["extensions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(expected)
+        {
+            match expected {
+                Ok(description) => assert_eq!(
+                    extension["commands"][0]["description"], description,
+                    "{extension}"
+                ),
+                Err(error) => assert!(
+                    extension["error"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains(error),
+                    "{extension}"
+                ),
+            }
+        }
+    }
+    // With the file grant alone, a file that is not there is just missing.
+    let probe = package.join("probe.js");
+    let absent = dir.join("absent.txt").display().to_string();
+    std::fs::write(
+        &probe,
+        format!(
+            "import fs from \"node:fs\";\nlet code;\ntry {{ fs.readFileSync({absent:?}); }} catch (error) {{ code = error.code; }}\nexport default function (pi) {{ pi.registerCommand(\"x\", {{ description: code, handler() {{}} }}); }}\n"
+        ),
+    )
+    .unwrap();
     let mut options = Options::new(dir.clone());
-    options.grants = Grants::none();
-    options.filesystem_roots = Vec::new();
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
+    options.filesystem_roots = vec![dir.clone()];
     let instance = Instance::start(&engine(), options, Arc::new(NoBridge))
         .await
         .unwrap();
     let loaded = instance
         .call(
             "load",
-            &json!({"cwd": dir, "extensions": [{"id": 1, "path": main}]}),
+            &json!({"cwd": dir, "extensions": [{"id": 1, "path": probe}]}),
         )
         .await
         .unwrap();
-    let extension = &loaded["extensions"][0];
-    assert!(!loaded.to_string().contains("s3cret"), "{loaded}");
-    assert!(
-        extension["error"]
-            .as_str()
-            .unwrap()
-            .contains("Loading modules is not permitted for this extension"),
-        "{extension}"
+    assert_eq!(
+        loaded["extensions"][0]["commands"][0]["description"], "ENOENT",
+        "{loaded}"
     );
 }
 

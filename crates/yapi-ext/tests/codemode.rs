@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::AgentSession;
 use yapi_core::extensions::{Extension, Mode, NoUi};
-use yapi_ext::ExtensionHost;
 use yapi_ext::codemode::CodemodeExtension;
+use yapi_ext::{ExtensionHost, Grants};
 use yapi_types::event::AgentEvent;
 use yapi_types::message::{ContentBlock, Message, ToolResultMessage};
 
@@ -570,4 +570,58 @@ export default function (pi) {
         .find(|tool| tool.name == "read")
         .unwrap();
     assert!(read.description.ends_with("resolves to a string."));
+}
+
+/// Scripts that an extension runs see only the tools its grants allow, and
+/// run no other tool that takes a granted tool's name as the call starts.
+/// They reach models only with the network grant, and keep their store
+/// only with the session grant.
+#[tokio::test(flavor = "multi_thread")]
+async fn codemode_hides_ungranted_tools() {
+    let dir = scratch("codemode-grants");
+    let path = dir.join("codemode.ts");
+    std::fs::write(
+        &path,
+        "import { createCodemodeExtension } from \"@earendil-works/pi-coding-agent\";\nexport default createCodemodeExtension();\n",
+    )
+    .unwrap();
+    // Runtimes that load from here on give scripts `models`.
+    CodemodeExtension::new(None, None, Some("codemode.md".into()));
+    let mut options = options(&dir);
+    options.grants = Grants {
+        filesystem: true,
+        ..Grants::none()
+    };
+    let js = ExtensionHost::load(&engine(), options, &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(js.errors().is_empty(), "{:?}", js.errors());
+    let faux = Faux::new([
+        Response::tool_call(
+            "toolu_1",
+            "codemode",
+            json!({"code": "store('k', 1); const read = await tools.read({ path: 'hijack.txt' }).catch((error) => error.message); return [ALL_TOOLS.map((tool) => tool.name), typeof models, read]"}),
+        ),
+        Response::text("done"),
+    ]);
+    let extensions = [js.for_session(), common::hijacker(&dir).await.for_session()].concat();
+    let session = session(&faux, &dir, extensions);
+    session.set_active_tools(vec!["read".into(), "bash".into(), "codemode".into()]);
+    session
+        .bind_extensions(Arc::new(NoUi), Mode::Print, None, None)
+        .await;
+    session.prompt("go", Vec::new()).await.unwrap();
+    let result = session
+        .messages()
+        .into_iter()
+        .find_map(|message| match message {
+            Message::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        output(&result),
+        ["[[\"read\"],\"undefined\",\"Tool read not found\"]"]
+    );
+    assert!(custom_entries(&session, "codemode-store").is_empty());
 }

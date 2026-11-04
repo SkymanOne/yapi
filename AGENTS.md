@@ -10,13 +10,15 @@ Project plan and working rules for `yapi`, for human and agent contributors.
 2. Start faster, use less memory and install smaller than pi.
 3. Provide a sandboxable extension system built on WebAssembly components.
 
+yapi also adds features beyond pi, starting with chest, a project package manager with grants per extension. They keep pi packages, skills and extensions compatible: whatever runs in pi runs in yapi as before.
+
 The pi release pinned in `tests/fixtures/pi/generator/package.json` is the behavioral specification. Every intentional deviation is listed in [docs/compat.md](docs/compat.md) with its reason.
 
 License: MIT OR Apache-2.0. Vendored and ported code keeps its own notices.
 
 ## Scope
 
-yapi covers what pi's coding agent does, through the pi packages in the architecture table, plus native WebAssembly extensions. Out of scope:
+yapi covers what pi's coding agent does, through the pi packages in the architecture table, plus native WebAssembly extensions and chest. Out of scope:
 
 - pi's experimental stack (`chord`, `durable`, `protocol`, `client`, `server`) and `evals`.
 - Native addons, `net`/`tls` servers and `worker_threads` in npm packages.
@@ -50,9 +52,10 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-ai` | Wire APIs, model catalog and registry, cost, credentials, OAuth. | `pi-ai` |
 | `crates/yapi-agent` | Agent loop, tool execution, queues, events. | `pi-agent-core` |
 | `crates/yapi-tui` | Widgets, editor, Markdown with LaTeX and Mermaid, inline images, raw input decoder and ANSI bridge, on `ratatui-core` text types. | `pi-tui` |
-| `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner, MCP. | `pi-coding-agent` core, `pi-mcp` |
-| `crates/yapi-ext` | wasmtime host, WIT bindings, capability grants, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
+| `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner and grants, MCP. | `pi-coding-agent` core, `pi-mcp` |
+| `crates/yapi-ext` | wasmtime host, WIT bindings, grant enforcement, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
+| `crates/chest` | The `chest` binary, package `chest-cli`: a manifest and lock for a project's skills, subagents and extensions, on the engine in `yapi-core`. | None |
 | `crates/yapi-mock` | Mock provider server: replays cassettes and records requests. | None |
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored JS. | None |
 | `guest/yapi-extension-api` | Rust SDK for native extensions. | None |
@@ -68,6 +71,7 @@ Dependency direction:
 - `yapi-tui` ← `yapi`.
 - `yapi-core` never depends on wasmtime.
 - `yapi-mock` is never a dependency of a shipped crate.
+- `chest` depends on `yapi-ai`, `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
 - `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
@@ -83,7 +87,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | `ModelOperations` | `yapi-ai` | Classify and generate images with a provider's models of an API. | Extension-registered providers |
 | `Tool` | `yapi-agent` | Declare a schema; execute with progress updates and cancellation. | Built-in, MCP and extension tools |
 | `AgentHooks` | `yapi-agent` | Intercept the loop: context transform, before and after tool calls, queue reads. | `yapi-core` session, which dispatches to extensions |
-| `Extension` | `yapi-core` | Register capabilities; handle events, tool calls and commands; build components for the transcript items it draws; transform Markdown and render code blocks; refresh the model lists and availability of providers it registers. | Built-ins (MCP); wasm instances in `yapi-ext` |
+| `Extension` | `yapi-core` | Register capabilities; report its grants; handle events, tool calls and commands; build components for the transcript items it draws; transform Markdown and render code blocks; refresh the model lists and availability of providers it registers. | Built-ins (MCP); wasm instances in `yapi-ext` |
 | `Bridge` | `yapi-ext` | Answer an instance's requests and operations that need the session. | The session bridge of loaded extensions; `NoBridge` for headless loading |
 | `ExtensionUi` | `yapi-core` | Dialogs, notifications, widgets, custom components, extension editors, input listeners and autocomplete providers. | Interactive TUI; RPC (`extension_ui_request`); headless no-op |
 | `ComponentHost` | `yapi-core` | Render an extension component for a width; deliver input and editor operations to it; run the runtime's terminal input listeners and autocomplete providers. | Extension runtimes in `yapi-ext` |
@@ -138,14 +142,17 @@ Module loading runs on the host, in `yapi-ext`:
 ### Trust and capabilities
 
 - One wasm instance per trust domain:
-  - all JS packages share one `yapi-js` instance;
+  - JS packages with the same grants and event policy share one `yapi-js` instance, so each such set is its own instance;
   - each native extension gets its own;
   - codemode gets a fresh instance with no grants.
-- Every package gets pi's default grants: filesystem, process, network, environment.
-- The host enforces grants: WASI preopens for files; grant checks for exec, fetch and environment.
-- The host carries `pi.events` between instances, through a bounded queue per instance, so every extension hears every other's events, as in pi.
+- An extension that chest installs gets what its manifest entry lists, through `chest::startup::Policies`: `capabilities-defaults` plus its own `capabilities`, its `events` policy and its module root. A project's `chest.toml` counts only once the project is trusted. Only `all` grants processes.
+- Packages from `yapi install`, `settings.json` and `-e` get every grant: filesystem, process, network, environment and session, with the shared event policy. pi's defaults allow as much, and pi has no session grant.
+- A package's `[package]` table, its `yapi.capabilities` and a native build's features only request capabilities. Grants come from the person who adds the entry.
+- The host enforces grants: WASI preopens for files; grant checks for exec, fetch, environment, tool calls, codemode tools, session actions, editor input and provider registration. The session in `yapi-core` applies event-hook results only within each extension's `Extension::grants()`.
+- The host carries `pi.events` between instances, through a bounded queue per instance. It routes each event by the instances' grants and `EventPolicy`: identical grants always share, and otherwise the sender's `send` and the receiver's `receive` must allow the channel. The default policy shares everything, as in pi. Guests report the channels they listen on, so blocked events for listeners are warned of.
 - Each instance runs under epoch interruption and a memory limit. A trapped instance is restarted and its extensions reloaded.
-- Per-package grants, project manifests and a package registry are planned in [docs/roadmap.md](docs/roadmap.md). Before grants can be restricted, the host requests that still ignore them must check them: `tool.execute`, `codemode.execute`, the extension event bus and session actions.
+- A native extension declares the capabilities it uses with `yapi-extension-api` features. A request whose feature is off fails in the guest, and the build lists its features in a `yapi:capabilities` custom section, which `chest check` and `chest add` read with `wasmparser`, beside the WASI imports. yapi warns at startup when a native chest extension uses more than its entry grants. A declaration grants nothing.
+- Grants scoped to paths, hosts and programs, and a package registry, are planned in [docs/roadmap.md](docs/roadmap.md).
 
 ### Concurrency
 
@@ -180,6 +187,8 @@ Module loading runs on the host, in `yapi-ext`:
 | 13 | pi JSON files are order-preserving documents; `yapi-types` structs are views over them. | pi's key order depends on the code path and on user edits, so only the document round-trips byte-identically. |
 | 14 | The binary embeds `yapi-js.wasm` deflated, and the release profile optimizes Cranelift's code generator for size. | Both matter only when the component cache has no entry, once per runtime version, so the smaller binary costs one slower compile. |
 | 15 | The docs the model reads, yapi's book and pi's README, docs and examples, ship as the `yapi-docs.tar.gz` release asset, not in the repository or the binary. Installs unpack or download it into `~/.yapi/agent/docs`. Without a local copy, the prompt points to the published docs. | pi's prompt, header and sign-in help point to the docs installed with pi. Packing pi's files at release time keeps them out of the repository and the binary. |
+| 16 | chest is a separate binary with its own manifest and lock, beside `yapi install`. It replaces or removes only what its local record says it placed, or what is exactly what it would install. | Projects need reproducible installs, grants per extension and skills shared with other agents. Leaving `yapi install` as in Pi keeps pi packages compatible, and a committed lock never makes a user's files chest's. |
+| 17 | Grants narrower than pi's come only from chest entries. Packages from `yapi install` keep every grant, and nothing a package declares grants anything. | Narrow defaults would break pi packages. A grant is a decision of the person who adds the package, so a package cannot widen its own. |
 
 ## Development guidelines
 
@@ -191,11 +200,11 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `cargo deny check`
-- [docs/contributing.md](docs/contributing.md#checks) describes the git hooks that `prek install` sets up and when CI skips its checks.
+- [docs/contributing.md](docs/contributing.md#run-the-checks) describes the git hooks that `prek install` sets up and when CI skips its checks.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
 - Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
 - `cargo xtask bench` measures yapi against pi on the same machine. Reports state results as measured, with no targets. [docs/performance.md](docs/performance.md) defines the measures and the method.
-- Releases follow [docs/contributing.md](docs/contributing.md#releasing). Tag only after CI on `main` passed for the merge commit itself. A flaky test is a bug to fix, not a run to repeat.
+- Releases follow [docs/contributing.md](docs/contributing.md#release-a-version). Tag only after CI on `main` passed for the merge commit itself. A flaky test is a bug to fix, not a run to repeat.
 
 ### Code
 
@@ -241,7 +250,8 @@ Module loading runs on the host, in `yapi-ext`:
 ### Docs and git
 
 - Concise, professional prose. Describe contracts and decisions; do not paraphrase code or diffs.
-- Public documentation lives in `docs/` and builds with mdBook. User-facing prose avoids em dashes and semicolons.
+- Public documentation lives in `docs/` and builds with mdBook.
+- User-facing prose (`docs/`, `README.md`, the shipped skills and the extension template's README) follows the [Vercel writing guidelines](https://github.com/vercel-labs/writing-guidelines), plus no semicolons. Skip their rules specific to Vercel's docs platform: page metadata (`meta.*`), `<Steps/>`, TypeScript as the default example language, Vercel links and model strings, screenshots and ACME accounts, pricing pages, and their review process.
 - Planned work is in [docs/roadmap.md](docs/roadmap.md).
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.

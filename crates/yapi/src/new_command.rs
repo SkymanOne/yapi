@@ -15,11 +15,12 @@ macro_rules! template {
         [$(($path, include_str!(concat!("../templates/extension/", $path)))),*]
     };
 }
-const FILES: [(&str, &str); 7] = template![
+const FILES: [(&str, &str); 8] = template![
     "Cargo.toml.liquid",
     ".cargo/config.toml",
     ".gitignore",
     "README.md",
+    "chest.toml",
     "extensions/.gitkeep",
     "package.json",
     "src/lib.rs",

@@ -75,15 +75,23 @@ fn creates_package_from_template() {
     // template bump.
     assert!(
         cargo.contains(concat!(
-            "yapi-extension-api = \"",
+            "yapi-extension-api = { version = \"",
             env!("CARGO_PKG_VERSION"),
-            "\""
+            "\", features = [\"session\"] }"
         )),
         "{cargo}"
     );
+    // The capabilities `chest check` compares with the build's features,
+    // which the `hello` example's session entry needs.
+    assert!(read(project.join("chest.toml")).contains("\ncapabilities = [\"session\"]\n"));
     let manifest: serde_json::Value =
         serde_json::from_str(&read(project.join("package.json"))).unwrap();
     assert_eq!(manifest["name"], "my-ext");
+    // `npm publish` keeps the capability request.
+    assert_eq!(
+        manifest["files"],
+        serde_json::json!(["extensions", "chest.toml"])
+    );
     assert_eq!(
         manifest["yapi"]["extensions"],
         serde_json::json!(["./extensions/my_ext.wasm"])

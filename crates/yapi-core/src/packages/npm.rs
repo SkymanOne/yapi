@@ -2,15 +2,16 @@
 //! versions from the registry, verifies and unpacks tarballs into
 //! `node_modules` and installs dependencies, hoisting them where Node's
 //! resolution allows. It runs no lifecycle scripts, so native addons stay
-//! unbuilt; an extension that loads one fails then.
+//! unbuilt; an extension that loads one fails then. Installs return the tree
+//! they unpacked as pins, which [`replay`] reproduces without the registry.
 
-use std::collections::HashMap;
-use std::io::Read as _;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use aws_lc_rs::digest::{SHA1_FOR_LEGACY_USE_ONLY as SHA1, SHA512, digest};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use futures_util::StreamExt as _;
 use futures_util::future::BoxFuture;
 use serde_json::{Map, Value, json};
 use tokio_util::sync::CancellationToken;
@@ -30,14 +31,15 @@ const HOST_PACKAGES: [&str; 10] = [
     "@sinclair/typebox",
 ];
 
-/// Why an npm operation failed.
+/// Why an npm operation failed. Its message escapes unprintable
+/// characters, which names and URLs from a lock or a registry may hold.
 #[derive(Debug, thiserror::Error)]
 pub enum NpmError {
     /// The registry could not be reached or answered with an error.
-    #[error("{0}")]
+    #[error("{}", escaped(.0))]
     Registry(String),
     /// No published version matches.
-    #[error("No version of {name} matches {range}")]
+    #[error("No version of {} matches {}", escaped(.name), escaped(.range))]
     NoMatch {
         /// The package.
         name: String,
@@ -45,10 +47,10 @@ pub enum NpmError {
         range: String,
     },
     /// The tarball's digest differs from the registry's.
-    #[error("Integrity check failed for {0}")]
+    #[error("Integrity check failed for {}", escaped(.0))]
     Integrity(String),
     /// A package name or folder that would put files outside `node_modules`.
-    #[error("{0}")]
+    #[error("{}", escaped(.0))]
     Refused(String),
     /// A file operation failed.
     #[error("{path}: {source}")]
@@ -67,23 +69,190 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> NpmError + '_ {
     }
 }
 
-/// Fails unless `name` has the shape of an npm package name, `name` or
-/// `@scope/name`, which keeps it inside the `node_modules` it is joined to.
+/// `text` with its unprintable characters escaped, as `escape_debug` writes
+/// them, so that it cannot drive the terminal an error is printed to.
+pub(crate) fn escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            // Printable, though `escape_debug` escapes them.
+            '\\' | '\'' | '"' => escaped.push(c),
+            _ => escaped.extend(c.escape_debug()),
+        }
+    }
+    escaped
+}
+
+/// Fails unless `name` is an npm package name, `name` or `@scope/name`,
+/// which keeps it inside the `node_modules` it is joined to. As npm, it
+/// accepts only URL-safe characters and no leading `_`. No part may start
+/// with `.`, so that none is `.git` or another hidden folder. The name is
+/// ASCII, so folding its case needs no Unicode rules.
 fn check_name(name: &str) -> Result<(), NpmError> {
-    let segment =
-        |part: &str| !matches!(part, "" | "." | "..") && !part.contains(['/', '\\', ':', '\0']);
+    let segment = |part: &str| {
+        !part.is_empty()
+            && !part.starts_with('.')
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"-._~!*'()".contains(&byte))
+    };
     let valid = match name
         .strip_prefix('@')
         .and_then(|scoped| scoped.split_once('/'))
     {
         Some((scope, name)) => segment(scope) && segment(name),
-        None => segment(name),
+        None => segment(name) && !name.starts_with('_'),
     };
     if valid {
         Ok(())
     } else {
         Err(NpmError::Refused(format!("Invalid package name: {name}")))
     }
+}
+
+/// One package of an installed npm tree, as a lock pins it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Pinned {
+    /// The package's folder below the install root: `node_modules/<name>`,
+    /// repeated for each level of nesting, with `/` separators.
+    pub path: String,
+    /// The name in the package's own manifest, which for an alias differs
+    /// from its folder's.
+    pub name: String,
+    /// The installed version.
+    pub version: String,
+    /// The URL of its tarball.
+    pub tarball: String,
+    /// The `sha512-<base64>` digest of its tarball, as Subresource Integrity
+    /// writes it.
+    pub integrity: String,
+}
+
+impl Pinned {
+    /// The pin at `path` of the package `manifest` describes, whose tarball
+    /// is `bytes`. The digest is always sha512, whatever the registry sent.
+    fn new(path: String, manifest: &Value, bytes: &[u8]) -> Pinned {
+        Pinned {
+            path,
+            name: text(&manifest["name"]),
+            version: text(&manifest["version"]),
+            tarball: text(&manifest["dist"]["tarball"]),
+            integrity: format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes))),
+        }
+    }
+}
+
+/// The package names along a pin's `path`, outermost first, which must be
+/// `node_modules/<name>` repeated, each `<name>` a valid package name.
+pub(crate) fn pin_names(path: &str) -> Result<Vec<String>, NpmError> {
+    let refused = || NpmError::Refused(format!("Invalid package path: {path}"));
+    let mut names = Vec::new();
+    let mut parts = path.split('/');
+    while let Some(part) = parts.next() {
+        let name = match (part, parts.next()) {
+            ("node_modules", Some(scope)) if scope.starts_with('@') => {
+                format!("{scope}/{}", parts.next().ok_or_else(refused)?)
+            }
+            ("node_modules", Some(name)) => name.to_owned(),
+            _ => return Err(refused()),
+        };
+        check_name(&name).map_err(|_| refused())?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// The 64-byte digest of an integrity that is exactly one `sha512-` value.
+fn sha512_digest(integrity: &str) -> Option<Vec<u8>> {
+    let digest = STANDARD.decode(integrity.strip_prefix("sha512-")?).ok()?;
+    (digest.len() == 64).then_some(digest)
+}
+
+/// Removes the file, link or folder at `path`, never following a link.
+pub(crate) fn remove_path(path: &Path) -> std::io::Result<()> {
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(path),
+        Ok(_) => std::fs::remove_file(path),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn is_link(path: &Path) -> bool {
+    path.symlink_metadata()
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+}
+
+/// A new, empty folder beside `dir` in which to build its replacement.
+/// Refuses when `dir` is a link, which would put the result elsewhere.
+pub(crate) fn stage(dir: &Path) -> Result<PathBuf, NpmError> {
+    if is_link(dir) {
+        return Err(NpmError::Refused(format!(
+            "Refusing to install through the link {}",
+            dir.display()
+        )));
+    }
+    let name = dir.file_name().unwrap_or_default().to_string_lossy();
+    let staging = dir.with_file_name(format!(".{name}-staging"));
+    let parent = dir.parent().unwrap_or(dir);
+    std::fs::create_dir_all(parent).map_err(io(parent))?;
+    // Left over by a stopped install; the root's lock keeps other installs out.
+    remove_path(&staging).map_err(io(&staging))?;
+    std::fs::create_dir(&staging).map_err(io(&staging))?;
+    Ok(staging)
+}
+
+/// Puts `staging`, built by `built`, in place of `dir`, so that `dir` holds
+/// either what it held or all of `staging`. A failed build only removes
+/// `staging`.
+pub(crate) fn swap<E: From<NpmError>>(
+    staging: &Path,
+    dir: &Path,
+    built: Result<(), E>,
+) -> Result<(), E> {
+    if let Err(err) = built {
+        let _ = remove_path(staging);
+        return Err(err);
+    }
+    swap_with(staging, dir, |from, to| std::fs::rename(from, to)).map_err(E::from)
+}
+
+/// [`swap`], renaming with `rename`. The previous `dir` is deleted only
+/// once the new one is in place: when putting it back fails, it stays
+/// beside `dir`, and the error names where.
+fn swap_with(
+    staging: &Path,
+    dir: &Path,
+    rename: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<(), NpmError> {
+    let name = dir.file_name().unwrap_or_default().to_string_lossy();
+    let old = dir.with_file_name(format!(".{name}-old"));
+    let replacing = dir.symlink_metadata().is_ok();
+    let moved = remove_path(&old)
+        .map_err(io(&old))
+        .and_then(|()| match replacing {
+            true => rename(dir, &old).map_err(io(dir)),
+            false => Ok(()),
+        });
+    if let Err(err) = moved {
+        let _ = remove_path(staging);
+        return Err(err);
+    }
+    if let Err(err) = rename(staging, dir) {
+        let _ = remove_path(staging);
+        if replacing && let Err(back) = rename(&old, dir) {
+            return Err(NpmError::Io {
+                path: dir.to_path_buf(),
+                source: std::io::Error::other(format!(
+                    "{err}, and restoring it failed ({back}): the previous version is at {}",
+                    old.display()
+                )),
+            });
+        }
+        return Err(io(dir)(err));
+    }
+    let _ = remove_path(&old);
+    Ok(())
 }
 
 /// npm's configuration as the `npm install` pi runs reads it: the user config
@@ -314,11 +483,44 @@ const PACKUMENT_ACCEPT: &str =
 /// npm's default `fetch-timeout`.
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// How much one package may take, so that a registry or a lock can neither
+/// fill memory with a huge download nor the disk with a small gzip bomb.
+#[derive(Clone, Copy, Debug)]
+struct Caps {
+    /// The bytes of its packument, which are held in memory, with headroom
+    /// over the largest full packuments on npm.
+    packument: usize,
+    /// The bytes of its tarball, which are held in memory.
+    download: usize,
+    /// The bytes it unpacks to, tar headers included.
+    unpacked: u64,
+    /// Its tar entries.
+    entries: usize,
+}
+
+// shortcut: fixed caps far above any npm package yapi installs, raise them when a real package hits one.
+const CAPS: Caps = Caps {
+    packument: 256 << 20,
+    download: 512 << 20,
+    unpacked: 2 << 30,
+    entries: 200_000,
+};
+
+/// `bytes` in the largest binary unit that divides them.
+fn size(bytes: u64) -> String {
+    match bytes {
+        _ if bytes.is_multiple_of(1 << 30) => format!("{} GiB", bytes >> 30),
+        _ if bytes.is_multiple_of(1 << 20) => format!("{} MiB", bytes >> 20),
+        _ => format!("{bytes} bytes"),
+    }
+}
+
 /// A registry client with a per-run packument cache.
 #[derive(Clone)]
 pub struct Npm {
     config: HashMap<String, String>,
     packuments: HashMap<String, Value>,
+    caps: Caps,
 }
 
 impl Npm {
@@ -327,6 +529,7 @@ impl Npm {
         Npm {
             config,
             packuments: HashMap::new(),
+            caps: CAPS,
         }
     }
 
@@ -417,12 +620,9 @@ impl Npm {
         if !self.packuments.contains_key(name) {
             let registry = self.registry(name);
             let url = format!("{registry}{}", name.replace('/', "%2f"));
-            let body = self
-                .get(&url, PACKUMENT_ACCEPT, &registry)
-                .await?
-                .bytes()
-                .await
-                .map_err(|err| request_error(&url, &err))?;
+            let response = self.get(&url, PACKUMENT_ACCEPT, &registry).await?;
+            let what = format!("The packument of {name}");
+            let body = read_capped(response, &url, self.caps.packument, &what).await?;
             let packument: Value = serde_json::from_slice(&body)
                 .map_err(|err| NpmError::Registry(format!("GET {url}: {err}")))?;
             self.packuments.insert(name.to_owned(), packument);
@@ -491,23 +691,131 @@ impl Npm {
         }
     }
 
+    /// The tarball at `url` of package `name`, sent with the credentials of
+    /// its registry. It is read in chunks, and the read stops at the cap.
+    async fn download(&self, name: &str, url: &str) -> Result<Vec<u8>, NpmError> {
+        let registry = self.registry(name);
+        let response = self.get(url, "*/*", &registry).await?;
+        let what = format!("The tarball of {name}");
+        read_capped(response, url, self.caps.download, &what).await
+    }
+
     async fn tarball(&self, manifest: &Value) -> Result<Vec<u8>, NpmError> {
         let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
         let url = manifest["dist"]["tarball"].as_str().unwrap_or_default();
-        let registry = self.registry(&text(&manifest["name"]));
-        let bytes = self
-            .get(url, "*/*", &registry)
-            .await?
-            .bytes()
-            .await
-            .map_err(|err| request_error(url, &err))?
-            .to_vec();
+        let bytes = self.download(&text(&manifest["name"]), url).await?;
         if verify(&bytes, &manifest["dist"]) {
             Ok(bytes)
         } else {
             Err(NpmError::Integrity(id))
         }
     }
+
+    /// Fails unless `pin` is safe to download: a valid name, an integrity
+    /// that is exactly one sha512 digest, and a tarball on the host and port
+    /// of the registry configured for its name, over https unless that
+    /// registry uses http. An edited lock can then neither send a download
+    /// elsewhere nor credentials in cleartext. chest also checks each pin
+    /// before it writes a lock, so that it never writes one replay refuses.
+    pub(crate) fn check_pin(&self, pin: &Pinned) -> Result<(), NpmError> {
+        check_name(&pin.name)?;
+        let id = format!("{}@{}", pin.name, pin.version);
+        if sha512_digest(&pin.integrity).is_none() {
+            return Err(NpmError::Refused(format!(
+                "Invalid integrity for {id}: expected one sha512 digest"
+            )));
+        }
+        self.pinned_url(pin).map(drop)
+    }
+
+    /// Where to download `pin`'s tarball: its URL when that lies on the
+    /// registry configured for its name, over https unless that registry
+    /// uses http, at the standard `<name>/-/<unscoped name>-<version>.tgz`
+    /// path for its name and version under the registry's own path. A
+    /// tarball pinned on registry.npmjs.org
+    /// comes from the configured registry when that differs, as npm's
+    /// `replace-registry-host` does. Anything else is refused, so an edited
+    /// lock can neither send a download elsewhere, nor credentials in
+    /// cleartext, nor put another package's tarball in its place.
+    fn pinned_url(&self, pin: &Pinned) -> Result<String, NpmError> {
+        let id = format!("{}@{}", pin.name, pin.version);
+        let refuse = |why: String| {
+            NpmError::Refused(format!(
+                "Refusing to download {id} from {}: {why}",
+                pin.tarball
+            ))
+        };
+        let registry = self.registry(&pin.name);
+        let unscoped = pin.name.rsplit('/').next().unwrap_or(&pin.name);
+        let file = format!("{}/-/{unscoped}-{}.tgz", pin.name, pin.version);
+        let url = url::Url::parse(&pin.tarball).map_err(|_| refuse("not a URL".into()))?;
+        let from =
+            url::Url::parse(&registry).map_err(|_| refuse(format!("{registry} is not a URL")))?;
+        let misplaced = |expected: String| {
+            refuse(format!(
+                "a pinned tarball must be at {expected}. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock"
+            ))
+        };
+        const NPMJS: Option<&str> = Some("registry.npmjs.org");
+        if url.host_str() == NPMJS && from.host_str() != NPMJS {
+            if url.path() != format!("/{file}") {
+                return Err(misplaced(format!("/{file}")));
+            }
+            return Ok(format!("{registry}{file}"));
+        }
+        let scheme = url.scheme() == "https" || url.scheme() == "http" && from.scheme() == "http";
+        let same = url.host_str() == from.host_str()
+            && url.port_or_known_default() == from.port_or_known_default();
+        if !scheme || !same {
+            return Err(refuse(format!(
+                "a pinned tarball must come from {registry}, the registry for {}, over https unless that registry uses http",
+                pin.name
+            )));
+        }
+        // Under the registry's own path, which may be a subpath.
+        let expected = format!("{}{file}", from.path());
+        if url.path() != expected {
+            return Err(misplaced(expected));
+        }
+        Ok(pin.tarball.clone())
+    }
+
+    /// The tarball of `pin`, which [`Npm::check_pin`] passed, checked
+    /// against its sha512 digest alone.
+    async fn pinned_tarball(&self, pin: &Pinned) -> Result<Vec<u8>, NpmError> {
+        let url = self.pinned_url(pin)?;
+        let bytes = self.download(&pin.name, &url).await?;
+        if sha512_digest(&pin.integrity).as_deref() == Some(digest(&SHA512, &bytes).as_ref()) {
+            Ok(bytes)
+        } else {
+            Err(NpmError::Integrity(format!("{}@{}", pin.name, pin.version)))
+        }
+    }
+}
+
+/// The body of `response` for `url`, read in chunks and refused, as `what`,
+/// once it passes `cap` bytes, which stops the read.
+async fn read_capped(
+    mut response: reqwest::Response,
+    url: &str,
+    cap: usize,
+    what: &str,
+) -> Result<Vec<u8>, NpmError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| request_error(url, &err))?
+    {
+        if bytes.len() + chunk.len() > cap {
+            return Err(NpmError::Refused(format!(
+                "{what} at {url} is over the download cap of {}",
+                size(cap as u64)
+            )));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
 }
 
 fn text(value: &Value) -> String {
@@ -549,12 +857,67 @@ fn verify(bytes: &[u8], dist: &Value) -> bool {
         .is_some_and(|shasum| crate::time::hex(sha1.as_ref()).eq_ignore_ascii_case(shasum))
 }
 
-/// Unpacks an npm tarball into `dir`, dropping each entry's first path
-/// component (`package/`). Links and entries leaving `dir` are skipped.
-fn unpack(bytes: &[u8], dir: &Path) -> Result<(), NpmError> {
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+/// `inner`, failing once more than `left` bytes come out of it, which it
+/// then records in `over`.
+struct Capped<'a, R> {
+    inner: R,
+    left: u64,
+    over: &'a std::cell::Cell<bool>,
+}
+
+impl<R: std::io::Read> std::io::Read for Capped<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        match self.left.checked_sub(read as u64) {
+            Some(left) => {
+                self.left = left;
+                Ok(read)
+            }
+            None => {
+                self.over.set(true);
+                Err(std::io::Error::other("over the cap"))
+            }
+        }
+    }
+}
+
+/// Unpacks the npm tarball of package `id` into `dir`, dropping each entry's
+/// first path component (`package/`). Links and entries leaving `dir` are
+/// skipped. Fails once the tarball unpacks to more than `caps` allow, with
+/// what it unpacked left in `dir` for the caller to remove.
+fn unpack(bytes: &[u8], dir: &Path, id: &str, caps: Caps) -> Result<(), NpmError> {
+    let over = std::cell::Cell::new(false);
+    let stream = Capped {
+        inner: flate2::read::GzDecoder::new(bytes),
+        left: caps.unpacked,
+        over: &over,
+    };
+    // A read past the cap fails whatever step made it, long names included.
+    unpack_entries(stream, dir, id, caps).map_err(|err| match over.get() {
+        true => NpmError::Refused(format!(
+            "The tarball of {id} unpacks to over the cap of {}",
+            size(caps.unpacked)
+        )),
+        false => err,
+    })
+}
+
+/// [`unpack`], from the tarball's decompressed `stream`.
+fn unpack_entries(
+    stream: impl std::io::Read,
+    dir: &Path,
+    id: &str,
+    caps: Caps,
+) -> Result<(), NpmError> {
+    let mut archive = tar::Archive::new(stream);
     let entries = archive.entries().map_err(io(dir))?;
-    for entry in entries {
+    for (count, entry) in entries.enumerate() {
+        if count == caps.entries {
+            return Err(NpmError::Refused(format!(
+                "The tarball of {id} holds over the cap of {} entries",
+                caps.entries
+            )));
+        }
         let mut entry = entry.map_err(io(dir))?;
         let kind = entry.header().entry_type();
         if !(kind.is_file() || kind.is_dir()) {
@@ -579,9 +942,9 @@ fn unpack(bytes: &[u8], dir: &Path) -> Result<(), NpmError> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(io(parent))?;
         }
-        let mut contents = Vec::new();
-        entry.read_to_end(&mut contents).map_err(io(&target))?;
-        std::fs::write(&target, contents).map_err(io(&target))?;
+        // Streamed: a small tarball can unpack to a file far larger than memory.
+        let mut file = std::fs::File::create(&target).map_err(io(&target))?;
+        std::io::copy(&mut entry, &mut file).map_err(io(&target))?;
         #[cfg(unix)]
         if let Ok(mode) = entry.header().mode() {
             use std::os::unix::fs::PermissionsExt as _;
@@ -629,14 +992,147 @@ fn lookup_path<'a>(
     std::iter::once(dependent.join("node_modules")).chain(ancestors.map(Path::to_path_buf))
 }
 
+/// The dependencies of `manifest` that [`Installer`] installs, in its order:
+/// production ones not also optional, then optional ones, each with its
+/// spec, `*` when that is not a string, and whether it is optional.
+fn dependencies(manifest: &Value) -> impl Iterator<Item = (&str, &str, bool)> {
+    fn listed<'a>(
+        manifest: &'a Value,
+        key: &'static str,
+        optional: bool,
+    ) -> impl Iterator<Item = (&'a str, &'a str, bool)> {
+        let listed = manifest[key].as_object().into_iter().flatten();
+        listed.map(move |(name, spec)| (name.as_str(), spec.as_str().unwrap_or("*"), optional))
+    }
+    let optional = &manifest["optionalDependencies"];
+    listed(manifest, "dependencies", false)
+        .filter(move |(name, ..)| optional.get(*name).is_none())
+        .chain(listed(manifest, "optionalDependencies", true))
+}
+
+/// The package and range that dependency `name` with `spec` installs: the
+/// target of an `npm:<package>@<range>` alias, which installs under `name`,
+/// else `name` itself. `None` for what yapi never installs: host packages,
+/// `file:` and `workspace:` specs.
+fn wanted(name: &str, spec: &str) -> Option<(String, String)> {
+    if HOST_PACKAGES.contains(&name) || spec.starts_with("file:") || spec.starts_with("workspace:")
+    {
+        return None;
+    }
+    Some(match spec.strip_prefix("npm:") {
+        Some(spec) => {
+            let (package, range) = super::source::split_npm_spec(spec);
+            (package, range.unwrap_or_else(|| "*".into()))
+        }
+        None => (name.to_owned(), spec.to_owned()),
+    })
+}
+
+/// Whether `version` of package `found` satisfies a dependency on `package`
+/// at `range`. A dist-tag, which names no version, takes any version of the
+/// package, as npm's arborist judges it, and an empty range is `latest`.
+fn satisfied(found: &str, version: &str, package: &str, range: &str) -> bool {
+    let tag = |range: &str| {
+        range
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-._".contains(&byte))
+    };
+    found == package
+        && match range {
+            "" => true,
+            _ if is_range(range) => satisfies(version, range),
+            _ => tag(range),
+        }
+}
+
+/// Fails unless the tree `pins` records, unpacked in `staging` to stand for
+/// `root/node_modules`, is what its dependents ask for, as npm keeps a tree.
+/// Each package's own `package.json` must name its pin's name and version.
+/// Each required dependency, of a pinned package or of `root/package.json`,
+/// that reaches a pinned folder by Node's lookup must be satisfied by it,
+/// and each pinned folder must be reached by a dependency it satisfies. An
+/// optional dependency counts where it is satisfied and is otherwise
+/// ignored, as yapi skips one that fails. The dependencies yapi never
+/// installs are not checked: host packages, `file:` and `workspace:` specs,
+/// and those for another platform, which reach no folder.
+fn check_tree(root: &Path, staging: &Path, pins: &[&Pinned]) -> Result<(), NpmError> {
+    let modules = Path::new("node_modules");
+    // Pin paths start with `node_modules`, which `staging` stands for.
+    let folder = |path: &Path| staging.join(path.strip_prefix(modules).unwrap_or(path));
+    // Folded, as `replay` refused paths that differ by case alone, so that a
+    // lookup a case-insensitive file system answers finds its pin.
+    let index: HashMap<String, usize> = pins
+        .iter()
+        .enumerate()
+        .map(|(index, pin)| (pin.path.to_ascii_lowercase(), index))
+        .collect();
+    let mut dependents = Vec::new();
+    for pin in pins {
+        let manifest = read_manifest(&folder(Path::new(&pin.path))).unwrap_or_default();
+        let (name, version) = (text(&manifest["name"]), text(&manifest["version"]));
+        // npm publishes a `v1.0.0` manifest as version `1.0.0`.
+        if name != pin.name || version.trim().trim_start_matches(['=', 'v']) != pin.version {
+            return Err(NpmError::Refused(format!(
+                "The package.json in {} names {name}@{version}, not the pinned {}@{}",
+                pin.path, pin.name, pin.version
+            )));
+        }
+        dependents.push((PathBuf::from(&pin.path), manifest));
+    }
+    dependents.extend(read_manifest(root).map(|manifest| (PathBuf::new(), manifest)));
+    let mut reached = vec![false; pins.len()];
+    for (dependent, manifest) in &dependents {
+        for (name, spec, optional) in dependencies(manifest) {
+            // As `place` reads it; an invalid name installs nothing.
+            let Some((package, range)) = check_name(name).ok().and_then(|()| wanted(name, spec))
+            else {
+                continue;
+            };
+            let Some(found) = lookup_path(dependent, modules)
+                .map(|dir| dir.join(name))
+                .find(|path| folder(path).is_dir())
+            else {
+                continue;
+            };
+            // A folder without a pin came in its parent's tarball.
+            let found = found.to_string_lossy().replace('\\', "/");
+            let Some(&index) = index.get(&found.to_ascii_lowercase()) else {
+                continue;
+            };
+            let pin = pins[index];
+            if satisfied(&pin.name, &pin.version, &package, &range) {
+                reached[index] = true;
+            } else if !optional {
+                let by = match dependent.as_os_str().is_empty() {
+                    true => "package.json".to_owned(),
+                    false => dependent.to_string_lossy().replace('\\', "/"),
+                };
+                return Err(NpmError::Refused(format!(
+                    "{} holds {}@{}, but {by} needs {package}@{range} there",
+                    pin.path, pin.name, pin.version
+                )));
+            }
+        }
+    }
+    if let Some((pin, _)) = pins.iter().zip(reached).find(|(_, reached)| !reached) {
+        return Err(NpmError::Refused(format!(
+            "{} holds {}@{}, which nothing depends on",
+            pin.path, pin.name, pin.version
+        )));
+    }
+    Ok(())
+}
+
 /// Installs into `root/node_modules`, hoisting dependencies there when Node's
 /// resolution allows and nesting them otherwise.
 struct Installer<'a> {
     npm: &'a mut Npm,
     root_modules: PathBuf,
-    /// The packages whose dependencies are being installed, which count as
-    /// installed so that cycles end.
-    installing: Vec<PathBuf>,
+    /// The packages whose dependencies are being installed, with their
+    /// manifests. They count as installed so that cycles end.
+    installing: Vec<(PathBuf, Value)>,
+    /// A pin for each package installed so far.
+    tree: Vec<Pinned>,
 }
 
 impl Installer<'_> {
@@ -650,6 +1146,14 @@ impl Installer<'_> {
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
             let bytes = self.npm.tarball(&manifest).await?;
+            let start = self.tree.len();
+            // Every package folder is below `root_modules`: `install` and `place` put it there.
+            let relative = dir.strip_prefix(&self.root_modules).unwrap_or(&dir);
+            let path = format!(
+                "node_modules/{}",
+                relative.to_string_lossy().replace('\\', "/")
+            );
+            let pin = Pinned::new(path, &manifest, &bytes);
             // The old version waits beside `dir` while the new one installs in
             // place, where its dependencies find it and cycles end.
             let name = dir.file_name().unwrap_or_default().to_string_lossy();
@@ -665,8 +1169,9 @@ impl Installer<'_> {
                 // install that never returns is redone.
                 let marker = dir.join(INCOMPLETE);
                 std::fs::write(&marker, "").map_err(io(&marker))?;
-                unpack(&bytes, &dir)?;
-                self.installing.push(dir.clone());
+                let id = format!("{}@{}", text(&manifest["name"]), text(&manifest["version"]));
+                unpack(&bytes, &dir, &id, self.npm.caps)?;
+                self.installing.push((dir.clone(), manifest.clone()));
                 let dependencies = self.dependencies(&dir, &manifest).await;
                 self.installing.pop();
                 dependencies?;
@@ -675,7 +1180,16 @@ impl Installer<'_> {
             .await;
             if installed.is_ok() {
                 let _ = std::fs::remove_dir_all(&old);
+                self.tree.push(pin);
             } else {
+                // So do the packages its install put elsewhere, such as at the
+                // root, which only it needed, along with those nested in `dir`.
+                for installed in self.tree.drain(start..) {
+                    // Every pin's path starts so, as above.
+                    if let Some(relative) = installed.path.strip_prefix("node_modules/") {
+                        let _ = std::fs::remove_dir_all(self.root_modules.join(relative));
+                    }
+                }
                 let _ = std::fs::remove_dir_all(&dir);
                 if replacing {
                     let _ = std::fs::rename(&old, &dir);
@@ -688,25 +1202,21 @@ impl Installer<'_> {
     /// Installs the production and optional dependencies of the package in
     /// `dir`. Optional ones that fail or name a platform are skipped.
     async fn dependencies(&mut self, dir: &Path, manifest: &Value) -> Result<(), NpmError> {
-        let none = Map::new();
-        let required = manifest["dependencies"].as_object().unwrap_or(&none);
-        let optional = manifest["optionalDependencies"]
-            .as_object()
-            .unwrap_or(&none);
-        for (name, range) in required {
-            if optional.contains_key(name) {
-                continue;
+        for (name, spec, optional) in dependencies(manifest) {
+            let placed = self.place(dir, name, spec).await;
+            if !optional {
+                placed?;
             }
-            self.place(dir, name, range.as_str().unwrap_or("*")).await?;
-        }
-        for (name, range) in optional {
-            let _ = self.place(dir, name, range.as_str().unwrap_or("*")).await;
         }
         Ok(())
     }
 
     /// Makes dependency `name@range` of the package in `dependent` resolvable
-    /// from it.
+    /// from it. The copy it finds first by Node's lookup is kept when it is
+    /// the package at a version in the range, and a new copy is hoisted to
+    /// the root when nothing is in the way, else nested in `dependent`. Either
+    /// needs every package that would see the copy to accept it, so that none
+    /// of them nests another over it later and shadows it for `dependent`.
     fn place<'b>(
         &'b mut self,
         dependent: &'b Path,
@@ -715,41 +1225,68 @@ impl Installer<'_> {
     ) -> BoxFuture<'b, Result<(), NpmError>> {
         Box::pin(async move {
             check_name(name)?;
-            if HOST_PACKAGES.contains(&name)
-                || range.starts_with("file:")
-                || range.starts_with("workspace:")
+            let Some((package, range)) = wanted(name, range) else {
+                return Ok(());
+            };
+            let levels: Vec<PathBuf> = lookup_path(dependent, &self.root_modules).collect();
+            let resolved = levels.iter().enumerate().find_map(|(level, modules)| {
+                let dir = modules.join(name);
+                let installing = self.installing.iter().any(|(path, _)| *path == dir);
+                if !installing && dir.join(INCOMPLETE).exists() {
+                    return None;
+                }
+                let manifest = read_manifest(&dir)?;
+                let version = manifest["version"].as_str()?.to_owned();
+                Some((level, text(&manifest["name"]), version))
+            });
+            if let Some((level, found, version)) = &resolved
+                && satisfied(found, version, &package, &range)
+                && self.accepted(&levels[..=*level], name, found, version)
             {
                 return Ok(());
             }
-            // An alias, `npm:<package>@<range>`, installs that package under
-            // `name`.
-            let (package, range) = match range.strip_prefix("npm:") {
-                Some(spec) => {
-                    let (package, range) = super::source::split_npm_spec(spec);
-                    (package, range.unwrap_or_else(|| "*".into()))
-                }
-                None => (name.to_owned(), range.to_owned()),
-            };
-            let resolved = lookup_path(dependent, &self.root_modules).find_map(|modules| {
-                let dir = modules.join(name);
-                if self.installing.contains(&dir) {
-                    manifest_version(&dir)
-                } else {
-                    installed_version(&dir)
-                }
-            });
-            let target = match resolved {
-                Some(version) if satisfies(&version, &range) => return Ok(()),
-                // Nested, it shadows the other version for `dependent` alone.
-                Some(_) => dependent.join("node_modules").join(name),
-                None => self.root_modules.join(name),
-            };
             let manifest = self.npm.pick(&package, &range).await?;
             if manifest.get("os").is_some() || manifest.get("cpu").is_some() {
                 // Platform packages carry prebuilt binaries, never JS.
                 return Ok(());
             }
+            let (found, version) = (text(&manifest["name"]), text(&manifest["version"]));
+            let target = match resolved {
+                None if self.accepted(&levels, name, &found, &version) => {
+                    self.root_modules.join(name)
+                }
+                // Nested, it shadows the other version for `dependent` alone.
+                _ => dependent.join("node_modules").join(name),
+            };
             self.unpack_package(target, manifest).await
+        })
+    }
+
+    /// Whether each package that owns one of the `node_modules` folders
+    /// `levels` accepts `version` of package `found` as its dependency
+    /// `name`, when it has one.
+    fn accepted(&self, levels: &[PathBuf], name: &str, found: &str, version: &str) -> bool {
+        levels.iter().all(|modules| {
+            let Some(owner) = modules.parent() else {
+                return true;
+            };
+            let read;
+            let manifest = match self.installing.iter().find(|(dir, _)| dir == owner) {
+                Some((_, manifest)) => manifest,
+                None => match read_manifest(owner) {
+                    Some(manifest) => {
+                        read = manifest;
+                        &read
+                    }
+                    None => return true,
+                },
+            };
+            dependencies(manifest)
+                .filter(|(dependency, ..)| *dependency == name)
+                .all(|(dependency, spec, _)| {
+                    wanted(dependency, spec)
+                        .is_none_or(|(package, range)| satisfied(found, version, &package, &range))
+                })
         })
     }
 }
@@ -802,15 +1339,27 @@ pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
     }
 }
 
+/// What [`install`] installed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Installed {
+    /// The version of the requested package.
+    pub version: String,
+    /// A pin for each package the call unpacked, the requested one included,
+    /// in no particular order. Packages it found already installed are not
+    /// listed, so the tree is complete only when the root started empty: a
+    /// tree recorded over a non-empty root must not be locked.
+    pub tree: Vec<Pinned>,
+}
+
 /// Installs `name` (at `range`, else the latest version) into the npm root
-/// `root`, and records it in the root's `package.json`. Returns the version.
-/// The caller holds the root's [`lock_root`].
+/// `root`, and records it in the root's `package.json`. The caller holds the
+/// root's [`lock_root`].
 pub async fn install(
     npm: &mut Npm,
     root: &Path,
     name: &str,
     range: Option<&str>,
-) -> Result<String, NpmError> {
+) -> Result<Installed, NpmError> {
     check_name(name)?;
     let mut manifest_file = root_manifest(root)?;
     let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
@@ -820,10 +1369,12 @@ pub async fn install(
         npm,
         root_modules: modules.clone(),
         installing: Vec::new(),
+        tree: Vec::new(),
     };
     installer
         .unpack_package(modules.join(name), manifest)
         .await?;
+    let tree = installer.tree;
     let dependencies = manifest_file
         .entry("dependencies")
         .or_insert_with(|| Value::Object(Map::new()));
@@ -832,15 +1383,16 @@ pub async fn install(
         dependencies.insert(name.to_owned(), Value::String(spec));
     }
     write_manifest(root, manifest_file)?;
-    Ok(version)
+    Ok(Installed { version, tree })
 }
 
 /// Installs the dependencies of the package in `dir` (a git checkout) into
-/// its own `node_modules`. Fails when the checkout links `node_modules` or a
-/// scope folder in it elsewhere.
-pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmError> {
+/// its own `node_modules`, and returns a pin for each package it unpacked,
+/// with paths below `dir`, as [`Installed::tree`] lists them. Fails when the
+/// checkout links `node_modules` or a scope folder in it elsewhere.
+pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<Vec<Pinned>, NpmError> {
     let Some(manifest) = read_manifest(dir) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let modules = dir.join("node_modules");
     let scopes = std::fs::read_dir(&modules)
@@ -863,8 +1415,140 @@ pub async fn install_dependencies(npm: &mut Npm, dir: &Path) -> Result<(), NpmEr
         npm,
         root_modules: modules,
         installing: Vec::new(),
+        tree: Vec::new(),
     };
-    installer.dependencies(dir, &manifest).await
+    installer.dependencies(dir, &manifest).await?;
+    Ok(installer.tree)
+}
+
+/// Downloads `name` (at `range`, else the latest version), verifies its
+/// tarball and unpacks it in place of `dir`, without its dependencies.
+/// Returns its pin, whose `path` is empty: the package is `dir` itself.
+pub async fn fetch(
+    npm: &mut Npm,
+    name: &str,
+    range: Option<&str>,
+    dir: &Path,
+) -> Result<Pinned, NpmError> {
+    check_name(name)?;
+    let manifest = npm.pick(name, range.unwrap_or("latest")).await?;
+    let bytes = npm.tarball(&manifest).await?;
+    let staging = stage(dir)?;
+    let id = format!("{name}@{}", text(&manifest["version"]));
+    swap(&staging, dir, unpack(&bytes, &staging, &id, npm.caps))?;
+    Ok(Pinned::new(String::new(), &manifest, &bytes))
+}
+
+/// Reinstalls the package `pin` records, as [`fetch`] returned it, in place
+/// of `dir`, under the download rules of [`replay`]. Its `path` is ignored.
+pub async fn fetch_pinned(npm: &Npm, pin: &Pinned, dir: &Path) -> Result<(), NpmError> {
+    npm.check_pin(pin)?;
+    let bytes = npm.pinned_tarball(pin).await?;
+    let staging = stage(dir)?;
+    let id = format!("{}@{}", pin.name, pin.version);
+    swap(&staging, dir, unpack(&bytes, &staging, &id, npm.caps))
+}
+
+/// Fails unless the tree `pins` records, installed in `root/node_modules`
+/// and declared by `root/package.json`, is one that [`replay`] accepts once
+/// unpacked, so that a lock never pins a tree its replays refuse.
+pub(crate) fn check_installed(root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
+    let pins: Vec<&Pinned> = pins.iter().collect();
+    check_tree(root, &root.join("node_modules"), &pins)
+}
+
+/// How many tarballs [`replay`] downloads at once.
+const REPLAY_DOWNLOADS: usize = 8;
+
+/// Replaces `root/node_modules` with exactly the tree `pins` records, as
+/// [`Installed::tree`] lists it, without packuments or range resolution.
+///
+/// Before any request, it refuses a pin whose path is not
+/// `node_modules/<name>` repeated, whose path collides with another's once
+/// case is folded, whose parent package is not pinned, whose integrity is
+/// not exactly one sha512 digest, or whose tarball URL is plain http while
+/// its registry is not. It also refuses a `root` or `root/node_modules`
+/// that is a link. Each tarball is downloaded with the credentials of its
+/// name's registry and checked against its digest, eight at a time, and
+/// unpacked only once it passes. Then each package's `package.json` must
+/// name its pin, each required dependency, of the packages and of
+/// `root/package.json`, that reaches a pinned folder must be satisfied by
+/// it, and each pinned folder must be reached by a dependency it
+/// satisfies, so that a lock can neither put one package in another's
+/// place nor add one. A tree with a package at its top therefore needs a
+/// `root/package.json` that depends on it. The tree is built beside
+/// `root/node_modules` and swapped in only once complete, so a failure
+/// leaves `root` as it was. The caller holds the root's [`lock_root`].
+pub async fn replay(npm: &Npm, root: &Path, pins: &[Pinned]) -> Result<(), NpmError> {
+    let mut pins = pins
+        .iter()
+        .map(|pin| {
+            npm.check_pin(pin)?;
+            let names = pin_names(&pin.path)?;
+            let parent = (names.len() > 1).then(|| {
+                let outer = &names[..names.len() - 1];
+                let parts: Vec<String> =
+                    outer.iter().map(|n| format!("node_modules/{n}")).collect();
+                parts.join("/")
+            });
+            Ok((pin.path.to_ascii_lowercase(), parent, pin))
+        })
+        .collect::<Result<Vec<_>, NpmError>>()?;
+    // Parents first, so that nested packages land in their parent's folder.
+    pins.sort_by(|a, b| a.0.cmp(&b.0));
+    if let Some(pair) = pins.windows(2).find(|pair| pair[0].0 == pair[1].0) {
+        return Err(NpmError::Refused(format!(
+            "Package paths collide: {} and {}",
+            pair[0].2.path, pair[1].2.path
+        )));
+    }
+    let paths: HashSet<&str> = pins.iter().map(|(_, _, pin)| pin.path.as_str()).collect();
+    if let Some((_, Some(parent), pin)) = pins.iter().find(|(_, parent, _)| {
+        parent
+            .as_deref()
+            .is_some_and(|parent| !paths.contains(parent))
+    }) {
+        return Err(NpmError::Refused(format!(
+            "Package path {} has no pinned parent {parent}",
+            pin.path
+        )));
+    }
+    if is_link(root) {
+        return Err(NpmError::Refused(format!(
+            "Refusing to install through the link {}",
+            root.display()
+        )));
+    }
+    let modules = root.join("node_modules");
+    let staging = stage(&modules)?;
+    let built = async {
+        // Downloads overlap, and each tarball unpacks in order once checked.
+        // The futures are built first: a closure the stream held across
+        // these awaits would keep the caller's future from being `Send`.
+        let downloads: Vec<_> = pins
+            .iter()
+            .map(|(_, _, pin)| {
+                let pin: &Pinned = pin;
+                async move { (pin, npm.pinned_tarball(pin).await) }
+            })
+            .collect();
+        let mut downloads = futures_util::stream::iter(downloads).buffered(REPLAY_DOWNLOADS);
+        while let Some((pin, bytes)) = downloads.next().await {
+            let bytes = bytes?;
+            // `pin_names` checked that the path starts so; `staging` stands for it.
+            let relative = pin.path.strip_prefix("node_modules/").unwrap_or(&pin.path);
+            let dir = staging.join(relative);
+            // A bundled copy in the parent's tarball gives way to the pinned one.
+            remove_path(&dir).map_err(io(&dir))?;
+            std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+            let id = format!("{}@{}", pin.name, pin.version);
+            unpack(&bytes, &dir, &id, npm.caps)?;
+        }
+        let pins: Vec<&Pinned> = pins.iter().map(|(_, _, pin)| *pin).collect();
+        check_tree(root, &staging, &pins)
+    }
+    .await;
+    swap(&staging, &modules, built)
 }
 
 /// Removes `name` from the npm root `root`, then the packages nothing
@@ -1124,12 +1808,13 @@ mod tests {
     }
 
     /// Entries that climb out of the package, absolute paths and links stay
-    /// out of the folder, and nothing lands beside it.
+    /// out of the folder, and nothing lands beside it. Files keep their bytes
+    /// and executable bits, however large.
     #[test]
     fn unpack_stays_inside() {
         use tar::EntryType;
         let mut builder = tar::Builder::new(Vec::new());
-        let mut add = |name: &str, kind: EntryType, link: &str, data: &[u8]| {
+        let mut add = |name: &str, kind: EntryType, link: &str, data: &[u8], mode: u32| {
             // Raw names: `set_path` refuses `..`.
             let mut header = tar::Header::new_gnu();
             let raw = header.as_old_mut();
@@ -1137,15 +1822,24 @@ mod tests {
             raw.linkname[..link.len()].copy_from_slice(link.as_bytes());
             header.set_entry_type(kind);
             header.set_size(data.len() as u64);
-            header.set_mode(0o644);
+            header.set_mode(mode);
             header.set_cksum();
             builder.append(&header, data).unwrap();
         };
-        add("package/index.js", EntryType::Regular, "", b"ok");
-        add("package/../evil", EntryType::Regular, "", b"evil");
-        add("/abs/evil", EntryType::Regular, "", b"abs");
-        add("package/link", EntryType::Symlink, "/etc", b"");
-        add("package/hard", EntryType::Link, "package/index.js", b"");
+        // Larger than the buffers a streamed copy goes through.
+        let large: Vec<u8> = (0..300_000u32).map(|n| (n % 251) as u8).collect();
+        add("package/index.js", EntryType::Regular, "", b"ok", 0o644);
+        add("package/run", EntryType::Regular, "", &large, 0o755);
+        add("package/../evil", EntryType::Regular, "", b"evil", 0o644);
+        add("/abs/evil", EntryType::Regular, "", b"abs", 0o644);
+        add("package/link", EntryType::Symlink, "/etc", b"", 0o644);
+        add(
+            "package/hard",
+            EntryType::Link,
+            "package/index.js",
+            b"",
+            0o644,
+        );
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         std::io::Write::write_all(&mut gz, &builder.into_inner().unwrap()).unwrap();
         let bytes = gz.finish().unwrap();
@@ -1154,7 +1848,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&parent);
         let dir = parent.join("package");
         std::fs::create_dir_all(&dir).unwrap();
-        unpack(&bytes, &dir).unwrap();
+        unpack(&bytes, &dir, "pkg@1.0.0", CAPS).unwrap();
         let names = |dir: &Path| {
             let mut names: Vec<String> = std::fs::read_dir(dir)
                 .unwrap()
@@ -1165,8 +1859,181 @@ mod tests {
         };
         assert_eq!(names(&parent), ["package"]);
         // An absolute path loses its root with the first component.
-        assert_eq!(names(&dir), ["abs", "index.js"]);
+        assert_eq!(names(&dir), ["abs", "index.js", "run"]);
         assert_eq!(std::fs::read(dir.join("index.js")).unwrap(), b"ok");
+        assert_eq!(std::fs::read(dir.join("run")).unwrap(), large);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = |name: &str| {
+                let metadata = std::fs::metadata(dir.join(name)).unwrap();
+                metadata.permissions().mode() & 0o777
+            };
+            assert_eq!((mode("index.js"), mode("run")), (0o644, 0o755));
+        }
+        std::fs::remove_dir_all(&parent).unwrap();
+    }
+
+    /// A tarball over any of the caps fails its replay, which then leaves
+    /// the root as it was: one too large to download, one that unpacks to
+    /// too much, and one with too many entries. A packument too large to
+    /// download fails before it is parsed.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn capped_tarballs_leave_nothing() {
+        // Noise, so that the gzip stream stays as large as what it holds.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let noise: Vec<u8> = (0..2 << 20)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state.to_le_bytes()[0]
+            })
+            .collect();
+        let mut builder = tar::Builder::new(Vec::new());
+        for (name, data) in [
+            (
+                "package/package.json",
+                &br#"{"name": "app", "version": "1.0.0"}"#[..],
+            ),
+            ("package/noise", &noise),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append_data(&mut header, name, data).unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, &builder.into_inner().unwrap()).unwrap();
+        let body = gz.finish().unwrap();
+        assert!(body.len() > 1 << 20);
+        let sha512 = STANDARD.encode(digest(&SHA512, &body));
+        // Serves `body` at every path.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            use std::io::{BufRead as _, Write as _};
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 2 {
+                    line.clear();
+                }
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        let pin = Pinned {
+            path: "node_modules/app".into(),
+            name: "app".into(),
+            version: "1.0.0".into(),
+            tarball: format!("{base}/app/-/app-1.0.0.tgz"),
+            integrity: format!("sha512-{sha512}"),
+        };
+        let root = std::env::temp_dir().join(format!("yapi-npm-caps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("node_modules/kept")).unwrap();
+        let npm = Npm::new(HashMap::from([("registry".to_owned(), format!("{base}/"))]));
+        let lowered = [
+            (
+                Caps {
+                    download: 1 << 20,
+                    ..CAPS
+                },
+                format!(
+                    "The tarball of app at {} is over the download cap of 1 MiB",
+                    pin.tarball
+                ),
+            ),
+            (
+                Caps {
+                    unpacked: 1 << 20,
+                    ..CAPS
+                },
+                "The tarball of app@1.0.0 unpacks to over the cap of 1 MiB".to_owned(),
+            ),
+            (
+                Caps { entries: 1, ..CAPS },
+                "The tarball of app@1.0.0 holds over the cap of 1 entries".to_owned(),
+            ),
+        ];
+        for (caps, message) in lowered {
+            let npm = Npm {
+                caps,
+                ..npm.clone()
+            };
+            let error = replay(&npm, &root, std::slice::from_ref(&pin))
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), message);
+            let names: Vec<_> = std::fs::read_dir(&root)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, ["node_modules"]);
+            assert!(root.join("node_modules/kept").exists());
+        }
+        let mut npm = Npm {
+            caps: Caps {
+                packument: 1 << 20,
+                ..CAPS
+            },
+            ..npm
+        };
+        let error = npm.pick("app", "latest").await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("The packument of app at {base}/app is over the download cap of 1 MiB")
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// When the new tree cannot take its place and the old one cannot go
+    /// back, the old one stays where the error says.
+    #[test]
+    fn swap_keeps_old_tree() {
+        let parent = std::env::temp_dir().join(format!("yapi-npm-swap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let (dir, staging, old) = (
+            parent.join("node_modules"),
+            parent.join(".node_modules-staging"),
+            parent.join(".node_modules-old"),
+        );
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        std::fs::create_dir_all(staging.join("b")).unwrap();
+        let rename = |from: &Path, to: &Path| {
+            if from == staging || from == old {
+                Err(std::io::Error::other("refused"))
+            } else {
+                std::fs::rename(from, to)
+            }
+        };
+        let error = swap_with(&staging, &dir, rename).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .ends_with(&format!("the previous version is at {}", old.display())),
+            "{error}"
+        );
+        assert!(old.join("a").exists());
+        // A plain failure puts the old tree back.
+        std::fs::rename(&old, &dir).unwrap();
+        std::fs::create_dir_all(staging.join("b")).unwrap();
+        let fail_new = |from: &Path, to: &Path| {
+            if from == staging {
+                Err(std::io::Error::other("refused"))
+            } else {
+                std::fs::rename(from, to)
+            }
+        };
+        assert!(swap_with(&staging, &dir, fail_new).is_err());
+        assert!(dir.join("a").exists() && !old.exists() && !staging.exists());
         std::fs::remove_dir_all(&parent).unwrap();
     }
 
