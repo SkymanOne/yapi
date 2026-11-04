@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -268,7 +268,7 @@ yapi-extension-api = { version = "0.3.1", features = ["session"] }
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 </code></pre>
-<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi does not provide <code>wasi:http</code>, so such a component does not load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="chest.html#publish-skills-subagents-and-extensions">chest</a>.</p>
+<p><code>chest check</code> fails when the extension uses a capability the package does not request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi does not provide <code>wasi:http</code>, so such a component does not load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature. A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="chest-publish.html#check-a-native-extension">Check a native extension</a>.</p>
 <p>Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry does not grant, because those calls will be denied.</p>
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>

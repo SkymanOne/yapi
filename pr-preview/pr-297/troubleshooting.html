@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,9 +192,9 @@
 <h2 id="an-extension-breaks-startup"><a class="header" href="#an-extension-breaks-startup">An extension breaks startup</a></h2>
 <p><code>yapi -ne</code> starts without extensions, including the built-in MCP and llama.cpp extensions. <code>yapi config</code> then turns the failing extension off.</p>
 <h2 id="a-chest-lock-is-stale"><a class="header" href="#a-chest-lock-is-stale">A chest lock is stale</a></h2>
-<p>chest warns that entries are not locked, or that their lock is stale, when <code>chest.toml</code> lists entries that <code>chest.lock</code> does not pin, or pins for another source, revision or version range. Run <code>chest install</code> to resolve them and update the lock, then commit <code>chest.lock</code>. <code>chest install --frozen</code>, the default under CI, fails instead, so update the lock before you push. See <a href="chest.html#lock-and-reproduce">Lock and reproduce</a>.</p>
+<p>chest warns that entries are not locked, or that their lock is stale, when <code>chest.toml</code> lists entries that <code>chest.lock</code> does not pin, or pins for another source, revision or version range. Run <code>chest install</code> to resolve them and update the lock, then commit <code>chest.lock</code>. <code>chest install --frozen</code>, the default under CI, fails instead, so update the lock before you push. See <a href="chest-lock.html">Lock, verify and update</a>.</p>
 <h2 id="an-extensions-call-is-refused"><a class="header" href="#an-extensions-call-is-refused">An extension’s call is refused</a></h2>
-<p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant. Packages from <code>yapi install</code> have every grant. For an extension from a <a href="packages.html#project-packages-with-chest">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="security.html#grants">Security</a> lists what each capability allows.</p>
+<p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant. Packages from <code>yapi install</code> have every grant. For an extension from a <a href="chest-extensions.html#grant-capabilities">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="security.html#grants">Security</a> lists what each capability allows.</p>
 <h2 id="an-extension-misses-events"><a class="header" href="#an-extension-misses-events">An extension misses events</a></h2>
 <p>A warning in the extension output that starts with <code>add "&lt;channel&gt;" to events.send of</code> or <code>add "&lt;channel&gt;" to events.receive of</code> means routing kept a <code>pi.events</code> event from an extension that listens on its channel. Add the channel to the lists the warning names, in the <code>events</code> of those chest entries.</p>
 <h2 id="reporting-a-problem"><a class="header" href="#reporting-a-problem">Reporting a problem</a></h2>

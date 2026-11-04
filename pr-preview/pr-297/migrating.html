@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -187,7 +187,7 @@
 <p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. An installed package that yapi already has is kept whole, without any of Pi’s files for it, so the two installs never mix. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
 <p>Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
-<p>To move a project’s packages from <code>.yapi/settings.json</code> into a manifest with a lock, run <code>chest import --settings</code> in the project. It writes an extension entry for each package with <code>capabilities = ["all"]</code>, the access Pi gives packages, and prints the <code>yapi remove -l</code> command for each one. Narrow the capabilities, run <code>chest install</code>, then remove the packages from <code>settings.json</code>. See <a href="chest.html#move-from-settingsjson-or-skillssh">Manage project packages with chest</a>.</p>
+<p>To move a project’s packages from <code>.yapi/settings.json</code> into a manifest with a lock, run <code>chest import --settings</code> in the project. It writes an extension entry for each package with <code>capabilities = ["all"]</code>, the access Pi gives packages, and prints the <code>yapi remove -l</code> command for each one. Narrow the capabilities, run <code>chest install</code>, then remove the packages from <code>settings.json</code>. See <a href="chest-extensions.html#import-packages-from-settingsjson">Import packages from settings.json</a>.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
 <div class="table-wrapper">
 <table>

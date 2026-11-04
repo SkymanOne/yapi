@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,7 +204,7 @@
 </div>
 <p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>.</p>
 <h2 id="chest"><a class="header" href="#chest">chest</a></h2>
-<p>yapi loads the <a href="packages.html#project-packages-with-chest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. For a name that is absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="chest-manifest.html#which-manifest">Which manifest</a> describes. <code>~/.chest/chest.toml</code> lists packages for every project. chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
+<p>yapi loads the <a href="chest-extensions.html#how-yapi-loads-a-manifest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. For a name that is absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="chest-manifest.html#which-manifest">Which manifest</a> describes. <code>~/.chest/chest.toml</code> lists packages for every project. chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
 <p>A project manifest that installs anything loads only in a trusted project, and asks for trust as <code>.yapi</code> files do. A manifest with only a <code>[package]</code> table describes the project as a package and needs no trust.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
 <p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. In a git worktree inside its main checkout, such as <code>.worktrees/feature</code>, the worktree’s own file replaces the main checkout’s file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.</p>

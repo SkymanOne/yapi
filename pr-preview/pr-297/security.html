@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -267,7 +267,7 @@
 <p>yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender’s policy lets it send the channel and the receiver’s policy lets it hear it. A policy lists channels as exact names, prefixes ending in <code>*</code>, or <code>*</code> for every channel. Packages from <code>yapi install</code>, and chest entries without an <code>events</code> key, get the shared policy, <code>*</code> both ways, so they hear every other extension’s events, as in Pi. A chest entry’s <code>events</code> key narrows its own policy, as the <a href="chest-manifest.html#event-bus">event bus reference</a> describes.</p>
 <p>When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output once per channel and session. It starts with the policy lists that would let the event across, then names both runtimes by their first extension, with their grants. After 8 such warnings between two runtimes, yapi logs that it suppresses the rest.</p>
 <h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
-<p>Files in a project’s <code>.yapi</code> folder can change how yapi behaves and can run code: <code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, as well as an <code>.agents/skills</code> folder in the project or a parent folder, and a <a href="packages.html#project-packages-with-chest">chest</a> manifest that installs anything. Until the project is trusted, yapi loads none of them, and no project extension runs.</p>
+<p>Files in a project’s <code>.yapi</code> folder can change how yapi behaves and can run code: <code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, as well as an <code>.agents/skills</code> folder in the project or a parent folder, and a <a href="chest-extensions.html#how-yapi-loads-a-manifest">chest</a> manifest that installs anything. Until the project is trusted, yapi loads none of them, and no project extension runs.</p>
 <p>The first time interactive mode starts in a project that has them, yapi asks whether to trust it. Print, JSON and RPC modes never ask, and treat the project as untrusted unless a decision applies.</p>
 <ul>
 <li>yapi saves the decision in <code>~/.yapi/agent/trust.json</code>. <code>/trust</code> changes it later.</li>

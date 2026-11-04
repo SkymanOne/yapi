@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -235,14 +235,14 @@
 <li><code>-e &lt;source&gt;</code> for one run, which accepts a file, a package folder, or an npm or git source</li>
 </ul>
 <p><code>yapi -ne</code> starts without extensions, and <code>yapi config</code> turns single extensions off.</p>
-<p>A <a href="packages.html#project-packages-with-chest">chest</a> manifest adds a project’s extensions too, each with the capabilities its entry grants.</p>
+<p>A <a href="chest-extensions.html">chest</a> manifest adds a project’s extensions too, each with the capabilities its entry grants.</p>
 <h3 id="request-capabilities"><a class="header" href="#request-capabilities">Request capabilities</a></h3>
 <p>A package can say which capabilities it needs, from <code>fs</code>, <code>net</code>, <code>env</code>, <code>session</code> and <code>all</code>, and which <code>pi.events</code> channels it sends and hears. List them as <code>capabilities</code> and <code>events</code> in the <code>[package]</code> table of a <code>chest.toml</code> in the package, or as <code>capabilities</code> and <code>events</code> in the <code>yapi</code> key of <code>package.json</code>:</p>
 <pre><code class="language-json">{
   "yapi": { "capabilities": ["fs"], "events": { "send": ["todo:*"], "receive": [] } }
 }
 </code></pre>
-<p>A request grants nothing. chest shows it when a project adds the package, and the project’s manifest decides what the package gets. <a href="chest.html#publish-skills-subagents-and-extensions">Publish skills, subagents and extensions</a> shows how consumers see it, and the <a href="chest-manifest.html#capabilities">capability table</a> lists what each capability allows. A package from <code>yapi install</code> gets every grant whatever it requests. Test a package under the grants it requests, so a call it needs is not refused for its users. <a href="security.html#grants">Security</a> lists what each capability allows.</p>
+<p>A request grants nothing. chest shows it when a project adds the package, and the project’s manifest decides what the package gets. <a href="chest-publish.html#request-capabilities-and-events">Request capabilities and events</a> shows how consumers see it, and the <a href="chest-manifest.html#capabilities">capability table</a> lists what each capability allows. A package from <code>yapi install</code> gets every grant whatever it requests. Test a package under the grants it requests, so a call it needs is not refused for its users. <a href="security.html#grants">Security</a> lists what each capability allows.</p>
 <p><code>/reload</code> loads every extension again from disk, so edits and rebuilt native extensions take effect. A new, resumed, forked or cloned session picks up added and removed extension files and installs packages added to settings, but keeps the extensions it already loaded until <code>/reload</code>. A session in another working folder loads every extension again.</p>
 <h2 id="write-a-pi-extension"><a class="header" href="#write-a-pi-extension">Write a Pi extension</a></h2>
 <p>Extensions use Pi’s API. Save this as <code>~/.yapi/agent/extensions/hello.ts</code>:</p>
@@ -322,7 +322,7 @@ export default function (pi: ExtensionAPI) {
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="mcp.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="chest-manifest.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -336,7 +336,7 @@ export default function (pi: ExtensionAPI) {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="mcp.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="chest-manifest.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

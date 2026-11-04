@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df3586bc.js";
+            window.path_to_searchindex_js = "searchindex-4fca1afa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-07a2fd7d.js"></script>
+        <script src="toc-22ab4ab6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,9 +209,8 @@ yapi -e git:github.com/user/repo
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
 <p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
 <h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
-<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html">Manage project packages with chest</a> covers the commands, and the <a href="chest-manifest.html">chest.toml reference</a> the manifest.</p>
-<p>At startup and on <code>/reload</code>, yapi reads the project’s manifest when the project is <a href="security.html#project-trust">trusted</a>, and <code>~/.chest/chest.toml</code> in every project. It puts back entries that the lock pins and that are missing, unless <code>--offline</code> or <code>PI_OFFLINE</code> is set, in which case it warns about them. It loads the installed extensions as packages named <code>chest:&lt;name&gt;</code>. Only chest names packages this way, so yapi ignores a <code>packages</code> entry in settings that starts with <code>chest:</code>. An entry under <code>[patch]</code> needs no lock entry. A patched extension loads from its patch, and a patched skill from where <code>chest install</code> placed it, or else from its patch. An entry that is not locked, or whose lock no longer matches the manifest, is left out with a warning to run <code>chest install</code>. yapi never writes the lock.</p>
-<p>Each chest extension runs with the <a href="chest-manifest.html#capabilities">capabilities</a> its entry grants and with its <a href="chest-manifest.html#event-bus">event policy</a>, while packages from <code>yapi install</code> keep every grant. A skill that chest places loads in yapi wherever the manifest puts it, even in a folder yapi does not read on its own, such as <code>.claude/skills</code>. <code>yapi config</code> lists chest’s extensions and skills as a run loads them, marked as managed by chest. They are read-only there, because the manifest decides what loads. <a href="configuration.html#chest">Configure yapi</a> lists the files.</p>
+<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi. Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html">Get started with chest</a> shows how to use it, and the <a href="chest-manifest.html">chest.toml reference</a> lists every key.</p>
+<p>Each chest extension runs with the capabilities its entry grants, while packages from <code>yapi install</code> keep every grant. <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> covers when yapi reads a manifest, what it puts back at startup, and how <code>yapi config</code> shows chest’s entries.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:</p>
 <ol>
@@ -237,7 +236,7 @@ yapi -e git:github.com/user/repo
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="chest.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="mcp.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -251,7 +250,7 @@ yapi -e git:github.com/user/repo
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="chest.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="mcp.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
