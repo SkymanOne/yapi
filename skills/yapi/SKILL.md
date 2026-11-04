@@ -6,32 +6,42 @@ license: MIT OR Apache-2.0
 
 # Working with yapi
 
-yapi (Yet Another Pi) is a terminal coding agent: give it a goal and a working folder, and it reads files, runs commands and edits code. It reimplements Pi `v1.0.0` in Rust, so it uses Pi's commands, flags, settings, session files, packages and extension API, from one native binary that needs no Node.js.
+yapi (Yet Another Pi) is a terminal coding agent: give it a goal and a working folder, and it reads files, runs commands and edits code. It reimplements Pi `v1.0.0` in Rust, so it uses Pi's commands, flags, settings, session files, packages and extension API, from one native binary that needs no Node.js. This skill covers where yapi keeps its files, installing it, handing it tasks, models, sessions, packages, chest and troubleshooting.
 
 When you know Pi, assume yapi behaves the same and check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) for the exceptions.
 
-## Paths and names
+## Where yapi keeps its files
+
+yapi keeps global state in its agent folder and project state in `.yapi/`:
 
 | What | Where |
 |---|---|
 | Global state | `~/.yapi/agent` (move it with `YAPI_CODING_AGENT_DIR`) |
-| Project state | `.yapi/` in the project, read only after the project is trusted |
+| Project state | `.yapi/` in the project, read only after you trust the project |
 | Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
 | Credentials | `~/.yapi/agent/auth.json` |
 | Custom providers and models | `~/.yapi/agent/models.json` |
-| Sessions | `~/.yapi/agent/sessions/`, one JSONL file per session, grouped by project (move them with `YAPI_CODING_AGENT_SESSION_DIR` or `--session-dir`) |
+| Sessions | `~/.yapi/agent/sessions/`, one JSON Lines file per session, grouped by project (move them with `YAPI_CODING_AGENT_SESSION_DIR` or `--session-dir`) |
 | Context files | `AGENTS.md` or `CLAUDE.md` in the project, its parents and `~/.yapi/agent` |
 | Skills | `~/.yapi/agent/skills`, `.yapi/skills`, `~/.agents/skills` and `.agents/skills` up to the repository root |
 
 Every file uses Pi's format. Provider variables such as `ANTHROPIC_API_KEY` and `PI_OFFLINE` keep Pi's names.
 
-## Install and check
+## Install yapi and check the version
+
+The install script puts the release binary in `~/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh   # release binary into ~/.local/bin
-cargo binstall --git https://github.com/SkymanOne/yapi yapi                        # release binary through cargo-binstall
-cargo install --locked --git https://github.com/SkymanOne/yapi yapi                # from source, with Rust 1.99 or newer
+curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
+  | sh
 yapi --version
+```
+
+With Cargo, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer:
+
+```sh
+cargo binstall --git https://github.com/SkymanOne/yapi yapi
+cargo install --locked --git https://github.com/SkymanOne/yapi yapi
 ```
 
 Keep `--git` with Cargo: on crates.io, `yapi` is an unrelated crate. To bring an existing Pi setup across, run `yapi import pi`. It copies settings, credentials, sessions and packages, and keeps files yapi already has.
@@ -51,19 +61,20 @@ git diff | yapi -p --no-session "Write a commit message for this diff"
 
 ```sh
 yapi --mode json -p --no-session "List the crates in this workspace" \
-  | jq -rs '[.[] | select(.type == "message_end" and .message.role == "assistant")]
+  | jq -rs '[.[] | select(.type == "message_end"
+                    and .message.role == "assistant")]
             | last | .message.content[] | select(.type == "text") | .text'
 ```
 
 A run emits `session`, `agent_start`, then per turn `turn_start`, `message_start`, `message_update`, `message_end`, `tool_execution_start` and `tool_execution_end`, `turn_end`, and finally `agent_end` with every message.
 
-**RPC mode** keeps yapi running for many prompts. Write one JSON command per line to stdin, such as `{"id":"1","type":"prompt","message":"Run the tests"}`, and read responses (`"type": "response"`, with your `id`) and events from stdout. yapi exits when stdin closes, so keep it open until the run's `agent_end` event arrives. [references/rpc.md](references/rpc.md) has a client and every command.
+**Remote procedure call (RPC) mode** keeps yapi running for more than one prompt. Write one JSON command per line to stdin, such as `{"id":"1","type":"prompt","message":"Run the tests"}`, and read responses (`"type": "response"`, with your `id`) and events from stdout. yapi exits when stdin closes, so keep it open until the run's `agent_end` event arrives. [references/rpc.md](references/rpc.md) has a client and every command.
 
-Flags worth setting when another program drives yapi:
+These flags matter when another program drives yapi:
 
 | Flag | Effect |
 |---|---|
-| `--no-session` | Do not save the run |
+| `--no-session` | Don't save the run |
 | `--model <provider/id[:thinking]>` | Pick the model, such as `anthropic/claude-sonnet-4-5:high` |
 | `--tools read,grep,find,ls` | Allow only these tools, here read-only ones. `--no-tools` disables all. |
 | `--exclude-tools <names>` | Disable some tools and keep the rest |
@@ -75,57 +86,65 @@ Flags worth setting when another program drives yapi:
 
 Exit code 0 means the run finished. A provider error ends print mode with a non-zero code and the message on stderr.
 
-## Models and credentials
+## Choose models and credentials
+
+yapi finds credentials in the environment, in `auth.json` and through sign-ins:
 
 - API keys come from the environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` and the others `yapi --help` lists), from `auth.json`, or from `--api-key`.
 - Subscriptions and accounts (Claude Pro or Max, ChatGPT, GitHub Copilot, Kimi, Meta, xAI, OpenRouter, Radius) sign in with `/login` in the interactive interface. Amazon Bedrock, Google Vertex AI and Cloudflare also read their platform's usual credentials. A local llama.cpp router signs in with `/login llama.cpp` or `LLAMA_BASE_URL`.
-- `yapi --list-models [search]` lists what is available with the current credentials.
-- `yapi auth check --provider <id>` reports whether a provider is ready, and `--json` makes it machine-readable. `yapi auth print-api-key` and `print-bearer-token` hand a credential to another tool.
+- `yapi --list-models [search]` lists what's available with the current credentials.
+- `yapi auth check --provider <id>` reports whether a provider is ready, and `--json` makes it machine-readable. `yapi auth print-api-key` and `print-bearer-token` print a credential for another tool.
 
 Never print or log credentials yourself. Prefer `yapi auth check` over reading `auth.json`.
 
-## Sessions
+## Resume and branch sessions
+
+Sessions resume from the command line and branch in the interface:
 
 - `yapi -c` continues the latest session in this folder, `yapi -r` picks one, `--session <path or id>` opens one, and `--fork <path or id>` copies one into a new session.
 - In the interface, `/tree` moves to any earlier point and continues from there, `/fork` and `/clone` branch, and `/compact` summarizes old context.
 - `yapi --export <session.jsonl> [out.html]` writes a session as HTML.
 
-## Packages, extensions and skills
+## Install packages, extensions and skills
 
-```sh
-yapi install npm:<package>            # a Pi package from npm
-yapi install git:github.com/user/repo  # from git
-yapi install ./folder -l               # a local package, for this project only
-yapi list                              # tags show [npm] or [wasm] extensions
-yapi update --extensions
-yapi remove <source>
-yapi config                            # turn individual resources on and off
-yapi -e ./ext.ts                       # load an extension for one run
-yapi -e npm:<package>                  # try a package for one run, without adding it to settings
-yapi --skill ./my-skill                # load a skill for one run
-```
+These commands manage what yapi loads:
+
+| Command | Effect |
+|---|---|
+| `yapi install npm:package_name` | Install a Pi package from npm |
+| `yapi install git:github.com/your_user/your_repo` | Install a package from git |
+| `yapi install ./folder -l` | Install a local package for this project only |
+| `yapi list` | List packages, tagged `[npm]` or `[wasm]` by their extensions |
+| `yapi update --extensions` | Update packages |
+| `yapi remove npm:package_name` | Remove a package by its source |
+| `yapi config` | Turn single resources on and off |
+| `yapi -e ./ext.ts` | Load an extension for one run |
+| `yapi -e npm:package_name` | Try a package for one run, without adding it to settings |
+| `yapi --skill ./my-skill` | Load a skill for one run |
 
 Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so code that needs native addons, sockets, worker threads or SQLite fails when it reaches them. To write an extension, use the `yapi-extension` skill.
 
-## Project packages with chest
+## Pin project packages with chest
 
 `chest` is a separate binary for a project's skills, subagents and extensions: one `chest.toml`, a `chest.lock` that pins commits, npm trees and content hashes, and capabilities granted per extension. Use it when a project needs reproducible installs or narrow grants, or skills shared with other agents. Use `yapi install` for personal packages that behave as in Pi.
 
-```sh
-chest init                                   # chest.toml with folders for the agents found
-chest add git:github.com/acme/skills --path skills/pdf
-chest add npm:@acme/ext --grant fs           # grant only what the extension needs
-chest install                                # install as chest.lock pins
-chest install --frozen                       # CI: fail on drift, write nothing
-chest verify                                 # check installed copies against the lock
-```
+| Command | Effect |
+|---|---|
+| `chest init` | Write `chest.toml` with folders for the agents found |
+| `chest add git:github.com/acme/skills --path skills/pdf` | Add a skill from git |
+| `chest add npm:@acme/ext --grant fs` | Add an extension and grant only what it needs |
+| `chest install` | Install as `chest.lock` pins |
+| `chest install --frozen` | In CI, fail on drift and write nothing |
+| `chest verify` | Check installed copies against the lock |
 
-Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it is full access. See https://skymanone.github.io/yapi/chest.html and https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities.
+Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it's full access. See [Get started with chest](https://skymanone.github.io/yapi/chest.html) and [Grant capabilities](https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities).
 
-## Troubleshooting
+## Find why yapi misbehaves
+
+Work through these checks in order:
 
 1. Reproduce with a clean state: `YAPI_CODING_AGENT_DIR=$(mktemp -d) yapi -p --no-session "hi"` rules out settings and packages. `-ne` rules out extensions.
 2. `yapi auth check --provider <id>` and `yapi --list-models` confirm the model and credentials.
 3. Startup warnings name settings, skills, themes or extensions that failed to load. The interactive header lists the loaded resources, and `--verbose` shows it even when `quietStartup` is set.
 4. In the interface, `/debug` writes what yapi rendered and sent to `~/.yapi/agent/yapi-debug.log`.
-5. When behavior differs from Pi, check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) before treating it as a bug. Report bugs at <https://github.com/SkymanOne/yapi/issues>.
+5. When behavior differs from Pi, check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) before treating it as a bug. Report bugs in the [issue tracker](https://github.com/SkymanOne/yapi/issues).
