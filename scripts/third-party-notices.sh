@@ -1,9 +1,9 @@
 #!/bin/sh
-# Writes the notices that release archives ship next to the yapi binary: the
-# licenses of the Rust crates in the binary and in the JavaScript runtime it
-# embeds, found by cargo-about with about.toml and about.hbs, and the notices
-# of the vendored JavaScript packages, of pi's HTML export template and of the
-# ported Mermaid renderer, which the binary embeds.
+# Writes the notices that release archives ship next to the yapi and chest
+# binaries: the licenses of the Rust crates in both binaries and in the
+# JavaScript runtime yapi embeds, found by cargo-about with about.toml and
+# about.hbs, and the notices of the vendored JavaScript packages, of pi's HTML
+# export template and of the ported Mermaid renderer, which yapi embeds.
 #
 # Usage: scripts/third-party-notices.sh <out-file>
 # Needs cargo-about.
@@ -19,12 +19,17 @@ about() {
 }
 
 {
-    echo "yapi includes the third-party software listed below, under the licenses shown."
+    echo "yapi and chest include the third-party software listed below, under the licenses shown."
     echo
     echo "================================================================================"
     echo "Rust crates in the yapi binary"
     echo "================================================================================"
     about "$root/crates/yapi/Cargo.toml"
+    echo
+    echo "================================================================================"
+    echo "Rust crates in the chest binary"
+    echo "================================================================================"
+    about "$root/crates/chest/Cargo.toml"
     echo
     echo "================================================================================"
     echo "Rust crates in the embedded JavaScript runtime (guest/yapi-js)"

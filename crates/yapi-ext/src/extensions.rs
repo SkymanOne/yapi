@@ -30,9 +30,10 @@ use yapi_ai::stream::{
 };
 use yapi_core::agent_session::{AgentSession, InputSource, PromptOptions, WeakSession};
 use yapi_core::extensions::{
-    Command, ComponentHost, Context, CustomOptions, DialogOptions, Extension, Loadout,
+    Command, ComponentHost, Context, CustomOptions, DialogOptions, EventPolicy, Extension, Loadout,
     LoadoutChanges, Mode, ModelList, ModelUpdate, NotifyKind, Placement, RemoteComponent,
     Renderers, SessionAction, Setup, TerminalState, ToolRenderers, Tools, Widget, WorkingIndicator,
+    delivers, tool_granted,
 };
 use yapi_core::tools::{Exposure, Namespace, RegisteredTool};
 use yapi_types::auth::{ApiKeyCredential, AuthResult, Credential, ModelAuth, OAuthCredential};
@@ -50,7 +51,260 @@ use yapi_types::rpc::{SourceInfo, StreamingBehavior};
 use yapi_types::session::FileEntry;
 use yapi_types::sync::lock;
 
-use crate::{Bridge, Engine, Error, Instance, Options};
+use crate::requests::denied;
+use crate::{Bridge, Engine, Error, Grants, Instance, Options};
+
+/// The most `pi.events` channels the host keeps for one runtime's listeners,
+/// and the longest channel name it keeps.
+const LISTENED_CHANNELS: usize = 1024;
+const CHANNEL_BYTES: usize = 256;
+
+/// The most missed-event warnings one runtime's events raise for another
+/// in a session, before one more says the rest are suppressed.
+const MISSED_WARNINGS: usize = 8;
+
+/// What a request or operation needs from an extension's grants.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Need {
+    /// No grant: reading what any extension may see, its own UI, dialogs
+    /// and operations.
+    Nothing,
+    /// The session grant: starting, steering or stopping turns, or changing
+    /// the session, its files or the model's setup.
+    Session,
+    /// The file grant.
+    Files,
+    /// The network grant: credentials, which are only good for requests,
+    /// and models called for the extension. The host checks it first.
+    Network,
+    /// Every grant: reaching outside the sandbox or acting with yapi's own
+    /// access.
+    All,
+}
+
+/// What each request and operation the session bridge dispatches needs. A
+/// kind missing here needs every grant. `ui.editorSubmit` text that runs a
+/// command, and `ui.editorAction` actions, need what [`editor_action`] says.
+const REQUESTS: &[(&str, Need)] = &[
+    ("agent.abort", Need::Session),
+    ("agent.compact", Need::Session),
+    ("agent.contextUsage", Need::Nothing),
+    ("agent.hasPendingMessages", Need::Nothing),
+    ("agent.isIdle", Need::Nothing),
+    ("agent.renderSystemPrompt", Need::Nothing),
+    ("agent.setSystemPromptOptions", Need::Session),
+    ("agent.shutdown", Need::Session),
+    ("agent.signal", Need::Nothing),
+    ("agent.systemPrompt", Need::Nothing),
+    ("agent.systemPromptOptions", Need::Nothing),
+    ("agent.waitForIdle", Need::Nothing),
+    // Data for a `bash` operation the extension itself provides.
+    ("bash.data", Need::Nothing),
+    // Writes the system clipboard, which a person may paste anywhere.
+    ("clipboard.copy", Need::Nothing),
+    // Runs only the tools the grants allow, in an instance with none.
+    ("codemode.execute", Need::Nothing),
+    ("commands.list", Need::Nothing),
+    // Routed by the instances' grants and event policies.
+    ("events.emit", Need::Nothing),
+    // The channels the runtime's own listeners hear, for missed-event warnings.
+    ("events.listen", Need::Nothing),
+    ("events.reset", Need::Nothing),
+    ("events.unlisten", Need::Nothing),
+    // Holds yapi's edit and write tools off the file until `file.unlock`.
+    ("file.lock", Need::Files),
+    ("file.unlock", Need::Nothing),
+    ("mcp.servers", Need::Nothing),
+    ("model.set", Need::Session),
+    ("models.all", Need::Nothing),
+    ("models.apiKey", Need::Network),
+    ("models.auth", Need::Network),
+    ("models.authStatus", Need::Nothing),
+    ("models.available", Need::Nothing),
+    ("models.availableOfType", Need::Nothing),
+    ("models.classify", Need::Network),
+    ("models.error", Need::Nothing),
+    ("models.find", Need::Nothing),
+    ("models.generateImages", Need::Network),
+    ("models.hasAuth", Need::Nothing),
+    ("models.ofType", Need::Nothing),
+    ("models.providerName", Need::Nothing),
+    // Refreshes offline without the network grant.
+    ("models.refresh", Need::Nothing),
+    ("models.requestAuth", Need::Network),
+    ("models.usingOAuth", Need::Nothing),
+    // Steps of a login or a stream of a provider, which only a provider
+    // registered with every grant starts.
+    ("oauth.notify", Need::Nothing),
+    ("oauth.prompt", Need::Nothing),
+    ("op.cancel", Need::Nothing),
+    ("projectDir", Need::Nothing),
+    ("provider.event", Need::Nothing),
+    ("provider.payload", Need::Nothing),
+    ("provider.response", Need::Nothing),
+    ("provider.streamEvent", Need::Nothing),
+    // A provider's replies drive the agent's tools, and its streams get credentials.
+    ("providers.register", Need::All),
+    ("providers.unregister", Need::All),
+    ("renderers.refresh", Need::Nothing),
+    ("session.appendEntry", Need::Session),
+    ("session.boundaryContext", Need::Nothing),
+    ("session.context", Need::Nothing),
+    ("session.fork", Need::Session),
+    ("session.getName", Need::Nothing),
+    ("session.navigateTree", Need::Session),
+    ("session.new", Need::Session),
+    ("session.read", Need::Nothing),
+    ("session.reload", Need::Session),
+    ("session.replaced", Need::Session),
+    ("session.sendMessage", Need::Session),
+    ("session.sendUserMessage", Need::Session),
+    ("session.setLabel", Need::Session),
+    ("session.setName", Need::Session),
+    ("session.switch", Need::Session),
+    ("session.write", Need::Session),
+    ("settings.get", Need::Nothing),
+    ("thinking.get", Need::Nothing),
+    ("thinking.set", Need::Session),
+    // Runs only a tool the grants allow.
+    ("tool.execute", Need::Nothing),
+    ("tool.update", Need::Nothing),
+    ("tools.getActive", Need::Nothing),
+    ("tools.getAll", Need::Nothing),
+    ("tools.refresh", Need::Nothing),
+    ("tools.setActive", Need::Session),
+    ("ui.applyCompletion", Need::Nothing),
+    ("ui.close", Need::Nothing),
+    ("ui.confirm", Need::Nothing),
+    ("ui.custom", Need::Nothing),
+    ("ui.editor", Need::Nothing),
+    ("ui.editorAction", Need::All),
+    ("ui.editorChange", Need::Nothing),
+    ("ui.editorShortcut", Need::Nothing),
+    ("ui.editorSubmit", Need::Session),
+    ("ui.footerData", Need::Nothing),
+    ("ui.getAllThemes", Need::Nothing),
+    ("ui.getEditorText", Need::Nothing),
+    ("ui.getTheme", Need::Nothing),
+    ("ui.getToolsExpanded", Need::Nothing),
+    ("ui.input", Need::Nothing),
+    ("ui.keybindings", Need::Nothing),
+    ("ui.notify", Need::Nothing),
+    ("ui.pasteToEditor", Need::Nothing),
+    ("ui.requestRender", Need::Nothing),
+    ("ui.select", Need::Nothing),
+    // Completions and raw keys can turn what a person types into a `!` or
+    // `/` command, which interactive mode runs.
+    ("ui.setAutocomplete", Need::All),
+    ("ui.setEditor", Need::Nothing),
+    ("ui.setEditorText", Need::Nothing),
+    ("ui.setFooter", Need::Nothing),
+    ("ui.setHeader", Need::Nothing),
+    ("ui.setHiddenThinkingLabel", Need::Nothing),
+    ("ui.setStatus", Need::Nothing),
+    // See `ui.setAutocomplete`.
+    ("ui.setTerminalInput", Need::All),
+    ("ui.setTheme", Need::Nothing),
+    ("ui.setTitle", Need::Nothing),
+    ("ui.setToolsExpanded", Need::Nothing),
+    ("ui.setWidget", Need::Nothing),
+    ("ui.setWorkingIndicator", Need::Nothing),
+    ("ui.setWorkingMessage", Need::Nothing),
+    ("ui.setWorkingVisible", Need::Nothing),
+    ("ui.suggestions", Need::Nothing),
+    ("ui.terminalSize", Need::Nothing),
+    ("ui.theme", Need::Nothing),
+    ("util.convertToLlm", Need::Nothing),
+    ("util.serializeConversation", Need::Nothing),
+];
+
+/// What editor action `action`, a key binding id, needs. An action not
+/// listed needs every grant.
+fn editor_action(action: &str) -> Need {
+    match action {
+        // They change only the view, copy to the clipboard, or open a
+        // selector whose choice a person makes.
+        "app.tools.expand" | "app.message.copy" | "app.model.select" | "app.session.tree"
+        | "app.session.fork" | "app.session.resume" => Need::Nothing,
+        "app.interrupt"
+        | "app.clear"
+        | "app.exit"
+        | "app.suspend"
+        | "app.thinking.cycle"
+        | "app.thinking.toggle"
+        | "app.model.cycleForward"
+        | "app.model.cycleBackward"
+        | "app.message.dequeue"
+        | "app.session.new" => Need::Session,
+        // `$EDITOR`, the system clipboard, the editor's text submitted as
+        // input, and actions yapi does not know.
+        _ => Need::All,
+    }
+}
+
+/// Whether `grants` allow request or operation `kind` with `payload`, as
+/// [`REQUESTS`] classifies it.
+fn granted(grants: &Grants, kind: &str, payload: &Value) -> bool {
+    let need = match kind {
+        // Interactive mode runs `!` and `/` input as shell and slash commands.
+        "ui.editorSubmit"
+            if payload["text"]
+                .as_str()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with(['!', '/']) =>
+        {
+            Need::All
+        }
+        "ui.editorAction" => editor_action(payload["action"].as_str().unwrap_or_default()),
+        _ => REQUESTS
+            .iter()
+            .find(|(name, _)| *name == kind)
+            .map_or(Need::All, |(_, need)| *need),
+    };
+    match need {
+        Need::Nothing => true,
+        Need::Session => grants.session,
+        Need::Files => grants.filesystem,
+        Need::Network => grants.network,
+        Need::All => grants.is_all(),
+    }
+}
+
+/// Why `kind` is refused when the grants do not allow it. A kind the bridge
+/// does not serve answers as unknown, as it does with every grant, so a
+/// client can tell it from one it may not use. It still does nothing.
+fn refusal(kind: &str) -> String {
+    if REQUESTS.iter().any(|(name, _)| *name == kind) {
+        denied(kind)
+    } else {
+        format!("{kind} is not available in yapi extensions yet")
+    }
+}
+
+/// Session file `path` that a session action opens, resolved against `cwd`
+/// as pi resolves it, once, so the check and the action open the same file.
+/// Without file access, `Err` unless it lies inside session directory
+/// `dir`.
+fn session_file(
+    cwd: &std::path::Path,
+    dir: &std::path::Path,
+    path: &str,
+    files: bool,
+) -> Result<String, String> {
+    let path = cwd.join(path);
+    let inside = match (path.canonicalize(), dir.canonicalize()) {
+        (Ok(path), Ok(dir)) => path.starts_with(dir),
+        _ => false,
+    };
+    if files || inside {
+        Ok(path.to_string_lossy().into_owned())
+    } else {
+        Err(denied(
+            "Opening a session file outside the session directory",
+        ))
+    }
+}
 
 /// An extension file that failed to load, with pi's message.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -111,6 +365,8 @@ pub struct ExtensionHost {
     auth: PathBuf,
     /// The session whose end the guest last heard of.
     ended: Mutex<Option<String>>,
+    /// The providers and wire APIs warned of as unused for lack of grants.
+    unprovided: Mutex<std::collections::HashSet<String>>,
 }
 
 /// The extension hosts that share `pi.events`.
@@ -144,7 +400,7 @@ impl ExtensionHost {
         sources: &[SourceInfo],
     ) -> Result<Arc<ExtensionHost>, Error> {
         let names: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
-        let bridge = SessionBridge::new(engine, names.join(", "), &options);
+        let bridge = SessionBridge::new(engine, &names, &options);
         let instance = Instance::start(engine, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, sources).await
     }
@@ -162,7 +418,7 @@ impl ExtensionHost {
         let component = tokio::task::spawn_blocking(move || compiler.native(&path))
             .await
             .map_err(|err| Error::Compile(err.to_string()))??;
-        let bridge = SessionBridge::new(engine, source.path.clone(), &options);
+        let bridge = SessionBridge::new(engine, &[source.path.as_str()], &options);
         let instance =
             Instance::start_component(engine, component, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, std::slice::from_ref(source)).await
@@ -198,6 +454,7 @@ impl ExtensionHost {
             dropping: AtomicBool::new(false),
             auth: options.agent_dir.join("auth.json"),
             ended: Mutex::default(),
+            unprovided: Mutex::default(),
         });
         let _ = extensions.bridge.owner.set(Arc::downgrade(&extensions));
         extensions.forward_events(queued);
@@ -209,8 +466,39 @@ impl ExtensionHost {
     /// Checks the API key and filters the models of each pi-ai `Provider`
     /// with API-key auth or model filters for its stored credential, as pi
     /// does once a provider registers. A provider whose check fails finds
-    /// no key and keeps every model.
+    /// no key and keeps every model. Extensions without every grant get no
+    /// credentials, and each provider and wire API they registered, which
+    /// stays unused, is warned of once.
     async fn check_providers(&self) {
+        if !self.provides() {
+            let mut warned = lock(&self.unprovided);
+            let loaded = lock(&self.loaded);
+            let providers = loaded.iter().flat_map(|extension| {
+                let path = text(&extension["path"]);
+                list(&extension["providers"])
+                    .iter()
+                    .map(move |provider| {
+                        format!(
+                            "Provider \"{}\" of extension {path}",
+                            text(&provider["name"])
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let apis = lock(&self.apis)
+                .iter()
+                .map(|api| format!("Wire API \"{api}\" of {}", self.bridge.name))
+                .collect::<Vec<_>>();
+            for registered in providers.chain(apis) {
+                if warned.insert(registered.clone()) {
+                    self.bridge.log(
+                        "warn",
+                        &format!("{registered} is not used: registering a provider needs every grant (\"all\")"),
+                    );
+                }
+            }
+            return;
+        }
         let mut store = None;
         let mut loaded = lock(&self.loaded).clone();
         for extension in &mut loaded {
@@ -276,6 +564,9 @@ impl ExtensionHost {
         // are checked against the runtimes that ran before this one.
         *lock(&self.bridge.session) = WeakSession::default();
         *lock(&self.bridge.held_mcp_servers) = None;
+        // The next session hears of missed events anew. The guest resets its
+        // listeners itself as it reloads.
+        lock(&self.bridge.missed).clear();
         self.runs.fetch_add(1, Ordering::SeqCst);
         *lock(&self.sources) = sources.to_vec();
         let payload = json!({"extensions": entries(sources)});
@@ -294,6 +585,24 @@ impl ExtensionHost {
         }
     }
 
+    /// What the extensions may reach.
+    pub fn grants(&self) -> Grants {
+        self.bridge.grants
+    }
+
+    /// The `pi.events` channels the extensions may send to, and hear from,
+    /// extensions whose grants differ.
+    pub fn events(&self) -> &EventPolicy {
+        &self.bridge.events
+    }
+
+    /// The canonical folders the extensions load modules from without file
+    /// access, as they were when the host started: a root missing then is
+    /// not among them.
+    pub fn module_roots(&self) -> &[PathBuf] {
+        &self.bridge.module_roots
+    }
+
     /// What each loaded extension registered, as the runtime describes it:
     /// `tools`, `commands`, `flags`, `shortcuts`, `events` and more.
     pub fn registrations(&self) -> Vec<Value> {
@@ -302,7 +611,11 @@ impl ExtensionHost {
 
     /// The providers the loaded extensions registered with
     /// `pi.registerProvider`, in registration order.
+    /// Extensions without every grant provide none.
     pub fn providers(self: &Arc<Self>) -> Vec<RegisteredProvider> {
+        if !self.provides() {
+            return Vec::new();
+        }
         lock(&self.loaded)
             .iter()
             .flat_map(|extension| list(&extension["providers"]))
@@ -372,13 +685,22 @@ impl ExtensionHost {
 
     /// The wire APIs extensions implement with pi-ai's `registerApiProvider`
     /// that yapi has no provider for, to stream the session's models of
-    /// those APIs.
+    /// those APIs. Extensions without every grant provide none.
     pub fn apis(self: &Arc<Self>) -> Vec<Arc<dyn Provider>> {
+        if !self.provides() {
+            return Vec::new();
+        }
         lock(&self.apis)
             .iter()
             .filter(|api| yapi_ai::api::builtin(api).is_none())
             .map(|api| self.js_stream(api))
             .collect()
+    }
+
+    /// Whether the extensions may provide models: a provider's replies drive
+    /// the agent's tools, and its streams get credentials.
+    fn provides(&self) -> bool {
+        self.bridge.grants.is_all()
     }
 
     fn js_stream(self: &Arc<Self>, api: &str) -> Arc<dyn Provider> {
@@ -1273,6 +1595,14 @@ impl Extension for JsExtension {
             })
     }
 
+    fn grants(&self) -> Grants {
+        self.shared.bridge.grants
+    }
+
+    fn warn(&self, message: &str) {
+        self.shared.bridge.log("warn", message);
+    }
+
     fn load(&self, tools: &Tools) {
         for tool in list(&self.description["tools"]) {
             tools.register(js_tool(&self.shared, self.id, tool));
@@ -1460,6 +1790,9 @@ impl Extension for JsExtension {
     ) -> BoxFuture<'a, Vec<(String, ModelList)>> {
         Box::pin(async move {
             let mut lists = Vec::new();
+            if !self.shared.provides() {
+                return lists;
+            }
             // Providers registered once the session started refresh too.
             let providers = self.latest(|latest| list(&latest["providers"]).to_vec());
             for provider in &providers {
@@ -1676,9 +2009,13 @@ fn js_tool(shared: &Arc<ExtensionHost>, extension: u64, tool: &Value) -> Registe
         namespace,
         default_active: tool["defaultActive"] != false,
         annotations: Some(tool["annotations"].clone()).filter(Value::is_object),
-        source: usize::try_from(extension)
-            .ok()
-            .and_then(|id| lock(&shared.sources).get(id).cloned()),
+        // A tool of an unknown extension is still not a built-in one.
+        source: Some(
+            usize::try_from(extension)
+                .ok()
+                .and_then(|id| lock(&shared.sources).get(id).cloned())
+                .unwrap_or_default(),
+        ),
     }
 }
 
@@ -1894,6 +2231,23 @@ struct SessionBridge {
     held_mcp_servers: Mutex<Option<Vec<RegisteredMcpServer>>>,
     /// The project directory of the sessions the factories run for.
     project_dir: PathBuf,
+    /// What the runtime's extensions may reach.
+    grants: Grants,
+    /// The `pi.events` channels the runtime may send to, and hear from,
+    /// runtimes whose grants differ.
+    events: EventPolicy,
+    /// The canonical folders the runtime loads modules from without file
+    /// access, as they were when it started.
+    module_roots: Vec<PathBuf>,
+    /// The `pi.events` channels the runtime's extensions listen on, as the
+    /// guest reports them, up to [`LISTENED_CHANNELS`].
+    listening: Mutex<std::collections::HashSet<String>>,
+    /// The channels each runtime, by number, missed of this runtime's
+    /// events and was warned of this session, up to [`MISSED_WARNINGS`].
+    missed: Mutex<HashMap<u64, Vec<String>>>,
+    /// The first file of the runtime's extensions, and how many more, for
+    /// short messages.
+    label: String,
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
@@ -1913,9 +2267,14 @@ fn not_bound() -> String {
 }
 
 impl SessionBridge {
-    fn new(engine: &Engine, name: String, options: &Options) -> Arc<SessionBridge> {
+    fn new(engine: &Engine, files: &[&str], options: &Options) -> Arc<SessionBridge> {
+        let label = match files {
+            [first, rest @ ..] if !rest.is_empty() => format!("{first} and {} more", rest.len()),
+            _ => files.join(", "),
+        };
         Arc::new(SessionBridge {
-            name,
+            name: files.join(", "),
+            label,
             codemode: Arc::new(crate::codemode::Runner::with_engine(
                 engine.clone(),
                 crate::codemode::docs(),
@@ -1934,6 +2293,11 @@ impl SessionBridge {
             bus: engine.bus.clone(),
             held_mcp_servers: Mutex::default(),
             project_dir: options.project_dir.clone(),
+            grants: options.grants,
+            events: options.events.clone(),
+            module_roots: crate::canonical_roots(&options.module_roots),
+            listening: Mutex::default(),
+            missed: Mutex::default(),
             run_signal: Mutex::default(),
             cancels: Arc::default(),
             file_locks: Arc::default(),
@@ -1946,12 +2310,64 @@ impl SessionBridge {
     }
 
     /// Hands `event`, `{channel, data}` emitted with `pi.events` in this
-    /// runtime, to the listeners of every other runtime. This runtime's own
-    /// listeners have heard it already.
+    /// runtime, to the listeners of every other runtime that may hear it
+    /// from this one. This runtime's own listeners have heard it already. A
+    /// runtime that listens on the channel but may not hear it is warned of
+    /// once per session.
     fn publish(&self, event: &Value) {
+        let channel = event["channel"].as_str().unwrap_or_default();
+        let sender = (&self.grants, &self.events);
         for host in self.others() {
-            host.receive(event);
+            let receiver = &host.bridge;
+            if delivers(sender, (&receiver.grants, &receiver.events), channel) {
+                host.receive(event);
+            } else if lock(&receiver.listening).contains(channel) {
+                self.missed(receiver, channel);
+            }
         }
+    }
+
+    /// Why an event on `channel` from this runtime did not reach `receiver`,
+    /// and which policy lists would let it.
+    fn missed_event(&self, receiver: &SessionBridge, channel: &str) -> String {
+        let mut lists = Vec::new();
+        if !self.events.sends(channel) {
+            lists.push(format!("events.send of {}", self.label));
+        }
+        if !receiver.events.receives(channel) {
+            lists.push(format!("events.receive of {}", receiver.label));
+        }
+        // Both lists must allow the channel, so the advice names each that does not.
+        format!(
+            "add \"{channel}\" to {}: pi.events \"{channel}\" from {} ({}) did not reach {} ({})",
+            lists.join(" and "),
+            self.label,
+            self.grants,
+            receiver.label,
+            receiver.grants,
+        )
+    }
+
+    /// Warns that `receiver` missed this runtime's event on `channel`, once
+    /// per channel, and after [`MISSED_WARNINGS`] channels once more that
+    /// further warnings are suppressed.
+    fn missed(&self, receiver: &SessionBridge, channel: &str) {
+        let mut missed = lock(&self.missed);
+        let warned = missed.entry(receiver.runtime_id).or_default();
+        if warned.len() > MISSED_WARNINGS || warned.iter().any(|seen| seen == channel) {
+            return;
+        }
+        let message = if warned.len() == MISSED_WARNINGS {
+            format!(
+                "further pi.events warnings from {} to {} suppressed",
+                self.label, receiver.label
+            )
+        } else {
+            self.missed_event(receiver, channel)
+        };
+        warned.push(channel.to_owned());
+        drop(missed);
+        self.log("warn", &message);
     }
 
     /// The other runtimes on this one's bus, in the order they loaded.
@@ -2547,8 +2963,30 @@ impl Bridge for SessionBridge {
     }
 
     fn request(&self, kind: &str, payload: &Value) -> Result<Value, String> {
+        if !granted(&self.grants, kind, payload) {
+            return Err(refusal(kind));
+        }
         if kind == "events.emit" {
             self.publish(payload);
+            return Ok(Value::Null);
+        }
+        // The guest reports the first listener on a channel and the last to go.
+        // A guest past the caps, which bound host memory, goes unwarned.
+        if kind == "events.listen" || kind == "events.unlisten" || kind == "events.reset" {
+            let channel = text(&payload["channel"]);
+            let mut listening = lock(&self.listening);
+            match kind {
+                "events.listen"
+                    if channel.len() <= CHANNEL_BYTES && listening.len() < LISTENED_CHANNELS =>
+                {
+                    listening.insert(channel);
+                }
+                "events.unlisten" => {
+                    listening.remove(&channel);
+                }
+                "events.reset" => listening.clear(),
+                _ => {}
+            }
             return Ok(Value::Null);
         }
         if kind == "bash.data" {
@@ -2843,6 +3281,8 @@ impl Bridge for SessionBridge {
     /// as blocking dialogs that ended, and the UI drops the rest and its
     /// input listeners. A person sees why, as pi shows extension errors.
     fn restarted(&self, reason: &str) {
+        // The extensions load again and subscribe anew.
+        lock(&self.listening).clear();
         // The stopped runtime's queued file mutations and cancellable
         // operations are over.
         {
@@ -2944,6 +3384,10 @@ impl Bridge for SessionBridge {
     }
 
     fn start(&self, kind: &str, payload: Value) -> BoxFuture<'static, Result<Value, String>> {
+        if !granted(&self.grants, kind, &payload) {
+            let message = refusal(kind);
+            return Box::pin(async move { Err(message) });
+        }
         if matches!(
             kind,
             "provider.payload" | "provider.response" | "provider.streamEvent"
@@ -3040,6 +3484,7 @@ impl Bridge for SessionBridge {
             ),
         };
         let codemode = self.codemode.clone();
+        let grants = self.grants;
         let owner = self.owner.get().cloned().unwrap_or_default();
         // The guest's `signal` cancels the operation through `op.cancel`,
         // which may come as soon as this returns.
@@ -3069,6 +3514,7 @@ impl Bridge for SessionBridge {
                 "codemode.execute" => codemode
                     .execute(
                         Some(session),
+                        grants,
                         text(&payload["toolCallId"]),
                         payload["params"].clone(),
                         caller_cancel,
@@ -3077,13 +3523,24 @@ impl Bridge for SessionBridge {
                     .await
                     .map(to_json),
                 "tool.execute" => {
+                    let name = text(&payload["name"]);
+                    // An unknown name needs every grant, in case a tool takes it meanwhile.
+                    let granted = session
+                        .callable_tools()
+                        .iter()
+                        .find(|tool| tool.name() == name)
+                        .map_or(grants.is_all(), |tool| tool_granted(&grants, tool));
+                    if !granted {
+                        return Err(denied(&format!("The {name} tool")));
+                    }
                     let outcome = session
                         .execute_tool(
                             &text(&payload["toolCallId"]),
-                            &text(&payload["name"]),
+                            &name,
                             payload["args"].clone(),
                             signal_cancel.unwrap_or(caller_cancel),
                             nested_updates,
+                            |tool| tool_granted(&grants, tool),
                         )
                         .await;
                     Ok(
@@ -3125,9 +3582,10 @@ impl Bridge for SessionBridge {
                     });
                     let options = yapi_ai::model_catalog::RefreshOptions {
                         providers,
-                        allow_network: payload["allowNetwork"]
-                            .as_bool()
-                            .unwrap_or_else(|| !yapi_core::config::env_set("PI_OFFLINE")),
+                        allow_network: grants.network
+                            && payload["allowNetwork"]
+                                .as_bool()
+                                .unwrap_or_else(|| !yapi_core::config::env_set("PI_OFFLINE")),
                         force: payload["force"].as_bool().unwrap_or(false),
                         cancel: caller_cancel,
                         ..Default::default()
@@ -3266,9 +3724,14 @@ impl Bridge for SessionBridge {
                 | "session.switch"
                 | "session.reload"
                 | "session.replaced" => {
+                    let open = |path: &str| {
+                        let cwd = std::env::current_dir().unwrap_or_default();
+                        let dir = session.with_session(|file| file.dir().to_path_buf());
+                        session_file(&cwd, &dir, path, grants.filesystem)
+                    };
                     let action = match kind.as_str() {
                         "session.new" => SessionAction::New {
-                            parent: payload["parentSession"].as_str().map(str::to_owned),
+                            parent: payload["parentSession"].as_str().map(open).transpose()?,
                             setup: payload["setup"].as_u64().map(|id| setup(owner, id)),
                         },
                         "session.fork" => SessionAction::Fork {
@@ -3287,7 +3750,7 @@ impl Bridge for SessionBridge {
                             },
                         },
                         "session.switch" => SessionAction::Switch {
-                            path: text(&payload["sessionPath"]),
+                            path: open(&text(&payload["sessionPath"]))?,
                         },
                         "session.reload" => SessionAction::Reload,
                         _ => SessionAction::Replaced,
@@ -3374,5 +3837,161 @@ mod tests {
             job.await;
         }
         assert_eq!(*lock(&ran), ["call"]);
+    }
+
+    /// The kinds the session bridge dispatches, read from its source: every
+    /// `"area.name"` literal, and every literal `kind` is compared with, in
+    /// its `request`, `ui_request` and `start`.
+    fn dispatched() -> std::collections::BTreeSet<&'static str> {
+        let source = include_str!("extensions.rs");
+        let mut kinds = std::collections::BTreeSet::new();
+        for start in [
+            "    fn request(&self, kind: &str",
+            "    fn ui_request(&self",
+            "    fn start(&self, kind: &str",
+        ] {
+            let at = source.find(start).unwrap();
+            let body = &source[at..at + source[at..].find("\n    }\n").unwrap()];
+            for (index, _) in body.match_indices('"') {
+                let rest = &body[index + 1..];
+                let Some(end) = rest.find('"') else { continue };
+                let literal = &rest[..end];
+                let kind_like = literal.split_once('.').is_some_and(|(area, name)| {
+                    !area.is_empty()
+                        && area.chars().all(|c| c.is_ascii_lowercase())
+                        && !name.is_empty()
+                        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+                });
+                if kind_like || body[..index].ends_with("kind == ") {
+                    kinds.insert(literal);
+                }
+            }
+        }
+        kinds
+    }
+
+    /// Every kind the bridge dispatches is classified, and nothing else, and
+    /// each needs exactly its grant. Kinds and editor actions yapi does not
+    /// know need every grant, and the kinds that guard the user keep their
+    /// needs.
+    #[test]
+    fn requests_all_classified() {
+        let classified: std::collections::BTreeSet<&str> =
+            REQUESTS.iter().map(|(kind, _)| *kind).collect();
+        assert_eq!(dispatched(), classified);
+        let only = |need: Need| Grants {
+            filesystem: need == Need::Files,
+            network: need == Need::Network,
+            session: need == Need::Session,
+            ..Grants::none()
+        };
+        let no_process = Grants {
+            process: false,
+            ..Grants::default()
+        };
+        for (kind, need) in REQUESTS {
+            let payload = json!({});
+            assert_eq!(
+                granted(&Grants::none(), kind, &payload),
+                *need == Need::Nothing,
+                "{kind}"
+            );
+            assert_eq!(
+                granted(&only(*need), kind, &payload),
+                *need != Need::All,
+                "{kind}"
+            );
+            assert_eq!(
+                granted(&no_process, kind, &payload),
+                *need != Need::All,
+                "{kind}"
+            );
+        }
+        // Holding a file holds off the model's edits, so it needs the file grant.
+        let no_files = Grants {
+            filesystem: false,
+            ..Grants::default()
+        };
+        assert!(!granted(&no_files, "file.lock", &json!({"path": "a.txt"})));
+        assert!(!granted(&no_process, "made.up", &json!({})));
+        // Refused, an unknown kind still answers as unknown.
+        assert_eq!(
+            refusal("made.up"),
+            "made.up is not available in yapi extensions yet"
+        );
+        assert_eq!(
+            refusal("file.lock"),
+            "file.lock is not permitted for this extension"
+        );
+        let action = |action: &str| json!({ "action": action });
+        assert!(!granted(
+            &no_process,
+            "ui.editorAction",
+            &action("app.made.up")
+        ));
+        assert!(granted(
+            &Grants::none(),
+            "ui.editorAction",
+            &action("app.tools.expand")
+        ));
+        assert!(granted(
+            &only(Need::Session),
+            "ui.editorAction",
+            &action("app.session.new")
+        ));
+        // Kinds that guard the user, with the need they must keep whatever
+        // the table says: lacking only that grant refuses them.
+        let lacking = |need: Need| match need {
+            Need::Session => Grants {
+                session: false,
+                ..Grants::default()
+            },
+            _ => no_process,
+        };
+        for (kind, payload, need) in [
+            ("session.sendUserMessage", json!({}), Need::Session),
+            ("session.new", json!({}), Need::Session),
+            ("agent.abort", json!({}), Need::Session),
+            ("ui.editorSubmit", json!({"text": "hello"}), Need::Session),
+            ("ui.editorSubmit", json!({"text": " !ls"}), Need::All),
+            ("ui.editorSubmit", json!({"text": "/model"}), Need::All),
+            ("providers.register", json!({}), Need::All),
+            ("ui.setTerminalInput", json!({"listening": true}), Need::All),
+            ("ui.setAutocomplete", json!({}), Need::All),
+        ] {
+            assert!(!granted(&lacking(need), kind, &payload), "{kind} {payload}");
+        }
+    }
+
+    /// Without file access, session actions open only session files inside
+    /// the session directory, however the path leaves it.
+    #[test]
+    fn session_paths_stay_inside() {
+        let root = std::env::temp_dir().join(format!("yapi-session-paths-{}", std::process::id()));
+        let dir = root.join("sessions");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.jsonl"), "").unwrap();
+        std::fs::write(root.join("secret.jsonl"), "").unwrap();
+        let inside = |name: &str| session_file(&dir, &dir, name, false).is_ok();
+        assert!(inside("a.jsonl"));
+        assert!(!inside("../secret.jsonl"));
+        assert!(!inside("missing.jsonl"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("secret.jsonl"), dir.join("link.jsonl")).unwrap();
+            assert!(!inside("link.jsonl"));
+        }
+        // The action opens the path the check resolved, wherever it was named from.
+        let opened = session_file(&root, &dir, "sessions/a.jsonl", false);
+        assert_eq!(
+            opened,
+            Ok(dir.join("a.jsonl").to_string_lossy().into_owned())
+        );
+        let anywhere = session_file(&root, &dir, "secret.jsonl", true);
+        assert_eq!(
+            anywhere,
+            Ok(root.join("secret.jsonl").to_string_lossy().into_owned())
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

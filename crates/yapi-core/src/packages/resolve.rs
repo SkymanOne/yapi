@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use yapi_types::rpc::SourceInfo;
 use yapi_types::settings::FilteredPackage;
 
+use crate::chest::ChestError;
+use crate::chest::manifest::read_package_meta;
 use crate::glob;
 use crate::tools::path::{relative, resolve_lexically};
 
@@ -80,6 +82,13 @@ pub struct ResolvedPaths {
     pub prompts: Vec<Resolved>,
     /// Themes.
     pub themes: Vec<Resolved>,
+    /// Extensions another source named again, each under that source,
+    /// which does not load them: by the same path, or by another path to
+    /// the same file.
+    pub shadowed: Vec<SourceInfo>,
+    /// Packages whose `chest.toml` does not parse, each by its folder with
+    /// why. Their resources resolve as if it were absent.
+    pub problems: Vec<(String, String)>,
 }
 
 impl ResolvedPaths {
@@ -108,17 +117,19 @@ impl ResolvedPaths {
         if path.is_empty() {
             return;
         }
+        let info = SourceInfo {
+            path,
+            ..metadata.clone()
+        };
         let list = self.of_mut(kind);
-        if list.iter().any(|resource| resource.info.path == path) {
+        if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
+            let other = (&listed.info.source, &listed.info.scope) != (&info.source, &info.scope);
+            if kind == ResourceType::Extensions && other {
+                self.shadowed.push(info);
+            }
             return;
         }
-        list.push(Resolved {
-            info: SourceInfo {
-                path,
-                ..metadata.clone()
-            },
-            enabled,
-        });
+        list.push(Resolved { info, enabled });
     }
 
     /// The enabled resources of `kind`, in order.
@@ -159,6 +170,9 @@ pub struct ResolveInput<'a> {
     pub project_trusted: bool,
     /// Installed packages, project entries first.
     pub packages: Vec<PackageInput>,
+    /// Skill folders a package manager placed, each one skill of the
+    /// package its source and scope name.
+    pub skills: Vec<PackageInput>,
     /// The user's `extensions`, `skills`, `prompts` and `themes` settings.
     pub user: [&'a [String]; 4],
     /// The project's.
@@ -592,32 +606,23 @@ fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceType) -> Vec<PathBu
     files
 }
 
-/// pi's `readPiManifest`: the `yapi` key of a package's `package.json`, else
-/// its `pi` key. A list is `None` when absent or not all strings.
+/// pi's `readPiManifest`, extended kind by kind: each resource list comes
+/// from the package's `chest.toml` `[package]`, else its `package.json`
+/// `yapi` key, else its `pi` key, as [`read_package_meta`] reads them. A list is
+/// `None` when no source lists the kind.
 #[derive(Default)]
 pub(crate) struct Manifest {
     lists: [Option<Vec<String>>; 4],
 }
 
 impl Manifest {
-    /// The manifest of the package at `root`; `None` when its `package.json`
-    /// is unreadable or declares neither key.
-    pub(crate) fn read(root: &Path) -> Option<Manifest> {
-        let text = std::fs::read_to_string(root.join("package.json")).ok()?;
-        let package: serde_json::Value = yapi_types::json::parse(&text).ok()?;
-        let manifest = ["yapi", "pi"]
-            .iter()
-            .find_map(|key| package.get(*key).filter(|value| value.is_object()))?;
-        let list = |kind: ResourceType| {
-            let entries = manifest[kind.key()].as_array()?;
-            entries
-                .iter()
-                .map(|entry| entry.as_str().map(str::to_owned))
-                .collect()
-        };
-        Some(Manifest {
-            lists: ResourceType::ALL.map(list),
-        })
+    /// The manifest of the package at `root`; `None` when no source decides
+    /// its resources, so the conventional folders apply. With it, why its
+    /// `chest.toml` was left out, as [`read_package_meta`] says.
+    pub(crate) fn read(root: &Path) -> (Option<Manifest>, Option<ChestError>) {
+        let (meta, problem) = read_package_meta(root);
+        let lists = ResourceType::ALL.map(|kind| meta.resources.get(kind.key()).cloned());
+        (meta.manifest.then_some(Manifest { lists }), problem)
     }
 
     /// The entries of `kind`, when listed.
@@ -683,7 +688,11 @@ fn collect_package_resources(
     filter: Option<&FilteredPackage>,
     meta: &SourceInfo,
 ) -> bool {
-    let manifest = Manifest::read(root);
+    let (manifest, problem) = Manifest::read(root);
+    if let Some(err) = problem {
+        let folder = root.to_string_lossy().into_owned();
+        acc.problems.push((folder, err.to_string()));
+    }
     if let Some(filter) = filter {
         for kind in ResourceType::ALL {
             let patterns = match kind {
@@ -761,10 +770,20 @@ fn default_resources(
 /// pi's `collectManifestFiles`: the files the manifest's entries select,
 /// or the conventional directory's.
 fn package_files(root: &Path, manifest: Option<&Manifest>, kind: ResourceType) -> Vec<PathBuf> {
-    if let Some(entries) = manifest
-        .and_then(|manifest| manifest.get(kind))
-        .filter(|entries| !entries.is_empty())
-    {
+    let entries = manifest.and_then(|manifest| manifest.get(kind));
+    selected_files(root, entries.map(Vec::as_slice), kind.key(), kind)
+}
+
+/// The files of `kind` that the package at `root` provides: those its
+/// manifest `entries` select, with their globs and `!` patterns, else
+/// those in its folder `folder`.
+pub(crate) fn selected_files(
+    root: &Path,
+    entries: Option<&[String]>,
+    folder: &str,
+    kind: ResourceType,
+) -> Vec<PathBuf> {
+    if let Some(entries) = entries.filter(|entries| !entries.is_empty()) {
         let all = manifest_files(entries, root, kind);
         let patterns: Vec<String> = entries
             .iter()
@@ -780,7 +799,7 @@ fn package_files(root: &Path, manifest: Option<&Manifest>, kind: ResourceType) -
             .filter(|file| enabled.contains(file))
             .collect();
     }
-    let dir = root.join(kind.key());
+    let dir = root.join(folder);
     if dir.exists() {
         collect_resource_files(&dir, kind)
     } else {
@@ -982,6 +1001,10 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
             metadata(&package.source, &package.scope, "package", None),
         );
     }
+    for skill in &input.skills {
+        let meta = metadata(&skill.source, &skill.scope, "package", None);
+        acc.add(ResourceType::Skills, &skill.root, &meta, true);
+    }
     for (index, kind) in ResourceType::ALL.into_iter().enumerate() {
         let project_meta = metadata("local", "project", "top-level", None);
         let user_meta = metadata("local", "user", "top-level", None);
@@ -1028,6 +1051,7 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
             project.unwrap_or_else(|| is_enabled_by_overrides(&path, user_ext, &input.agent_dir));
         acc.add(ResourceType::Extensions, &path, &meta, enabled);
     }
+    let mut shadowed = Vec::new();
     for kind in ResourceType::ALL {
         let list = acc.of_mut(kind);
         list.sort_by_key(|resource| precedence(&resource.info));
@@ -1035,9 +1059,14 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
         list.retain(|resource| {
             let canonical = std::fs::canonicalize(&resource.info.path)
                 .unwrap_or_else(|_| PathBuf::from(&resource.info.path));
-            seen.insert(canonical)
+            let first = seen.insert(canonical);
+            if !first && kind == ResourceType::Extensions {
+                shadowed.push(resource.info.clone());
+            }
+            first
         });
     }
+    acc.shadowed.extend(shadowed);
     acc
 }
 
@@ -1161,6 +1190,11 @@ pub fn package_inputs(
         let Some(source) = super::entry_source(&entry) else {
             continue;
         };
+        // Only chest names its packages `chest:`, so no settings entry
+        // passes for one.
+        if source.starts_with("chest:") {
+            continue;
+        }
         let filter: Option<FilteredPackage> = entry
             .is_object()
             .then(|| serde_json::from_value(entry.clone()).ok())

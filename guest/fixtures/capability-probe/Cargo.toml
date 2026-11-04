@@ -1,0 +1,16 @@
+[package]
+name = "capability-probe"
+description = "A test fixture: sends every request that needs a capability, built with all of them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+yapi-extension-api = { path = "../../yapi-extension-api", features = ["all"] }
+
+[lints]
+workspace = true

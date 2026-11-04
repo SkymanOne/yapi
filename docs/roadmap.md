@@ -1,30 +1,26 @@
-# Roadmap
+# Planned work
 
-yapi implements Pi's coding agent. This page lists the work planned beyond it. The items have no dates and may change. The [issue tracker](https://github.com/SkymanOne/yapi/issues) tracks individual work.
+yapi implements Pi's coding agent. This page lists the work planned beyond it: narrower capabilities, a package registry, a stable native extension API and Windows-specific features. The items have no dates and may change. The [issue tracker](https://github.com/SkymanOne/yapi/issues) tracks individual work.
 
 ## Capability-based sandboxing
 
-For now, every package receives Pi's default grants: file, process, network and environment access. The plan is to run each package with only the access it needs:
+Extensions installed with [chest](chest.md) run with the capabilities their manifest grants, and packages from `yapi install` keep Pi's grants. The capabilities are coarse for now, so the plan is to narrow them:
 
-- A package declares the grants it needs in its own manifest. You approve them, and yapi runs the package in its own instance with only those grants.
-- File grants can be limited to paths and to read-only access, and network grants to hosts.
-- The `pi.events` bus stays within packages of the same grants unless your settings allow more. A package's own manifest cannot widen it.
-- Host features that do not check grants today, such as running other tools, the event bus and session actions, will check them.
+- File grants limited to paths and to read-only access, such as `fs:read` or a list of folders.
+- Network grants limited to hosts.
+- Process grants limited to programs, such as `exec:git`, so an extension can run one tool without `all`.
+- Extensions with identical grants always share `pi.events`. Once yapi scopes file and network grants, they'll share only when their paths and hosts match too.
 
 [Security model and sandboxing](security.md) describes the current model.
 
-## Project manifests
+## A package registry
 
-A `yapi.toml` file at a project's root will list the packages, extensions and skills the project uses. Anyone who checks out the project then installs the same set at the same versions, as `Cargo.toml` does for a Rust project.
-
-## Package registry
-
-A central registry of yapi packages will let manifests name packages and versions instead of npm or git sources.
+A central registry of yapi packages will let `chest.toml` name packages and versions instead of npm or git sources.
 
 ## Stable native extension API
 
-The native extension API is unstable until yapi 1.0. The Rust SDK and host requests may change in any release before then, and extensions may need to be rebuilt. yapi 1.0 will stabilize them. Asynchronous host calls will move to WASI Preview 3 as a new version of the WIT world.
+The native extension API is unstable until yapi 1.0. The Rust SDK and host requests may change in any release before then, and you may need to rebuild extensions. yapi 1.0 will stabilize them. Asynchronous host calls will move to WebAssembly System Interface (WASI) Preview 3 as a new version of the Wasm Interface Type (WIT) world.
 
-## Platforms
+## Platform support
 
-Linux and macOS are fully supported, and Windows is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.
+yapi fully supports Linux and macOS, and Windows support is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.

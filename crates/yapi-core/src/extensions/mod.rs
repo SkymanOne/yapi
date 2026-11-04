@@ -9,9 +9,13 @@
 
 pub mod codemode;
 pub mod discovery;
+mod events;
+mod grants;
 pub mod tool_search;
 mod ui;
 
+pub use events::{EventPolicy, delivers};
+pub use grants::{CAPABILITIES, Grants, receives, tool_granted};
 pub use ui::{
     ComponentHost, CustomOptions, DialogOptions, ExtensionUi, NoUi, NotifyKind, Placement,
     RemoteComponent, TerminalState, Widget, WorkingIndicator,
@@ -322,6 +326,18 @@ pub struct Renderers {
 pub trait Extension: Send + Sync {
     /// Where the extension comes from, as `get_commands` reports it.
     fn source(&self) -> SourceInfo;
+
+    /// What the extension may reach. The session applies its event
+    /// handlers' results only within these.
+    fn grants(&self) -> Grants {
+        Grants::default()
+    }
+
+    /// Reports `message`, a warning from the host about the extension, such
+    /// as a handler result the session dropped for lack of a grant, with
+    /// the extension's own output. Built-in extensions, which have every
+    /// grant, report nothing.
+    fn warn(&self, _message: &str) {}
 
     /// Registers the tools it offers from the start, before the session's
     /// active tools are chosen.

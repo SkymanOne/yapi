@@ -14,8 +14,9 @@ use std::time::Duration;
 use common::{Notes, cli_source, custom_entries, engine, eventually, options, scratch, session};
 use serde_json::{Value, json};
 use yapi_ai::faux::Faux;
-use yapi_core::extensions::Mode;
-use yapi_ext::{Engine, ExtensionHost};
+use yapi_core::agent_session::AgentSession;
+use yapi_core::extensions::{EventPolicy, Mode};
+use yapi_ext::{Engine, ExtensionHost, Grants};
 
 /// Records what it hears on `my:notification`: `heard` until `/stop`,
 /// `all` always.
@@ -189,4 +190,323 @@ export default function (pi) {
     // The queue's 64, and the one on its way to the runtime.
     let count = ticks().unwrap().as_u64().unwrap();
     assert!((64..=65).contains(&count), "{count} ticks");
+}
+
+/// Loads, with `grants` and event policy `events`, an extension `name` that
+/// records each of `channels` it hears as `name:channel`, and emits the
+/// channels its `/emit-<name>` command names.
+async fn scoped(
+    engine: &Engine,
+    dir: &Path,
+    name: &str,
+    channels: &[&str],
+    (grants, events): (Grants, EventPolicy),
+) -> Arc<ExtensionHost> {
+    let source = format!(
+        r#"export default function (pi) {{
+	for (const channel of {channels:?}) pi.events.on(channel, () => pi.appendEntry("heard", `{name}:${{channel}}`));
+	pi.registerCommand("emit-{name}", {{ description: "", handler: async (args) => {{ for (const channel of args.split(" ")) pi.events.emit(channel, {{}}); }} }});
+}}
+"#
+    );
+    let path = dir.join(format!("{name}.ts"));
+    std::fs::write(&path, source).unwrap();
+    let mut options = options(dir);
+    options.grants = grants;
+    options.events = events;
+    let host = ExtensionHost::load(engine, options, &[cli_source(&path)])
+        .await
+        .unwrap();
+    assert!(host.errors().is_empty(), "{:?}", host.errors());
+    host
+}
+
+/// Three senders whose grants lack the network: shared, isolated, and
+/// sending only `todo:*`. Receivers: `same`, with the senders' grants,
+/// `differs`, with every grant, which does not listen on `other`, and the
+/// native event-bus example, with every grant. Each sender emits its
+/// channels, then the shared one emits `done` to all.
+async fn scoped_bus(name: &str) -> (AgentSession, std::path::PathBuf) {
+    let dir = scratch(name);
+    let engine = engine();
+    let no_net = Grants {
+        network: false,
+        ..Grants::default()
+    };
+    let todo = EventPolicy::new(vec!["todo:*".into()], Vec::new()).unwrap();
+    let everything = ["a:shared", "a:isolated", "todo:changed", "other", "done"];
+    let mut extensions = Vec::new();
+    // Listens on `my:notification`, which the isolated sender's grants keep from it.
+    let native = ExtensionHost::load_native(
+        &engine,
+        options(&dir),
+        &cli_source(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/event-bus.wasm")),
+    )
+    .await
+    .unwrap();
+    extensions.extend(native.for_session());
+    for (host, channels, policy) in [
+        ("shared", &[][..], (no_net, EventPolicy::shared())),
+        ("isolated", &[][..], (no_net, EventPolicy::isolated())),
+        ("table", &[][..], (no_net, todo)),
+        ("same", &everything[..], (no_net, EventPolicy::shared())),
+        (
+            "differs",
+            &["a:shared", "a:isolated", "todo:changed", "done"][..],
+            (Grants::default(), EventPolicy::shared()),
+        ),
+    ] {
+        extensions.extend(
+            scoped(&engine, &dir, host, channels, policy)
+                .await
+                .for_session(),
+        );
+    }
+    let session = session(&Faux::new([]), &dir, extensions);
+    session
+        .bind_extensions(Arc::new(Notes::default()), Mode::Print, None, None)
+        .await;
+    for command in [
+        "/emit-shared a:shared",
+        "/emit-isolated a:isolated",
+        "/emit-isolated a:isolated my:notification",
+        "/emit-table todo:changed other",
+        "/emit-shared done",
+    ] {
+        session.prompt(command, Vec::new()).await.unwrap();
+    }
+    // Each runtime hears its events in order, so `done` comes last.
+    let heard = |who: &str| custom_entries(&session, "heard").contains(&json!(who));
+    eventually("done", || heard("same:done") && heard("differs:done")).await;
+    (session, dir)
+}
+
+/// Extensions share `pi.events` by default whatever their grants. An
+/// isolated extension reaches only extensions with identical grants, and a
+/// channel list lets only its channels across.
+#[tokio::test(flavor = "multi_thread")]
+async fn bus_scoped_grants() {
+    let (session, _) = scoped_bus("bus-scoped").await;
+    // Each receiver hears in order, but the two record independently.
+    let heard = |who: &str| -> Vec<String> {
+        custom_entries(&session, "heard")
+            .iter()
+            .filter_map(|entry| entry.as_str()?.strip_prefix(who).map(str::to_owned))
+            .collect()
+    };
+    assert_eq!(
+        heard("same:"),
+        [
+            "a:shared",
+            "a:isolated",
+            "a:isolated",
+            "todo:changed",
+            "other",
+            "done"
+        ]
+    );
+    assert_eq!(heard("differs:"), ["a:shared", "todo:changed", "done"]);
+}
+
+/// A runtime that listens on a channel routing keeps from it is warned of
+/// once, starting with the lists that would let the event across, whether a
+/// Pi or a native extension listens. One that does not listen is not.
+#[tokio::test(flavor = "multi_thread")]
+async fn missed_event_warns() {
+    yapi_ext::capture_output();
+    let (_session, dir) = scoped_bus("bus-missed").await;
+    let file = |name: &str| dir.join(format!("{name}.ts")).display().to_string();
+    let output = yapi_ext::extension_output();
+    let missed: Vec<&String> = output
+        .iter()
+        .filter(|line| line.contains("did not reach") && line.contains(&dir.display().to_string()))
+        .collect();
+    let native = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/event-bus.wasm")
+        .display()
+        .to_string();
+    let warning = |channel: &str, receiver: &str| {
+        format!(
+            "add \"{channel}\" to events.send of {}: pi.events \"{channel}\" from {} (fs, env, session, process) did not reach {receiver} (all)",
+            file("isolated"),
+            file("isolated")
+        )
+    };
+    let expected = [
+        warning("a:isolated", &file("differs")),
+        warning("my:notification", &native),
+    ];
+    let found = |warning: &String| missed.iter().any(|line| line.ends_with(warning.as_str()));
+    assert!(
+        missed.len() == 2 && expected.iter().all(found),
+        "{missed:#?}"
+    );
+    listeners_tracked().await;
+}
+
+/// What a runtime listens on follows its handlers: one unsubscribed is gone,
+/// a channel with a handler left still listens, and a reload or a restart
+/// forgets the channels its extensions no longer listen on. The host keeps
+/// at most 1024 channels of 256 bytes, and warns at most 8 times from one
+/// runtime to another before it says the rest are suppressed.
+async fn listeners_tracked() {
+    const PROBE: &str = r#"
+let loads = 0;
+export default function (pi) {
+	loads++;
+	const handler = () => {};
+	pi.events.on("gone", handler)();
+	pi.events.on("twice", handler);
+	pi.events.on("twice", handler)();
+	if (loads === 1) pi.events.on("dropped", handler);
+	for (let i = 0; i < 10; i++) pi.events.on(`capped:${i}`, handler);
+	pi.events.on("x".repeat(300), handler);
+	for (let i = 0; i < 1100; i++) pi.events.on(`many:${i}`, handler);
+}
+"#;
+    const RESTARTS: &str = r#"
+const overflow = () => overflow();
+export default function (pi) {
+	pi.registerCommand("late", { description: "", handler: async () => { pi.events.on("late", () => {}); } });
+	pi.registerCommand("crash", { description: "", handler: async () => { setTimeout(overflow, 0); } });
+	pi.registerCommand("noop", { description: "", handler: async () => {} });
+}
+"#;
+    let dir = scratch("bus-listeners");
+    let engine = engine();
+    let no_net = Grants {
+        network: false,
+        ..Grants::default()
+    };
+    let todo = EventPolicy::new(vec!["todo:*".into()], Vec::new()).unwrap();
+    let hosts = [
+        scoped(
+            &engine,
+            &dir,
+            "sender",
+            &[],
+            (no_net, EventPolicy::isolated()),
+        )
+        .await,
+        scoped(&engine, &dir, "table", &[], (no_net, todo)).await,
+        js(&engine, &dir, "probe", PROBE).await,
+        js(&engine, &dir, "restarts", RESTARTS).await,
+    ];
+    let start = || async {
+        let extensions = hosts.iter().flat_map(|host| host.for_session()).collect();
+        let session = session(&Faux::new([]), &dir, extensions);
+        session
+            .bind_extensions(Arc::new(Notes::default()), Mode::Print, None, None)
+            .await;
+        session
+    };
+    let session = start().await;
+    let long = "x".repeat(300);
+    // The probe's first load listens on `twice`, `dropped` and ten `capped`
+    // channels before the `many` ones, so `many:1011` is the 1024th channel
+    // the host keeps and `many:1012` the first it does not.
+    for command in [
+        "/late".to_owned(),
+        format!("/emit-sender gone twice many:5 many:1011 many:1012 many:1050 {long}"),
+        format!(
+            "/emit-table {}",
+            (0..10)
+                .map(|i| format!("capped:{i}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        "/crash".to_owned(),
+    ] {
+        session.prompt(&command, Vec::new()).await.unwrap();
+    }
+    let restarts = file_in(&dir, "restarts");
+    eventually("the restart", || {
+        yapi_ext::extension_output()
+            .iter()
+            .any(|line| line.contains(&format!("[{restarts}] error Extension runtime stopped")))
+    })
+    .await;
+    // Its next command runs once the replay has loaded the extensions again.
+    session.prompt("/noop", Vec::new()).await.unwrap();
+    session
+        .prompt("/emit-sender late", Vec::new())
+        .await
+        .unwrap();
+    // The next session's factories no longer listen on `dropped`.
+    for host in &hosts {
+        host.reload(&host.sources()).await;
+    }
+    let session = start().await;
+    session
+        .prompt("/emit-sender dropped", Vec::new())
+        .await
+        .unwrap();
+
+    let (sender, table, probe) = (
+        file_in(&dir, "sender"),
+        file_in(&dir, "table"),
+        file_in(&dir, "probe"),
+    );
+    let warning = |channel: &str, from: &str| {
+        format!(
+            "add \"{channel}\" to events.send of {from}: pi.events \"{channel}\" from {from} (fs, env, session, process) did not reach {probe} (all)"
+        )
+    };
+    let mut expected = vec![
+        warning("twice", &sender),
+        warning("many:5", &sender),
+        warning("many:1011", &sender),
+    ];
+    expected.extend((0..8).map(|i| warning(&format!("capped:{i}"), &table)));
+    expected.push(format!(
+        "further pi.events warnings from {table} to {probe} suppressed"
+    ));
+    let output = yapi_ext::extension_output();
+    let warnings: Vec<&str> = output
+        .iter()
+        .filter(|line| line.contains(&dir.display().to_string()) && line.contains("] warn "))
+        .filter_map(|line| line.split("] warn ").nth(1))
+        .collect();
+    assert_eq!(warnings, expected);
+    drop(session);
+}
+
+fn file_in(dir: &Path, name: &str) -> String {
+    dir.join(format!("{name}.ts")).display().to_string()
+}
+
+/// MCP server names stay unique across every runtime, whatever its event
+/// policy.
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_check_stays_global() {
+    let dir = scratch("bus-mcp");
+    let engine = engine();
+    let register = "export default function (pi) {\n\tpi.registerMcpServer(\"shared\", { command: \"python3\", enabled: false });\n}\n";
+    let (mut errors, mut hosts) = (Vec::new(), Vec::new());
+    for (file, events) in [
+        ("owner.ts", EventPolicy::isolated()),
+        ("taker.ts", EventPolicy::shared()),
+    ] {
+        let path = dir.join(file);
+        std::fs::write(&path, register).unwrap();
+        let mut options = options(&dir);
+        options.grants = Grants {
+            network: file == "taker.ts",
+            ..Grants::default()
+        };
+        options.events = events;
+        let host = ExtensionHost::load(&engine, options, &[cli_source(&path)])
+            .await
+            .unwrap();
+        errors.extend(host.errors().iter().map(|error| error.error.clone()));
+        // The bus holds runtimes only while they are in use.
+        hosts.push(host);
+    }
+    let owner = dir.join("owner.ts").display().to_string();
+    assert_eq!(
+        errors,
+        [format!(
+            "Failed to load extension: MCP server \"shared\" is already registered by extension \"{owner}\""
+        )]
+    );
 }

@@ -188,10 +188,26 @@ impl AgentSession {
             event["entries"] = Value::Array(entries.clone());
             event["continue"] = proceed.into();
             if let Some(result) = extension.handle(&ctx, &event).await {
-                if let Some(next) = result["entries"].as_array() {
+                // Without the session grant, a handler may only stop the run.
+                let granted = || {
+                    self.applies(
+                        extension,
+                        boundary.kind(),
+                        extension.grants().session,
+                        super::extensions::SESSION,
+                    )
+                };
+                // The runtime reports both whether or not a handler changed them.
+                if let Some(next) = result["entries"].as_array()
+                    && *next != entries
+                    && granted()
+                {
                     entries.clone_from(next);
                 }
-                if let Some(next) = result["continue"].as_bool() {
+                if let Some(next) = result["continue"].as_bool()
+                    && next != proceed
+                    && (!next || granted())
+                {
                     proceed = next;
                 }
             }

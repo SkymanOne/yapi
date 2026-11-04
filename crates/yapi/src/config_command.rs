@@ -76,9 +76,28 @@ async fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
             .map_err(anyhow::Error::msg)?;
     }
     let builtins = crate::startup::BUILTINS;
-    let global = resolve_resources(&cwd, &agent_dir, &global_settings, &builtins);
+    // chest's installed entries as a run would load them: the global
+    // manifest's alone, then the project's too when it is trusted.
+    let chest = |trusted| yapi_core::chest::startup::installed(&cwd, trusted).installed;
+    let user_chest = chest(false);
+    let global = resolve_resources(
+        &cwd,
+        &agent_dir,
+        &global_settings,
+        &builtins,
+        &user_chest.packages,
+        &user_chest.skills,
+    );
     let project = if trusted {
-        resolve_resources(&cwd, &agent_dir, &settings, &builtins)
+        let both = chest(true);
+        resolve_resources(
+            &cwd,
+            &agent_dir,
+            &settings,
+            &builtins,
+            &both.packages,
+            &both.skills,
+        )
     } else {
         global.clone()
     };

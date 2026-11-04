@@ -161,10 +161,9 @@ async fn load(
     std::fs::create_dir_all(&options.home_dir)?;
     options.cache_dir = Some(dir.join("cache"));
     options.grants = Grants {
-        filesystem: true,
         process: false,
         network: false,
-        environment: true,
+        ..Grants::default()
     };
     // The variables pi's side gets, and nothing from this process.
     options.environment = Some(

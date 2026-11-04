@@ -20,8 +20,8 @@ use serde_json::json;
 use yapi_ai::faux::{Faux, Response};
 use yapi_core::agent_session::{AgentSession, TreeNavigation};
 use yapi_core::extensions::{
-    ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Mode, NoUi, NotifyKind,
-    RemoteComponent,
+    CAPABILITIES, ComponentHost, CustomOptions, DialogOptions, ExtensionUi, Grants, Mode, NoUi,
+    NotifyKind, RemoteComponent,
 };
 use yapi_ext::ExtensionHost;
 use yapi_types::event::AgentEvent;
@@ -71,6 +71,98 @@ async fn native_register_and_run() {
         .collect();
     assert_eq!(results, ["HELLO!!", "Nothing to shout"]);
     assert_eq!(session.extensions()[0].commands()[0].name, "hello");
+}
+
+/// Each kind the SDK gates behind a feature is one yapi refuses without that
+/// feature's grant, and serves with it: the capability probe, built with
+/// every feature, sends them all from an extension granted nothing, each
+/// single capability, then everything. Without its grant, `env` answers no
+/// variables instead. Kinds that need no grant always answer. Every feature
+/// the SDK files a kind under is one of yapi's capabilities.
+#[tokio::test(flavor = "multi_thread")]
+async fn gated_kinds_denied() {
+    let probe = cli_source(&fixture("capability-probe"));
+    for capability in ["none"].into_iter().chain(CAPABILITIES) {
+        let dir = scratch(&format!("native-capability-probe-{capability}"));
+        let mut options = options(&dir);
+        options.grants = Grants::parse(&[capability.to_owned()]).unwrap();
+        let host = ExtensionHost::load_native(&engine(), options, &probe)
+            .await
+            .unwrap();
+        assert!(host.errors().is_empty(), "{:?}", host.errors());
+        let session = session(&Faux::new([]), &dir, host.for_session());
+        let notes = Arc::new(Notes::default());
+        session
+            .bind_extensions(notes.clone(), Mode::Print, None, None)
+            .await;
+        session.prompt("/probe", Vec::new()).await.unwrap();
+        let notes = notes.all();
+        let answers: serde_json::Map<String, serde_json::Value> = notes
+            .iter()
+            .find_map(|note| serde_json::from_str(note).ok())
+            .unwrap_or_else(|| panic!("{capability}: {notes:?}"));
+        let refused = |answer: &serde_json::Value| {
+            answer["err"]
+                .as_str()
+                .is_some_and(|err| err.ends_with("is not permitted for this extension"))
+        };
+        let denied: Vec<&str> = answers
+            .iter()
+            .filter(|(_, answer)| refused(answer))
+            .map(|(kind, _)| kind.as_str())
+            .collect();
+        // The kinds of the table, but those of the granted capability. With
+        // `session` alone, `session.switch` still opens no file outside the
+        // session directory, which its empty path is.
+        let expected: Vec<&str> = answers
+            .iter()
+            .filter(|(kind, answer)| {
+                let feature = answer["feature"].as_str();
+                let gated = capability != "all"
+                    && *kind != "env"
+                    && feature.is_some_and(|feature| feature != capability);
+                gated || capability == "session" && *kind == "session.switch"
+            })
+            .map(|(kind, _)| kind.as_str())
+            .collect();
+        assert_eq!(denied, expected, "{capability}: {answers:?}");
+        // Raw keys and completions reach yapi's own input, so they need
+        // `all`, and `file.lock` needs the file grant whatever its path.
+        let listed = [
+            ("ui.setTerminalInput", "all"),
+            ("ui.setAutocomplete", "all"),
+            ("file.lock", "fs"),
+        ];
+        for (kind, needs) in listed {
+            let feature = answers.get(kind).map(|answer| &answer["feature"]);
+            assert_eq!(feature, Some(&json!(needs)), "{capability}: {kind}");
+        }
+        for (kind, answer) in &answers {
+            let feature = answer["feature"].as_str();
+            assert!(
+                feature.is_none_or(|feature| CAPABILITIES.contains(&feature)),
+                "{kind}: {answer}"
+            );
+        }
+        let env = &answers["env"]["ok"];
+        assert_eq!(
+            env == &json!({}),
+            capability != "env" && capability != "all",
+            "{capability}: {env}"
+        );
+        assert_eq!(
+            answers["timer"]["ok"],
+            serde_json::Value::Null,
+            "{capability}"
+        );
+        for kind in ["cwd", "session.read"] {
+            assert!(
+                answers[kind].get("ok").is_some(),
+                "{capability}: {kind}: {}",
+                answers[kind]
+            );
+        }
+    }
 }
 
 /// A UI whose theme colors keywords magenta.

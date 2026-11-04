@@ -88,6 +88,9 @@ jobs:
             sudo apt-get update && sudo apt-get install -y ripgrep fd-find
           fi
       - run: cargo xtask js-runtime --check
+      # The SDK's own tests, on the host: requests whose feature is off.
+      - run: cargo test -p yapi-extension-api --locked
+        working-directory: guest
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
         env:

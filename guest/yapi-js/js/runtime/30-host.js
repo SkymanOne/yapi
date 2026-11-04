@@ -23,9 +23,10 @@
 	const orUndefined = (value) => value ?? undefined;
 
 	// ----- event buses --------------------------------------------------------
-	/** pi's `createEventBus`. */
-	yapi.createEventBus = () => {
+	/** A bus that tells `report` of the first listener on each channel (`events.listen`), of the last to go (`events.unlisten`), and of `clear` (`events.reset`). */
+	const createBus = (report) => {
 		const emitter = new EventEmitter();
+		const listeners = new Map();
 		return {
 			emit: (channel, data) => {
 				emitter.emit(channel, data);
@@ -39,16 +40,39 @@
 					}
 				};
 				emitter.on(channel, safe);
-				return () => emitter.off(channel, safe);
+				if (!listeners.has(channel)) listeners.set(channel, new Set());
+				const live = listeners.get(channel);
+				live.add(safe);
+				if (live.size === 1) report?.("events.listen", channel);
+				return () => {
+					emitter.off(channel, safe);
+					// A listener from before `clear` is gone already.
+					if (live.delete(safe) && live.size === 0 && listeners.get(channel) === live) {
+						listeners.delete(channel);
+						report?.("events.unlisten", channel);
+					}
+				};
 			},
 			clear: () => {
 				emitter.removeAllListeners();
+				listeners.clear();
+				report?.("events.reset");
 			},
 		};
 	};
+	/** pi's `createEventBus`. */
+	yapi.createEventBus = () => createBus();
 	// `pi.events`, which every extension shares. The host passes events on to
-	// the listeners in other runtimes, as JSON, after the listeners here.
-	const eventBus = yapi.createEventBus();
+	// the listeners in other runtimes, as JSON, after the listeners here. It
+	// hears which channels have listeners, to warn of events its routing
+	// keeps from them.
+	const eventBus = createBus((kind, channel) => {
+		try {
+			yapi.request(kind, { channel });
+		} catch {
+			// Hosts without other runtimes route nothing.
+		}
+	});
 	const emitEvent = (channel, data) => {
 		eventBus.emit(channel, data);
 		try {

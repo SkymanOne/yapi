@@ -1,15 +1,16 @@
 #!/bin/sh
-# Installs yapi from a GitHub release: downloads the binary for this system,
-# checks it against its published SHA-256 and copies it into a directory on
-# PATH. Then it installs the release's docs for the model the same way into
-# yapi's agent directory, replacing the previous copy.
+# Installs yapi from a GitHub release: downloads the archive for this system,
+# checks it against its published SHA-256 and copies yapi, and chest when the
+# release has it, into a directory on PATH. Then it installs the release's
+# docs for the model the same way into yapi's agent directory, replacing the
+# previous copy.
 #
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.3.1 --to /usr/local/bin
 #
 # Options, or the environment variables that set them:
 #   --version <tag>   YAPI_VERSION       release to install (default: the latest)
-#   --to <dir>        YAPI_INSTALL_DIR   where to put yapi (default: ~/.local/bin)
+#   --to <dir>        YAPI_INSTALL_DIR   where to put yapi and chest (default: ~/.local/bin)
 #   --no-docs         YAPI_NO_DOCS=1     skip the docs for the model
 #   YAPI_CODING_AGENT_DIR                where the docs go, under docs/
 #                                        (default: ~/.yapi/agent)
@@ -51,11 +52,12 @@ while [ $# -gt 0 ]; do
             cat <<EOF
 Usage: install.sh [--version <tag>] [--to <dir>] [--no-docs]
 
-Installs yapi from a GitHub release, checked against its SHA-256, and the
-release's docs for the model into ~/.yapi/agent/docs, or YAPI_CODING_AGENT_DIR.
+Installs yapi and chest from a GitHub release, checked against its SHA-256,
+and the release's docs for the model into ~/.yapi/agent/docs, or
+YAPI_CODING_AGENT_DIR.
 
   --version <tag>   release to install (default: the latest), or YAPI_VERSION
-  --to <dir>        where to put yapi (default: ~/.local/bin), or YAPI_INSTALL_DIR
+  --to <dir>        where to put yapi and chest (default: ~/.local/bin), or YAPI_INSTALL_DIR
   --no-docs         skip the docs, or YAPI_NO_DOCS=1
 EOF
             exit 0
@@ -145,12 +147,21 @@ mkdir "$work/unpacked"
 tar -xzf "$work/$name" -C "$work/unpacked"
 [ -f "$work/unpacked/yapi" ] || fail "$name does not contain yapi"
 installed=$("$work/unpacked/yapi" --version) || fail "the downloaded yapi does not run on this system"
+# Releases before chest shipped hold yapi alone.
+binaries=yapi
+if [ -f "$work/unpacked/chest" ]; then
+    chest=$("$work/unpacked/chest" --version) || fail "the downloaded chest does not run on this system"
+    binaries="yapi chest"
+fi
 mkdir -p "$dir"
-# Copy, then rename, so a running yapi is replaced rather than overwritten.
-cp "$work/unpacked/yapi" "$dir/.yapi.$$"
-chmod 755 "$dir/.yapi.$$"
-mv -f "$dir/.yapi.$$" "$dir/yapi"
+for binary in $binaries; do
+    # Copy, then rename, so a running binary is replaced rather than overwritten.
+    cp "$work/unpacked/$binary" "$dir/.$binary.$$"
+    chmod 755 "$dir/.$binary.$$"
+    mv -f "$dir/.$binary.$$" "$dir/$binary"
+done
 echo "Installed yapi $installed to $dir/yapi"
+[ "$binaries" = yapi ] || echo "Installed $chest to $dir/chest"
 
 # The docs the model reads about yapi and pi, unpacked next to the old copy,
 # which they then replace. yapi downloads them on its first run when this

@@ -5,9 +5,12 @@
     reason = "test helpers; a panic is a test failure"
 )]
 
-use std::io::Write as _;
+use std::collections::HashMap;
+use std::io::{BufRead as _, BufReader, Write as _};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use aws_lc_rs::digest::{SHA512, digest};
 use base64::Engine as _;
@@ -16,6 +19,7 @@ use indexmap::IndexMap;
 use serde_json::{Value, json};
 use yapi_ai::auth::lock::FileLock;
 use yapi_core::packages::PackageManager;
+use yapi_core::packages::npm::{self, Npm, Pinned};
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::MockServer;
 use yapi_mock::{Cassette, Interaction, RequestMatch, Response};
@@ -77,12 +81,13 @@ fn publish(
 ) -> Vec<Interaction> {
     let mut manifests = serde_json::Map::new();
     let mut tarball_bytes = Vec::new();
+    let file = name.rsplit('/').next().unwrap();
     for (version, manifest, bytes) in versions {
         let mut manifest = manifest.clone();
         manifest["name"] = json!(name);
         manifest["version"] = json!(version);
         manifest["dist"] = json!({
-            "tarball": format!("{base}/{name}/-/{name}-{version}.tgz"),
+            "tarball": format!("{base}/{name}/-/{file}-{version}.tgz"),
             "integrity": format!("sha512-{}", STANDARD.encode(digest(&SHA512, bytes))),
         });
         manifests.insert((*version).to_owned(), manifest);
@@ -95,7 +100,7 @@ fn publish(
     vec![
         get(&format!("/{name}"), json_response(&packument)),
         get(
-            &format!("/{name}/-/{name}-{served}.tgz"),
+            &format!("/{name}/-/{file}-{served}.tgz"),
             Response {
                 status: 200,
                 headers: IndexMap::new(),
@@ -223,7 +228,10 @@ async fn installs_npm_dependencies() {
 
 /// A dependency already resolvable through any `node_modules` up from its
 /// dependent is checked there, as Node resolves it: a different version in
-/// between gets a nested copy, and a cycle ends at its ancestor's copy.
+/// between gets a nested copy, and a cycle ends at its ancestor's copy. A
+/// copy is never hoisted past a package that asks for another version,
+/// which would nest its own over it later, and an alias is no copy of the
+/// package it stands in for.
 #[tokio::test(flavor = "multi_thread")]
 async fn ancestor_node_modules() {
     let dir = scratch("npm-ancestors");
@@ -271,16 +279,19 @@ async fn ancestor_node_modules() {
         ),
         ("c", versions("c", &[("1.0.0", json!({"p": "^2"}))])),
     ];
+    type Published = [(&'static str, Vec<(String, Value, Vec<u8>)>)];
+    // The packument, which is fetched once per name, and the tarball of
+    // `name@version`.
+    let published = |packages: &Published, base: &str, name: &str, version: &str| {
+        let (_, versions) = packages.iter().find(|(n, _)| *n == name).unwrap();
+        let versions: Vec<(&str, Value, Vec<u8>)> = versions
+            .iter()
+            .map(|(v, manifest, bytes)| (v.as_str(), manifest.clone(), bytes.clone()))
+            .collect();
+        publish(base, name, &versions, version)
+    };
     let server = registry(|base| {
-        let fetch = |name: &str, version: &str| {
-            let (_, versions) = packages.iter().find(|(n, _)| *n == name).unwrap();
-            let versions: Vec<(&str, Value, Vec<u8>)> = versions
-                .iter()
-                .map(|(v, manifest, bytes)| (v.as_str(), manifest.clone(), bytes.clone()))
-                .collect();
-            publish(base, name, &versions, version)
-        };
-        // The packument is fetched once per name.
+        let fetch = |name: &str, version: &str| published(&packages, base, name, version);
         let cached = |name: &str, version: &str| fetch(name, version).split_off(1);
         [
             fetch("ext", "1.0.0"),
@@ -328,6 +339,100 @@ async fn ancestor_node_modules() {
             .join("c/node_modules/p/node_modules/q/node_modules")
             .exists()
     );
+
+    // c@2, nested in b, asks for s@1 and t@1, and b for s@2 and t@2. Had c@2
+    // kept the root's s@1 or hoisted t@1 there, b would nest its own over
+    // them for c@2. And top's `y` is not the root's `y`, a's alias of z@1.
+    let dir = scratch("npm-shadows");
+    let packages = [
+        (
+            "top",
+            versions(
+                "top",
+                &[("1.0.0", json!({"a": "^1", "b": "^1", "y": "^1"}))],
+            ),
+        ),
+        (
+            "a",
+            versions(
+                "a",
+                &[("1.0.0", json!({"c": "^1", "y": "npm:z@^1", "s": "^1"}))],
+            ),
+        ),
+        (
+            "b",
+            versions("b", &[("1.0.0", json!({"c": "^2", "s": "^2", "t": "^2"}))]),
+        ),
+        (
+            "c",
+            versions(
+                "c",
+                &[
+                    ("1.0.0", json!({})),
+                    ("2.0.0", json!({"s": "^1", "t": "^1"})),
+                ],
+            ),
+        ),
+        (
+            "s",
+            versions("s", &[("1.0.0", json!({})), ("2.0.0", json!({}))]),
+        ),
+        (
+            "t",
+            versions("t", &[("1.0.0", json!({})), ("2.0.0", json!({}))]),
+        ),
+        ("y", versions("y", &[("1.0.0", json!({}))])),
+        ("z", versions("z", &[("1.0.0", json!({}))])),
+    ];
+    let server = registry(|base| {
+        let fetch = |name: &str, version: &str| published(&packages, base, name, version);
+        let cached = |name: &str, version: &str| fetch(name, version).split_off(1);
+        [
+            fetch("top", "1.0.0"),
+            fetch("a", "1.0.0"),
+            fetch("c", "1.0.0"),
+            fetch("z", "1.0.0"),
+            fetch("s", "1.0.0"),
+            fetch("b", "1.0.0"),
+            cached("c", "2.0.0"),
+            cached("s", "1.0.0"),
+            fetch("t", "1.0.0"),
+            cached("s", "2.0.0"),
+            cached("t", "2.0.0"),
+            fetch("y", "1.0.0"),
+        ]
+        .concat()
+    })
+    .await;
+    manager(&dir, &server.url())
+        .install("npm:top", false)
+        .await
+        .unwrap();
+    server.finish().unwrap();
+    let modules = dir.join("agent/npm/node_modules");
+    let package = |path: &str| {
+        let text = std::fs::read_to_string(modules.join(path).join("package.json")).unwrap();
+        let manifest = serde_json::from_str::<Value>(&text).unwrap();
+        format!(
+            "{}@{}",
+            manifest["name"].as_str().unwrap(),
+            manifest["version"].as_str().unwrap()
+        )
+    };
+    for (path, expected) in [
+        ("a", "a@1.0.0"),
+        ("c", "c@1.0.0"),
+        ("y", "z@1.0.0"),
+        ("s", "s@1.0.0"),
+        ("b/node_modules/c", "c@2.0.0"),
+        ("b/node_modules/c/node_modules/s", "s@1.0.0"),
+        ("b/node_modules/c/node_modules/t", "t@1.0.0"),
+        ("b/node_modules/s", "s@2.0.0"),
+        ("t", "t@2.0.0"),
+        ("top/node_modules/y", "y@1.0.0"),
+    ] {
+        assert_eq!(package(path), expected, "{path}");
+    }
 }
 
 /// Writes the agent's `settings.json` with `packages`.
@@ -567,6 +672,539 @@ async fn native_addons_and_integrity() {
     let mut packages = manager(&dir, &server.url());
     let error = packages.install("npm:pkg", false).await.unwrap_err();
     assert_eq!(error.to_string(), "Integrity check failed for pkg@1.0.0");
+}
+
+/// The files below `dir` with their contents, by relative path.
+fn files(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut found = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(&next).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let contents = std::fs::read(&path).unwrap();
+                found.push((path.strip_prefix(dir).unwrap().to_owned(), contents));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// An install pins each package it unpacks, nested and aliased ones
+/// included, with a sha512 even where the registry sent sha1, and leaves out
+/// an optional dependency that failed, with what its install hoisted.
+/// Replay rebuilds the tree from the tarballs alone, and refuses tampered
+/// tarballs, paths outside `node_modules`, and trees that are not what
+/// their dependents ask for.
+#[tokio::test(flavor = "multi_thread")]
+async fn npm_tree_replays() {
+    let dir = scratch("replay");
+    let package = |name: &str, version: &str, dependencies: Value| {
+        let mut manifest = dependencies.clone();
+        manifest["name"] = json!(name);
+        manifest["version"] = json!(version);
+        let bytes = tarball(&[
+            ("package.json", &manifest.to_string()),
+            (
+                "index.js",
+                &format!("module.exports = '{name}@{version}';\n"),
+            ),
+        ]);
+        (name.to_owned(), version.to_owned(), dependencies, bytes)
+    };
+    // `@acme/lib`'s `util` is an alias that nests beside app's `util@1`.
+    // `opt` hoists `leftover` and nests one too, then fails on
+    // `@acme/lib@^2`, so both go with it.
+    let packages = [
+        package(
+            "app",
+            "1.0.0",
+            json!({"dependencies": {"util": "^1", "@acme/lib": "^1"}, "optionalDependencies": {"opt": "^1"}}),
+        ),
+        package("util", "1.0.0", json!({})),
+        package(
+            "@acme/lib",
+            "1.0.0",
+            json!({"dependencies": {"util": "npm:@acme/fork@^2"}}),
+        ),
+        package("@acme/fork", "2.0.0", json!({})),
+        package(
+            "opt",
+            "1.0.0",
+            json!({"dependencies": {"leftover": "^1", "util": "npm:@acme/fork@^2", "@acme/lib": "^2"}}),
+        ),
+        package("leftover", "1.0.0", json!({})),
+    ];
+    let published = |base: &str, name: &str| {
+        let (_, version, manifest, bytes) = packages.iter().find(|(n, ..)| n == name).unwrap();
+        let mut all = publish(
+            base,
+            name,
+            &[(version.as_str(), manifest.clone(), bytes.clone())],
+            version,
+        );
+        all[0].request.path = format!("/{}", name.replace('/', "%2f"));
+        if name == "util" {
+            let mut packument: Value = serde_json::from_str(&all[0].response.chunks[0]).unwrap();
+            let sha1 = digest(&aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY, bytes);
+            packument["versions"][version]["dist"]["integrity"] =
+                json!(format!("sha1-{}", STANDARD.encode(sha1)));
+            all[0].response.chunks = vec![packument.to_string()];
+        }
+        all
+    };
+    let server = registry(|base| {
+        let mut all: Vec<Interaction> = packages
+            .iter()
+            .flat_map(|(name, ..)| published(base, name))
+            .collect();
+        // opt's nested `@acme/fork`, then `fetch` of `app`.
+        all.push(published(base, "@acme/fork").remove(1));
+        all.push(published(base, "app").remove(1));
+        all
+    })
+    .await;
+    let mut npm = Npm::new([("registry".to_owned(), format!("{}/", server.url()))].into());
+    let root = dir.join("installed");
+    let installed = npm::install(&mut npm, &root, "app", None).await.unwrap();
+    assert_eq!(installed.version, "1.0.0");
+    let mut tree = installed.tree;
+    tree.sort_by(|a, b| a.path.cmp(&b.path));
+    let summary: Vec<_> = tree
+        .iter()
+        .map(|pin| (pin.path.as_str(), pin.name.as_str(), pin.version.as_str()))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("node_modules/@acme/lib", "@acme/lib", "1.0.0"),
+            (
+                "node_modules/@acme/lib/node_modules/util",
+                "@acme/fork",
+                "2.0.0"
+            ),
+            ("node_modules/app", "app", "1.0.0"),
+            ("node_modules/util", "util", "1.0.0"),
+        ]
+    );
+    for gone in ["opt", "leftover"] {
+        assert!(!root.join("node_modules").join(gone).exists(), "{gone}");
+    }
+    for pin in &tree {
+        let (.., bytes) = packages.iter().find(|(n, ..)| *n == pin.name).unwrap();
+        let sha512 = STANDARD.encode(digest(&SHA512, bytes));
+        assert_eq!(pin.integrity, format!("sha512-{sha512}"), "{pin:?}");
+        let file = pin.name.rsplit('/').next().unwrap();
+        let tarball = format!("{}/{}/-/{file}-{}.tgz", server.url(), pin.name, pin.version);
+        assert_eq!(pin.tarball, tarball);
+    }
+
+    let fetched = dir.join("fetched");
+    let pin = npm::fetch(&mut npm, "app", None, &fetched).await.unwrap();
+    assert_eq!(
+        pin,
+        Pinned {
+            path: String::new(),
+            ..tree[2].clone()
+        }
+    );
+    assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
+    server.finish().unwrap();
+
+    // A mirror of the tarballs: one replay, one whose downloads overlap up
+    // to replay's cap, a replay with a tampered download, then
+    // `fetch_pinned`.
+    let mirror = Mirror::default();
+    for (name, version, _, bytes) in &packages {
+        let file = name.rsplit('/').next().unwrap();
+        let path = format!("/{name}/-/{file}-{version}.tgz");
+        mirror.files.lock().unwrap().insert(path, bytes.clone());
+    }
+    let mirror_url = mirror.serve();
+    for pin in &mut tree {
+        pin.tarball = pin.tarball.replace(&server.url(), &mirror_url);
+    }
+    // The registry is the http mirror, so its http tarballs pass, and a
+    // packument request would break the mirror's cassette.
+    let offline = Npm::new([("registry".to_owned(), format!("{mirror_url}/"))].into());
+    // A replay root's package.json names the package at its top, which no
+    // other dependency reaches.
+    let depends = |dir: &Path, names: &[&str]| {
+        let dependencies: serde_json::Map<String, Value> = names
+            .iter()
+            .map(|name| ((*name).to_owned(), json!("^1.0.0")))
+            .collect();
+        std::fs::create_dir_all(dir).unwrap();
+        let manifest = json!({ "dependencies": dependencies }).to_string();
+        std::fs::write(dir.join("package.json"), manifest).unwrap();
+    };
+    let replayed = dir.join("replayed");
+    depends(&replayed, &["app"]);
+    let stale = replayed.join("node_modules/stale");
+    std::fs::create_dir_all(&stale).unwrap();
+    std::fs::write(stale.join("package.json"), "{}").unwrap();
+    let reversed: Vec<Pinned> = tree.iter().rev().cloned().collect();
+    npm::replay(&offline, &replayed, &reversed).await.unwrap();
+    let modules = files(&root.join("node_modules"));
+    assert_eq!(modules.len(), 8);
+    // The unlisted package is gone, and nothing is left beside the tree.
+    assert_eq!(files(&replayed.join("node_modules")), modules);
+    let entries = |dir: &Path| -> Vec<String> {
+        let names = std::fs::read_dir(dir).unwrap();
+        let mut names: Vec<String> = names
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(entries(&replayed), ["node_modules", "package.json"]);
+
+    // Nine pins, one more than replay downloads at once, which the mirror
+    // holds until nine overlap, so that a higher cap shows.
+    let mut crowd = tree.clone();
+    for n in 0..5 {
+        let (name, version, _, bytes) = package(&format!("extra{n}"), "1.0.0", json!({}));
+        let path = format!("/{name}/-/{name}-{version}.tgz");
+        let integrity = format!("sha512-{}", STANDARD.encode(digest(&SHA512, &bytes)));
+        mirror.files.lock().unwrap().insert(path.clone(), bytes);
+        crowd.push(Pinned {
+            path: format!("node_modules/{name}"),
+            name,
+            version,
+            tarball: format!("{mirror_url}{path}"),
+            integrity,
+        });
+    }
+    depends(
+        &dir.join("crowd"),
+        &["app", "extra0", "extra1", "extra2", "extra3", "extra4"],
+    );
+    *mirror.gather.lock().unwrap() = true;
+    npm::replay(&offline, &dir.join("crowd"), &crowd)
+        .await
+        .unwrap();
+    *mirror.gather.lock().unwrap() = false;
+    let most = mirror.load.0.lock().unwrap().1;
+    assert!((2..=8).contains(&most), "{most} downloads at once");
+
+    // A download that fails partway leaves the root as it was.
+    let fork = "/@acme/fork/-/fork-2.0.0.tgz".to_owned();
+    let original = mirror
+        .files
+        .lock()
+        .unwrap()
+        .insert(fork.clone(), b"tampered".to_vec());
+    let before = files(&replayed);
+    let error = npm::replay(&offline, &replayed, &tree).await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Integrity check failed for @acme/fork@2.0.0"
+    );
+    assert_eq!(files(&replayed), before);
+    assert_eq!(entries(&replayed), ["node_modules", "package.json"]);
+    mirror.files.lock().unwrap().insert(fork, original.unwrap());
+
+    // Refused once unpacked, though each tarball matches its digest: a pin
+    // that names another package than every dependent reaching its folder
+    // asks for, or than its own package.json, and one that nothing needs.
+    let util = tree[3].clone();
+    let relabeled = format!("{mirror_url}/util/-/util-1.0.1.tgz");
+    let bytes = mirror.files.lock().unwrap()["/util/-/util-1.0.0.tgz"].clone();
+    mirror
+        .files
+        .lock()
+        .unwrap()
+        .insert("/util/-/util-1.0.1.tgz".into(), bytes);
+    let replaced = |index: usize, pin: Pinned| {
+        let mut pins = tree.clone();
+        pins[index] = pin;
+        pins
+    };
+    let swapped = [
+        (
+            replaced(
+                1,
+                Pinned {
+                    path: tree[1].path.clone(),
+                    ..util.clone()
+                },
+            ),
+            "node_modules/@acme/lib/node_modules/util holds util@1.0.0, but node_modules/@acme/lib needs @acme/fork@^2 there",
+        ),
+        // app's `util` is satisfied by the root's, `@acme/lib`'s is not.
+        (
+            [&tree[..1], &tree[2..]].concat(),
+            "node_modules/util holds util@1.0.0, but node_modules/@acme/lib needs @acme/fork@^2 there",
+        ),
+        (
+            replaced(
+                3,
+                Pinned {
+                    version: "1.0.1".into(),
+                    tarball: relabeled,
+                    ..util
+                },
+            ),
+            "The package.json in node_modules/util names util@1.0.0, not the pinned util@1.0.1",
+        ),
+        (
+            [tree.clone(), vec![crowd[tree.len()].clone()]].concat(),
+            "node_modules/extra0 holds extra0@1.0.0, which nothing depends on",
+        ),
+    ];
+    for (pins, message) in swapped {
+        let error = npm::replay(&offline, &replayed, &pins).await.unwrap_err();
+        assert_eq!(error.to_string(), message);
+        assert_eq!(files(&replayed), before);
+        assert_eq!(entries(&replayed), ["node_modules", "package.json"]);
+    }
+
+    // Refused before any request: the tree plus one more pin, last so that a
+    // lazy check would download the others first.
+    let with = |extra: Pinned| [tree.clone(), vec![extra]].concat();
+    let app = |path: &str| Pinned {
+        path: path.into(),
+        ..tree[2].clone()
+    };
+    let integrity = |integrity: String| Pinned {
+        integrity,
+        ..app("node_modules/extra")
+    };
+    let secure = Npm::new([("registry".to_owned(), "https://registry.test/".to_owned())].into());
+    // The mirror's host and port, named as an https registry.
+    let https = format!("{}/", mirror_url.replacen("http://", "https://", 1));
+    let upgraded = Npm::new([("registry".to_owned(), https.clone())].into());
+    // An http registry for the scope never lets plain http reach another
+    // host that holds a token.
+    let local = Npm::new(
+        [
+            (
+                "@local:registry".to_owned(),
+                "http://localhost:4873/".to_owned(),
+            ),
+            ("//npm.corp.test/:_authToken".to_owned(), "T".to_owned()),
+        ]
+        .into(),
+    );
+    let corp = Pinned {
+        path: "node_modules/@local/x".into(),
+        name: "@local/x".into(),
+        tarball: "http://npm.corp.test/@local/x/-/x-1.0.0.tgz".into(),
+        ..tree[2].clone()
+    };
+    let refused = [
+        (
+            &offline,
+            with(app("node_modules/..")),
+            "Invalid package path: node_modules/..".to_owned(),
+        ),
+        (
+            &offline,
+            with(app("../evil")),
+            "Invalid package path: ../evil".into(),
+        ),
+        (
+            &offline,
+            with(app("/evil")),
+            "Invalid package path: /evil".into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/\u{e9}")),
+            "Invalid package path: node_modules/\u{e9}".into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/.git")),
+            "Invalid package path: node_modules/.git".into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/_app")),
+            "Invalid package path: node_modules/_app".into(),
+        ),
+        (
+            &offline,
+            // A terminal title escape, printed escaped.
+            with(app("node_modules/\u{1b}]0;owned\u{7}")),
+            "Invalid package path: node_modules/\\u{1b}]0;owned\\u{7}".into(),
+        ),
+        (
+            &offline,
+            // Its parent differs from the pinned `node_modules/app` by case alone.
+            with(app("node_modules/APP/node_modules/app")),
+            "Package path node_modules/APP/node_modules/app has no pinned parent node_modules/APP"
+                .into(),
+        ),
+        (
+            &offline,
+            with(app("node_modules/APP")),
+            "Package paths collide: node_modules/app and node_modules/APP".into(),
+        ),
+        (
+            &offline,
+            with(integrity(format!("sha1-{}", STANDARD.encode([0u8; 20])))),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
+            &offline,
+            with(integrity(format!("{0} {0}", tree[2].integrity))),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
+            &offline,
+            with(integrity(String::new())),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
+            &offline,
+            // Valid base64, but three bytes rather than sha512's 64.
+            with(integrity("sha512-AAAA".into())),
+            "Invalid integrity for app@1.0.0: expected one sha512 digest".into(),
+        ),
+        (
+            &secure,
+            tree.clone(),
+            format!(
+                "Refusing to download @acme/lib@1.0.0 from {}: a pinned tarball must come from https://registry.test/, the registry for @acme/lib, over https unless that registry uses http",
+                tree[0].tarball
+            ),
+        ),
+        (
+            &upgraded,
+            tree.clone(),
+            format!(
+                "Refusing to download @acme/lib@1.0.0 from {}: a pinned tarball must come from {https}, the registry for @acme/lib, over https unless that registry uses http",
+                tree[0].tarball
+            ),
+        ),
+        (
+            &offline,
+            with(Pinned {
+                tarball: format!("{mirror_url}/evil/-/evil-1.0.0.tgz"),
+                ..app("node_modules/extra")
+            }),
+            format!(
+                "Refusing to download app@1.0.0 from {mirror_url}/evil/-/evil-1.0.0.tgz: a pinned tarball must be at /app/-/app-1.0.0.tgz. Registries that keep tarballs elsewhere, such as GitHub Packages, cannot be replayed from a lock"
+            ),
+        ),
+        (
+            &local,
+            vec![corp],
+            "Refusing to download @local/x@1.0.0 from http://npm.corp.test/@local/x/-/x-1.0.0.tgz: a pinned tarball must come from http://localhost:4873/, the registry for @local/x, over https unless that registry uses http".into(),
+        ),
+    ];
+    for (npm, pins, message) in refused {
+        let target = dir.join("refused");
+        let error = npm::replay(npm, &target, &pins).await.unwrap_err();
+        assert_eq!(error.to_string(), message);
+        assert!(!target.exists());
+    }
+    #[cfg(unix)]
+    {
+        let elsewhere = dir.join("elsewhere");
+        let linked = dir.join("linked");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::create_dir_all(&linked).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, linked.join("node_modules")).unwrap();
+        let error = npm::replay(&offline, &linked, &tree).await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Refusing to install through the link {}",
+                linked.join("node_modules").display()
+            )
+        );
+        assert!(entries(&elsewhere).is_empty());
+    }
+
+    // `fetch_pinned` reinstalls what `fetch` pinned, dropping stray files.
+    std::fs::write(fetched.join("stray.js"), "").unwrap();
+    let pinned = Pinned {
+        tarball: pin.tarball.replace(&server.url(), &mirror_url),
+        ..pin
+    };
+    npm::fetch_pinned(&offline, &pinned, &fetched)
+        .await
+        .unwrap();
+    assert_eq!(files(&fetched), files(&root.join("node_modules/app")));
+}
+
+/// Files served over HTTP by path, in any order and many at once, which
+/// remembers the most requests it held at the same time. While `gather` is
+/// set, each request waits up to 5 s for another before it is answered, so
+/// that downloads made one at a time show as one, then up to 1 s more until
+/// nine are held, so that more than replay's eight at once show. A slow
+/// machine can only make fewer overlap.
+#[derive(Clone, Default)]
+struct Mirror {
+    files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    gather: Arc<Mutex<bool>>,
+    /// The requests held now and the most held at once.
+    load: Arc<(Mutex<(usize, usize)>, Condvar)>,
+}
+
+impl Mirror {
+    /// Serves until the process exits; the base URL.
+    fn serve(&self) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let mirror = self.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mirror = mirror.clone();
+                std::thread::spawn(move || mirror.answer(stream.unwrap()));
+            }
+        });
+        base
+    }
+
+    fn answer(&self, mut stream: std::net::TcpStream) {
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut request = String::new();
+        reader.read_line(&mut request).unwrap();
+        let mut header = String::new();
+        while reader.read_line(&mut header).unwrap() > 2 {
+            header.clear();
+        }
+        let path = request.split(' ').nth(1).unwrap_or("/").replace("%2f", "/");
+        let (lock, wake) = &*self.load;
+        let mut load = lock.lock().unwrap();
+        load.0 += 1;
+        load.1 = load.1.max(load.0);
+        wake.notify_all();
+        if *self.gather.lock().unwrap() {
+            // Only until two requests have overlapped once.
+            let alone = |load: &mut (usize, usize)| load.1 < 2;
+            load = wake
+                .wait_timeout_while(load, Duration::from_secs(5), alone)
+                .unwrap()
+                .0;
+            let fewer_than_nine = |load: &mut (usize, usize)| load.0 < 9;
+            load = wake
+                .wait_timeout_while(load, Duration::from_secs(1), fewer_than_nine)
+                .unwrap()
+                .0;
+        }
+        load.0 -= 1;
+        drop(load);
+        let body = self.files.lock().unwrap().get(&path).cloned();
+        let status = if body.is_some() {
+            "200 OK"
+        } else {
+            "404 Not Found"
+        };
+        let body = body.unwrap_or_default();
+        let head = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(head.as_bytes());
+        let _ = stream.write_all(&body);
+    }
 }
 
 /// An `npm:` alias installs the package it names under the alias, and
@@ -1026,8 +1664,9 @@ async fn autoload_delta_user_package() {
 }
 
 /// A dependency named by a path, absolute or climbing out of `node_modules`,
-/// fails the install before anything is written there, even when the
-/// registry serves a package for that name.
+/// or by a name npm refuses, fails the install before anything is written
+/// there, even when the registry serves a package for that name. The error
+/// shows the name escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn path_dependency_names_refused() {
     let dir = scratch("dependency-paths");
@@ -1036,7 +1675,12 @@ async fn path_dependency_names_refused() {
     std::fs::write(outside.join("keep.txt"), "mine").unwrap();
     let package = tarball(&[("package.json", r#"{"name": "evil-pkg"}"#)]);
     let payload = tarball(&[("package.json", r#"{"name": "evil", "version": "1.0.0"}"#)]);
-    for name in [outside.to_str().unwrap(), "../../../outside"] {
+    for name in [
+        outside.to_str().unwrap(),
+        "../../../outside",
+        ".git",
+        "\u{1b}[2Jevil",
+    ] {
         let server = registry(|base| {
             let manifest = json!({"dependencies": {name: "1.0.0"}});
             let versions = [("1.0.0", manifest, package.clone())];
@@ -1054,7 +1698,8 @@ async fn path_dependency_names_refused() {
         .await;
         let mut packages = manager(&dir, &server.url());
         let error = packages.install("npm:evil-pkg", false).await.unwrap_err();
-        assert_eq!(error.to_string(), format!("Invalid package name: {name}"));
+        let shown = name.escape_debug();
+        assert_eq!(error.to_string(), format!("Invalid package name: {shown}"));
         assert_eq!(
             std::fs::read_to_string(outside.join("keep.txt")).unwrap(),
             "mine"

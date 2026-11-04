@@ -112,6 +112,7 @@ fn resolves_resources_as_pi() {
             home: root.join("home"),
             project_trusted: trusted,
             packages,
+            skills: Vec::new(),
             user: [&user[0][..], &user[1][..], &user[2][..], &user[3][..]],
             project: [
                 &project_lists[0][..],
@@ -154,6 +155,111 @@ fn ignores_non_string_lists() {
         enabled(&resources, ResourceType::Prompts),
         [root.join("prompts/p.md")]
     );
+}
+
+/// A `chest.toml` `[package]` loads a package without `package.json`, with
+/// the globs and `!` patterns of pi's lists, and each kind falls back on its
+/// own: a `yapi` key holding only capabilities hides no `pi` list.
+#[test]
+fn package_lists_resolve() {
+    let tmp = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let chest = tmp.join("package-chest");
+    write(
+        &chest,
+        &[
+            (
+                "chest.toml",
+                "[package]\nname = \"acme\"\nextensions = [\"ext/*.ts\", \"!ext/skip.ts\"]\nskills = [\"skills\"]\n",
+            ),
+            ("ext/a.ts", ""),
+            ("ext/skip.ts", ""),
+            ("skills/x/SKILL.md", ""),
+            ("prompts/p.md", ""),
+        ],
+    );
+    let resources = package_resources(&chest, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [chest.join("ext/a.ts")]
+    );
+    assert_eq!(
+        enabled(&resources, ResourceType::Skills),
+        [chest.join("skills/x/SKILL.md")]
+    );
+    // As with pi's lists, a kind none names provides nothing.
+    assert!(enabled(&resources, ResourceType::Prompts).is_empty());
+    assert!(resources.problems.is_empty());
+    // A `[package]` that does not parse is reported, and the folders apply.
+    std::fs::write(chest.join("chest.toml"), "[package]\nauthor = \"Ada\"\n").unwrap();
+    let resources = package_resources(&chest, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Prompts),
+        [chest.join("prompts/p.md")]
+    );
+    let [(folder, message)] = &resources.problems[..] else {
+        panic!("{:?}", resources.problems);
+    };
+    assert_eq!(folder, &chest.display().to_string());
+    assert!(message.contains("unknown field `author`"), "{message}");
+
+    let mixed = tmp.join("package-yapi-capabilities");
+    write(
+        &mixed,
+        &[
+            (
+                "package.json",
+                r#"{"yapi": {"capabilities": ["fs"]}, "pi": {"extensions": ["./pi.ts"]}}"#,
+            ),
+            ("pi.ts", ""),
+            ("native.wasm", ""),
+            ("p.md", ""),
+            ("extensions/other.ts", ""),
+        ],
+    );
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("pi.ts")]
+    );
+    // A chest.toml that does not parse is reported and hides no package.json list.
+    std::fs::write(mixed.join("chest.toml"), "[package\n").unwrap();
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("pi.ts")]
+    );
+    assert_eq!(resources.problems.len(), 1, "{:?}", resources.problems);
+    std::fs::remove_file(mixed.join("chest.toml")).unwrap();
+    // A `yapi` list still wins for its kind, and pi's lists fill the rest.
+    std::fs::write(
+        mixed.join("package.json"),
+        r#"{"yapi": {"extensions": ["./native.wasm"]}, "pi": {"extensions": ["./pi.ts"], "prompts": ["./p.md"]}}"#,
+    )
+    .unwrap();
+    let resources = package_resources(&mixed, None, false);
+    assert_eq!(
+        enabled(&resources, ResourceType::Extensions),
+        [mixed.join("native.wasm")]
+    );
+    assert_eq!(
+        enabled(&resources, ResourceType::Prompts),
+        [mixed.join("p.md")]
+    );
+
+    // A settings entry cannot pass for one of chest's packages.
+    std::fs::create_dir_all(tmp.join("chest:package-chest")).unwrap();
+    let entries = [json!("chest:package-chest"), json!("package-chest")];
+    let inputs = package_inputs(
+        &entries,
+        &[],
+        |_| tmp.to_path_buf(),
+        |source, _| match source {
+            Source::Local { path } => local_path(path, tmp),
+            _ => PathBuf::new(),
+        },
+    );
+    let sources: Vec<&str> = inputs.iter().map(|input| input.source.as_str()).collect();
+    assert_eq!(sources, ["package-chest"]);
 }
 
 /// The enabled resources of `kind`, as paths.

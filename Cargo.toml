@@ -57,11 +57,14 @@ thiserror = "2"
 tokio = "1"
 tokio-util = "0.7.12"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+toml_edit = { version = "0.25.17", default-features = false, features = ["display", "parse", "serde"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tz-rs = { version = "0.7", default-features = false, features = ["std"] }
 url = "2.5"
 wasmtime = { version = "=49.0.5", default-features = false, features = ["call-hook", "component-model", "cranelift", "runtime", "std"] }
 wasmtime-wasi = { version = "=49.0.5", default-features = false }
+# The version wasmtime uses, so the binary carries one copy.
+wasmparser = { version = "=0.258.3", default-features = false, features = ["component-model", "std"] }
 unicode-normalization = "0.1"
 unicode-segmentation = "1"
 unicode-width = "0.2"
