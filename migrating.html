@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Coming from Pi - yapi</title>
+        <title>Move from Pi to yapi - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,15 +179,29 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="coming-from-pi"><a class="header" href="#coming-from-pi">Coming from Pi</a></h1>
-<p>yapi reads Pi’s formats but keeps its own folders, so the two never write the same files. To copy an existing Pi setup, run:</p>
+                        <h1 id="move-from-pi-to-yapi"><a class="header" href="#move-from-pi-to-yapi">Move from Pi to yapi</a></h1>
+<p>yapi reads Pi’s formats but keeps its own folders, so the two never write the same files. <code>yapi import pi</code> copies an existing Pi setup into yapi’s folders. This page covers what the import copies and leaves out, how to move project packages to chest, and which names change.</p>
+<h2 id="copy-a-pi-setup"><a class="header" href="#copy-a-pi-setup">Copy a Pi setup</a></h2>
+<p>To copy an existing Pi setup, run:</p>
 <pre><code class="language-sh">yapi import pi
 </code></pre>
-<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s: settings, API keys, models, key bindings, MCP servers, trust decisions, the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>, sessions, prompt templates, skills, themes, extensions and packages. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>.</p>
-<p>Files yapi already has are kept, except a <code>settings.json</code> that holds only the version yapi recorded on first start. An installed package that yapi already has is kept whole, without any of Pi’s files for it, so the two installs never mix. Pi’s <code>lastChangelogVersion</code> is left out, because it holds Pi’s version.</p>
-<p>Subscription sign-ins and MCP server sign-ins are not copied. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out. The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
+<p>The command copies Pi’s agent folder, <code>~/.pi/agent</code> or <code>PI_CODING_AGENT_DIR</code>, into yapi’s. It also copies the current project’s <code>.pi</code> folder into <code>.yapi</code>. From the agent folder, it copies:</p>
+<ul>
+<li>settings, API keys, models, key bindings and Model Context Protocol (MCP) servers</li>
+<li>trust decisions</li>
+<li>the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code></li>
+<li>sessions, prompt templates, skills, themes, extensions and packages</li>
+</ul>
+<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
+<h2 id="sign-in-again-after-the-import"><a class="header" href="#sign-in-again-after-the-import">Sign in again after the import</a></h2>
+<p>The import doesn’t copy subscription sign-ins or MCP server sign-ins. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out.</p>
+<p>The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
+<h2 id="move-project-packages-to-chest"><a class="header" href="#move-project-packages-to-chest">Move project packages to chest</a></h2>
+<p>To move a project’s packages from <code>.yapi/settings.json</code> into a manifest with a lock, run <code>chest import --settings</code> in the project. It writes an extension entry for each package with <code>capabilities = ["all"]</code>, the access Pi gives packages, and prints the <code>yapi remove -l</code> command for each one.</p>
+<p>Narrow the capabilities, run <code>chest install</code>, then remove the packages from <code>settings.json</code>. <a href="chest-extensions.html#import-packages-from-settingsjson">Import packages from settings.json</a> covers the details.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
+<p>yapi renames its folders, two environment variables and its own commands:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -202,9 +216,9 @@
 </tbody>
 </table>
 </div>
-<p>Only the two directory variables are renamed. Provider keys and every other <code>PI_*</code> variable, such as <code>PI_OFFLINE</code> and <code>PI_CACHE_RETENTION</code>, keep their names. Command-line flags, slash commands and the JSON and RPC protocols are the same as Pi’s.</p>
-<h2 id="what-differs"><a class="header" href="#what-differs">What differs</a></h2>
-<p>Some behaviors differ by design, such as the startup header and features tied to Pi’s online services. <a href="compat.html">Differences from Pi</a> lists each one with its reason.</p>
+<p>yapi renames only the two folder variables. Provider keys and every other <code>PI_*</code> variable, such as <code>PI_OFFLINE</code> and <code>PI_CACHE_RETENTION</code>, keep their names. Command-line flags, slash commands and the JSON and remote procedure call (RPC) protocols are the same as Pi’s.</p>
+<h2 id="behavior-that-differs-by-design"><a class="header" href="#behavior-that-differs-by-design">Behavior that differs by design</a></h2>
+<p>Some behaviors differ on purpose, such as the startup header and features tied to Pi’s online services. <a href="compat.html">Differences from Pi</a> lists each one with its reason.</p>
 
                     </main>
 

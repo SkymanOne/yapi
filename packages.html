@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Use packages - yapi</title>
+        <title>Use Packages - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,17 +180,19 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="use-packages"><a class="header" href="#use-packages">Use packages</a></h1>
-<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder, with no Node.js required.</p>
+<p>A package bundles extensions, skills, prompt templates and themes. yapi installs Pi packages from npm, git or a local folder, with no Node.js required. This page covers installing, trying and turning off packages, pinning a project’s packages with chest, package manifests and yapi’s built-in npm client.</p>
 <h2 id="install-and-manage-packages"><a class="header" href="#install-and-manage-packages">Install and manage packages</a></h2>
-<pre><code class="language-sh">yapi install npm:@scope/some-pi-package     # from npm
-yapi install git:github.com/user/repo       # from git
-yapi install ./my-package -l                 # a local folder, for this project only
-yapi install ./shout.wasm                    # a single native extension
+<p><code>yapi install</code> takes an npm or git source, a local folder or a single native extension, and <code>-l</code> installs it for the current project only. <code>yapi list</code>, <code>yapi update --extensions</code> and <code>yapi remove</code> list, update and remove what’s installed:</p>
+<pre><code class="language-sh">yapi install npm:@your_scope/your_package
+yapi install git:github.com/your_user/your_repo
+yapi install ./your_package -l
+yapi install ./shout.wasm
 yapi list
 yapi update --extensions
-yapi remove npm:@scope/some-pi-package
+yapi remove npm:@your_scope/your_package
 </code></pre>
-<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place and are not copied. At startup and on <code>/reload</code>, yapi installs configured packages that are missing, and reinstalls npm packages whose installed version is outside their configured range or whose install was interrupted.</p>
+<p>yapi records installed packages in <code>settings.json</code>. <code>-l</code> installs into the project’s <code>.yapi</code> folder and records the package in <code>.yapi/settings.json</code>, which loads only in a <a href="security.html#project-trust">trusted project</a>. Local folders and files load in place, without a copy.</p>
+<p>At startup and on <code>/reload</code>, yapi installs configured packages that are missing. It also reinstalls npm packages whose installed version is outside their configured range or whose install was interrupted.</p>
 <p>Packages can run code and can hold skills that instruct the model to run programs. Review a third-party package before you install it.</p>
 <p><code>yapi list</code> shows each package with its install location. A tag after the source shows its extension kinds: <code>[npm]</code> for JavaScript or TypeScript, <code>[wasm]</code> for native, or <code>[npm, wasm]</code> for both. Packages without extensions, and packages not installed yet, have no tag.</p>
 <pre><code class="language-text">User packages:
@@ -199,21 +201,41 @@ yapi remove npm:@scope/some-pi-package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version, and each git package to the latest commit of its branch or ref. It installs a configured git package that is missing, and fails on a git package folder that is not a checkout of its own, so git never touches an enclosing repository. The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
-<h2 id="try-a-package"><a class="header" href="#try-a-package">Try a package</a></h2>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that’s missing, and fails on a git package folder that isn’t a checkout of its own, so git never touches an enclosing repository.</p>
+<p>The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
+<h2 id="try-a-package-for-one-run"><a class="header" href="#try-a-package-for-one-run">Try a package for one run</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
-<pre><code class="language-sh">yapi -e npm:@scope/some-pi-package
-yapi -e git:github.com/user/repo
+<pre><code class="language-sh">yapi -e npm:@your_scope/your_package
+yapi -e git:github.com/your_user/your_repo
 </code></pre>
-<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. An npm package is installed again when its version no longer matches the source’s range, and a git source without a ref is updated on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, nothing is installed or updated, and a source that is not installed yet is skipped.</p>
+<p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. It installs an npm package again when its version no longer matches the source’s range, and updates a git source without a ref on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, yapi installs and updates nothing, and skips a source that isn’t installed yet.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project. <code>yapi config -l</code> starts with the project. Before it opens, it installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project.</p>
+<p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
+<h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
+<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.</p>
+<p>Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html">Get started with chest</a> shows how to use chest, and the <a href="chest-manifest.html">chest.toml reference</a> lists every key.</p>
+<p>Each chest extension runs with the capabilities its entry grants, while packages from <code>yapi install</code> keep every grant. <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> covers when yapi reads a manifest, what it puts back at startup, and how <code>yapi config</code> shows chest’s entries.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
-<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. An optional <code>yapi</code> key with the same shape takes precedence, so one package can ship a <a href="native-extensions.html">native build</a> for yapi and JavaScript for Pi. Packages without a manifest use the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
+<p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:</p>
+<ol>
+<li>The <code>[package]</code> table of a <code>chest.toml</code> in the package.</li>
+<li>The <code>yapi</code> key of <code>package.json</code>, with the same shape as <code>pi</code>.</li>
+<li>The <code>pi</code> key.</li>
+</ol>
+<p>This lets one package ship a <a href="native-extensions.html">native build</a> for yapi and JavaScript for Pi, and lets a package without <code>package.json</code> list its resources in <code>chest.toml</code>.</p>
+<p>When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind that no source lists provides nothing, as in Pi. Otherwise the package uses the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. A <code>yapi</code> key that holds only <code>capabilities</code> therefore hides neither the <code>pi</code> lists nor the folders. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
-<h2 id="npm-client"><a class="header" href="#npm-client">npm client</a></h2>
-<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It does not run lifecycle scripts, which mostly build native addons that the WebAssembly runtime cannot load. Such addons are installed unbuilt and fail only if an extension loads one.</p>
-<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names. A request that takes longer than <code>fetch-timeout</code> milliseconds, five minutes by default, fails the install. <code>0</code> sets no limit.</p>
+<h2 id="the-built-in-npm-client"><a class="header" href="#the-built-in-npm-client">The built-in npm client</a></h2>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It accepts only the package names npm allows, and no name or scope that starts with a dot.</p>
+<p>A package over any of these limits fails the install and leaves nothing behind:</p>
+<ul>
+<li><strong>Registry metadata</strong>: 256 MiB to download</li>
+<li><strong>Tarball</strong>: 512 MiB to download, unpacking to at most 2 GiB in at most 200,000 entries</li>
+</ul>
+<p>The client doesn’t run lifecycle scripts. Packages that build native addons do it in those scripts, and the WebAssembly runtime can’t load native addons. Such addons install unbuilt and fail only if an extension loads one.</p>
+<p>The client reads registries and credentials from <code>npm_config_*</code> environment variables and from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names. It reads <code>registry</code>, <code>@scope:registry</code> and each registry’s <code>_authToken</code>, <code>_auth</code>, or <code>username</code> and <code>_password</code>, and expands <code>${VAR}</code> references. Credentials go only to the registry their key names.</p>
+<p>A request that takes longer than <code>fetch-timeout</code> milliseconds, 5 minutes by default, fails the install. <code>0</code> sets no limit. This <code>.npmrc</code> sends a token from the environment to a scoped registry:</p>
 <pre><code class="language-ini">@acme:registry=https://npm.acme.dev/
 //npm.acme.dev/:_authToken=${ACME_NPM_TOKEN}
 </code></pre>

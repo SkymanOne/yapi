@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Native extension examples - yapi</title>
+        <title>Native Extension Examples - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="native-extension-examples"><a class="header" href="#native-extension-examples">Native extension examples</a></h1>
-<p>The repository has nineteen native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Twelve are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side.</p>
+<p>The repository has 19 native extensions in <a href="https://github.com/SkymanOne/yapi/tree/main/guest/examples"><code>guest/examples</code></a>. Twelve are ports of Pi’s own examples, so you can read the Rust and TypeScript versions side by side. This page lists them, shows how to build one, then walks through each with an excerpt.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -204,21 +204,33 @@
 <tr><td><a href="#select-menu"><code>select-menu</code></a></td><td>A <code>SelectList</code> widget in a custom component</td><td>None</td></tr>
 <tr><td><a href="#input-hooks"><code>input-hooks</code></a></td><td>A terminal input listener that reads the editor, an autocomplete provider and a shortcut</td><td>None</td></tr>
 <tr><td><a href="#crash-recovery"><code>crash-recovery</code></a></td><td>What yapi does when an extension panics</td><td>None</td></tr>
-<tr><td><a href="#countdown"><code>countdown</code></a></td><td>A tool that stops with its own result when the run is aborted, and one that ignores aborts</td><td>None</td></tr>
+<tr><td><a href="#countdown"><code>countdown</code></a></td><td>A tool that stops with its own result when the user aborts the run, and one that ignores aborts</td><td>None</td></tr>
 <tr><td><a href="#code-renderer"><code>code-renderer</code></a></td><td>Colors Rust keywords with yapi’s code renderer API, and bolds <code>TODO</code> with a Markdown transformer</td><td>None</td></tr>
 </tbody>
 </table>
 </div>
-<p>Six of them, from <code>modal-editor</code> to <code>select-menu</code>, use the SDK’s <code>widgets</code> feature.</p>
-<h2 id="build-and-try-them"><a class="header" href="#build-and-try-them">Build and try them</a></h2>
+<p>Six of them, from <code>modal-editor</code> to <code>select-menu</code>, use the SDK’s <code>widgets</code> feature. Each enables the <a href="native-extensions.html#declare-capabilities">capability features</a> it uses in its <code>Cargo.toml</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>Examples</th></tr>
+</thead>
+<tbody>
+<tr><td><code>session</code></td><td><code>hello</code>, <code>message-renderer</code>, <code>entry-renderer</code> and <code>crash-recovery</code>, which add messages or entries to the session</td></tr>
+<tr><td><code>all</code></td><td><code>repo-status</code>, <code>package-scripts</code> and <code>subagent</code>, which run processes, and <code>input-hooks</code>, which adds a terminal input listener and an autocomplete provider</td></tr>
+</tbody>
+</table>
+</div>
+<p>The others use no capability.</p>
+<h2 id="build-and-try-an-example"><a class="header" href="#build-and-try-an-example">Build and try an example</a></h2>
 <p>Build any example from the <code>guest</code> folder of a clone, then load it for one run:</p>
 <pre><code class="language-sh">cd guest
 cargo build --release --target wasm32-wasip2 -p permission-gate
 yapi -e target/wasm32-wasip2/release/permission_gate.wasm
 </code></pre>
 <p>Cargo names the file after the crate with underscores in place of dashes. <code>yapi install</code> takes the same path to keep the extension.</p>
-<h2 id="hello"><a class="header" href="#hello">hello</a></h2>
-<p>The smallest complete extension. It registers a <code>shout</code> tool that repeats text in capitals, a <code>/hello</code> command, a <code>--shout-suffix</code> flag that the tool reads, a <code>session_start</code> handler that stores an entry in the session, and a <code>tool_call</code> handler that blocks empty input.</p>
+<h2 id="hello"><a class="header" href="#hello"><code>hello</code></a></h2>
+<p>The smallest complete extension. It registers a <code>shout</code> tool that repeats text in capitals, a <code>/hello</code> command, a <code>--shout-suffix</code> flag that the tool reads, a <code>session_start</code> handler that stores an entry in the session, and a <code>tool_call</code> handler that blocks empty input:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.on("tool_call", |event, _ctx| async move {
@@ -228,8 +240,8 @@ yapi -e target/wasm32-wasip2/release/permission_gate.wasm
     Ok(None)
 });
 <span class="boring">}</span></code></pre>
-<h2 id="permission-gate"><a class="header" href="#permission-gate">permission-gate</a></h2>
-<p>Asks before dangerous <code>bash</code> commands run: recursive deletes, <code>sudo</code>, and <code>chmod</code> or <code>chown</code> with <code>777</code>. Returning <code>{"block": true, "reason": ...}</code> from a <code>tool_call</code> handler stops the call, and the model sees the reason as the tool’s result. The handler awaits a dialog with <code>op</code>, and blocks the command when no one can answer, in print and JSON modes.</p>
+<h2 id="permission-gate"><a class="header" href="#permission-gate"><code>permission-gate</code></a></h2>
+<p>Asks before dangerous <code>bash</code> commands run: recursive deletes, <code>sudo</code>, and <code>chmod</code> or <code>chown</code> with <code>777</code>. Returning <code>{"block": true, "reason": ...}</code> from a <code>tool_call</code> handler stops the call, and the model sees the reason as the tool’s result. The handler awaits a dialog with <code>op</code>, and blocks the command when no one can answer, in print and JSON modes:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.on("tool_call", |event, ctx| async move {
@@ -244,15 +256,19 @@ yapi -e target/wasm32-wasip2/release/permission_gate.wasm
         })));
     }
     let title = format!("⚠️ Dangerous command:\n\n  {command}\n\nAllow?");
-    let choice = op("ui.select", &amp;json!({"title": title, "options": ["Yes", "No"]})).await?;
+    let choice = op(
+        "ui.select",
+        &amp;json!({"title": title, "options": ["Yes", "No"]}),
+    )
+    .await?;
     if choice != "Yes" {
         return Ok(Some(json!({"block": true, "reason": "Blocked by user"})));
     }
     Ok(None)
 });
 <span class="boring">}</span></code></pre>
-<h2 id="protected-paths"><a class="header" href="#protected-paths">protected-paths</a></h2>
-<p>Blocks <code>write</code> and <code>edit</code> calls on <code>.env</code>, <code>.git/</code> and <code>node_modules/</code>, and tells the user when a person is watching.</p>
+<h2 id="protected-paths"><a class="header" href="#protected-paths"><code>protected-paths</code></a></h2>
+<p>Blocks <code>write</code> and <code>edit</code> calls on <code>.env</code>, <code>.git/</code> and <code>node_modules/</code>, and tells the user when a person is watching:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>const PROTECTED: [&amp;str; 3] = [".env", ".git/", "node_modules/"];
@@ -268,33 +284,47 @@ api.on("tool_call", |event, ctx| async move {
     if ctx.has_ui() {
         notify(&amp;format!("Blocked write to protected path: {path}"), "warning");
     }
-    Ok(Some(json!({"block": true, "reason": format!("Path \"{path}\" is protected")})))
+    Ok(Some(json!({
+        "block": true,
+        "reason": format!("Path \"{path}\" is protected"),
+    })))
 });
 <span class="boring">}</span></code></pre>
-<h2 id="todo"><a class="header" href="#todo">todo</a></h2>
-<p>A <code>todo</code> tool with <code>list</code>, <code>add</code>, <code>toggle</code> and <code>clear</code> actions, and a <code>/todos</code> command that shows the list in a component until Escape closes it. Each result carries the whole list in its details. When a session starts, or the user moves through the session tree with <code>/tree</code>, the extension reads the current branch and takes the list from the last <code>todo</code> result on it. Every branch therefore keeps its own list.</p>
+<h2 id="todo"><a class="header" href="#todo"><code>todo</code></a></h2>
+<p>A <code>todo</code> tool with <code>list</code>, <code>add</code>, <code>toggle</code> and <code>clear</code> actions, and a <code>/todos</code> command that shows the list in a component until Escape closes it. Each result carries the whole list in its details.</p>
+<p>When a session starts, or the user moves through the session tree with <code>/tree</code>, the extension reads the current branch and takes the list from the last <code>todo</code> result on it. Every branch therefore keeps its own list:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn rebuild() -&gt; Result&lt;(), String&gt; {
-    let branch = request("session.read", &amp;json!({"method": "getBranch", "args": []}))?;
+    let branch = request(
+        "session.read",
+        &amp;json!({"method": "getBranch", "args": []}),
+    )?;
     let mut state = State { todos: Vec::new(), next_id: 1 };
     for entry in branch.as_array().into_iter().flatten() {
         let message = &amp;entry["message"];
-        if entry["type"] == "message" &amp;&amp; message["role"] == "toolResult" &amp;&amp; message["toolName"] == "todo" {
+        if entry["type"] == "message"
+            &amp;&amp; message["role"] == "toolResult"
+            &amp;&amp; message["toolName"] == "todo"
+        {
             let details = &amp;message["details"];
-            state.todos = details["todos"].as_array().cloned().unwrap_or_default();
+            state.todos =
+                details["todos"].as_array().cloned().unwrap_or_default();
             state.next_id = details["nextId"].as_u64().unwrap_or(1);
         }
     }
     STATE.with(|cell| *cell.borrow_mut() = state);
     Ok(())
 }
-
-api.on("session_start", |_event, _ctx| async { rebuild().map(|()| None) });
+<span class="boring">}</span></code></pre>
+<p>Two handlers rebuild the list, one when a session starts and one after <code>/tree</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>api.on("session_start", |_event, _ctx| async { rebuild().map(|()| None) });
 api.on("session_tree", |_event, _ctx| async { rebuild().map(|()| None) });
 <span class="boring">}</span></code></pre>
 <p>The extension keeps its state in a <code>thread_local</code>, since each native extension runs in an instance of its own and calls into it one at a time.</p>
-<p><code>/todos</code> shows the list with <code>custom</code>, which resolves once the component calls <code>finish</code> on its <code>Done</code>. Outside the interactive mode the command reports an error instead, as Pi’s does.</p>
+<p><code>/todos</code> shows the list with <code>custom</code>, which resolves once the component calls <code>finish</code> on its <code>Done</code>. Outside the interactive mode the command reports an error instead, as Pi’s does:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>impl Component for TodoList {
@@ -313,15 +343,18 @@ api.on("session_tree", |_event, _ctx| async { rebuild().map(|()| None) });
 let todos = STATE.with(|cell| cell.borrow().todos.clone());
 ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 <span class="boring">}</span></code></pre>
-<h2 id="custom-footer"><a class="header" href="#custom-footer">custom-footer</a></h2>
-<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer. The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it. <code>ui.footerData</code> is an internal request, so the example may need changes in a later release.</p>
+<h2 id="custom-footer"><a class="header" href="#custom-footer"><code>custom-footer</code></a></h2>
+<p><code>/footer</code> replaces the footer with the session’s token counts and cost on the left, and the model and the git branch on the right. Running it again restores the built-in footer.</p>
+<p>The footer is a component that reads the session’s branch with <code>session.read</code> and the git branch with <code>ui.footerData</code> each time yapi renders it. <code>ui.footerData</code> is an internal request, so the example may need changes in a later release:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.register_command("footer", "Toggle custom footer", |_args, ctx| async move {
     let enabled = !ENABLED.get();
     ENABLED.set(enabled);
     if enabled {
-        let model = ctx.data()["model"]["id"].as_str().filter(|id| !id.is_empty());
+        let model = ctx.data()["model"]["id"]
+            .as_str()
+            .filter(|id| !id.is_empty());
         let model = model.unwrap_or("no-model").to_owned();
         ctx.set_footer(Some(Box::new(Footer { model })));
         notify("Custom footer enabled", "info");
@@ -332,8 +365,8 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
     Ok(())
 });
 <span class="boring">}</span></code></pre>
-<h2 id="repo-status"><a class="header" href="#repo-status">repo-status</a></h2>
-<p>Runs <code>git</code> with <code>exec</code> to report the current branch and the files with uncommitted changes. It warns when a session starts in a repository with changes, answers <code>/repo-status</code>, and offers a <code>repo_status</code> tool to the model.</p>
+<h2 id="repo-status"><a class="header" href="#repo-status"><code>repo-status</code></a></h2>
+<p>Runs <code>git</code> with <code>exec</code> to report the current branch and the files with uncommitted changes. It warns when a session starts in a repository with changes, answers <code>/repo-status</code>, and offers a <code>repo_status</code> tool to the model:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn status(ctx: &amp;Context) -&gt; Option&lt;(String, Vec&lt;String&gt;)&gt; {
@@ -346,9 +379,10 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
     // ...
 }
 <span class="boring">}</span></code></pre>
-<p><code>exec</code> needs the process grant, which every extension has by default.</p>
-<h2 id="event-bus"><a class="header" href="#event-bus">event-bus</a></h2>
-<p>Extensions talking over Pi’s <code>pi.events</code>. A listener shows every <code>my:notification</code> event, from this extension or any other, native or Pi. <code>/emit [message]</code> emits one, and so does the start of a session. <code>/mute</code> stops the listener with its <code>Subscription</code>, and starts it again. Pi’s example has no <code>/mute</code>.</p>
+<p><code>exec</code> needs the process grant. Packages from <code>yapi install</code> have it, and a chest entry gets it only with <code>all</code>, since it has no capabilities by default.</p>
+<h2 id="event-bus"><a class="header" href="#event-bus"><code>event-bus</code></a></h2>
+<p>Extensions talking over Pi’s <code>pi.events</code>. A listener shows every <code>my:notification</code> event, from this extension or any other, native or Pi.</p>
+<p><code>/emit [message]</code> emits one, and so does the start of a session. <code>/mute</code> stops the listener with its <code>Subscription</code>, and starts it again. Pi’s example has no <code>/mute</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn listen() -&gt; Subscription {
@@ -360,8 +394,9 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
 }
 <span class="boring">}</span></code></pre>
 <p>The extension’s own listener hears its event while <code>events::emit</code> runs. Pi extensions and other native extensions hear it right after.</p>
-<h2 id="package-scripts"><a class="header" href="#package-scripts">package-scripts</a></h2>
-<p><code>/script &lt;name&gt; [args]</code> runs <code>scripts/&lt;name&gt;</code> with <code>sh</code> and shows what it printed. The script comes from the root of the package the extension was installed from, or from the folder of its <code>.wasm</code> file when it was given with <code>-e</code>. <code>extension_path</code> says where both are. The script gets <code>EXTENSION_DIR</code>, the folder it came from, on top of the environment it inherits, so it still finds programs on <code>PATH</code>:</p>
+<h2 id="package-scripts"><a class="header" href="#package-scripts"><code>package-scripts</code></a></h2>
+<p><code>/script &lt;name&gt; [args]</code> runs <code>scripts/&lt;name&gt;</code> with <code>sh</code> and shows what it printed. The script comes from the root of the package the extension was installed from, or from the folder of its <code>.wasm</code> file when it was given with <code>-e</code>. <code>extension_path</code> says where both are.</p>
+<p>The script gets <code>EXTENSION_DIR</code>, the folder it came from, on top of the environment it inherits, so it still finds programs on <code>PATH</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>let output = request(
@@ -374,27 +409,35 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
     }),
 )?;
 <span class="boring">}</span></code></pre>
-<h2 id="subagent"><a class="header" href="#subagent">subagent</a></h2>
-<p>A <code>subagent</code> tool that hands a task to another yapi run, with a context window of its own. The tool starts yapi in JSON mode with <code>Process</code> and reads its events as they arrive, as Pi’s <code>subagent</code> example does with Pi. In the foreground the tool shows each answer of the subagent as progress and returns the last one. With <code>background</code>, the tool returns at once and <code>spawn</code> keeps the subagent running. Its answer arrives later as a message that starts a turn.</p>
+<h2 id="subagent"><a class="header" href="#subagent"><code>subagent</code></a></h2>
+<p>A <code>subagent</code> tool that passes a task to another yapi run, with a context window of its own. The tool starts yapi in JSON mode with <code>Process</code> and reads its events as they arrive, as Pi’s <code>subagent</code> example does with Pi.</p>
+<p>In the foreground the tool shows each answer of the subagent as progress and returns the last one. With <code>background</code>, the tool returns at once and <code>spawn</code> keeps the subagent running. Its answer arrives later as a message that starts a turn:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>spawn(async move {
-    let content = match run(&amp;task, model.as_deref(), cwd.as_deref(), |_| {}).await {
+    let content = match run(&amp;task, model.as_deref(), cwd.as_deref(), |_| {})
+        .await
+    {
         Ok(answer) =&gt; format!("Subagent finished:\n\n{answer}"),
         Err(error) =&gt; error,
     };
     let _ = request(
         "session.sendMessage",
         &amp;json!({
-            "message": {"customType": "subagent", "content": content, "display": true},
+            "message": {
+                "customType": "subagent",
+                "content": content,
+                "display": true,
+            },
             "options": {"triggerTurn": true, "deliverAs": "followUp"},
         }),
     );
 });
 <span class="boring">}</span></code></pre>
 <p><code>request("execPath", ...)</code> names the running yapi binary, so the subagent runs the same version. When the user aborts the run, yapi drops the foreground tool’s future, and dropping the <code>Process</code> kills the subagent. Pi’s own TypeScript example also runs unchanged in yapi, with each agent defined in <code>~/.yapi/agent/agents</code>.</p>
-<h2 id="modal-editor"><a class="header" href="#modal-editor">modal-editor</a></h2>
-<p>Vim-like modes for the prompt editor. Escape switches from insert to normal mode, where <code>hjkl</code> move the cursor, <code>0</code> and <code>$</code> go to the line’s start and end, <code>x</code> deletes, and <code>i</code> and <code>a</code> switch back. The extension puts an <code>EditorComponent</code> in place of the built-in editor when the session starts. It wraps <code>widgets::CustomEditor</code>, which keeps the built-in editor’s keys, history and completions, and turns normal mode’s keys into the keys the editor knows.</p>
+<h2 id="modal-editor"><a class="header" href="#modal-editor"><code>modal-editor</code></a></h2>
+<p>Vim-like modes for the prompt editor. Escape switches from insert to normal mode, where <code>hjkl</code> move the cursor, <code>0</code> and <code>$</code> go to the line’s start and end, <code>x</code> deletes, and <code>i</code> and <code>a</code> switch back.</p>
+<p>The extension puts an <code>EditorComponent</code> in place of the built-in editor when the session starts. It wraps <code>widgets::CustomEditor</code>, which keeps the built-in editor’s keys, history and completions, and turns normal mode’s keys into the keys the editor knows:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn handle_input(&amp;mut self, data: &amp;str) {
@@ -414,8 +457,8 @@ api.on("session_start", |_event, ctx| async move {
     Ok(None)
 });
 <span class="boring">}</span></code></pre>
-<h2 id="question"><a class="header" href="#question">question</a></h2>
-<p>A <code>question</code> tool for the model: the user picks one of its options in a component, or chooses “Type something.” and writes an answer in an <code>Editor</code> widget. <code>render_call</code> and <code>render_result</code> draw the question and the answer in the transcript with <code>widgets::Text</code>.</p>
+<h2 id="question"><a class="header" href="#question"><code>question</code></a></h2>
+<p>A <code>question</code> tool for the model: the user picks one of its options in a component, or chooses “Type something.” and writes an answer in an <code>Editor</code> widget. <code>render_call</code> and <code>render_result</code> draw the question and the answer in the transcript with <code>widgets::Text</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.render_result(|result, _options, _ctx| {
@@ -425,14 +468,14 @@ api.on("session_start", |_event, ctx| async move {
     Some(Box::new(Text::new(text, 0, 0)))
 })
 <span class="boring">}</span></code></pre>
-<h2 id="overlay-test"><a class="header" href="#overlay-test">overlay-test</a></h2>
+<h2 id="overlay-test"><a class="header" href="#overlay-test"><code>overlay-test</code></a></h2>
 <p><code>/overlay-test</code> opens an overlay with inline text inputs and lines of wide characters, styled text and emoji. The component’s <code>width</code> sets the overlay’s, and the selected input puts pi-tui’s cursor marker where the terminal’s cursor belongs. <code>widgets::visible_width</code> pads styled text to the box’s width.</p>
-<h2 id="message-renderer"><a class="header" href="#message-renderer">message-renderer</a></h2>
+<h2 id="message-renderer"><a class="header" href="#message-renderer"><code>message-renderer</code></a></h2>
 <p><code>/status [warn|error] message</code> adds a custom message that a message renderer draws in a box, colored by level. The box uses the <code>boxed</code> and <code>text</code> layouts of <code>widgets::tui::lines</code> over the theme’s custom message background.</p>
-<h2 id="entry-renderer"><a class="header" href="#entry-renderer">entry-renderer</a></h2>
+<h2 id="entry-renderer"><a class="header" href="#entry-renderer"><code>entry-renderer</code></a></h2>
 <p><code>/status-card message</code> stores a status card that the model never sees, and an entry renderer draws it in a box. Expanded, it shows the time in UTC, where Pi shows local time.</p>
-<h2 id="select-menu"><a class="header" href="#select-menu">select-menu</a></h2>
-<p><code>/menu</code> opens a drinks menu: a <code>SelectList</code> between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi’s own terminal scenarios use.</p>
+<h2 id="select-menu"><a class="header" href="#select-menu"><code>select-menu</code></a></h2>
+<p><code>/menu</code> opens a drinks menu: a <code>SelectList</code> between two borders, which reports the pick in a notification. It ports the TypeScript menu that yapi’s own terminal scenarios use:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn handle_input(&amp;mut self, data: &amp;str) {
@@ -443,8 +486,9 @@ api.on("session_start", |_event, ctx| async move {
     }
 }
 <span class="boring">}</span></code></pre>
-<h2 id="input-hooks"><a class="header" href="#input-hooks">input-hooks</a></h2>
-<p>A terminal input listener sees every key before the editor does. In an empty prompt editor <code>?</code> shows help instead of being typed, and <code>editor_focused()</code> leaves it to dialogs and selectors. <code>a</code> becomes <code>A</code>, and Ctrl+G reports how many keys the listener saw and what the editor holds. <code>/quiet</code> drops the listener’s <code>Subscription</code>, which stops it. An autocomplete provider completes environment variable names after <code>$</code> and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi.</p>
+<h2 id="input-hooks"><a class="header" href="#input-hooks"><code>input-hooks</code></a></h2>
+<p>A terminal input listener sees every key before the editor does. In an empty prompt editor <code>?</code> shows help instead of being typed, and <code>editor_focused()</code> leaves it to dialogs and selectors. <code>a</code> becomes <code>A</code>, and Ctrl+G reports how many keys the listener saw and what the editor holds. <code>/quiet</code> drops the listener’s <code>Subscription</code>, which stops it.</p>
+<p>An autocomplete provider completes environment variable names after <code>$</code> and leaves other text to the providers it wraps, and Alt+K is a shortcut that reports the count too. Its terminal scenarios run the same extension in TypeScript in Pi. It builds with the <code>all</code> feature, which terminal input listeners and autocomplete providers need:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn listen(data: &amp;str) -&gt; TerminalInput {
@@ -466,8 +510,9 @@ api.on("session_start", |_event, ctx| async move {
     Ok(None)
 });
 <span class="boring">}</span></code></pre>
-<h2 id="crash-recovery"><a class="header" href="#crash-recovery">crash-recovery</a></h2>
-<p>An editor in place of the built-in one, a <code>/fragile</code> dialog, and notes that <code>/note</code> adds to the transcript, that panic when their text is <code>panic</code>. A panic stops the extension’s runtime. yapi reports it, restarts the runtime and loads the extension again, without what it showed. The dialog closes and the built-in editor takes the keys. The editor that <code>session_start</code> installed stays away until the next session. Notes draw again, except one that panicked as it first drew.</p>
+<h2 id="crash-recovery"><a class="header" href="#crash-recovery"><code>crash-recovery</code></a></h2>
+<p>An editor in place of the built-in one, a <code>/fragile</code> dialog, and notes that <code>/note</code> adds to the transcript, each of which panics when its text is <code>panic</code>. A panic stops the extension’s runtime. yapi reports it, restarts the runtime and loads the extension again, without what it showed.</p>
+<p>The dialog closes and the built-in editor takes the keys. The editor that <code>session_start</code> installed stays away until the next session. Notes draw again, except one that panicked as it first drew:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>fn render(&amp;mut self, _width: usize) -&gt; Vec&lt;String&gt; {
@@ -475,8 +520,9 @@ api.on("session_start", |_event, ctx| async move {
     vec![format!("&gt; {}", self.text)]
 }
 <span class="boring">}</span></code></pre>
-<h2 id="countdown"><a class="header" href="#countdown">countdown</a></h2>
-<p>A <code>countdown</code> tool that counts down from <code>seconds</code> and shows each second as progress. When the user aborts the run, it stops with its own result, such as <code>Stopped with 7 seconds left</code>, and its details name the call with <code>Context::tool_call_id</code>. Stopping takes <code>cleanup</code> seconds, as stopping a process can. With a <code>cleanup</code> over 10 seconds yapi drops the tool instead. A <code>wait</code> tool ignores aborts, so yapi drops it at once.</p>
+<h2 id="countdown"><a class="header" href="#countdown"><code>countdown</code></a></h2>
+<p>A <code>countdown</code> tool that counts down from <code>seconds</code> and shows each second as progress. When the user aborts the run, it stops with its own result, such as <code>Stopped with 7 seconds left</code>, and its details name the call with <code>Context::tool_call_id</code>.</p>
+<p>Stopping takes <code>cleanup</code> seconds, as stopping a process can. With a <code>cleanup</code> over 10s yapi drops the tool instead. A <code>wait</code> tool ignores aborts, so yapi drops it at once:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>for left in (1..=seconds).rev() {
@@ -491,7 +537,7 @@ api.on("session_start", |_event, ctx| async move {
 }
 <span class="boring">}</span></code></pre>
 <p><code>race</code> polls two futures until one finishes, so the tool needs no other crate. <code>futures::select!</code> does the same.</p>
-<h2 id="code-renderer"><a class="header" href="#code-renderer">code-renderer</a></h2>
+<h2 id="code-renderer"><a class="header" href="#code-renderer"><code>code-renderer</code></a></h2>
 <p>Colors Rust keywords in code blocks and tool rows with yapi’s code renderer API. A Markdown transformer makes each <code>TODO</code> in messages bold.</p>
 
                     </main>

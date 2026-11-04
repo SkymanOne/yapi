@@ -8,7 +8,7 @@
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configure-yapi"><a class="header" href="#configure-yapi">Configure yapi</a></h1>
-<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
+<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
+<p>Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. The table lists where yapi reads each kind of configuration:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -196,12 +197,18 @@
 <tr><td>Key bindings</td><td><code>~/.yapi/agent/keybindings.json</code></td></tr>
 <tr><td>Models and providers</td><td><code>~/.yapi/agent/models.json</code></td></tr>
 <tr><td>Credentials</td><td><code>~/.yapi/agent/auth.json</code></td></tr>
-<tr><td>MCP servers</td><td><code>~/.yapi/agent/mcp.json</code> and <code>.yapi/mcp.json</code></td></tr>
-<tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>. See <a href="install.html#documentation-for-the-model">Install yapi</a>.</td></tr>
+<tr><td>Model Context Protocol (MCP) servers</td><td><code>~/.yapi/agent/mcp.json</code> and <code>.yapi/mcp.json</code></td></tr>
+<tr><td>Project packages</td><td><code>chest.toml</code> and <code>chest.lock</code> in the project, and <code>~/.chest/chest.toml</code>. See <a href="#project-packages-from-chest">Project packages from chest</a>.</td></tr>
+<tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>. See <a href="install.html#documentation-for-the-model">Documentation for the model</a>.</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>.</p>
+<h2 id="project-packages-from-chest"><a class="header" href="#project-packages-from-chest">Project packages from chest</a></h2>
+<p>yapi loads the <a href="chest-extensions.html#how-yapi-loads-a-manifest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>.</p>
+<p>For a <code>CHEST_MANIFEST</code> value that’s absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="chest-manifest.html#which-manifest-chest-uses">Which manifest chest uses</a> describes.</p>
+<p><code>~/.chest/chest.toml</code> lists packages for every project. chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
+<p>A project manifest that installs anything loads only in a trusted project, and asks for trust as <code>.yapi</code> files do. A manifest with only a <code>[package]</code> table describes the project as a package and needs no trust.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
 <p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. In a git worktree inside its main checkout, such as <code>.worktrees/feature</code>, the worktree’s own file replaces the main checkout’s file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.</p>
 <h2 id="skills-and-prompt-templates"><a class="header" href="#skills-and-prompt-templates">Skills and prompt templates</a></h2>
@@ -214,27 +221,27 @@ argument-hint: "[focus]"
 Review the staged changes. Focus on ${1:-correctness and error handling}.
 </code></pre>
 <p><code>/review</code> then sends the prompt, and <code>/review concurrency</code> fills in the focus. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/prompt-templates.md">prompt template documentation</a> lists every argument form.</p>
-<h2 id="themes"><a class="header" href="#themes">Themes</a></h2>
+<h2 id="choose-a-theme"><a class="header" href="#choose-a-theme">Choose a theme</a></h2>
 <p>Choose a theme in <code>/settings</code> or with <code>"theme"</code> in settings. <code>--use-theme &lt;name&gt;</code> applies one for a single run. Theme files use Pi’s JSON format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/themes.md">theme documentation</a>.</p>
-<h2 id="key-bindings"><a class="header" href="#key-bindings">Key bindings</a></h2>
+<h2 id="change-key-bindings"><a class="header" href="#change-key-bindings">Change key bindings</a></h2>
 <p><code>~/.yapi/agent/keybindings.json</code> changes the keys. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/keybindings.md">key binding documentation</a> lists the format and every action. <code>/hotkeys</code> shows the bindings in effect.</p>
-<h2 id="images"><a class="header" href="#images">Images</a></h2>
+<h2 id="how-yapi-prepares-images-for-the-model"><a class="header" href="#how-yapi-prepares-images-for-the-model">How yapi prepares images for the model</a></h2>
 <p>yapi prepares images in prompts, <code>@path</code> arguments and tool results before they reach the model:</p>
 <ul>
-<li>Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld. This applies to images that arrive with a MIME type: RPC and SDK prompts, tool results and the clipboard. <code>@path</code> arguments and the <code>read</code> tool only recognize PNG, JPEG, GIF, WebP and BMP files, so other formats are read as text.</li>
-<li>With <code>"images": {"autoResize": true}</code>, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.</li>
-<li>A prompt or <code>read</code> image that cannot be converted or made to fit is left out, with a note that says so. A tool result keeps its original image unchanged.</li>
-<li>A pasted clipboard image that is not PNG, JPEG, WebP or GIF is converted to PNG when pasted, ignoring its EXIF orientation.</li>
+<li>yapi converts BMP, TIFF, ICO, PNM, HDR, DDS and farbfeld images to PNG. This applies to images that arrive with a MIME type: remote procedure call (RPC) and SDK prompts, tool results and the clipboard. <code>@path</code> arguments and the <code>read</code> tool only recognize PNG, JPEG, GIF, WebP and BMP files, so they read other formats as text.</li>
+<li>With <code>"images": {"autoResize": true}</code>, the default, yapi scales larger images down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. It may send a scaled image as JPEG, with a note that gives the model its original size.</li>
+<li>yapi leaves out a prompt or <code>read</code> image that it can’t convert or make fit, with a note that says so. A tool result keeps its original image unchanged.</li>
+<li>yapi converts a pasted clipboard image that isn’t PNG, JPEG, WebP or GIF to PNG when you paste it, ignoring its EXIF orientation.</li>
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>
 <p>Both settings are also in <code>/settings</code>.</p>
-<h2 id="images-in-the-terminal"><a class="header" href="#images-in-the-terminal">Images in the terminal</a></h2>
-<p>In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty’s protocol takes PNG only, so other formats are shown as PNG copies. Other terminals, tmux and screen show a note with the image’s type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.</p>
+<h2 id="show-images-in-the-terminal"><a class="header" href="#show-images-in-the-terminal">Show images in the terminal</a></h2>
+<p>In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty’s protocol takes PNG only, so yapi shows other formats as PNG copies. Other terminals, tmux and screen show a note with the image’s type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.</p>
 <p><code>"terminal": {"showImages": false}</code> turns images off, and <code>"imageWidthCells"</code> sets their preferred width in cells, 60 by default. Both are in <code>/settings</code> when the terminal shows images. Set <code>"terminal": {"images": "kitty"}</code>, <code>"iterm2"</code> or <code>false</code> to override the detection. The <code>PI_IMAGE_PROTOCOL</code> environment variable, <code>kitty</code>, <code>iterm2</code> or <code>none</code>, does the same, and the setting takes precedence.</p>
-<h2 id="links"><a class="header" href="#links">Links</a></h2>
+<h2 id="hyperlinks-in-the-terminal"><a class="header" href="#hyperlinks-in-the-terminal">Hyperlinks in the terminal</a></h2>
 <p>In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> calls link to their files. In other terminals, a Markdown link shows its URL after its text.</p>
 <p>yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set <code>"terminal": {"hyperlinks": true}</code> or <code>false</code> to override the detection. The <code>PI_HYPERLINKS</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
-<h2 id="colors"><a class="header" href="#colors">Colors</a></h2>
+<h2 id="terminal-colors"><a class="header" href="#terminal-colors">Terminal colors</a></h2>
 <p>Themes use 24-bit color in terminals that support it, such as iTerm2, Ghostty, kitty, WezTerm, VS Code and JetBrains IDEs, or when <code>COLORTERM</code> is <code>truecolor</code> or <code>24bit</code>. Elsewhere, and in tmux or screen unless <code>COLORTERM</code> says so, they use 256 colors. Set <code>"terminal": {"trueColor": true}</code> or <code>false</code> to override the detection. The <code>PI_TRUE_COLOR</code> environment variable, <code>1</code> or <code>0</code>, does the same, and the setting takes precedence.</p>
 
                     </main>

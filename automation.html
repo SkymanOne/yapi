@@ -8,7 +8,7 @@
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,36 +180,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="automate-yapi"><a class="header" href="#automate-yapi">Automate yapi</a></h1>
-<p>yapi runs without its interface for scripts, editors and other programs. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
-<h2 id="print-mode"><a class="header" href="#print-mode">Print mode</a></h2>
-<p><code>-p</code> sends one message, prints the answer and exits:</p>
+<p>yapi runs without its interface for scripts, editors and other programs. This page covers print mode, JSON mode and remote procedure call (RPC) mode, and the flags that matter when another program drives yapi. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
+<h2 id="answer-once-with-print-mode"><a class="header" href="#answer-once-with-print-mode">Answer once with print mode</a></h2>
+<p><code>-p</code> sends one message, prints the answer and exits. These three runs take a prompt, piped input and attached files:</p>
 <pre><code class="language-sh">yapi -p "Summarize the open TODOs in src/"
 git diff | yapi -p "Write a commit message for this diff"
 yapi -p @report.md @chart.png "What does the chart show?"
 </code></pre>
 <p>Piped input becomes part of the first message, and <code>@path</code> attaches files and images.</p>
-<h2 id="json-mode"><a class="header" href="#json-mode">JSON mode</a></h2>
+<h2 id="stream-events-with-json-mode"><a class="header" href="#stream-events-with-json-mode">Stream events with JSON mode</a></h2>
 <p><code>--mode json</code> prints one JSON event per line for the whole run: message updates, tool calls, tool results and the final state. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/json.md">JSON documentation</a> describes the events.</p>
 <pre><code class="language-sh">yapi --mode json -p "List the crates in this workspace"
 </code></pre>
-<h2 id="rpc-mode"><a class="header" href="#rpc-mode">RPC mode</a></h2>
-<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a> lists the commands, and Pi’s <code>RpcClient</code> works with yapi.</p>
+<h2 id="drive-yapi-with-rpc-mode"><a class="header" href="#drive-yapi-with-rpc-mode">Drive yapi with RPC mode</a></h2>
+<p><code>--mode rpc</code> keeps yapi running and reads commands from stdin, one JSON object per line. Responses and events go to stdout. Clients can prompt, steer, abort, switch models and sessions, and answer extension dialogs.</p>
+<p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/rpc.md">RPC documentation</a> lists the commands, and Pi’s <code>RpcClient</code> works with yapi. This starts an RPC session that saves nothing:</p>
 <pre><code class="language-sh">yapi --mode rpc --no-session
 </code></pre>
-<h2 id="useful-flags"><a class="header" href="#useful-flags">Useful flags</a></h2>
+<h2 id="flags-for-automation"><a class="header" href="#flags-for-automation">Flags for automation</a></h2>
+<p>These flags change how yapi behaves when another program runs it:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Flag</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--no-session</code></td><td>Do not save the run</td></tr>
+<tr><td><code>--no-session</code></td><td>Don’t save the run</td></tr>
 <tr><td><code>--model &lt;pattern&gt;</code></td><td>Choose the model</td></tr>
 <tr><td><code>--tools read,grep,find,ls</code></td><td>Allow only these tools, here read-only ones</td></tr>
 <tr><td><code>--no-tools</code></td><td>Disable all tools</td></tr>
-<tr><td><code>-ne</code></td><td>Start without extensions, including the built-in MCP and llama.cpp extensions</td></tr>
+<tr><td><code>-ne</code></td><td>Start without extensions, including the built-in Model Context Protocol (MCP) and llama.cpp extensions</td></tr>
 <tr><td><code>--offline</code></td><td>Skip startup network work</td></tr>
-<tr><td><code>--enable-logging</code></td><td>Append a log to <code>~/.yapi/agent/yapi.log</code>. See <a href="troubleshooting.html#logs">Logs</a>.</td></tr>
+<tr><td><code>--enable-logging</code></td><td>Append a log to <code>~/.yapi/agent/yapi.log</code>. See <a href="troubleshooting.html#read-yapis-log">Read yapi’s log</a>.</td></tr>
 <tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="security.html#project-trust">Project trust</a>.</td></tr>
 </tbody>
 </table>

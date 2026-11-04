@@ -3,12 +3,12 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Use yapi in the terminal - yapi</title>
+        <title>Use yapi in the Terminal - yapi</title>
 
 
         <!-- Custom HTML head -->
 
-        <meta name="description" content="Yet Another Pi (in Rust) - Fast, Portable, Compatible">
+        <meta name="description" content="Yet Another Pi (in Rust): Fast, Portable, Compatible">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-afb35467.js";
+            window.path_to_searchindex_js = "searchindex-30e9c101.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-2d1f0715.js"></script>
+        <script src="toc-ffe27126.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,21 +180,21 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="use-yapi-in-the-terminal"><a class="header" href="#use-yapi-in-the-terminal">Use yapi in the terminal</a></h1>
-<p>Run <code>yapi</code> from the folder to work in. To install yapi and choose a model first, follow the <a href="quickstart.html">Quickstart</a>.</p>
+<p>Interactive mode is yapi’s terminal interface. This page covers entering prompts, following and redirecting the work, the default keys, slash commands, shell commands and the two display modes. Run <code>yapi</code> from the folder to work in. To install yapi and choose a model first, follow <a href="quickstart.html">Run your first task</a>.</p>
 <p>The transcript shows your prompts, the model’s responses, tool calls and their results. Prompts and commands go in the editor at the bottom. The footer shows the folder, the model, context usage and cost.</p>
 <h2 id="enter-a-prompt"><a class="header" href="#enter-a-prompt">Enter a prompt</a></h2>
-<p>Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G opens the prompt in <code>$EDITOR</code>.</p>
+<p>Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G opens the prompt in <code>$EDITOR</code>. The editor also takes files and history:</p>
 <ul>
 <li><code>@path</code> attaches a file. Tab completes the path.</li>
-<li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. A pasted image is saved to a temporary file and its path goes in the editor.</li>
+<li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. yapi saves a pasted image to a temporary file and puts its path in the editor.</li>
 <li>Up recalls earlier prompts.</li>
 </ul>
 <p>A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.</p>
-<h2 id="follow-the-work"><a class="header" href="#follow-the-work">Follow the work</a></h2>
+<h2 id="follow-the-agents-work"><a class="header" href="#follow-the-agents-work">Follow the agent’s work</a></h2>
 <p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
-<p>Messages show Markdown with LaTeX math and Mermaid diagrams. “Mermaid diagrams” in <code>/settings</code> draws diagrams while a message streams, only once it is complete, or never.</p>
-<h2 id="change-direction"><a class="header" href="#change-direction">Change direction</a></h2>
-<p>Input sent while yapi works changes what it does next:</p>
+<p>Messages show Markdown with LaTeX math and Mermaid diagrams. “Mermaid diagrams” in <code>/settings</code> draws diagrams while a message streams, only once it’s complete, or never.</p>
+<h2 id="change-direction-while-yapi-works"><a class="header" href="#change-direction-while-yapi-works">Change direction while yapi works</a></h2>
+<p>Input you send while yapi works changes what it does next:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -208,7 +208,7 @@
 </tbody>
 </table>
 </div>
-<h2 id="keys"><a class="header" href="#keys">Keys</a></h2>
+<h2 id="default-key-bindings"><a class="header" href="#default-key-bindings">Default key bindings</a></h2>
 <p>These are the defaults. <code>/hotkeys</code> shows the bindings in effect, and <code>~/.yapi/agent/keybindings.json</code> changes them.</p>
 <div class="table-wrapper">
 <table>
@@ -234,7 +234,7 @@
 </tbody>
 </table>
 </div>
-<h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
+<h2 id="run-slash-commands"><a class="header" href="#run-slash-commands">Run slash commands</a></h2>
 <p>Type <code>/</code> to list commands. Prompt templates, skills (<code>/skill:name</code>) and extension commands appear in the same list.</p>
 <div class="table-wrapper">
 <table>
@@ -254,7 +254,7 @@
 <tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
 <tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
 <tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage MCP servers. Built-in extension.</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage Model Context Protocol (MCP) servers. Built-in extension.</td></tr>
 <tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
@@ -265,20 +265,20 @@
 </table>
 </div>
 <p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
-<p><a href="troubleshooting.html#reporting-a-problem">Reporting a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
+<p><a href="troubleshooting.html#report-a-problem">Report a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status
 </code></pre>
 <p>Use <code>!!</code> to run a command without sending its output to the model.</p>
-<h2 id="display-modes"><a class="header" href="#display-modes">Display modes</a></h2>
+<h2 id="choose-a-display-mode"><a class="header" href="#choose-a-display-mode">Choose a display mode</a></h2>
 <p>yapi draws in fullscreen mode by default. Regular mode keeps the transcript in the terminal’s scrollback instead. Switch with <code>/settings</code> or <code>--tui-mode regular</code>.</p>
 <p>In fullscreen mode, yapi handles the mouse:</p>
 <ul>
 <li>The wheel scrolls the transcript. Hold Alt to scroll five times as far. “Fullscreen wheel scrolling” in <code>/settings</code> sets a fixed number of lines per step.</li>
 <li>Drag to select text. A double click selects a word or path, and a triple click selects a line. Releasing the button copies the selection. With “Fullscreen copy on select” off, press Ctrl+X to copy it.</li>
 <li>A click on a tool call, thinking, a skill or a summary expands or collapses it. Ctrl+O and Ctrl+T still set every item at once.</li>
-<li>A click on a web or mail link opens it, and a click on a file link shows the file in its folder. Other links do not open, so a click never starts a program. See <a href="configuration.html#links">Links</a>.</li>
+<li>A click on a web or mail link opens it, and a click on a file link shows the file in its folder. Other links don’t open, so a click never starts a program. See <a href="configuration.html#hyperlinks-in-the-terminal">Hyperlinks in the terminal</a>.</li>
 <li>A click in the editor, a list or a dialog moves the cursor or chooses the item.</li>
 <li>Drag the scrollbar’s thumb, or click its track to jump. With “Fullscreen scrollbar” set to <code>auto</code>, pointing at the scrollbar shows it, except inside tmux, Zellij and GNU Screen.</li>
 </ul>
