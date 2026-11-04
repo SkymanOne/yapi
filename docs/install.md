@@ -49,14 +49,14 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 
 ## Install with cargo-binstall
 
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release's executables into `~/.cargo/bin`, one per command. The first command installs `yapi`, and the second installs `chest` from its crate, `chest-cli`. Run one or both:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the release executables into `~/.cargo/bin`, one per command. The first command installs `yapi`, and the second installs `chest` from its crate on crates.io, `chest-cli`. Run one or both:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
-cargo binstall --git https://github.com/SkymanOne/yapi chest-cli
+cargo binstall chest-cli
 ```
 
-Keep `--git`, because the `yapi` crate on crates.io is an unrelated project, and `chest-cli` isn't on crates.io. cargo-binstall installs the release that the manifest on `main` names. If it reports that the release doesn't exist, use the install script.
+Keep `--git` for yapi, because the `yapi` crate on crates.io is an unrelated project. cargo-binstall installs the yapi release that the manifest on `main` names, and the release that built the newest `chest-cli`. If it reports that the yapi release doesn't exist, use the install script. For chest, it builds `chest-cli` from source when the release has no archive for your system.
 
 ## Install from a release archive
 
@@ -84,7 +84,7 @@ To install one executable, end the `tar` command with only `yapi` or only `chest
 
 ## Build from source
 
-yapi and chest build with Rust 1.99 or newer. Install Rust with [rustup](https://rustup.rs), then build with the install script or with Cargo.
+yapi builds with Rust 1.99 or newer, and chest with Rust 1.91 or newer. Install Rust with [rustup](https://rustup.rs), then build with the install script or with Cargo.
 
 With `--from-source`, the install script builds a release's tag with Cargo instead of downloading its archive. It builds the latest release, or the one `--version` names, and never the `main` branch. Then it installs the executables in `~/.local/bin`, and the documentation for the model with `yapi`. The first command builds both, the second `yapi` alone and the third `chest` alone. Run one:
 
@@ -97,7 +97,13 @@ curl -fsSL "$script" | sh -s -- --from-source --only chest
 
 Without `--only`, the script asks in a terminal what to build. It builds `yapi` alone from releases before chest shipped, and stops with an error when you choose `chest` alone from them.
 
-To build with Cargo, name a release's tag. The first command below builds `yapi`, and the second builds `chest` from its crate, `chest-cli`. Run one or both:
+Cargo builds chest from its crate on crates.io:
+
+```sh
+cargo install --locked chest-cli
+```
+
+To build from the repository instead, name a release's tag. The first command below builds `yapi`, and the second builds `chest` from its crate, `chest-cli`. Run one or both:
 
 ```sh
 repo=https://github.com/SkymanOne/yapi
@@ -111,7 +117,7 @@ To build from a clone, run `cargo install --locked --path crates/yapi` in it, or
 
 ## Check the installation
 
-Each executable prints its version. Run the line for each one you installed:
+Each executable prints its version. yapi's version matches the release's tag, such as `0.3.1` for `v0.3.1`. chest has its own version, which `chest --version` prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:
 
 ```sh
 yapi --version
@@ -145,7 +151,7 @@ yapi doesn't update itself. `yapi update` prints how to upgrade, `yapi update --
 | Install script | Run the script again and make the same choice, with `--from-source` if you built from source. From another script, pass the same `--only`, because without a terminal it installs both. |
 | cargo-binstall | Run the same `cargo binstall` commands again. |
 | Release archive | Unpack the executables you installed from the new archive over the old ones. |
-| Cargo | Run the same `cargo install` commands again with the new release's tag. |
+| Cargo | Run `cargo install --locked chest-cli` again for chest from crates.io. Run the `--git` commands again with the new release's tag. |
 
 Upgrades keep your settings, credentials, sessions and packages.
 
@@ -158,6 +164,6 @@ In the terminal, yapi checks at startup for a newer release and for package upda
 How you remove the binaries depends on how you installed them:
 
 - **Install script or release archive**: delete `~/.local/bin/yapi`, `~/.local/bin/chest` or both, or the same files in the folder you chose. This also applies to builds with `--from-source`.
-- **cargo-binstall or Cargo**: run `cargo uninstall yapi` to remove yapi, and `cargo uninstall chest-cli` to remove chest.
+- **cargo-binstall or Cargo**: run `cargo uninstall yapi` to remove yapi, and `cargo uninstall chest-cli` to remove chest, from crates.io or the repository.
 
 To remove settings, credentials, sessions, packages and caches as well, delete `~/.yapi`, or `YAPI_CODING_AGENT_DIR` when set, and each project's `.yapi` folder. chest keeps its global manifest, store and records in `~/.chest`.

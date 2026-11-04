@@ -55,7 +55,7 @@ A Cargo workspace whose crates mirror pi's packages, so every behavior traces ba
 | `crates/yapi-core` | Session manager, compaction, settings, resource loading, built-in tools, system prompt, packages, extension runner and grants, MCP. | `pi-coding-agent` core, `pi-mcp` |
 | `crates/yapi-ext` | wasmtime host, WIT bindings, grant enforcement, JS module loader, codemode, embedded `yapi-js.wasm`. | Extension loader, `pi-codemode` |
 | `crates/yapi` | Binary: CLI, modes, UI adapters, and the native extension package template that `yapi new` and `cargo generate` use. | `pi-coding-agent` CLI and modes |
-| `crates/chest` | The `chest` binary, package `chest-cli`: a manifest and lock for a project's skills, subagents and extensions, on the engine in `yapi-core`. | None |
+| `crates/chest` | The `chest` binary, package `chest-cli` with its own version: a manifest and lock for a project's skills, subagents and extensions, on the engine in `yapi-core`. | None |
 | `crates/yapi-mock` | Mock provider server: replays cassettes and records requests. | None |
 | `guest/yapi-js` | JS runtime component: QuickJS-NG, Node shims, pi API facade, vendored JS. | None |
 | `guest/yapi-extension-api` | Rust SDK for native extensions. | None |
@@ -73,7 +73,7 @@ Dependency direction:
 - `yapi-mock` is never a dependency of a shipped crate.
 - `chest` depends on `yapi-ai`, `yapi-core` and `yapi-types`, never on `yapi-ext`, so it carries no wasmtime. It reads components with `wasmparser` at wasmtime's version.
 - `guest/` is a separate workspace, so `cargo build` never compiles wasm.
-- `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
+- `yapi-types`, `yapi-tui` and `yapi-extension-api` are published to crates.io on each release. So are `chest-cli` and the crates it builds on, `yapi-ai`, `yapi-agent` and `yapi-core`, which are internal libraries with no stable API. `chest-cli` has its own version, raised only when chest changes, and a release publishes it only at a version crates.io lacks. The SDK's optional `widgets` feature takes `yapi-tui` and `yapi-types` by path here and by version on crates.io. The SDK's `wit` links to the repository's `wit`, so its published crate holds the WIT world.
 
 ### Boundary traits
 

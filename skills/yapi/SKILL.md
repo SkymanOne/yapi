@@ -37,14 +37,14 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 yapi --version
 ```
 
-Add `--from-source` to build the release with Cargo instead of downloading it. With Cargo directly, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer. Use `chest-cli` in place of the last `yapi` for chest:
+Add `--from-source` to build the release with Cargo instead of downloading it. With Cargo directly, the first command installs the release binary through cargo-binstall, and the second builds from source with Rust 1.99 or newer:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
 cargo install --locked --git https://github.com/SkymanOne/yapi yapi
 ```
 
-Keep `--git` with Cargo: on crates.io, `yapi` is an unrelated crate, and `chest-cli` isn't published. To bring an existing Pi setup across, run `yapi import pi`. It copies settings, credentials, sessions and packages, and keeps files yapi already has.
+Keep `--git` for yapi: on crates.io, `yapi` is an unrelated crate. chest is on crates.io as `chest-cli`, so `cargo binstall chest-cli` and `cargo install --locked chest-cli` install it. To bring an existing Pi setup across, run `yapi import pi`. It copies settings, credentials, sessions and packages, and keeps files yapi already has.
 
 ## Hand a task to yapi
 

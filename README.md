@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 ```
 
-Options go after `sh -s --`: `--only yapi` or `--only chest` installs one without the question, and `--from-source` builds the release with Cargo instead of downloading it. [Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling, for either executable or both.
+Options go after `sh -s --`: `--only yapi` or `--only chest` installs one without the question, and `--from-source` builds the release with Cargo instead of downloading it. chest is also on crates.io as `chest-cli`. [Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling, for either executable or both.
 
 Start yapi in the folder where you want it to work:
 

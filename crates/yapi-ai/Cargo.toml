@@ -1,12 +1,15 @@
 [package]
 name = "yapi-ai"
-description = "LLM wire APIs, model catalog and registry, cost tracking, credentials and OAuth."
+description = "LLM wire APIs, model catalog and registry, cost tracking, credentials and OAuth. An internal library of yapi, with no stable API."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# The oldest Rust that builds it, older than yapi's own. The Release workflow
+# checks it before publishing.
+rust-version = "1.91"
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+# Published to crates.io for chest-cli.
+publish = true
 
 [dependencies]
 aws-lc-rs.workspace = true

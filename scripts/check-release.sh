@@ -4,7 +4,8 @@
 # installs this system's release archive as users would: with install.sh, as
 # the latest release and as release <tag>, and with cargo-binstall when it is
 # on PATH. install.sh must install yapi, chest and the docs, and
-# cargo-binstall yapi alone for the yapi crate and chest alone for chest-cli.
+# cargo-binstall yapi alone for the yapi crate and chest alone for chest-cli,
+# both from the archive. chest has its own version, from crates/chest.
 # The archives are served over HTTPS from 127.0.0.1 in the layout of GitHub's
 # release downloads, with a throwaway certificate authority.
 #
@@ -126,9 +127,10 @@ if [ ! -s port ]; then
 fi
 repo="https://127.0.0.1:$(cat port)/SkymanOne/yapi"
 version=${tag#v}
+chest_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/crates/chest/Cargo.toml")
 
 # Checks that installer $2 put only the binaries named after it, in name
-# order and of this version, into directory $1.
+# order and of this release's versions, into directory $1.
 check() {
     dir=$1
     installer=$2
@@ -139,16 +141,16 @@ check() {
         exit 1
     fi
     for binary in "$@"; do
-        # chest prints its name before its version.
+        # chest prints its name before its own version.
         expected=$version
-        [ "$binary" = yapi ] || expected="$binary $version"
+        [ "$binary" = yapi ] || expected="chest $chest_version"
         found=$("$dir/$binary" --version)
         if [ "$found" != "$expected" ]; then
             echo "$dir/$binary --version printed '$found', not '$expected'" >&2
             exit 1
         fi
     done
-    echo "ok: $installer installed $* $version"
+    echo "ok: $installer installed $* of release $version"
 }
 
 # The docs install.sh unpacked into agent directory $1.
@@ -171,6 +173,7 @@ check_docs "$work/tagged/agent" "install.sh, release $tag,"
 
 if command -v cargo-binstall >/dev/null 2>&1; then
     # The repository's manifests, pointing at this server instead of GitHub.
+    # Only the archive counts, not a build from crates.io.
     manifest="$work/manifest"
     mkdir -p "$manifest/crates/yapi/src" "$manifest/crates/chest/src"
     sed "s|^repository = .*|repository = \"$repo\"|" "$root/Cargo.toml" >"$manifest/Cargo.toml"
@@ -180,7 +183,7 @@ if command -v cargo-binstall >/dev/null 2>&1; then
     : >"$manifest/crates/chest/src/main.rs"
     for crate in yapi chest-cli; do
         cargo-binstall --manifest-path "$manifest" "$crate" --no-confirm --disable-telemetry \
-            --root "$work/binstall-$crate" --root-certificates "$work/ca.pem"
+            --strategies crate-meta-data --root "$work/binstall-$crate" --root-certificates "$work/ca.pem"
     done
     check "$work/binstall-yapi/bin" "cargo-binstall yapi" yapi
     check "$work/binstall-chest-cli/bin" "cargo-binstall chest-cli" chest

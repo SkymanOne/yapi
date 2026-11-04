@@ -22,7 +22,8 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# Internal path dependencies carry no version; the crates are not published.
+# The unpublished crates, such as yapi-mock, are path dependencies without a
+# version.
 allow-wildcard-paths = true
 
 [sources]

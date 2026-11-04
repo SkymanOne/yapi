@@ -7,7 +7,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 ### Additions
 
 - Add `chest`, a project package manager for skills, subagents and extensions with a lock file and capabilities per extension, enforce extension grants per package, and require native extensions to declare the capabilities they use with SDK features, as [Move to capability features](https://skymanone.github.io/yapi/native-extensions.html#move-to-capability-features) describes ([#293](https://github.com/SkymanOne/yapi/pull/293), [#294](https://github.com/SkymanOne/yapi/pull/294), [#295](https://github.com/SkymanOne/yapi/pull/295), [#296](https://github.com/SkymanOne/yapi/pull/296), [#297](https://github.com/SkymanOne/yapi/pull/297)).
-- Add a choice of `yapi`, `chest` or both to the install script, asked in a terminal or set with `--only`, builds of a release's tag with `--from-source`, and `chest` alone with cargo-binstall, as [Install yapi](https://skymanone.github.io/yapi/install.html) describes ([#302](https://github.com/SkymanOne/yapi/pull/302)).
+- Add a choice of `yapi`, `chest` or both to the install script, asked in a terminal or set with `--only`, builds of a release's tag with `--from-source`, and `chest` on crates.io as `chest-cli` with its own version, for `cargo install` and cargo-binstall, as [Install yapi](https://skymanone.github.io/yapi/install.html) describes ([#302](https://github.com/SkymanOne/yapi/pull/302)).
 
 ### Fixes
 
