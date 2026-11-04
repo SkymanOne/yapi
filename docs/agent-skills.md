@@ -16,7 +16,7 @@ Each skill comes with a helper script:
 In yapi or Pi, install the repository at a release tag as a package:
 
 ```sh
-yapi install git:github.com/SkymanOne/yapi@v0.3.1
+yapi install git:github.com/SkymanOne/yapi@v0.4.0
 ```
 
 yapi clones the repository but loads only its `skills` folder. A package installed at a tag stays at that tag through `yapi update --extensions`, so install a newer tag to update the skills. Installed without a tag, the package follows the `main` branch.
@@ -30,7 +30,7 @@ cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 With [chest](chest-skills.md), add the skills to a project's `chest.toml`, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:
 
 ```sh
-chest add git:github.com/SkymanOne/yapi@v0.3.1 --skill --name yapi-skills
+chest add git:github.com/SkymanOne/yapi@v0.4.0 --skill --name yapi-skills
 ```
 
 `--path skills/yapi` picks one skill instead. Add `-g` to install them for every project.

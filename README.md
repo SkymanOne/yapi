@@ -126,13 +126,13 @@ The next pieces of work are:
 The repository ships two [Agent Skills](https://agentskills.io): `yapi`, for running and scripting yapi, and `yapi-extension`, for writing extensions. Install them with:
 
 ```sh
-yapi install git:github.com/SkymanOne/yapi@v0.3.1
+yapi install git:github.com/SkymanOne/yapi@v0.4.0
 ```
 
 To pin them in a project for yapi and other agents, add them with chest instead:
 
 ```sh
-chest add git:github.com/SkymanOne/yapi@v0.3.1 --skill --name yapi-skills
+chest add git:github.com/SkymanOne/yapi@v0.4.0 --skill --name yapi-skills
 ```
 
 ## Contribute to yapi

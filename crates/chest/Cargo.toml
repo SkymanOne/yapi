@@ -19,7 +19,7 @@ publish = true
 # downloads the release that built it. Without that archive, cargo-binstall
 # compiles the published crate.
 [package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v0.3.1/yapi-{ target }.tar.gz"
+pkg-url = "{ repo }/releases/download/v0.4.0/yapi-{ target }.tar.gz"
 bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 # cargo-quickinstall's builds come from a third party.
