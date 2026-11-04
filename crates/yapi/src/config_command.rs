@@ -21,7 +21,8 @@ fn help() -> String {
     )
 }
 
-/// Runs `yapi config` with the arguments after `config`; its exit code.
+/// Runs `yapi config` with the arguments after `config` and returns its exit
+/// code.
 pub async fn run(args: &[String]) -> u8 {
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         // pi's console.log adds a newline after the text's own.

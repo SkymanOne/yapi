@@ -91,7 +91,7 @@ pub fn login_options(registry: &ModelRegistry, kind: Option<LoginKind>) -> Vec<P
                 subscription,
             });
         }
-        // Custom providers take a key; OAuth-only built-ins do not, nor
+        // Custom providers take a key. OAuth-only built-ins do not, nor do
         // custom ones with a sign-in and no configured key. A pi-ai
         // `Provider` names its own API key method.
         let key_method = registry.key_auth(&id).map(|auth| auth.name().to_owned());
@@ -162,8 +162,8 @@ pub fn find_options(registry: &ModelRegistry, reference: &str) -> Vec<ProviderOp
         .collect()
 }
 
-/// A provider in `/login` argument completion, with every method it offers;
-/// pi's `LoginProviderCompletionOption`.
+/// pi's `LoginProviderCompletionOption`: a provider in `/login` argument
+/// completion, with every method it offers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompletionOption {
     /// Provider id.
@@ -209,8 +209,8 @@ impl CompletionOption {
     }
 }
 
-/// `/login` rows grouped by provider and sorted by name; pi's
-/// `getLoginProviderCompletionOptions`.
+/// pi's `getLoginProviderCompletionOptions`: `/login` rows grouped by
+/// provider and sorted by name.
 pub fn completion_options(options: Vec<ProviderOption>) -> Vec<CompletionOption> {
     let mut providers: Vec<CompletionOption> = Vec::new();
     for option in options {
@@ -455,7 +455,7 @@ enum Row {
 
 /// A question the dialog is waiting on.
 pub struct Pending {
-    /// Where the answer goes; dropping it cancels the sign-in step.
+    /// Where the answer goes. Dropping it cancels the sign-in step.
     pub reply: oneshot::Sender<String>,
     /// Fires when the sign-in withdraws the question.
     pub withdrawn: CancellationToken,
@@ -664,7 +664,8 @@ impl LoginDialog {
         input_mouse(&mut self.input, self.input_row?, kind, x, y)
     }
 
-    /// Handles a key: escape cancels the sign-in; enter answers the open question.
+    /// Handles a key: escape cancels the sign-in, and enter answers the open
+    /// question.
     pub fn handle_input(&mut self, data: &str, ui: &Ui<'_>) -> Outcome {
         if ui.keys.matches(data, "tui.select.cancel") {
             self.cancel.cancel();
@@ -689,7 +690,7 @@ impl LoginDialog {
 /// What reopens when a sign-in is cancelled: pi's `onBack`.
 #[derive(Clone, Debug)]
 pub(super) enum Back {
-    /// Nothing; the editor returns.
+    /// Nothing: the editor returns.
     Editor,
     /// The authentication method menu, for all providers or these.
     Menu(Option<Vec<ProviderOption>>),
@@ -1061,8 +1062,8 @@ impl super::App {
         }
     }
 
-    /// Escape in the login dialog: the sign-in is cancelled; pi then reopens
-    /// where it started.
+    /// Escape in the login dialog: the sign-in is cancelled, and pi then
+    /// reopens where it started.
     pub(super) fn login_cancelled(&mut self) {
         if let Some(run) = self.login.take() {
             self.selector = None;
@@ -1150,7 +1151,7 @@ impl super::App {
     }
 
     /// Selects the signed-in provider's default model, as pi's
-    /// `finishAuthentication`; a Radius catalog without its default gives
+    /// `finishAuthentication`. A Radius catalog without its default gives
     /// its first model.
     pub(super) fn finish_login(&mut self, option: &ProviderOption, label: &str) {
         let path = self.auth_path();

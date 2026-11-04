@@ -30,7 +30,7 @@ pub type SessionFactory = Arc<
         + Sync,
 >;
 
-/// A session's file as pi's events report it; `None` in memory.
+/// A session's file as pi's events report it, or `None` in memory.
 pub fn file_of(manager: &SessionManager) -> Option<String> {
     manager.file().map(|file| file.display().to_string())
 }
@@ -61,13 +61,13 @@ pub fn new_session(
 
 /// A checked fork, built once the current session has settled.
 pub struct Fork {
-    /// The new leaf; `None` starts an empty session linked to the current one.
+    /// The new leaf. `None` starts an empty session linked to the current one.
     target: Option<String>,
     /// The forked user message's text: `/fork` puts it back in the editor.
     pub text: Option<String>,
 }
 
-/// pi's `fork` checks: `at` keeps `entry_id` (`/clone`); otherwise the entry
+/// pi's `fork` checks: `at` keeps `entry_id` (`/clone`). Otherwise the entry
 /// must be a user message, and the fork ends before it.
 pub fn plan_fork(current: &AgentSession, entry_id: &str, at: bool) -> Result<Fork, String> {
     current.with_session(|session| {
@@ -148,7 +148,7 @@ pub enum SwitchError {
     /// The file could not be read.
     #[error("{0}")]
     Open(String),
-    /// The session's working directory is gone; pi's `MissingSessionCwdError`.
+    /// pi's `MissingSessionCwdError`: the session's working directory is gone.
     #[error(
         "Stored session working directory does not exist: {}\nSession file: {}\nCurrent working directory: {}",
         session_cwd.display(),
@@ -196,7 +196,7 @@ pub fn open_session(
 pub type ActionRequest = (SessionAction, oneshot::Sender<Result<bool, String>>);
 
 /// [`SessionActions`] that `send` each change to a mode's loop and wait for
-/// its outcome there; `send` says whether the loop took it.
+/// its outcome there. `send` says whether the loop took it.
 pub fn actions(send: impl Fn(ActionRequest) -> bool + Send + Sync + 'static) -> SessionActions {
     Arc::new(move |action| {
         let (reply, outcome) = oneshot::channel();

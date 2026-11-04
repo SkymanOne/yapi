@@ -49,8 +49,8 @@ pub fn subscription(registry: &yapi_ai::registry::ModelRegistry, provider: &str)
                 .is_some_and(|flow| flow.is_subscription()))
 }
 
-/// The current git branch of `cwd`, read from `.git/HEAD`; a short commit for
-/// a detached head.
+/// The current git branch of `cwd`, read from `.git/HEAD`, or a short commit
+/// for a detached head.
 pub fn git_branch(cwd: &Path) -> Option<String> {
     let mut dir = Some(cwd);
     while let Some(current) = dir {

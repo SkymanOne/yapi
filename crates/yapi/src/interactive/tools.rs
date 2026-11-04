@@ -60,7 +60,7 @@ struct ShownImage {
 /// Wrapped rows of MCP output that pi shows collapsed.
 const MCP_PREVIEW_LINES: usize = 5;
 
-/// pi's edit preview (`computeEditsDiff`) for a call's arguments; `None`
+/// pi's edit preview (`computeEditsDiff`) for a call's arguments, or `None`
 /// when they name no file or no complete edits.
 pub fn edit_preview(args: &Value, cwd: &std::path::Path) -> Option<Result<String, String>> {
     use yapi_core::tools::{Replacement, preview_edits};
@@ -449,7 +449,7 @@ fn script_duration(ms: f64) -> String {
     }
 }
 
-/// One nested call of a codemode script; pi's `formatCall`.
+/// pi's `formatCall`: one nested call of a codemode script.
 fn script_call(call: &Value, theme: &Theme, expanded: bool) -> Vec<StyledLine> {
     let (icon, color) = match call["status"].as_str() {
         Some("running") => ("…", "warning"),
@@ -544,8 +544,8 @@ impl ToolView {
                     .as_ref()
                     .is_none_or(|(held, _)| *held != hash)
                 {
-                    // shortcut: converts on the UI thread when first drawn, where pi
-                    // converts in the background; move it off if large images stall input.
+                    // shortcut: converts on the UI thread when first drawn (pi converts in
+                    // the background), move it off if large images stall input.
                     shown[index].png = Some((hash, png_copy(&image.data)));
                 }
             }
@@ -1123,8 +1123,8 @@ impl ToolView {
     }
 
     /// pi's MCP `renderResult`: a blank row and the output colored by
-    /// outcome; collapsed, its first wrapped rows, how many more, and the
-    /// file holding output that was cut for the model.
+    /// outcome. Collapsed, it shows the first wrapped rows, how many more
+    /// there are, and the file holding output that was cut for the model.
     fn mcp_result(
         &self,
         result: &ToolResult,
@@ -1363,8 +1363,6 @@ fn read_range(args: &Value, theme: &Theme) -> Option<Span<'static>> {
     Some(Span::styled(text, theme.fg("warning")))
 }
 
-/// pi's generic call header: `name key=value ...`, or one `key: value` line per
-/// argument when expanded.
 /// pi's `createResultFallback`: the output's first lines and how many more.
 fn fallback_result(result: &ToolResult, ctx: &RenderContext<'_>, width: usize) -> Vec<StyledLine> {
     let output = text_output(result, ctx.images.is_some());
@@ -1391,6 +1389,8 @@ fn fallback_result(result: &ToolResult, ctx: &RenderContext<'_>, width: usize) -
     lines::wrap_all(&out, width)
 }
 
+/// pi's generic call header: `name key=value ...`, or one `key: value` line per
+/// argument when expanded.
 fn generic_call(name: &str, args: &Value, theme: &Theme, expanded: bool) -> Vec<StyledLine> {
     let header = title(theme, name);
     let entries: Vec<(String, Value)> = match args {
@@ -1624,7 +1624,8 @@ mod tests {
             "ab\nc"
         );
         // pi keeps DEL and C1 controls, drops interlinear annotations, and
-        // strips charset selections and 8-bit CSI sequences whole.
+        // strips charset selections and 8-bit CSI (control sequence
+        // introducer) sequences whole.
         assert_eq!(
             text_output(&result("a\x7fb\u{85}c\u{fff9}d\x1b(Be\u{9b}31mf\tg"), false),
             "a\x7fb\u{85}cdef\tg"

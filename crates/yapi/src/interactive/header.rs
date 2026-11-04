@@ -82,7 +82,7 @@ pub fn render(
     let mode = theme.mode();
     let version = Span::styled(format!("v{}", env!("CARGO_PKG_VERSION")), theme.fg("dim"));
     // pi's layout: a two-row logo with the version beside its top row and the
-    // hints beside its bottom row; Apple Terminal, which draws half blocks
+    // hints beside its bottom row. Apple Terminal, which draws half blocks
     // with gaps, gets the wordmark above the hints instead.
     let logo = std::env::var("TERM_PROGRAM").ok().as_deref() != Some("Apple_Terminal");
     let [logo_top, logo_bottom] = logo_rows(mode);
@@ -236,7 +236,7 @@ fn short_path(source: &SourceInfo, home: Option<&Path>) -> String {
 }
 
 /// pi's compact `[Extensions]` labels: the shortest unique path suffix of a
-/// file, without `index.ts`; for packages, the package and the file in it.
+/// file, without `index.ts`, or for packages, the package and the file in it.
 fn extension_labels(extensions: &[SourceInfo], home: Option<&Path>) -> Vec<String> {
     let segments = |path: &str| -> Vec<String> {
         display_path(path, home)

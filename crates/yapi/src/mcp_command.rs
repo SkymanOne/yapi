@@ -371,7 +371,7 @@ async fn login(name: &str, connection: &Arc<Connection>, timeout_seconds: f64) -
     0
 }
 
-/// The redirect URL pasted in a terminal; otherwise only the browser callback
+/// The redirect URL pasted in a terminal. Otherwise only the browser callback
 /// can finish the sign-in. `None`, which cancels the sign-in, after `timeout`
 /// or once the callback arrived.
 async fn wait_for_redirect_url(

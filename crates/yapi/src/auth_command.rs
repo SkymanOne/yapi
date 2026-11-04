@@ -173,7 +173,7 @@ fn duration_ms(value: &str) -> Option<u64> {
     amount.checked_mul(scale)
 }
 
-/// The requested provider and model; pi's `validateAuthCommandArgs`.
+/// pi's `validateAuthCommandArgs`: the requested provider and model.
 fn validate(
     args: &crate::args::Args,
     kind: Kind,

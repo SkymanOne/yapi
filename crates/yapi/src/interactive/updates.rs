@@ -61,7 +61,7 @@ async fn new_version() -> Option<String> {
 }
 
 /// pi's `showNewVersionNotification` for release `version`. A release
-/// carries no note, and its changelog is on the releases page.
+/// has no note, and its changelog is on the releases page.
 pub(super) fn version_notice(version: String) -> Item {
     let releases = yapi_core::docs::releases_url();
     Item::Render(Box::new(move |width, ctx| {

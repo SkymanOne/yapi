@@ -1,5 +1,5 @@
 //! Extension UI in the interactive mode: pi's `ExtensionUIContext` as
-//! `interactive-mode.ts` provides it. Requests travel to the app as events;
+//! `interactive-mode.ts` provides it. Requests reach the app as events, and
 //! what extensions read back at once (the editor text, the theme, footer
 //! data) is mirrored in [`Shared`].
 
@@ -80,7 +80,7 @@ pub(super) enum Request {
     /// An extension registered renderers after its session started.
     Renderers,
     ToolsExpanded(bool),
-    /// Switch to the named theme, which loads; `None` falls back to the
+    /// Switch to the named theme, which loads. `None` falls back to the
     /// system theme, as pi does when a theme fails to load.
     Theme(Option<String>),
     /// Switch to a theme made from an extension's `Theme` object.
@@ -475,7 +475,7 @@ struct ViewState {
     rows: Vec<StyledLine>,
     cursor: Option<(usize, usize)>,
     rendered: Option<usize>,
-    /// The render it waits for; see [`RemoteView::rendered`].
+    /// The render it waits for (see [`RemoteView::rendered`]).
     requested: Option<u64>,
     dirty: bool,
     /// See [`RemoteView::retire`].
@@ -535,13 +535,13 @@ impl RemoteView {
         self.state.borrow_mut().dirty = true;
     }
 
-    /// Delivers raw terminal input; pi-tui renders again after input.
+    /// Delivers raw terminal input. pi-tui renders again after input.
     pub fn input(&self, data: &str) {
         self.component.input(data);
         self.invalidate();
     }
 
-    /// Delivers a mouse event; see [`RemoteComponent::mouse`]. pi-tui
+    /// Delivers a mouse event (see [`RemoteComponent::mouse`]). pi-tui
     /// renders again after the events the TUI delivers.
     pub fn mouse(&self, event: &Value) -> BoxFuture<'static, bool> {
         let taken = self.component.mouse(event);
@@ -549,8 +549,8 @@ impl RemoteView {
         taken
     }
 
-    /// Sends an operation to the editor it shows; see
-    /// [`RemoteComponent::editor_op`].
+    /// Sends an operation to the editor it shows (see
+    /// [`RemoteComponent::editor_op`]).
     pub fn editor_op(&self, op: &Value) {
         self.component.editor_op(op);
         self.invalidate();
@@ -580,11 +580,11 @@ impl RemoteView {
         (state.rows.clone(), state.cursor)
     }
 
-    /// Takes the lines of its render `request` at `width`; `false` when they
-    /// change nothing or answer another request. A runtime that restarted
-    /// gives its components the handles of the last one's, so a render the
-    /// stopped runtime answered may carry this view's key. A retired view
-    /// takes none, for the same reason.
+    /// Takes the lines of its render `request` at `width`. Returns `false`
+    /// when they change nothing or answer another request. A runtime that
+    /// restarted gives its components the handles of the last one's, so a
+    /// render the stopped runtime answered may have this view's key. A
+    /// retired view takes none, for the same reason.
     pub fn rendered(&self, request: u64, width: usize, lines: &[String]) -> bool {
         if self.retired() || self.state.borrow().requested != Some(request) {
             return false;
@@ -618,7 +618,7 @@ pub(super) struct CustomEditor {
     pub view: RemoteView,
     /// It draws the working status in its top border.
     pub embeds_status: bool,
-    /// The settings last sent; see [`CustomEditor::configure`].
+    /// The settings last sent (see [`CustomEditor::configure`]).
     configured: Value,
 }
 
@@ -670,7 +670,7 @@ pub(super) enum WidgetView {
 const MAX_WIDGET_LINES: usize = 10;
 
 impl WidgetView {
-    /// The component's key; see [`RemoteView::key`].
+    /// The component's key (see [`RemoteView::key`]).
     pub fn key(&self) -> Option<(u64, u32)> {
         match self {
             WidgetView::Lines(_) => None,
@@ -709,7 +709,7 @@ pub(super) fn sanitize_status(text: &str) -> String {
         .join(" ")
 }
 
-/// What extensions placed around the editor; pi's widget containers, footer
+/// What extensions placed around the editor: pi's widget containers, footer
 /// statuses and replaced footer and header.
 #[derive(Default)]
 pub(super) struct ExtensionState {
@@ -854,7 +854,7 @@ impl ExtensionState {
     }
 
     /// Mirrors the terminal's size and whether the prompt editor has the
-    /// keyboard; extension runtimes hear of a change.
+    /// keyboard. Extension runtimes hear of a change.
     pub fn set_terminal(&self, size: (usize, usize), editor_focused: bool) {
         let state = TerminalState {
             size,
@@ -977,7 +977,7 @@ impl super::App {
                     }
                 }
             }
-            // pi's `setCustomEditorComponent`; the built-in editor already
+            // pi's `setCustomEditorComponent`. The built-in editor already
             // holds the text an extension's editor had.
             Request::SetEditor(component, embeds_status) => {
                 self.ext.editor = component.map(|component| {
@@ -1107,8 +1107,8 @@ impl super::App {
     }
 
     /// Shows `selector` in the editor's place for an extension. As in pi, it
-    /// replaces whatever selector is open; an extension dialog it replaces is
-    /// answered as cancelled.
+    /// replaces whatever selector is open, and an extension dialog it
+    /// replaces is answered as cancelled.
     pub(super) fn open_extension_dialog(
         &mut self,
         selector: super::selectors::Selector,
@@ -1518,7 +1518,7 @@ impl super::App {
     }
 }
 
-/// Where an overlay goes; pi-tui's `resolveOverlayLayout`.
+/// pi-tui's `resolveOverlayLayout`: where an overlay goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct OverlayLayout {
     pub width: usize,
@@ -1670,7 +1670,6 @@ impl super::App {
         });
     }
 
-    /// The overlay of the open custom component, as pi-tui composites it.
     /// The overlays of open custom components, bottom first, as pi-tui
     /// composites them.
     pub(super) fn overlays(&self) -> Vec<yapi_tui::screen::Overlay> {

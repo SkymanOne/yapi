@@ -212,8 +212,8 @@ fn update_target(options: &Options) -> (Update, Option<&'static str>) {
     (target, conflict)
 }
 
-/// Runs the package command `args` starts with; its exit code, 1 for an
-/// unknown command.
+/// Runs the package command `args` starts with and returns its exit code, 1
+/// for an unknown command.
 pub async fn run(args: &[String]) -> u8 {
     let command = match args.first().map(String::as_str) {
         Some("install") => Command::Install,
@@ -266,7 +266,7 @@ pub async fn run(args: &[String]) -> u8 {
 }
 
 /// `yapi update --models`: pi's `refreshModelCatalogs`, which fetches every
-/// configured catalog, offline setting or not, within 15 seconds.
+/// configured catalog, offline setting or not, within 15s.
 async fn refresh_models() -> u8 {
     let registry = yapi_ai::registry::ModelRegistry::load(&agent_dir());
     let Some(store) = registry.models_store().cloned() else {
