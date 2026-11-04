@@ -4,7 +4,7 @@
 # installs this system's release archive as users would: with install.sh, as
 # the latest release and as release <tag>, and with cargo-binstall when it is
 # on PATH. install.sh must install yapi, chest and the docs, and
-# cargo-binstall yapi alone.
+# cargo-binstall yapi alone for the yapi crate and chest alone for chest-cli.
 # The archives are served over HTTPS from 127.0.0.1 in the layout of GitHub's
 # release downloads, with a throwaway certificate authority.
 #
@@ -127,30 +127,27 @@ fi
 repo="https://127.0.0.1:$(cat port)/SkymanOne/yapi"
 version=${tag#v}
 
-# Checks that installer $2 put yapi $1 of this version, and only the files
-# named after it, in name order, into its directory.
+# Checks that installer $2 put only the binaries named after it, in name
+# order and of this version, into directory $1.
 check() {
-    binary=$1
+    dir=$1
     installer=$2
     shift 2
-    found=$("$binary" --version)
-    if [ "$found" != "$version" ]; then
-        echo "$binary --version printed '$found', not '$version'" >&2
-        exit 1
-    fi
-    dir=$(dirname "$binary")
     installed=$(ls -A "$dir")
     if [ "$installed" != "$(printf '%s\n' "$@")" ]; then
         echo "$installer installed $installed" >&2
         exit 1
     fi
-    if [ -e "$dir/chest" ]; then
-        found=$("$dir/chest" --version)
-        if [ "$found" != "chest $version" ]; then
-            echo "$dir/chest --version printed '$found', not 'chest $version'" >&2
+    for binary in "$@"; do
+        # chest prints its name before its version.
+        expected=$version
+        [ "$binary" = yapi ] || expected="$binary $version"
+        found=$("$dir/$binary" --version)
+        if [ "$found" != "$expected" ]; then
+            echo "$dir/$binary --version printed '$found', not '$expected'" >&2
             exit 1
         fi
-    fi
+    done
     echo "ok: $installer installed $* $version"
 }
 
@@ -165,23 +162,28 @@ check_docs() {
 
 CURL_CA_BUNDLE="$work/ca.pem" YAPI_RELEASES_URL="$repo/releases" YAPI_CODING_AGENT_DIR="$work/latest/agent" \
     sh "$root/install.sh" --to "$work/latest/bin"
-check "$work/latest/bin/yapi" "install.sh, latest release," chest yapi
+check "$work/latest/bin" "install.sh, latest release," chest yapi
 check_docs "$work/latest/agent" "install.sh, latest release,"
 CURL_CA_BUNDLE="$work/ca.pem" YAPI_RELEASES_URL="$repo/releases" YAPI_CODING_AGENT_DIR="$work/tagged/agent" \
     sh "$root/install.sh" --version "$tag" --to "$work/tagged/bin"
-check "$work/tagged/bin/yapi" "install.sh, release $tag," chest yapi
+check "$work/tagged/bin" "install.sh, release $tag," chest yapi
 check_docs "$work/tagged/agent" "install.sh, release $tag,"
 
 if command -v cargo-binstall >/dev/null 2>&1; then
     # The repository's manifests, pointing at this server instead of GitHub.
     manifest="$work/manifest"
-    mkdir -p "$manifest/crates/yapi/src"
+    mkdir -p "$manifest/crates/yapi/src" "$manifest/crates/chest/src"
     sed "s|^repository = .*|repository = \"$repo\"|" "$root/Cargo.toml" >"$manifest/Cargo.toml"
     cp "$root/crates/yapi/Cargo.toml" "$manifest/crates/yapi/"
+    cp "$root/crates/chest/Cargo.toml" "$manifest/crates/chest/"
     : >"$manifest/crates/yapi/src/main.rs"
-    cargo-binstall --manifest-path "$manifest" yapi --no-confirm --disable-telemetry \
-        --root "$work/binstall" --root-certificates "$work/ca.pem"
-    check "$work/binstall/bin/yapi" cargo-binstall yapi
+    : >"$manifest/crates/chest/src/main.rs"
+    for crate in yapi chest-cli; do
+        cargo-binstall --manifest-path "$manifest" "$crate" --no-confirm --disable-telemetry \
+            --root "$work/binstall-$crate" --root-certificates "$work/ca.pem"
+    done
+    check "$work/binstall-yapi/bin" "cargo-binstall yapi" yapi
+    check "$work/binstall-chest-cli/bin" "cargo-binstall chest-cli" chest
 else
     echo "skipped: cargo-binstall is not on PATH"
 fi

@@ -8,6 +8,18 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# `cargo binstall --git https://github.com/SkymanOne/yapi chest-cli` installs
+# `chest` from the release archive for the host, which holds `yapi` too, named
+# as scripts/package-release.sh names it. The other strategies are off because
+# both fetch `chest-cli` from crates.io, where it isn't published:
+# cargo-quickinstall's builds, and the fallback that compiles from source, which
+# runs `cargo install` without `--git`.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/yapi-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+disabled-strategies = ["quick-install", "compile"]
+
 [[bin]]
 name = "chest"
 path = "src/main.rs"

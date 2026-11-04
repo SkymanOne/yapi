@@ -30,13 +30,14 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 
 ## Install with cargo-binstall
 
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release's `yapi` into `~/.cargo/bin`. It doesn't install `chest`:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the same release's executables into `~/.cargo/bin`, one per command. The first command installs `yapi`, and the second installs `chest` from its crate, `chest-cli`. Run one or both:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
+cargo binstall --git https://github.com/SkymanOne/yapi chest-cli
 ```
 
-Keep `--git`, because the `yapi` crate on crates.io is an unrelated project. cargo-binstall installs the release that the manifest on `main` names. If it reports that the release doesn't exist, use the install script.
+Keep `--git`, because the `yapi` crate on crates.io is an unrelated project, and `chest-cli` isn't on crates.io. cargo-binstall installs the release that the manifest on `main` names. If it reports that the release doesn't exist, use the install script.
 
 ## Install from a release archive
 
@@ -108,7 +109,7 @@ yapi doesn't update itself. `yapi update` prints how to upgrade, `yapi update --
 | Installed with | Upgrade |
 |---|---|
 | Install script | Run the script again. It upgrades `chest` too. |
-| cargo-binstall | Run the same `cargo binstall` command again. |
+| cargo-binstall | Run the same `cargo binstall` commands again. |
 | Release archive | Unpack the new archive over the old binaries. |
 | Cargo | Run `cargo install` again with the new release's tag, for `yapi` and for `chest-cli`. |
 
