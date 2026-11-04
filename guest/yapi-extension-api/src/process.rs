@@ -20,7 +20,7 @@ pub enum ProcessEvent {
     /// ended it, such as `SIGTERM`. Output written before it exited may
     /// still follow.
     Exit {
-        /// The exit code; `None` when a signal ended the process.
+        /// The exit code, or `None` when a signal ended the process.
         code: Option<i32>,
         /// The signal that ended the process.
         signal: Option<String>,
@@ -54,8 +54,8 @@ impl Process {
     /// `cwd` it starts in yapi's working folder, `env` replaces the whole
     /// environment, `envAdd` sets variables on top of the inherited
     /// environment or `env`, and `"stdin": "ignore"` gives it empty standard
-    /// input instead of a pipe. Fails with Node's spawn error, such as `spawn git ENOENT`, or
-    /// when the extension may not run processes.
+    /// input instead of a pipe. Fails with Node's spawn error, such as
+    /// `spawn git ENOENT`, or when the extension may not run processes.
     pub fn spawn(spawn: &Value) -> Result<Process, String> {
         let started = request("process.spawn", spawn)?;
         Ok(Process {
@@ -76,9 +76,9 @@ impl Process {
         self.pid
     }
 
-    /// The next event, waiting for one; `None` once the process has exited
-    /// and closed its output. Dropping the future loses no output: the next
-    /// call picks up the same read.
+    /// The next event, waiting for one, or `None` once the process has
+    /// exited and closed its output. Dropping the future loses no output:
+    /// the next call picks up the same read.
     pub async fn next(&mut self) -> Option<ProcessEvent> {
         while self.events.is_empty() && !self.ended {
             let id = self.id;
@@ -95,7 +95,7 @@ impl Process {
     }
 
     /// Writes `data` to standard input, waiting while the process has not
-    /// taken the previous write; false once it is closed.
+    /// taken the previous write. Returns false once standard input is closed.
     pub async fn write(&self, data: &[u8]) -> bool {
         op(
             "process.write",
@@ -110,7 +110,8 @@ impl Process {
         let _ = request("process.end", &json!({"id": self.id}));
     }
 
-    /// Sends `signal`, such as `SIGTERM`; false once the process has exited.
+    /// Sends `signal`, such as `SIGTERM`. Returns false once the process has
+    /// exited.
     pub fn kill(&self, signal: &str) -> bool {
         request("process.kill", &json!({"id": self.id, "signal": signal}))
             .is_ok_and(|sent| sent == true)

@@ -6,7 +6,7 @@
 //! use Pi's extension API and are not affected.
 //!
 //! An extension is a `cdylib` built for `wasm32-wasip2`. Its init function
-//! registers what it offers; [`extension!`] exports it:
+//! registers what it offers, and [`extension!`] exports it:
 //!
 //! ```ignore
 //! use yapi_extension_api::{Api, Tool, ToolResult, json};
@@ -52,7 +52,7 @@
 //! [`send_message`] and [`append_entry`] exist only with theirs. The build
 //! records its features in a `yapi:capabilities` custom section, which
 //! `chest check` compares with the capabilities its package requests.
-// The docs link to items that only some features build, as docs.rs has all.
+// The docs link to items only some features build. docs.rs enables them all.
 #![cfg_attr(not(feature = "all"), allow(rustdoc::broken_intra_doc_links))]
 
 use std::cell::RefCell;
@@ -138,8 +138,8 @@ impl Context {
         &self.data
     }
 
-    /// The id of the tool call this context runs, pi's `toolCallId`; `None`
-    /// outside a tool.
+    /// The id of the tool call this context runs, pi's `toolCallId`, or
+    /// `None` outside a tool.
     pub fn tool_call_id(&self) -> Option<&str> {
         self.tool_call_id.as_deref()
     }
@@ -148,9 +148,9 @@ impl Context {
     /// `signal` fires. Never resolves outside a tool.
     ///
     /// A tool that has called it keeps running after an abort, and yapi
-    /// uses the result it returns, such as partial output. One that has not
-    /// returned 10 seconds after the abort is dropped. A tool that never
-    /// calls it is dropped at once.
+    /// uses the result it returns, such as partial output. yapi drops such a
+    /// tool if it has not returned 10s after the abort. A tool that never
+    /// calls it is dropped as soon as the run is aborted.
     pub fn aborted(&self) -> impl Future<Output = ()> + 'static {
         self.signal.watched.set(true);
         Signal::wait(self.signal.clone())
@@ -233,7 +233,7 @@ type MessageRenderer = dyn Fn(&Value, &Value) -> Option<Box<dyn Component>>;
 type CodeRenderer = dyn Fn(&str, Option<&str>, usize) -> Option<Vec<String>>;
 type MarkdownTransformer = dyn Fn(&str, &Value) -> Option<String>;
 
-/// What a tool's renderer draws for; pi's `ToolRenderContext`.
+/// pi's `ToolRenderContext`: what a tool's renderer draws for.
 pub struct RenderContext<'a> {
     /// pi's fields: `args`, `toolCallId`, `cwd`, `executionStarted`,
     /// `argsComplete`, `isPartial`, `expanded`, `showImages` and `isError`.
@@ -296,8 +296,8 @@ impl Tool {
     /// for strict JSON-schema sampling, and `"require"` fails requests that
     /// cannot have it. `{"type": "grammar", "variants": {"openai_lark": ...,
     /// "openai_regex": ...}}` sends the tool to OpenAI models as a custom
-    /// tool whose raw input follows the grammar; its parameters then hold one
-    /// required string argument, which carries that input.
+    /// tool whose raw input follows the grammar. Its parameters then hold one
+    /// required string argument with that input.
     pub fn constrained_sampling(mut self, config: Value) -> Tool {
         self.constrained_sampling = Some(config);
         self
@@ -364,7 +364,7 @@ struct Flag {
     description: String,
 }
 
-/// What an extension registers; pi's `ExtensionAPI`.
+/// pi's `ExtensionAPI`: what an extension registers.
 #[derive(Default)]
 pub struct Api {
     tools: Vec<Tool>,
@@ -423,7 +423,7 @@ impl Api {
         });
     }
 
-    /// Accepts `--name` on the command line; read it with [`get_flag`].
+    /// Accepts `--name` on the command line. Read it with [`get_flag`].
     pub fn register_flag(
         &mut self,
         name: impl Into<String>,
@@ -599,7 +599,7 @@ pub fn request(kind: &str, payload: &Value) -> Result<Value, String> {
     serde_json::from_str(&text).map_err(|err| err.to_string())
 }
 
-/// Shows `message`; `level` is `info`, `warning` or `error`.
+/// Shows `message` at `level`: `info`, `warning` or `error`.
 pub fn notify(message: &str, level: &str) {
     let _ = request("ui.notify", &json!({"message": message, "type": level}));
 }
@@ -632,7 +632,7 @@ pub struct ExecOutput {
     pub stdout: String,
     /// Standard error.
     pub stderr: String,
-    /// Exit code; `None` when a signal ended it.
+    /// Exit code, or `None` when a signal ended it.
     pub code: Option<i32>,
 }
 

@@ -113,7 +113,7 @@ pub fn spawn(future: impl Future<Output = ()> + 'static) -> u64 {
     id
 }
 
-/// Stops task `id`, dropping its future; whether it was running.
+/// Stops task `id`, dropping its future, and returns whether it was running.
 pub(crate) fn cancel(id: u64) -> bool {
     TASKS.with(|tasks| tasks.borrow_mut().remove(&id)).is_some()
 }
@@ -123,8 +123,8 @@ pub(crate) fn report(outcome: Outcome) {
     OUTCOMES.with(|outcomes| outcomes.borrow_mut().push(outcome));
 }
 
-/// Polls woken tasks until none can progress; the outcomes reported since
-/// the last call.
+/// Polls woken tasks until none can progress, and returns the outcomes
+/// reported since the last call.
 pub(crate) fn run() -> Vec<Outcome> {
     while let Some(id) = READY.with(|ready| ready.borrow_mut().pop_front()) {
         // The task is out of the map while it runs, so it can spawn others.
@@ -165,7 +165,7 @@ pub(crate) fn resolve(op: u64, value: Result<String, String>) {
 
 /// Starts host operation `kind` with JSON `payload` and resolves with its
 /// answer, `null` when the host answers nothing. The operation starts at
-/// once; dropping the future ignores its answer. A kind that needs a
+/// once, and dropping the future ignores its answer. A kind that needs a
 /// feature this build leaves out resolves at once with an error that names
 /// the feature, as [`request`](crate::request) fails.
 pub fn op(kind: &str, payload: &Value) -> impl Future<Output = Result<Value, String>> + 'static {
