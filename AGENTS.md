@@ -200,11 +200,11 @@ Module loading runs on the host, in `yapi-ext`:
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `cargo deny check`
-- [docs/contributing.md](docs/contributing.md#checks) describes the git hooks that `prek install` sets up and when CI skips its checks.
+- [docs/contributing.md](docs/contributing.md#run-the-checks) describes the git hooks that `prek install` sets up and when CI skips its checks.
 - After changing a guest, `yapi-tui` or `yapi-types`, run `cargo xtask js-runtime` and commit the artifacts with their inputs hash. It rebuilds `yapi-js.wasm`, which needs a WASI SDK, only when the runtime's own inputs changed.
 - Regenerate the model catalog with `cargo xtask models`. Never edit generated files.
 - `cargo xtask bench` measures yapi against pi on the same machine. Reports state results as measured, with no targets. [docs/performance.md](docs/performance.md) defines the measures and the method.
-- Releases follow [docs/contributing.md](docs/contributing.md#releasing). Tag only after CI on `main` passed for the merge commit itself. A flaky test is a bug to fix, not a run to repeat.
+- Releases follow [docs/contributing.md](docs/contributing.md#release-a-version). Tag only after CI on `main` passed for the merge commit itself. A flaky test is a bug to fix, not a run to repeat.
 
 ### Code
 
@@ -250,7 +250,8 @@ Module loading runs on the host, in `yapi-ext`:
 ### Docs and git
 
 - Concise, professional prose. Describe contracts and decisions; do not paraphrase code or diffs.
-- Public documentation lives in `docs/` and builds with mdBook. User-facing prose avoids em dashes and semicolons.
+- Public documentation lives in `docs/` and builds with mdBook.
+- User-facing prose (`docs/`, `README.md`, the shipped skills and the extension template's README) follows the [Vercel writing guidelines](https://github.com/vercel-labs/writing-guidelines), plus no semicolons. Skip their rules specific to Vercel's docs platform: page metadata (`meta.*`), `<Steps/>`, TypeScript as the default example language, Vercel links and model strings, screenshots and ACME accounts, pricing pages, and their review process.
 - Planned work is in [docs/roadmap.md](docs/roadmap.md).
 - A change to user-facing behavior updates the matching page in `docs/` in the same commit.
 - A change to the architecture or to a decision updates this file in the same commit.

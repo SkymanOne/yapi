@@ -1,14 +1,16 @@
-# Troubleshooting
+# Fix common problems
 
-## Network
+This page lists problems you can hit with yapi and chest, each with its fix. The last sections cover how to report a problem and where yapi writes its log.
 
-yapi honors `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, and the `httpProxy` setting. Requests to AWS container and instance metadata never use a proxy, as in the AWS SDK. Certificates are checked against the operating system's trust store.
+## Proxies, certificates and offline mode
+
+yapi honors `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, and the `httpProxy` setting. Requests to Amazon Web Services (AWS) container and instance metadata never use a proxy, as in the AWS SDK. yapi checks certificates against the operating system's trust store.
 
 `--offline`, or `PI_OFFLINE=1`, skips startup network work such as downloading `fd` and `rg`.
 
 ## macOS blocks a downloaded binary
 
-macOS marks an archive downloaded in a browser as quarantined, and Gatekeeper then refuses to open the `yapi` binary inside it, which Apple has not notarized. The install script, `curl` and Cargo do not set the mark. Remove it from the unpacked binary:
+macOS marks an archive downloaded in a browser as quarantined, and Gatekeeper then refuses to open the `yapi` binary inside it, which Apple hasn't notarized. The install script, `curl` and Cargo don't set the mark. Remove it from the unpacked binary:
 
 ```sh
 xattr -d com.apple.quarantine ~/.local/bin/yapi
@@ -16,38 +18,46 @@ xattr -d com.apple.quarantine ~/.local/bin/yapi
 
 ## No models available
 
-yapi found no credentials. Set a provider's API key or run `/login`. See [Choose a model](models.md).
+yapi found no credentials. Set a provider's API key or run `/login`. [Choose a model](models.md) lists the providers and how to connect each one.
 
 ## An extension breaks startup
 
-`yapi -ne` starts without extensions, including the built-in MCP and llama.cpp extensions. `yapi config` then turns the failing extension off.
+`yapi -ne` starts without extensions, including the built-in Model Context Protocol (MCP) and llama.cpp extensions. `yapi config` then turns the failing extension off.
 
 ## A chest lock is stale
 
-chest warns that entries are not locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` does not pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`. `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. See [Lock, verify and update](chest-lock.md).
+chest warns that entries aren't locked, or that their lock is stale, when `chest.toml` lists entries that `chest.lock` doesn't pin, or pins for another source, revision or version range. Run `chest install` to resolve them and update the lock, then commit `chest.lock`.
+
+`chest install --frozen`, the default under CI, fails instead, so update the lock before you push. [Lock, verify and update packages](chest-lock.md) covers the lock.
 
 ## An extension's call is refused
 
-An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant. Packages from `yapi install` have every grant. For an extension from a [chest](chest-extensions.md#grant-capabilities) manifest, add the capability its call needs to the `capabilities` of its entry. [Security](security.md#grants) lists what each capability allows.
+An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant.
+
+Packages from `yapi install` have every grant. For an extension from a [chest](chest-extensions.md#grant-capabilities) manifest, add the capability its call needs to the `capabilities` of its entry. [What each capability allows](chest-manifest.md#what-each-capability-allows) lists each capability.
 
 ## An extension misses events
 
 A warning in the extension output that starts with `add "<channel>" to events.send of` or `add "<channel>" to events.receive of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
 
-## Reporting a problem
+## Report a problem
 
-Run `/bug`, or `/bug <description>`, to report a problem:
+Run `/bug`, or `/bug <description>`, to report a problem. It takes you through three steps:
 
 1. Describe what went wrong, or leave the description empty.
 2. Choose whether to include the session transcript. It holds your messages, model output, tool calls and their results, including file contents and command output.
 3. Without the transcript, the current model can write a summary instead. yapi sends the transcript to the model's provider with your credentials and keeps only the summary.
 
-yapi writes `yapi-bug-report-<id>.zip` to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its `report.json` leaves out API keys, tokens, passwords and other credentials. The transcript and the summary are kept as written.
+yapi writes `yapi-bug-report-<id>.zip` to the working folder. The report can include your yapi version, operating system, the current model and provider configuration without API keys, loaded extensions, settings, and provider error diagnostics from the session. Its `report.json` leaves out API keys, tokens, passwords and other credentials. yapi keeps the transcript and the summary as written.
 
-Unless yapi runs with `--offline` or `PI_OFFLINE`, and when the [GitHub CLI](https://cli.github.com/) is signed in, `/bug` then offers to open an issue on the [issue tracker](https://github.com/SkymanOne/yapi/issues). A GitHub issue is public, unlike Pi's private upload to radius.pi.dev. The issue holds your description, the summary and `report.json`, with the names of your settings but not their values, and with your home folder written as `~`. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.
+Unless yapi runs with `--offline` or `PI_OFFLINE`, and when the [GitHub CLI](https://cli.github.com/) is signed in, `/bug` then offers to open an issue on the [issue tracker](https://github.com/SkymanOne/yapi/issues). A GitHub issue is public, unlike Pi's private upload to radius.pi.dev.
+
+The issue holds your description, the summary and `report.json`, with the names of your settings but not their values, and with your home folder written as `~`. It never holds the transcript. Attach the zip file to the issue yourself if you want to share it, after you check it for private data. Otherwise, open an issue by hand and attach the zip file.
 
 Run `/debug` to write the screen, the session's messages and recent extension output to `~/.yapi/agent/yapi-debug.log`. Check it for private data, then attach it to a report on the [issue tracker](https://github.com/SkymanOne/yapi/issues) with the output of `yapi --version` and your operating system.
 
-## Logs
+## Read yapi's log
 
-Start yapi with `--enable-logging` to append its log to `~/.yapi/agent/yapi.log`, or `yapi.log` in `YAPI_CODING_AGENT_DIR`. Each line holds the time, the process ID, the level, where the message comes from, and the message. The log has extension output, extension runtime restarts and crashes, and warnings from yapi's libraries. Only you can read the file, as extension output can hold private data. yapi never shortens or removes it, so delete it when you no longer need it.
+Start yapi with `--enable-logging` to append its log to `~/.yapi/agent/yapi.log`, or `yapi.log` in `YAPI_CODING_AGENT_DIR`. Each line holds the time, the process ID, the level, where the message comes from, and the message. The log has extension output, extension runtime restarts and crashes, and warnings from yapi's libraries.
+
+Only you can read the file, as extension output can hold private data. yapi never shortens or removes it, so delete it when you no longer need it.

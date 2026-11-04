@@ -1,6 +1,8 @@
 # Configure yapi
 
-yapi keeps global configuration in `~/.yapi/agent` and project configuration in a project's `.yapi` folder. Set `YAPI_CODING_AGENT_DIR` to move the global folder. Every file uses Pi's format, described in Pi's [settings documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md).
+yapi keeps global configuration in `~/.yapi/agent` and project configuration in a project's `.yapi` folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi's format, described in Pi's [settings documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md).
+
+Set `YAPI_CODING_AGENT_DIR` to move the global folder. The table lists where yapi reads each kind of configuration:
 
 | What | Where |
 |---|---|
@@ -13,15 +15,19 @@ yapi keeps global configuration in `~/.yapi/agent` and project configuration in 
 | Key bindings | `~/.yapi/agent/keybindings.json` |
 | Models and providers | `~/.yapi/agent/models.json` |
 | Credentials | `~/.yapi/agent/auth.json` |
-| MCP servers | `~/.yapi/agent/mcp.json` and `.yapi/mcp.json` |
-| Project packages | `chest.toml` and `chest.lock` in the project, and `~/.chest/chest.toml`. See [chest](#chest). |
-| Documentation for the model | `~/.yapi/agent/docs`. See [Install yapi](install.md#documentation-for-the-model). |
+| Model Context Protocol (MCP) servers | `~/.yapi/agent/mcp.json` and `.yapi/mcp.json` |
+| Project packages | `chest.toml` and `chest.lock` in the project, and `~/.chest/chest.toml`. See [Project packages from chest](#project-packages-from-chest). |
+| Documentation for the model | `~/.yapi/agent/docs`. See [Documentation for the model](install.md#documentation-for-the-model). |
 
 `/settings` edits common settings in place. Files in a project's `.yapi` folder load only after you [trust the project](security.md#project-trust).
 
-## chest
+## Project packages from chest
 
-yapi loads the [project packages](chest-extensions.md#how-yapi-loads-a-manifest) that chest manifests list. It reads `chest.toml` in the project folder, or the file that `CHEST_MANIFEST` names relative to the project folder, such as `chest.dev.toml`. For a name that is absolute, starts with `~` or uses `..`, yapi warns and reads no project manifest, and the chest command stops with an error. The lock is the file beside the manifest named with `.lock`, such as `chest.dev.lock`. The chest command reads `CHEST_MANIFEST` too, as [Which manifest](chest-manifest.md#which-manifest) describes. `~/.chest/chest.toml` lists packages for every project. chest keeps its download cache and its record of what it placed in `~/.chest`.
+yapi loads the [project packages](chest-extensions.md#how-yapi-loads-a-manifest) that chest manifests list. It reads `chest.toml` in the project folder, or the file that `CHEST_MANIFEST` names relative to the project folder, such as `chest.dev.toml`. The lock is the file beside the manifest named with `.lock`, such as `chest.dev.lock`.
+
+For a `CHEST_MANIFEST` value that's absolute, starts with `~` or uses `..`, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads `CHEST_MANIFEST` too, as [Which manifest chest uses](chest-manifest.md#which-manifest-chest-uses) describes.
+
+`~/.chest/chest.toml` lists packages for every project. chest keeps its download cache and its record of what it placed in `~/.chest`.
 
 A project manifest that installs anything loads only in a trusted project, and asks for trust as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust.
 
@@ -45,38 +51,38 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 
 `/review` then sends the prompt, and `/review concurrency` fills in the focus. Pi's [prompt template documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/prompt-templates.md) lists every argument form.
 
-## Themes
+## Choose a theme
 
 Choose a theme in `/settings` or with `"theme"` in settings. `--use-theme <name>` applies one for a single run. Theme files use Pi's JSON format, described in Pi's [theme documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/themes.md).
 
-## Key bindings
+## Change key bindings
 
 `~/.yapi/agent/keybindings.json` changes the keys. Pi's [key binding documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/keybindings.md) lists the format and every action. `/hotkeys` shows the bindings in effect.
 
-## Images
+## How yapi prepares images for the model
 
 yapi prepares images in prompts, `@path` arguments and tool results before they reach the model:
 
-- Images that are not PNG, JPEG, GIF or WebP are converted to PNG when they are BMP, TIFF, ICO, PNM, HDR, DDS or farbfeld. This applies to images that arrive with a MIME type: RPC and SDK prompts, tool results and the clipboard. `@path` arguments and the `read` tool only recognize PNG, JPEG, GIF, WebP and BMP files, so other formats are read as text.
-- With `"images": {"autoResize": true}`, the default, larger images are scaled down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. A scaled image may be sent as JPEG, with a note that gives the model its original size.
-- A prompt or `read` image that cannot be converted or made to fit is left out, with a note that says so. A tool result keeps its original image unchanged.
-- A pasted clipboard image that is not PNG, JPEG, WebP or GIF is converted to PNG when pasted, ignoring its EXIF orientation.
+- yapi converts BMP, TIFF, ICO, PNM, HDR, DDS and farbfeld images to PNG. This applies to images that arrive with a MIME type: remote procedure call (RPC) and SDK prompts, tool results and the clipboard. `@path` arguments and the `read` tool only recognize PNG, JPEG, GIF, WebP and BMP files, so they read other formats as text.
+- With `"images": {"autoResize": true}`, the default, yapi scales larger images down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. It may send a scaled image as JPEG, with a note that gives the model its original size.
+- yapi leaves out a prompt or `read` image that it can't convert or make fit, with a note that says so. A tool result keeps its original image unchanged.
+- yapi converts a pasted clipboard image that isn't PNG, JPEG, WebP or GIF to PNG when you paste it, ignoring its EXIF orientation.
 - `"images": {"blockImages": true}` keeps all images from the model.
 
 Both settings are also in `/settings`.
 
-## Images in the terminal
+## Show images in the terminal
 
-In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty's protocol takes PNG only, so other formats are shown as PNG copies. Other terminals, tmux and screen show a note with the image's type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.
+In kitty, Ghostty, WezTerm, Warp, iTerm2 and Herdr, tool results show their images below the tool. Kitty's protocol takes PNG only, so yapi shows other formats as PNG copies. Other terminals, tmux and screen show a note with the image's type and size instead. In fullscreen mode, iTerm2 also shows the note, as in Pi.
 
 `"terminal": {"showImages": false}` turns images off, and `"imageWidthCells"` sets their preferred width in cells, 60 by default. Both are in `/settings` when the terminal shows images. Set `"terminal": {"images": "kitty"}`, `"iterm2"` or `false` to override the detection. The `PI_IMAGE_PROTOCOL` environment variable, `kitty`, `iterm2` or `none`, does the same, and the setting takes precedence.
 
-## Links
+## Hyperlinks in the terminal
 
 In a terminal that supports hyperlinks, Markdown links show only their text, and the paths in `read`, `write`, `edit` and `ls` calls link to their files. In other terminals, a Markdown link shows its URL after its text.
 
 yapi detects hyperlink support in common terminals, such as iTerm2, Ghostty, kitty, WezTerm and VS Code, and asks tmux whether it passes hyperlinks on. Set `"terminal": {"hyperlinks": true}` or `false` to override the detection. The `PI_HYPERLINKS` environment variable, `1` or `0`, does the same, and the setting takes precedence.
 
-## Colors
+## Terminal colors
 
 Themes use 24-bit color in terminals that support it, such as iTerm2, Ghostty, kitty, WezTerm, VS Code and JetBrains IDEs, or when `COLORTERM` is `truecolor` or `24bit`. Elsewhere, and in tmux or screen unless `COLORTERM` says so, they use 256 colors. Set `"terminal": {"trueColor": true}` or `false` to override the detection. The `PI_TRUE_COLOR` environment variable, `1` or `0`, does the same, and the setting takes precedence.

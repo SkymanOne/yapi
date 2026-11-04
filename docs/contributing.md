@@ -1,8 +1,10 @@
-# Contributing
+# Contribute to yapi
 
-yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes.
+yapi is a Cargo workspace whose crates mirror Pi's packages. This page covers the tools you need, building and checking a change, where common changes go, comparing with Pi, releasing and building these docs. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) describes the architecture, the design decisions and the rules for changes.
 
-## Prerequisites
+## Tools you need
+
+A build and its checks need these tools:
 
 - Rust stable. `rust-toolchain.toml` selects it with Clippy and rustfmt, and rustup installs it on the first build.
 - [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) for the license and advisory check: `cargo install --locked cargo-deny`.
@@ -10,11 +12,13 @@ yapi is a Cargo workspace whose crates mirror Pi's packages. [AGENTS.md](https:/
 - [prek](https://prek.j178.dev/) for the git hooks: `cargo install --locked prek` or `brew install prek`. It installs the hooks' own tools when they first run.
 - A checkout of Pi `v1.0.0` (commit `a13d35a`) outside this repository. Read the matching Pi source before changing a behavior.
 - Node.js 22.19 or newer, only to record goldens from Pi or compare with Pi live.
-- A [WASI SDK](https://github.com/WebAssembly/wasi-sdk) and the `wasm32-wasip2` Rust target, only to rebuild the JS runtime with `cargo xtask js-runtime`.
+- A [WebAssembly System Interface (WASI) SDK](https://github.com/WebAssembly/wasi-sdk) and the `wasm32-wasip2` Rust target, only to rebuild the JS runtime with `cargo xtask js-runtime`.
 
-The first build compiles about 420 crates, wasmtime among them, and takes several minutes. Later builds are incremental.
+The first build compiles about 420 crates, wasmtime among them, so it takes minutes rather than seconds. Later builds are incremental.
 
-## Build and run
+## Build and run from source
+
+Clone the repository and run the `yapi` binary from it:
 
 ```sh
 git clone https://github.com/SkymanOne/yapi yapi
@@ -22,7 +26,7 @@ cd yapi
 cargo run -p yapi --
 ```
 
-## Checks
+## Run the checks
 
 Run these before every commit. CI runs the same checks on Linux and macOS. It skips them when a change touches only `docs/`, `.agents/`, `assets/`, `book.toml`, the license files, root Markdown files other than `CHANGELOG.md`, or workflows other than CI.
 
@@ -35,9 +39,13 @@ cargo deny check
 
 `cargo test` includes the end-to-end scenarios, which replay recorded provider streams and compare the results with goldens recorded from Pi.
 
-`prek install` sets up the git hooks in `.pre-commit-config.yaml`. On commit they run `cargo fmt` and Clippy, check whitespace, line endings, TOML, YAML, JSON, shell scripts and Markdown, and check the commit message and the branch name. On push they check the branch name. `prek run --all-files` runs them on the whole repository. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) gives the rules for commit messages and branch names.
+`prek install` sets up the git hooks in `.pre-commit-config.yaml`. On commit they run `cargo fmt` and Clippy, check whitespace, line endings, TOML, YAML, JSON, shell scripts and Markdown, and check the commit message and the branch name. On push they check the branch name.
 
-## Common changes
+`prek run --all-files` runs the hooks on the whole repository. [AGENTS.md](https://github.com/SkymanOne/yapi/blob/main/AGENTS.md) gives the rules for commit messages and branch names.
+
+## Where common changes go
+
+Each kind of change has a home in the workspace:
 
 | Change | Where |
 |---|---|
@@ -50,28 +58,33 @@ cargo deny check
 
 The READMEs in [tests/fixtures/pi](https://github.com/SkymanOne/yapi/blob/main/tests/fixtures/pi/README.md) and [tests/fixtures/cassettes](https://github.com/SkymanOne/yapi/blob/main/tests/fixtures/cassettes/README.md) explain the golden files and cassettes and how to regenerate them.
 
-## Comparing with Pi
+## Compare yapi with Pi
+
+These commands run Pi and yapi side by side on every scenario, rewrite the goldens from Pi, and time yapi against the Pi binary at `path_to_pi`:
 
 ```sh
-cargo xtask e2e --differential         # run Pi and yapi side by side on every scenario
-cargo xtask e2e --record-pi            # rewrite the goldens from Pi
-cargo xtask bench --pi <path-to-pi>    # time and memory against Pi
+cargo xtask e2e --differential
+cargo xtask e2e --record-pi
+cargo xtask bench --pi path_to_pi
 ```
 
 Pi installs from `tests/fixtures/pi/generator` with `npm ci`, which needs Node.js 22.19 or newer.
 
-## Releasing
+## Release a version
+
+A release takes these steps, in order:
 
 1. Set the new version in `[workspace.package]` of both `Cargo.toml` and `guest/Cargo.toml`. The extension SDK takes the guest workspace's version, and the Release workflow fails when the two differ from each other or from the tag.
 2. For a new minor or major version, raise the `version` requirements on `yapi-types` and `yapi-tui` in `Cargo.toml` and `guest/yapi-extension-api/Cargo.toml`.
 3. Update the versions that the `yapi new` template, the README and these docs pin. `git grep` for the old version lists them, such as `git grep -n '0\.1\.0'`.
 4. Run `cargo metadata --format-version 1 >/dev/null` in `guest` to update `guest/Cargo.lock`, then `cargo xtask js-runtime` with a WASI SDK. The lock file is an input of `yapi-js.wasm`.
 5. In `CHANGELOG.md`, move the lines under `## [Unreleased]` into a section for the release, with its date and link.
-6. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run does not prove main's. A flaky test is a bug to fix, not a run to repeat. Then push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so no token is stored. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
+6. Merge, then wait for CI on `main` to pass for the merge commit itself, which `gh run list --branch main` shows. The pull request's green run doesn't prove main's. A flaky test is a bug to fix, not a run to repeat.
+7. Push the tag `v<version>`. The Release workflow builds and publishes the binaries and the documentation archive, then publishes `yapi-types`, `yapi-tui` and `yapi-extension-api` to crates.io with trusted publishing, so the repository stores no token. Each of the three crates has a trusted publisher on crates.io for repository `SkymanOne/yapi`, workflow `release.yml` and no environment.
 
-## Documentation
+## Build the documentation
 
-This site lives in `docs/`, is configured in `book.toml` and builds with [mdBook](https://rust-lang.github.io/mdBook/):
+This site lives in `docs/`, takes its configuration from `book.toml` and builds with [mdBook](https://rust-lang.github.io/mdBook/). This serves it locally and rebuilds on each change:
 
 ```sh
 mdbook serve

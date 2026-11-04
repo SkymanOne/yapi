@@ -2,14 +2,16 @@
 
 > **yapi only.** chest installs extensions in any project, but only yapi loads them. Other agents ignore `[extensions]`, `capabilities` and `events`.
 
-An extension entry installs a Pi package or a native `.wasm` extension. Git and npm extensions go into the extension store, `.yapi/chest` by default, and a path extension loads where it is. yapi loads each one with only the capabilities its entry grants:
+An extension entry installs a Pi package or a native `.wasm` extension, and yapi loads each one with only the capabilities its entry grants. This page covers granting capabilities, letting extensions share events, how yapi loads a manifest and importing packages from `settings.json`.
+
+Git and npm extensions go into the extension store, `.yapi/chest` by default, and a path extension loads where it is. These entries grant one extension everything and another file access:
 
 ```sh
 chest add npm:@acme/pi-subagent --grant all
 chest add git:github.com/acme/pi-todo --grant fs
 ```
 
-`chest add` treats a source as an extension when it is a `.wasm`, `.ts` or `.js` file, or a package that provides extensions or has an `index.ts` or `index.js`. Pass `--extension` when chest cannot tell.
+`chest add` treats a source as an extension when it's a `.wasm`, `.ts` or `.js` file, or a package that provides extensions or has an `index.ts` or `index.js`. Pass `--extension` when chest can't tell.
 
 ## Grant capabilities
 
@@ -24,25 +26,33 @@ An extension entry lists what it may reach:
 | `all` | Everything above, plus running programs |
 | `none` | Nothing beyond the baseline. The default. |
 
-`chest add` shows the capabilities a package requests and asks about each one. For a native extension it also shows what the build uses, from the features it was built with and the WASI interfaces it imports. It then asks about the ones the package does not request. A bare `.wasm` file requests nothing, so chest offers what it uses.
+`chest add` shows the capabilities a package requests and asks about each one. For a native extension it also shows what the build uses, from the features it was built with and the WebAssembly System Interface (WASI) interfaces it imports. It then asks about the ones the package doesn't request. A bare `.wasm` file requests nothing, so chest offers what it uses.
 
 A request never grants anything by itself. Without a terminal, or with `--yes`, chest grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
 
-`all` is the only way to run programs. A program runs as you, outside the sandbox, with yapi's environment and API keys. So `all` is full access, and `chest add` says so before it grants it. [The reference](chest-manifest.md#capabilities) lists exactly what each capability allows.
+`all` is the only way to run programs. A program runs as you, outside the sandbox, with yapi's environment and API keys. So `all` is full access, and `chest add` says so before it grants it. [What each capability allows](chest-manifest.md#what-each-capability-allows) gives the exact list.
 
-## Let extensions talk
+## Let extensions share events
 
 Extensions share `pi.events` by default, as in Pi, so cooperating Pi extensions keep working whatever their grants. Sharing has a cost between extensions with different grants. One that acts on events lets the sender borrow its access, and one that listens learns what others send.
 
-An entry's `events` narrows that:
+An entry's `events` narrows that. Here `todo` sends only `todo:` channels and hears only `subagent:done`, and `scraper` neither sends nor hears:
 
 ```toml
-[extensions]
-todo    = { git = "https://github.com/acme/pi-todo", capabilities = ["fs"], events = { send = ["todo:*"], receive = ["subagent:done"] } }
-scraper = { npm = "@acme/scraper", capabilities = ["net"], events = "isolated" }
+[extensions.todo]
+git = "https://github.com/acme/pi-todo"
+capabilities = ["fs"]
+events = { send = ["todo:*"], receive = ["subagent:done"] }
+
+[extensions.scraper]
+npm = "@acme/scraper"
+capabilities = ["net"]
+events = "isolated"
 ```
 
-Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it. `chest add` offers the shared default, the channels the package declares, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [The event bus reference](chest-manifest.md#event-bus) has the rules.
+Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.
+
+`chest add` offers the shared default, the channels the package declares, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
 
 ## How yapi loads a manifest
 
@@ -53,19 +63,23 @@ At startup and on `/reload`, yapi reads two manifests:
 
 A project manifest that installs anything asks for trust, as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust. `CHEST_MANIFEST` can name another project manifest, as [How yapi reads CHEST_MANIFEST](chest-environments.md#how-yapi-reads-chest_manifest) describes.
 
-yapi puts back every skill, subagent and extension that the lock pins and that is missing. With `--offline` or `PI_OFFLINE` set, it warns about them instead. It leaves out an entry that is not locked, or whose lock no longer matches the manifest, and warns you to run `chest install`. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the `.gitignore` block.
+yapi puts back every skill, subagent and extension that the lock pins and that's missing. With `--offline` or `PI_OFFLINE` set, it warns about them instead.
+
+yapi leaves out an entry that isn't locked, or whose lock no longer matches the manifest, and warns you to run `chest install`. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the `.gitignore` block.
 
 An entry under `[patch]` needs no lock entry. A patched extension loads from its patch. A patched skill loads from where `chest install` placed it, or else from its patch.
 
-yapi loads the installed extensions as packages named `chest:<name>`. Only chest names packages this way, so yapi ignores a `packages` entry in settings that starts with `chest:`. Each chest extension runs with the [capabilities](chest-manifest.md#capabilities) its entry grants and with its [event policy](chest-manifest.md#event-bus). Packages from `yapi install` keep every grant. When a native extension uses a capability its entry does not grant, yapi warns at startup, because those calls will be denied. [Security](security.md#grants) describes how yapi enforces grants.
+yapi loads the installed extensions as packages named `chest:<name>`. Only chest names packages this way, so yapi ignores a `packages` entry in settings that starts with `chest:`. Each chest extension runs with the [capabilities](chest-manifest.md#what-each-capability-allows) its entry grants and with its [event policy](chest-manifest.md#event-bus-routing). Packages from `yapi install` keep every grant.
 
-yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi does not read on its own, such as `.claude/skills`.
+When a native extension uses a capability its entry doesn't grant, yapi warns at startup, because it will deny those calls. [How yapi enforces grants](security.md#how-yapi-enforces-grants) covers the checks.
 
-`yapi config` lists chest's extensions and skills as a run loads them, marked as managed by chest. They are read-only there, because the manifest decides what loads. [Configure yapi](configuration.md#chest) lists the files.
+yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn't read on its own, such as `.claude/skills`.
+
+`yapi config` lists chest's extensions and skills as a run loads them, marked as managed by chest. They're read-only there, because the manifest decides what loads. [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
 
 ## Import packages from settings.json
 
-`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. A package that sets either is left out with a warning and keeps loading from `settings.json`.
+`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
 
 Import leaves `settings.json` alone. For each package it imports, it prints the `yapi remove -l` command to run once chest installs it. With `-g`, it imports the agent folder's `settings.json` and prints `yapi remove` without `-l`.
 

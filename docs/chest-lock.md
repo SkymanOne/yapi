@@ -1,27 +1,31 @@
-# Lock, verify and update
+# Lock, verify and update packages
 
 > **Any agent.** The lock pins skills and subagents for every agent, and extensions for yapi.
 
-## The lock
+`chest.lock` makes installs reproducible: every clone installs exactly what the lock pins. This page covers what the lock records, how installs use it, running chest in CI, verifying installed copies and updating entries.
 
-`chest.lock` records each entry's commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. chest writes it. Do not edit it. [The reference](chest-manifest.md#chestlock) describes the format and the hash.
+## What the lock records
 
-A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it is a mirror. chest refuses registries that keep tarballs elsewhere, such as GitHub Packages. It does so when `chest add` or `chest install` resolves the package, before it writes a lock.
+`chest.lock` records each entry's commit or npm version, the tarball and integrity of every npm package in its tree, and a content hash of each installed item. chest writes it, so don't edit it. [The `chest.lock` reference](chest-manifest.md#chestlock) describes the format and the hash.
 
-## Install
+A pinned tarball must come from the registry configured for its package, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from your registry when it's a mirror. chest refuses registries that keep tarballs elsewhere, such as GitHub Packages. It does so when `chest add` or `chest install` resolves the package, before it writes a lock.
 
-- `chest install` keeps what is locked and present, installs what is locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
-- `chest install --frozen` installs exactly what the lock pins, including what is missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes `chest.toml` or `chest.lock`.
+## Install from the lock
+
+`chest install` has two modes:
+
+- **`chest install`**: keeps what's locked and present, installs what's locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
+- **`chest install --frozen`**: installs exactly what the lock pins, including what's missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes `chest.toml` or `chest.lock`.
 
 ## Run chest in CI
 
-`chest install` is frozen by default when `CI` is set to anything but an empty value, `0` or `false`. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.
+`chest install` runs frozen by default when `CI` holds anything but an empty value, `0` or `false`. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.
 
-## Verify
+## Verify installed copies
 
-`chest verify` checks every installed copy, copy fallback and link against the lock. It exits with 1 when one does not match.
+`chest verify` checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn't match.
 
-## Update
+## Update entries
 
 > **Any agent**, except the warning about extension requests, which matters only in yapi.
 
@@ -31,4 +35,4 @@ When an updated extension now requests capabilities or event channels beyond its
 
 ## One command at a time
 
-One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it is waiting. A command that stopped without letting go of its lock holds it for 30 seconds at most.
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it's waiting. A command that stopped without letting go of its lock holds it for 30s at most.

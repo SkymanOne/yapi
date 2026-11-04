@@ -1,7 +1,7 @@
 # The documentation site, published to GitHub Pages by .github/workflows/docs.yml.
 [book]
 title = "yapi"
-description = "Yet Another Pi (in Rust) - Fast, Portable, Compatible"
+description = "Yet Another Pi (in Rust): Fast, Portable, Compatible"
 authors = ["The yapi contributors"]
 language = "en"
 src = "docs"
@@ -16,3 +16,6 @@ site-url = "/yapi/"
 git-repository-url = "https://github.com/SkymanOne/yapi"
 edit-url-template = "https://github.com/SkymanOne/yapi/edit/main/{path}"
 no-section-label = true
+# Straight quotes in prose render as curly ones, and three dots as an
+# ellipsis. mdBook 0.5 turns this on by default, and this line keeps it on.
+smart-punctuation = true

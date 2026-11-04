@@ -2,6 +2,8 @@
 
 > **Any agent**, except the sections marked yapi only.
 
+One project can keep more than one manifest, and one manifest in your home folder serves every project. This page covers manifests per environment, how yapi chooses a manifest, global packages and installing an entry from a local checkout.
+
 ## Keep a manifest per environment
 
 > **Any agent.**
@@ -12,22 +14,24 @@ A manifest's lock sits beside it, with `.lock` in place of `.toml`. Keep an envi
 chest --manifest chest.dev.toml install
 ```
 
-`CHEST_MANIFEST` sets the default for `--manifest`, as a file name or a path inside the current folder. A value that is absolute, starts with `~` or uses `..` is an error. `-g` ignores the variable.
+`CHEST_MANIFEST` sets the default for `--manifest`, as a file name or a path inside the current folder. A value that's absolute, starts with `~` or uses `..` is an error. `-g` ignores the variable. This sets the same manifest for every command in the shell:
 
 ```sh
 export CHEST_MANIFEST=chest.dev.toml
 chest install
 ```
 
-Several manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`.
+The manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`.
 
 ## How yapi reads `CHEST_MANIFEST`
 
 > **yapi only.** Other agents read only the folders chest fills, so the variable means nothing to them.
 
-yapi reads the same variable, relative to the project folder, and loads only a manifest inside the project. For a value that is absolute, starts with `~` or uses `..`, yapi warns and loads no project manifest. The global manifest still loads. chest refuses the same values, so chest and yapi always agree on the manifest. [Configure yapi](configuration.md#chest) lists the files yapi reads.
+yapi reads the same variable, relative to the project folder, and loads only a manifest inside the project. For a value that's absolute, starts with `~` or uses `..`, yapi warns and loads no project manifest. The global manifest still loads.
 
-## Global packages
+chest refuses the same values, so chest and yapi always agree on the manifest. [Project packages from chest](configuration.md#project-packages-from-chest) lists the files yapi reads.
+
+## Install global packages
 
 > **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project.
 
@@ -60,6 +64,8 @@ For both the project and the global manifest, chest keeps its download cache and
 todo = { path = "../pi-todo" }
 ```
 
-A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself. It also refuses an extension's path source or patch whose folder is or holds the home folder, the agent folder, the filesystem's root or the project, because the extension could load any file there.
+A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself.
+
+chest also refuses an extension's path source or patch whose folder is or holds the home folder, the agent folder, the filesystem's root or the project, because the extension could load any file there.
 
 yapi loads a patched entry without a lock entry, as [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) describes.
