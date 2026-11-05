@@ -145,15 +145,24 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         (None, false) => std::env::current_dir()?.join("chest.toml"),
     };
     let target = Target { path, scope };
-    // Commands that write the manifest hold its lock from their first read
-    // to their last write, a rollback included. Init and import may create
-    // its folder, and a missing folder holds no manifest to protect.
+    // Commands that write the manifest, and installs, which remove what it
+    // no longer lists, hold its lock from their first read to their last
+    // write, a rollback included. Init and import may create its folder, and
+    // a missing folder holds no manifest to protect. A frozen install skips
+    // it, so a read-only project passes. It writes neither file, and fails
+    // when the lock it reads again under the lock's lock no longer fits the
+    // manifest.
+    let frozen = matches!(cli.command, Command::Install { frozen } if frozen || ci());
     let writes = match &cli.command {
         Command::Init(_) | Command::Import(_) => {
             std::fs::create_dir_all(target.base())?;
             true
         }
-        Command::Add(_) | Command::Remove { .. } | Command::Update { .. } => target.base().is_dir(),
+        Command::Install { .. } if frozen => false,
+        Command::Add(_)
+        | Command::Remove { .. }
+        | Command::Update { .. }
+        | Command::Install { .. } => target.base().is_dir(),
         _ => false,
     };
     let _held = match writes {
@@ -166,12 +175,8 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         Command::Init(args) => init::run(&target, &args)?,
         Command::Add(args) => add::run(&target, args, &mut npm).await?,
         Command::Remove { name } => remove(&target, &name, &mut npm).await?,
-        Command::Install { frozen } => {
-            let mode = if frozen || ci() {
-                Mode::Frozen
-            } else {
-                Mode::Resolve
-            };
+        Command::Install { .. } => {
+            let mode = if frozen { Mode::Frozen } else { Mode::Resolve };
             sync(&target, mode, &mut npm).await?;
         }
         Command::Update { names } => update(&target, names, &mut npm).await?,

@@ -6,7 +6,7 @@
 )]
 
 use std::ffi::OsString;
-use std::io::Write as _;
+use std::io::{BufRead as _, BufReader, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -16,6 +16,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::json;
+use yapi_ai::auth::lock::FileLock;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
 /// A scratch folder with a home folder and a project inside.
@@ -847,6 +848,30 @@ fn remove_keeps_handwritten() {
         "{manifest}"
     );
     assert!(!scratch.project.join(".chest.toml.lock").exists());
+
+    // An install that waits for the manifest's lock reads the manifest once
+    // it holds the lock, so it keeps what `chest add` added meanwhile, which
+    // the lock already pins.
+    ok(&scratch, &["add", "../s1"]);
+    ok(&scratch, &["add", "../s2"]);
+    let path = scratch.project.join("chest.toml");
+    let added = read(&path);
+    write(&path, &added.replace("s2 = { path = \"../s2\" }\n", ""));
+    let held = FileLock::acquire_blocking(&scratch.project.join(".chest.toml")).unwrap();
+    let mut install = command(&scratch, &["install"], &[]).spawn().unwrap();
+    let mut stderr = BufReader::new(install.stderr.take().unwrap());
+    let mut line = String::new();
+    // Until install says it waits, or ends without waiting.
+    while stderr.read_line(&mut line).unwrap() > 0 && !line.contains("Waiting") {
+        line.clear();
+    }
+    write(&path, &added);
+    drop(held);
+    let output = install.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(!text(&output).contains("removed"), "{}", text(&output));
+    assert!(read(&scratch.project.join("chest.lock")).contains("name = \"s2\""));
+    assert!(scratch.project.join(".agents/skills/s2/SKILL.md").exists());
 }
 
 #[test]

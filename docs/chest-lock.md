@@ -35,4 +35,4 @@ When an updated extension now requests capabilities or event channels beyond its
 
 ## One command at a time
 
-One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it's waiting. A command that stopped without letting go of its lock holds it for 30s at most.
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it's waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.
