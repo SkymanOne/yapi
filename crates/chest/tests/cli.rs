@@ -550,6 +550,22 @@ fn verify_detects_tamper() {
     assert_eq!(output.status.code(), Some(1));
     let edited = ".agents/skills/hello was modified since chest installed it";
     assert!(text(&output).contains(edited), "{}", text(&output));
+
+    // Install and update leave path entries whose source didn't change as
+    // they are.
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
+    let added = read(&manifest) + "\n[extensions]\next = { path = \"../ext\" }\n";
+    write(&manifest, &added);
+    ok(&scratch, &["install"]);
+    for command in ["install", "update"] {
+        let said = text(&ok(&scratch, &[command]));
+        for id in ["skills.new", "extensions.ext"] {
+            assert!(said.contains(&format!("unchanged  {id}")), "{said}");
+        }
+    }
 }
 
 #[test]

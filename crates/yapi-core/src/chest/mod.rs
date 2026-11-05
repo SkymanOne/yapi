@@ -533,6 +533,24 @@ impl Project {
         entry.git.is_none() && entry.npm.is_none() || self.recorded(section, locked, record)
     }
 
+    /// Whether `record` says each item `content` stages is in every folder
+    /// of `section` with the hash it brings, unchanged since. An extension
+    /// from a path stages nothing, so it always is.
+    fn holds_staged(&self, section: Section, content: &Content, record: &Record) -> bool {
+        let items = match content {
+            Content::Items(items) => items,
+            Content::Nothing => return true,
+            Content::Store { .. } => return false,
+        };
+        let homes = self.homes(section);
+        items.iter().all(|(item, _, hash)| {
+            homes.iter().all(|home| {
+                let path = home.join(item);
+                record.holds(&path, hash) && record.held(&path) == Held::Owned
+            })
+        })
+    }
+
     /// The copies `locked` occupies that `record` says changed since chest
     /// placed them: [`Problem::Modified`] when still there, else
     /// [`Problem::Missing`]. A patched extension loads from its patch, so its
@@ -872,6 +890,20 @@ impl Project {
                     report
                         .warnings
                         .extend(warnings.map(|warning| format!("{id}: {warning}")));
+                    // What resolves to what the lock pins, in place as chest
+                    // put it, changes nothing: by the lock's hashes for git and
+                    // npm, by the staged ones for a path entry. A patch always
+                    // places, as the lock doesn't list the items it brings.
+                    let same = next.record.as_ref() == locked && present && target.patch.is_none();
+                    let held = match local {
+                        true => self.holds_staged(section, &next.content, record),
+                        false => recorded && locked.is_some_and(matches),
+                    };
+                    if same && held {
+                        discard(std::slice::from_ref(&next));
+                        next.content = Content::Nothing;
+                        next.outcome = Outcome::Unchanged;
+                    }
                     staged.push(next);
                 }
                 Err(err) => {

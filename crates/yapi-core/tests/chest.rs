@@ -333,6 +333,9 @@ async fn git_skill_locked_commit() {
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
     let locked = &project.lock.as_ref().unwrap().skills[0];
     assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+    // An update that finds nothing newer says so.
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Unchanged)]);
     // An update stopped before it wrote the lock leaves the new copy, and
     // install puts back what the lock pins.
     let updated = read(&project.lock_path());
@@ -1502,13 +1505,14 @@ async fn removed_entry_unplaced() {
         assert_eq!(read(&root.join(".claude/skills/pdf/SKILL.md")), "# pdf\n");
     }
 
+    // A path entry whose source didn't change stays as it is.
     let manifest = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n\n[skills]\nnotes = { path = \"notes\" }\n";
     let mut project = open(&dir, manifest);
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(
         outcomes(&report),
         [
-            ("skills.notes", Outcome::Installed),
+            ("skills.notes", Outcome::Unchanged),
             ("skills.pdf", Outcome::Removed)
         ]
     );
