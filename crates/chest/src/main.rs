@@ -18,7 +18,7 @@ use yapi_ai::auth::lock::{FileLock, write_atomic};
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
-use yapi_core::chest::{Mode, Outcome, Project, Report};
+use yapi_core::chest::{Mode, Outcome, Outdated, Project, Report};
 use yapi_core::packages::npm::{self, Npm};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::home_dir;
@@ -443,29 +443,41 @@ fn list(target: &Target) -> anyhow::Result<()> {
 
 async fn outdated(target: &Target, npm: &mut Npm) -> anyhow::Result<()> {
     let project = open(target)?;
-    let short = |text: &str| text[..text.len().min(12)].to_owned();
     let mut any = false;
-    for row in project.outdated(npm).await? {
-        let latest = row.latest.filter(|latest| *latest != row.wanted);
-        if row.wanted == row.locked && latest.is_none() {
-            continue;
-        }
+    for line in project
+        .outdated(npm)
+        .await?
+        .iter()
+        .filter_map(outdated_line)
+    {
         any = true;
-        let mut line = format!(
-            "{}  {} -> {}",
-            row.id,
-            short(&row.locked),
-            short(&row.wanted)
-        );
-        if let Some(latest) = latest {
-            line.push_str(&format!("  (latest {latest})"));
-        }
         out(&line);
     }
     if !any {
         say("Everything is up to date.");
     }
     Ok(())
+}
+
+/// What `chest outdated` says of `row`, if anything: the update it has,
+/// and npm's `latest` when that's newer still, outside the entry's range.
+fn outdated_line(row: &Outdated) -> Option<String> {
+    let short = |text: &str| text[..text.len().min(12)].to_owned();
+    // A `latest` the range already passed, as when the tag lags, is no news.
+    let latest = row.latest.as_ref();
+    let latest = latest.filter(|latest| npm::newer(latest, &row.wanted) != Some(false));
+    let (id, locked) = (&row.id, short(&row.locked));
+    match latest {
+        None if row.wanted == row.locked => None,
+        Some(latest) if row.wanted == row.locked => Some(format!(
+            "{id}  {locked}  (latest {latest} is outside its range)"
+        )),
+        _ => {
+            let update = format!("{id}  {locked} -> {}", short(&row.wanted));
+            let latest = latest.map(|latest| format!("  (latest {latest})"));
+            Some(update + &latest.unwrap_or_default())
+        }
+    }
 }
 
 fn verify(target: &Target) -> anyhow::Result<ExitCode> {
@@ -479,4 +491,39 @@ fn verify(target: &Target) -> anyhow::Result<ExitCode> {
         out(&problem);
     }
     Ok(ExitCode::FAILURE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outdated_lines_read() {
+        let row = |locked: &str, wanted: &str, latest: Option<&str>| Outdated {
+            id: "skills.review".into(),
+            locked: locked.into(),
+            wanted: wanted.into(),
+            latest: latest.map(Into::into),
+        };
+        let cases = [
+            (row("1.2.0", "1.2.0", None), None),
+            (row("1.2.0", "1.2.0", Some("1.2.0")), None),
+            (row("1.2.0", "1.2.0", Some("1.1.0")), None),
+            (
+                row("1.2.0", "1.2.0", Some("2.0.0")),
+                Some("skills.review  1.2.0  (latest 2.0.0 is outside its range)"),
+            ),
+            (
+                row("1.0.0", "1.2.0", Some("1.2.0")),
+                Some("skills.review  1.0.0 -> 1.2.0"),
+            ),
+            (
+                row("1.0.0", "1.2.0", Some("2.0.0")),
+                Some("skills.review  1.0.0 -> 1.2.0  (latest 2.0.0)"),
+            ),
+        ];
+        for (row, line) in cases {
+            assert_eq!(outdated_line(&row).as_deref(), line, "{row:?}");
+        }
+    }
 }
