@@ -50,7 +50,12 @@ Packages from `yapi install` have every grant. For an extension from a [chest](c
 
 ## An extension misses events
 
-A warning in the extension output that starts with `add "<channel>" to events.send of` or `add "<channel>" to events.receive of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
+A warning in the extension output that says an event `did not reach` an extension means routing kept a `pi.events` event from an extension that listens on its channel. It starts with what to change in the `events` of each chest entry it names, such as `extensions.listener in chest.toml`:
+
+- `add "<channel>" to events.receive of <entry>`, or `events.send`: add the channel to that list.
+- `set events of <entry> to { receive = ["<channel>"] }`: the entry is `"isolated"`, so replace `"isolated"` with that table.
+
+The warning names an extension that doesn't come from chest by its file, and an entry of `~/.chest/chest.toml` as `extensions.<name> in ~/.chest/chest.toml`.
 
 ## Report a problem
 

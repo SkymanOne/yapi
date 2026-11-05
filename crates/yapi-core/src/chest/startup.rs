@@ -30,6 +30,22 @@ pub fn project_manifest(project_root: &Path) -> Option<PathBuf> {
     Some(project_root.join(name.as_deref().unwrap_or("chest.toml")))
 }
 
+/// How messages name the chest entry that gives an extension file the
+/// resolver reports with `source` and `scope`: `extensions.<name> in
+/// <manifest>`, the manifest named as chest's own messages name it. `None`
+/// for a file chest doesn't give.
+pub fn entry_label(source: &str, scope: &str, project_root: &Path) -> Option<String> {
+    let name = source.strip_prefix("chest:")?;
+    let manifest = match scope {
+        "user" => "~/.chest/chest.toml".to_owned(),
+        _ => {
+            let manifest = project_manifest(project_root)?;
+            manifest.file_name()?.to_string_lossy().into_owned()
+        }
+    };
+    Some(format!("extensions.{name} in {manifest}"))
+}
+
 /// Whether `manifest` installs anything, beyond describing its folder as a
 /// package with `[package]`.
 fn consumes(manifest: &Manifest) -> bool {

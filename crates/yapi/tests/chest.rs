@@ -370,8 +370,9 @@ async fn package_only_untrusted() {
 }
 
 /// `pi.events` from a chest extension reach a `yapi install` package with
-/// every grant by default. With `events = { send = [] }` they do not, and the
-/// listening package's miss is warned of.
+/// every grant by default. With `events = { send = [] }` or a `send` list
+/// without the channel they do not, and the listening package's miss is
+/// warned of, naming the entry and what to change in it.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_events_linked() {
     const EMITTER: &str = "export default function (pi) { pi.registerCommand(\"emit\", { description: \"\", handler: async (_args, ctx) => { pi.events.emit(\"chest:ping\", {}); ctx.ui.notify(\"emitted\"); } }); }\n";
@@ -385,8 +386,21 @@ export default function (pi) {
 	} });
 }
 "#;
-    for (events, expected) in [("", "heard"), (", events = { send = [] }", "missed")] {
-        let home = common::scratch(&format!("chest-events-{expected}"));
+    let cases = [
+        ("", "heard", None),
+        (
+            ", events = { send = [] }",
+            "missed",
+            Some("set events of extensions.emitter in chest.toml to { send = [\"chest:ping\"] }"),
+        ),
+        (
+            ", events = { send = [\"other\"] }",
+            "missed",
+            Some("add \"chest:ping\" to events.send of extensions.emitter in chest.toml"),
+        ),
+    ];
+    for (index, (events, expected, advice)) in cases.into_iter().enumerate() {
+        let home = common::scratch(&format!("chest-events-{index}"));
         let manifest = format!(
             "[extensions]\nemitter = {{ path = \"emitter.js\", capabilities = [\"fs\"]{events} }}\n"
         );
@@ -399,11 +413,18 @@ export default function (pi) {
         let mut rpc = Rpc::start(common::yapi(&home).arg("--approve"));
         assert_eq!(rpc.notice("/emit"), "emitted");
         assert_eq!(rpc.notice("/check"), expected);
+        let warned = |advice: &str| {
+            let warning = format!(
+                "{advice}: pi.events \"chest:ping\" from extensions.emitter in chest.toml (fs) did not reach"
+            );
+            rpc.stderr().iter().any(|line| line.contains(&warning))
+        };
         let missed = rpc
             .stderr()
             .iter()
-            .any(|line| line.contains("add \"chest:ping\" to events.send of"));
-        assert_eq!(missed, expected == "missed", "{:?}", rpc.stderr());
+            .any(|line| line.contains("did not reach"));
+        assert_eq!(missed, advice.is_some(), "{:?}", rpc.stderr());
+        assert!(advice.is_none_or(warned), "{:?}", rpc.stderr());
     }
 }
 
