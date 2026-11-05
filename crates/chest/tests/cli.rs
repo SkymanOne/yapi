@@ -323,12 +323,15 @@ async fn add_writes_entry() {
     }
     let said = text(&ok(&scratch, &["add", "../pack"]));
     assert!(said.contains("installed  skills.pack"), "{said}");
-    let again = chest(&scratch, &["add", "../pack/", "--name", "pack2"], &[]);
-    assert!(
-        text(&again).contains("skills.pack already installs path ../pack:"),
-        "{}",
-        text(&again)
-    );
+    // So does the folder again, or a folder inside it.
+    for source in ["../pack/", "../pack/skills/one"] {
+        let again = chest(&scratch, &["add", source, "--name", "pack2"], &[]);
+        assert!(
+            text(&again).contains("skills.pack already installs path ../pack:"),
+            "{source}: {}",
+            text(&again)
+        );
+    }
     for skill in ["one", "two"] {
         let placed = scratch.project.join(".agents/skills").join(skill);
         assert_eq!(read(&placed.join("SKILL.md")), format!("# {skill}\n"));
@@ -546,6 +549,16 @@ fn add_rejects_misuse() {
             "skills.skills: skills is not a skill folder with a SKILL.md".into(),
         ),
         (
+            vec!["add", &git, "--path", "skills"],
+            1,
+            "Cannot tell what skills provides: pass --skill, --agent or --extension".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "/etc"],
+            2,
+            "--path: \"/etc\" must be a folder inside the package".into(),
+        ),
+        (
             vec!["add", "../loose/skills/single.md"],
             1,
             format!("../loose/skills/single.md {single}"),
@@ -610,6 +623,38 @@ fn add_rejects_misuse() {
             vec!["-g", "--manifest", "chest.toml", "list"],
             2,
             "the argument '--global' cannot be used with '--manifest <PATH>'".into(),
+        ),
+        // Errors name what is wrong as the person wrote it.
+        (vec!["add", "./nope"], 1, "./nope does not exist".into()),
+        (
+            vec!["add", "foo:bar"],
+            1,
+            "`foo:` is not a source type chest knows".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/nope"],
+            1,
+            format!("{git} has no skills/nope"),
+        ),
+        (
+            vec!["add", "npm:"],
+            2,
+            "`npm:` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:@1.0.0"],
+            2,
+            "`npm:@1.0.0` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:@acme/", "--name", "acme"],
+            2,
+            "`npm:@acme/` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:x@"],
+            2,
+            "`npm:x@` has an empty version: `npm:<name>[@<range>]`".into(),
         ),
     ];
     for (args, code, message) in &cases {
@@ -1302,6 +1347,13 @@ fn http_component(extra: u8) -> Vec<u8> {
 #[test]
 fn chest_check_mismatch() {
     let scratch = scratch("check");
+    let empty = chest(&scratch, &["check"], &[]);
+    assert_eq!(empty.status.code(), Some(1), "{}", text(&empty));
+    let none = format!(
+        "{} has no chest.toml or package.json, and no extensions to check",
+        scratch.project.display()
+    );
+    assert!(text(&empty).contains(&none), "{}", text(&empty));
     let package = scratch.project.join("chest.toml");
     write(
         &package,
@@ -1373,6 +1425,22 @@ fn chest_check_mismatch() {
         report,
         "extensions/hello.wasm uses `session` (SDK feature `session`)\n"
     );
+    // Its manifests stand for it.
+    for manifest in ["package.json", "chest.toml"] {
+        let path = created.join(manifest);
+        let output = ok(&scratch, &["check", path.to_str().unwrap()]);
+        assert_eq!(text(&output), report, "{manifest}");
+    }
+    // Another file is not an extension.
+    write(&created.join("stray.json"), "{}\n");
+    let stray = created.join("stray.json");
+    let output = chest(&scratch, &["check", stray.to_str().unwrap()], &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", text(&output));
+    let expected = format!(
+        "{} is not an extension: extension files end in `.ts`, `.js` or `.wasm`",
+        stray.display()
+    );
+    assert!(text(&output).contains(&expected), "{}", text(&output));
 
     // A component built without the SDK shows only its WASI imports.
     let bare = scratch.dir.join("bare.wasm");

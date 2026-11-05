@@ -89,7 +89,7 @@ pub(crate) fn escaped(text: &str) -> String {
 /// accepts only URL-safe characters and no leading `_`. No part may start
 /// with `.`, so that none is `.git` or another hidden folder. The name is
 /// ASCII, so folding its case needs no Unicode rules.
-fn check_name(name: &str) -> Result<(), NpmError> {
+pub fn check_name(name: &str) -> Result<(), NpmError> {
     let segment = |part: &str| {
         !part.is_empty()
             && !part.starts_with('.')

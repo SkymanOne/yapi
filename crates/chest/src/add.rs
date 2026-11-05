@@ -7,13 +7,14 @@ use anyhow::bail;
 use clap::Args;
 use yapi_core::chest::Mode;
 use yapi_core::chest::manifest::{
-    Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta, valid_name,
+    Entry, Manifest, ManifestDocument, PackageMeta, Section, inside_package, package_meta,
+    ssh_hint, valid_name,
 };
 use yapi_core::chest::startup::{package_identity, same_package};
 use yapi_core::extensions::{EventPolicy, Grants};
-use yapi_core::packages::npm::Npm;
+use yapi_core::packages::npm::{Npm, check_name};
 use yapi_core::packages::resolve::is_extension_file;
-use yapi_core::packages::source::{self, Source};
+use yapi_core::packages::source::{self, Source, local_path};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
@@ -72,6 +73,22 @@ fn entry(args: &AddArgs, target: &Target) -> anyhow::Result<Entry> {
     let conflict = |message: String| Err(Usage(message).into());
     match parse(&args.source)? {
         Source::Npm { name, version, .. } => {
+            // pi reads `npm:x@` as the name `x@`.
+            if name
+                .strip_suffix('@')
+                .is_some_and(|name| check_name(name).is_ok())
+            {
+                return conflict(format!(
+                    "`{}` has an empty version: `npm:<name>[@<range>]`",
+                    args.source
+                ));
+            }
+            if check_name(&name).is_err() {
+                return conflict(format!(
+                    "`{}` needs a package name: `npm:<name>[@<range>]`",
+                    args.source
+                ));
+            }
             if args.rev.is_some() {
                 return conflict("--rev conflicts with an npm source: use --version".into());
             }
@@ -112,11 +129,34 @@ fn entry(args: &AddArgs, target: &Target) -> anyhow::Result<Entry> {
                 return conflict(format!("{flag} conflicts with a path source"));
             }
             let absolute = std::path::absolute(&path)?;
+            if absolute.symlink_metadata().is_err() {
+                // `foo:bar` names a source type, unless such a path exists.
+                let kind = path.split_once(':').map(|(kind, _)| kind);
+                let kind = kind.filter(|kind| {
+                    kind.len() > 1
+                        && kind.starts_with(|c: char| c.is_ascii_alphabetic())
+                        && kind
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+                });
+                if let Some(kind) = kind {
+                    bail!(
+                        "`{kind}:` is not a source type chest knows: use `npm:`, `git:`, a git URL or a path"
+                    );
+                }
+                bail!("{path} does not exist");
+            }
             entry.path = Some(match target.scope {
                 Scope::Project => relative(&target.base(), &absolute),
                 Scope::Global => absolute.to_string_lossy().into_owned(),
             });
         }
+    }
+    // Checked before anything reads the package, as the manifest checks it.
+    if let Some(path) = args.path.as_deref().filter(|path| !inside_package(path)) {
+        return conflict(format!(
+            "--path: \"{path}\" must be a folder inside the package"
+        ));
     }
     Ok(entry)
 }
@@ -138,13 +178,8 @@ fn parse(text: &str) -> anyhow::Result<Source> {
     };
     if git && matches!(parsed, Source::Local { .. }) {
         let rest = text.strip_prefix("git:").unwrap_or(text);
-        let absolute = rest.split_once(':').filter(|(user_host, path)| {
-            !user_host.contains('/') && path.starts_with('/') && !path.starts_with("//")
-        });
-        if let Some((user_host, path)) = absolute {
-            bail!(
-                "{text} is not a git repository chest can read: in `user@host:path`, the path is relative to the remote home. For an absolute path, use ssh://{user_host}{path}"
-            );
+        if let Some(hint) = ssh_hint(rest) {
+            bail!("{text} is not a git repository chest can read: {hint}");
         }
         bail!("{text} is not a git repository chest can read");
     }
@@ -181,8 +216,8 @@ fn item(root: &Path, entry: &Entry) -> PathBuf {
 /// The section a package at `root` belongs in, judged from the item the
 /// entry picks: a `.md` file in a `skills` folder is a single-file skill,
 /// another `.md` file a subagent, a folder with a `SKILL.md` a skill, and a
-/// package with extensions an extension.
-fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
+/// package with extensions an extension. Errors call the item `shown`.
+fn infer(root: &Path, entry: &Entry, shown: &str) -> anyhow::Result<Section> {
     let item = item(root, entry);
     let name = item.file_name().unwrap_or_default().to_string_lossy();
     if item.is_file() {
@@ -216,10 +251,7 @@ fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
     if lists("agents") {
         return Ok(Section::Agents);
     }
-    bail!(
-        "Cannot tell what {} provides: pass --skill, --agent or --extension",
-        item.display()
-    )
+    bail!("Cannot tell what {shown} provides: pass --skill, --agent or --extension")
 }
 
 /// Prints what the package says about itself.
@@ -478,22 +510,32 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
     } else {
         let project = open(target)?;
         let fetched = project.fetch_package(&entry, npm).await?;
+        if let Some(path) = &args.path
+            && item(&fetched.root, &entry).symlink_metadata().is_err()
+        {
+            bail!("{} has no {path}", args.source);
+        }
         let section = match flag {
             Some(section) => section,
-            None => infer(&fetched.root, &entry)?,
+            None => infer(
+                &fetched.root,
+                &entry,
+                args.path.as_deref().unwrap_or(&args.source),
+            )?,
         };
-        // Another entry for the package and `path`, or for the whole
-        // package beside one folder of it, would load it twice.
+        // Another entry for the package and `path`, for the whole package
+        // beside one folder of it, or for a path source beside a folder
+        // inside it, would load it twice.
         let identity = |entry: &Entry| {
             package_identity(entry).ok_or_else(|| {
-                let path = entry.path.clone().unwrap_or_default();
-                Source::Local { path }.identity(&target.base())
+                local_path(entry.path.as_deref().unwrap_or_default(), &target.base())
             })
         };
         let added = identity(&entry);
         let same = |old: &Entry| match (identity(old), &added) {
             (Ok(old), Ok(added)) => same_package(&old, added),
-            (old, added) => old == *added,
+            (Err(old), Err(added)) => old.starts_with(added) || added.starts_with(&old),
+            _ => false,
         };
         let mut entries = document.manifest().section(section).iter();
         if let Some((other, old)) = entries.find(|(_, old)| same(old)) {

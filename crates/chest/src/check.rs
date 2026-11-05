@@ -109,6 +109,11 @@ pub fn extension_file(item: &Path, shown: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Whether `dir` holds a `chest.toml` or `package.json`.
+fn has_manifest(dir: &Path) -> bool {
+    dir.join("chest.toml").is_file() || dir.join("package.json").is_file()
+}
+
 /// The folder of the package that holds `item`: `item` itself when it is a
 /// folder, else the nearest folder above it with a `chest.toml` or
 /// `package.json`.
@@ -116,9 +121,7 @@ fn package_root(item: &Path) -> Option<&Path> {
     if item.is_dir() {
         return Some(item);
     }
-    let manifest =
-        |dir: &Path| dir.join("chest.toml").is_file() || dir.join("package.json").is_file();
-    item.ancestors().skip(1).find(|dir| manifest(dir))
+    item.ancestors().skip(1).find(|dir| has_manifest(dir))
 }
 
 /// Runs `chest check` on the package or extension file at `path`: an
@@ -126,10 +129,15 @@ fn package_root(item: &Path) -> Option<&Path> {
 /// request and for each WASI import yapi does not support, a warning for
 /// each capability requested that no extension uses.
 pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
-    let item = std::path::absolute(path)?;
+    let mut item = std::path::absolute(path)?;
     if !item.exists() {
         bail!("{} does not exist", path.display());
     }
+    // A manifest stands for its package, not an extension file.
+    if item.ends_with("package.json") || item.ends_with("chest.toml") {
+        item.pop();
+    }
+    extension_file(&item, &path.display().to_string())?;
     let meta = match package_root(&item) {
         Some(root) => package_meta(root)?,
         None => PackageMeta::default(),
@@ -138,6 +146,12 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
         .map_err(|err| anyhow::anyhow!("the package's `capabilities`: {err}"))?;
     let inspected = inspect(&item);
     if inspected.components.is_empty() && inspected.scripts.is_empty() {
+        if !package_root(&item).is_some_and(has_manifest) {
+            bail!(
+                "{} has no chest.toml or package.json, and no extensions to check",
+                item.display()
+            );
+        }
         bail!(
             "{} provides no extensions. Build the ones its manifest lists first.",
             path.display()
