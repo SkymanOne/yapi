@@ -595,6 +595,21 @@ async fn frozen_rejects_drift() {
     );
     assert_eq!(read(&skill), "# tampered\n");
     assert_eq!(read(&lock_path), locked);
+    // A copy chest placed for another lock, unchanged since, goes back as
+    // the lock pins it, as after a pull brings an older lock.
+    std::fs::write(&skill, "# pdf\n").unwrap();
+    sync(
+        &mut open(&dir, &skill_manifest(&remote, "v2")),
+        Mode::Resolve,
+    )
+    .await;
+    assert_eq!(read(&skill), "# pdf 2\n");
+    std::fs::write(&lock_path, &locked).unwrap();
+    let mut project = open(&dir, &skill_manifest(&remote, "v1"));
+    let report = sync(&mut project, Mode::Frozen).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&skill), "# pdf\n");
+    assert_eq!(read(&lock_path), locked);
 
     std::fs::remove_file(&lock_path).unwrap();
     let mut project = open(&dir, &skill_manifest(&remote, "v1"));

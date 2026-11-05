@@ -54,10 +54,11 @@ enum Command {
     },
     /// Install what the manifest lists, as the lock pins it.
     Install {
-        /// Install exactly what the lock pins, missing items included, and
-        /// fail when the lock is missing or out of date or a copy no longer
-        /// matches it. Never writes chest.toml or the lock. The default when
-        /// CI is set.
+        /// Install exactly what the lock pins, missing items and copies an
+        /// older lock pinned included, and fail when the lock is missing or
+        /// out of date or a copy that someone edited, or that chest didn't
+        /// install, no longer matches it. Never writes chest.toml or the
+        /// lock. The default when CI is set.
         #[arg(long)]
         frozen: bool,
     },

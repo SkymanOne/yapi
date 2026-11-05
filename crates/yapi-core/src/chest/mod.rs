@@ -74,7 +74,10 @@ pub enum Mode {
     /// all with no names, again even when their lock is fresh.
     Update(Vec<String>),
     /// `chest install --frozen`: fail on a missing or stale lock and on an
-    /// installed copy that no longer matches its hash. Writes nothing.
+    /// installed copy that no longer matches its hash, unless chest's
+    /// record holds it, placed for another lock and unchanged since. Put
+    /// back what is missing, and such copies, as the lock pins them. Never
+    /// writes the lock.
     Frozen,
     /// yapi startup: replay what is locked, fresh and missing, unless
     /// `offline`, and skip the rest with one warning. Never writes the lock
@@ -813,6 +816,9 @@ impl Project {
             let local = target.patch.is_some() || entry.git.is_none() && entry.npm.is_none();
             let named = matches!(mode, Mode::Update(names)
                 if names.is_empty() || names.iter().any(|n| n == name));
+            // Past `check_frozen`, a copy that differs from the lock is one
+            // chest placed for another lock, which goes back as this one pins.
+            let matches = |locked: &Locked| self.copy_problems(section, locked).is_empty();
             let keep = match mode {
                 Mode::Startup { offline } => {
                     match self.at_startup(section, name, entry, locked, record, *offline) {
@@ -825,7 +831,9 @@ impl Project {
                         AtStartup::Replay => None,
                     }
                 }
-                Mode::Frozen if present => Some(Outcome::Unchanged),
+                Mode::Frozen if present && (recorded || locked.is_some_and(matches)) => {
+                    Some(Outcome::Unchanged)
+                }
                 _ if fresh && present && recorded && !local && !named => {
                     let problems =
                         locked.map_or_else(Vec::new, |locked| self.copy_problems(section, locked));
@@ -1414,9 +1422,11 @@ impl Project {
     }
 
     /// Fails on a missing or stale lock, or on an installed copy, copy
-    /// fallback or link that does not match the lock. Whether something the
-    /// lock pins is missing, to be put back. When nothing is, every entry is
-    /// reported unchanged.
+    /// fallback or link that does not match the lock, unless it is a copy
+    /// chest's record holds, placed for another lock and unchanged since.
+    /// Whether something is to be put back: such a copy, or something the
+    /// lock pins that is missing. When nothing is, every entry is reported
+    /// unchanged.
     fn check_frozen(&self, report: &mut Report) -> Result<bool, ChestError> {
         let (name, install) = (self.label(), self.install_command());
         let lock = self
@@ -1431,19 +1441,23 @@ impl Project {
             )));
         }
         let problems = self.problems(lock);
-        let wrong: Vec<String> = problems
+        let record = self.record();
+        let (outdated, wrong): (Vec<_>, Vec<_>) = problems
             .iter()
-            .filter(|(_, _, problem)| !matches!(problem, Problem::Missing))
-            .map(describe)
-            .collect();
+            .filter(|(_, _, problem)| *problem != Problem::Missing)
+            .partition(|(_, path, problem)| {
+                *problem == Problem::Mismatch && record.held(path) == Held::Owned
+            });
         if !wrong.is_empty() {
+            let wrong: Vec<String> = wrong.into_iter().map(describe).collect();
             return Err(invalid(wrong.join("\n")));
         }
-        let missing = self.entries().any(|(section, entry_name, _)| {
-            let locked = lock.section(section).iter();
-            let mut found = locked.filter(|locked| &locked.name == entry_name);
-            found.any(|locked| !self.present(section, locked))
-        });
+        let missing = !outdated.is_empty()
+            || self.entries().any(|(section, entry_name, _)| {
+                let locked = lock.section(section).iter();
+                let mut found = locked.filter(|locked| &locked.name == entry_name);
+                found.any(|locked| !self.present(section, locked))
+            });
         if !missing {
             for (section, entry_name, _) in self.entries() {
                 let id = format!("{}.{entry_name}", section.key());

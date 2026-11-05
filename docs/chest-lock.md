@@ -15,7 +15,7 @@ A pinned tarball must come from the registry configured for its package, at the 
 `chest install` has two modes:
 
 - **`chest install`**: keeps what's locked and present, installs what's locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
-- **`chest install --frozen`**: installs exactly what the lock pins, including what's missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes `chest.toml` or `chest.lock`.
+- **`chest install --frozen`**: installs exactly what the lock pins, as `npm ci` does. It puts back what's missing, and replaces copies that chest installed for an older lock when nobody changed them since. It fails when the lock is missing or out of date, when someone edited a copy, or when a copy doesn't match its hash because chest didn't install it. It never writes `chest.toml` or `chest.lock`.
 
 ## Run chest in CI
 
