@@ -73,7 +73,7 @@ enum Command {
     Outdated,
     /// Check every installed copy against the lock.
     Verify,
-    /// Turn settings.json packages or a skills-lock.json into entries.
+    /// Turn settings packages or a skills-lock.json into entries.
     Import(import::ImportArgs),
     /// Compare the capabilities a package's native extensions use with
     /// those it requests.

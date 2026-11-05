@@ -28,7 +28,7 @@ use crate::{Target, Usage, open, read, requests, say, source, sync, write};
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
 
 /// What sharing `pi.events` costs, said before the event choice.
-const EVENTS_TEXT: &str = "By default this extension shares `pi.events` with every other extension. Extensions with more access, including packages from `yapi install`, can act on its events, and it sees theirs. Choose 'declared channels' or 'isolated' to limit that.";
+const EVENTS_TEXT: &str = "By default this extension shares `pi.events` with every other extension. Extensions with more access, including packages from `yapi install`, can act on its events, and it sees theirs.";
 
 /// `chest add` options.
 #[derive(Args)]
@@ -403,11 +403,11 @@ fn events(prompt: &Prompt, meta: &PackageMeta) -> Option<EventPolicy> {
     if !prompt.interactive() {
         return None;
     }
-    say(EVENTS_TEXT);
     let declared = meta
         .events
         .clone()
         .filter(|events| *events != EventPolicy::shared());
+    say(&events_text(declared.is_some()));
     let mut options = vec!["shared, the default".to_owned()];
     if let Some(declared) = &declared {
         options.push(format!(
@@ -423,6 +423,17 @@ fn events(prompt: &Prompt, meta: &PackageMeta) -> Option<EventPolicy> {
         (1, Some(declared)) => Some(declared.clone()),
         _ => Some(EventPolicy::isolated()),
     }
+}
+
+/// What chest says before it asks how an extension shares events, naming
+/// the choices the menu offers to limit that: the channels the package
+/// declares, when it declares any, and isolated.
+fn events_text(declared: bool) -> String {
+    let limits = match declared {
+        true => "'declared channels' or 'isolated'",
+        false => "'isolated'",
+    };
+    format!("{EVENTS_TEXT} Choose {limits} to limit that.")
 }
 
 /// Warns about entries the package's own manifest lists, which chest does
@@ -629,6 +640,20 @@ mod tests {
                 "{error}"
             );
         }
+    }
+
+    #[test]
+    fn events_text_names_choices() {
+        let limits = |declared| {
+            super::events_text(declared)
+                .rsplit(". ")
+                .next()
+                .map(str::to_owned)
+        };
+        let declared = "Choose 'declared channels' or 'isolated' to limit that.";
+        assert_eq!(limits(true).as_deref(), Some(declared));
+        let isolated = "Choose 'isolated' to limit that.";
+        assert_eq!(limits(false).as_deref(), Some(isolated));
     }
 
     #[test]

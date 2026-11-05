@@ -19,8 +19,8 @@ use crate::{Target, out, say, write};
 #[derive(Args)]
 #[command(group(clap::ArgGroup::new("from").required(true).args(["settings", "skills_lock"])))]
 pub struct ImportArgs {
-    /// Import the packages of settings.json: the project's `.yapi`, or the
-    /// agent folder's with `-g`.
+    /// Import the packages of settings.json or settings.toml: the project's
+    /// `.yapi`, or the agent folder's with `-g`.
     #[arg(long)]
     settings: bool,
     /// Import the skills of a skills.sh `skills-lock.json`.

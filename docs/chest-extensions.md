@@ -52,7 +52,7 @@ events = "isolated"
 
 Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.
 
-`chest add` offers the shared default, the channels the package declares, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
+`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
 
 ## How yapi loads a manifest
 
@@ -115,7 +115,7 @@ Between the project's settings and yours, Pi's rule applies, and the project's e
 
 ## Import packages from settings.json
 
-`chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
+`chest import --settings` turns the packages of `.yapi/settings.json`, or the `settings.toml` that replaces it, into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
 
 Each entry is named after the last part of its source. Import skips a package the manifest already has, at any version, and a different package whose name the manifest already uses. To import that one, add it under another name with `chest add <source> --name <name>`.
 
