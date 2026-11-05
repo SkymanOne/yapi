@@ -731,6 +731,48 @@ fn verify_detects_tamper() {
         ],
     );
     ok(&scratch, &["verify"]);
+    // `list` shows the frontmatter description of a skill or a subagent.
+    let skill = "---\nname: hello\ndescription: Says hello\n---\nHi.\n";
+    write(&scratch.dir.join("hello/SKILL.md"), skill);
+    let agent = "---\nname: helper\ndescription: Helps out\n---\nHelp.\n";
+    write(&scratch.dir.join("helper.md"), agent);
+    ok(&scratch, &["add", "../hello"]);
+    ok(&scratch, &["add", "../helper.md"]);
+    let listed = text(&ok(&scratch, &["list"]));
+    for (id, description) in [
+        ("skills.hello", "Says hello"),
+        ("agents.helper", "Helps out"),
+    ] {
+        let row = listed.lines().position(|line| line.starts_with(id));
+        let next = row.and_then(|row| listed.lines().nth(row + 1));
+        assert_eq!(next, Some(&*format!("    {description}")), "{listed}");
+    }
+    // A path entry has no hash, but verify checks where its links point.
+    #[cfg(unix)]
+    {
+        let link = scratch.project.join(".claude/skills/hello");
+        let target = std::fs::read_link(&link).unwrap();
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(target.with_file_name("pdf"), &link).unwrap();
+        let output = chest(&scratch, &["verify"], &[]);
+        assert_eq!(output.status.code(), Some(1));
+        let wrong = ".claude/skills/hello does not link to";
+        assert!(text(&output).contains(wrong), "{}", text(&output));
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(target, &link).unwrap();
+        ok(&scratch, &["verify"]);
+        // A link in the first folder, where chest places the copy.
+        let copy = scratch.project.join(".agents/skills/pdf");
+        let moved = scratch.dir.join("pdf");
+        std::fs::rename(&copy, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &copy).unwrap();
+        let output = chest(&scratch, &["verify"], &[]);
+        assert_eq!(output.status.code(), Some(1));
+        let linked = ".agents/skills/pdf is a link where chest places the copy";
+        assert!(text(&output).contains(linked), "{}", text(&output));
+        std::fs::remove_file(&copy).unwrap();
+        std::fs::rename(&moved, &copy).unwrap();
+    }
     // `list` shows the state yapi acts on at startup.
     let state_of = |scratch: &Scratch, id: &str| {
         let listed = text(&ok(scratch, &["list"]));
@@ -779,7 +821,7 @@ fn verify_detects_tamper() {
     ok(&scratch, &["add", "../hello"]);
     let hello = scratch.project.join(".agents/skills/hello/SKILL.md");
     write(&hello, "# mine\n");
-    let added = read(&manifest) + "new = { path = \"../new\" }\n";
+    let added = read(&manifest).replace("[skills]\n", "[skills]\nnew = { path = \"../new\" }\n");
     write(&manifest, &added);
     let said = text(&ok(&scratch, &["install"]));
     assert!(said.contains("edited     skills.hello"), "{said}");

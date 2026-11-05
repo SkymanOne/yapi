@@ -1647,9 +1647,9 @@ impl Project {
         Ok(missing)
     }
 
-    /// Each installed copy of a locked git or npm entry that does not match
-    /// the lock, as [`Project::copy_problems`] finds them, each copy of a
-    /// path entry, which has no hash, or of a `[patch]` entry, which is not
+    /// Each installed copy of a locked entry that does not match the lock,
+    /// as [`Project::copy_problems`] finds them, each other copy of a path
+    /// entry, which has no hash, or of a `[patch]` entry, which is not
     /// hashed, that chest's record says changed or is gone, and each path
     /// entry's source that is gone.
     fn problems(&self, lock: &Lock) -> Vec<(String, PathBuf, Problem)> {
@@ -1657,29 +1657,42 @@ impl Project {
         let mut problems = Vec::new();
         for section in [Section::Skills, Section::Agents, Section::Extensions] {
             for locked in lock.section(section) {
-                problems.extend(self.copy_problems(section, locked));
+                let copies = self.copy_problems(section, locked);
                 let path_entry = locked.git.is_none() && locked.npm.is_none();
+                let (mut edited, mut gone) = (Vec::new(), None);
                 let patched = self.manifest.patch.contains_key(&locked.name);
                 if path_entry || patched {
                     let id = format!("{}.{}", section.key(), locked.name);
                     // A patch's source is the patch, not the entry's `path`.
                     let source = locked.path.as_deref().filter(|_| path_entry && !patched);
-                    let source = source.map(|path| self.resolve(path));
-                    if let Some(source) = source.filter(|source| !source.exists()) {
-                        problems.push((id.clone(), source, Problem::NoSource));
-                    }
-                    let changed = self.changed(section, locked, &record).into_iter();
-                    problems.extend(changed.map(|(path, problem)| (id.clone(), path, problem)));
+                    gone = source
+                        .map(|path| self.resolve(path))
+                        .filter(|source| !source.exists())
+                        .map(|source| (id.clone(), source, Problem::NoSource));
+                    // A link that points elsewhere is reported as that, once.
+                    let reported = |path: &PathBuf| copies.iter().any(|(_, at, _)| at == path);
+                    edited = self
+                        .changed(section, locked, &record)
+                        .into_iter()
+                        .filter(|(path, _)| !reported(path))
+                        .map(|(path, problem)| (id.clone(), path, problem))
+                        .collect();
                 }
+                // Without its source, a path entry's copies can't be named.
+                if gone.is_none() {
+                    problems.extend(copies);
+                }
+                problems.extend(gone);
+                problems.extend(edited);
             }
         }
         problems
     }
 
-    /// Each installed copy of `locked`, a git or npm entry of `section`,
-    /// that does not match the lock: canonical copies, copy fallbacks and
-    /// store folders by their hash, links by what they point to. `[patch]`
-    /// entries are not hashed.
+    /// Each installed copy of `locked`, an entry of `section`, that does not
+    /// match the lock: canonical copies, copy fallbacks and store folders by
+    /// their hash, links by what they point to. A path entry has no hash, so
+    /// only its links are checked, and `[patch]` entries are not checked.
     fn copy_problems(&self, section: Section, locked: &Locked) -> Vec<(String, PathBuf, Problem)> {
         let mut problems = Vec::new();
         if self.manifest.patch.contains_key(&locked.name) {
@@ -1688,21 +1701,21 @@ impl Project {
         let homes = self.homes(section);
         let id = format!("{}.{}", section.key(), locked.name);
         for (item, hash) in self.locked_items(section, locked) {
-            let Some(hash) = hash else { continue };
             let canonical = homes.first().map(|home| home.join(&item));
             for (index, home) in homes.iter().enumerate() {
                 let path = home.join(&item);
                 let problem = match path.symlink_metadata() {
                     Err(_) => Some(Problem::Missing),
+                    Ok(metadata) if metadata.is_symlink() && index == 0 => Some(Problem::Linked),
                     Ok(metadata) if metadata.is_symlink() => {
                         let target = path.canonicalize().ok();
                         let canonical = canonical.as_ref().and_then(|c| c.canonicalize().ok());
-                        (index == 0 || target != canonical)
-                            .then(|| Problem::Link(homes[0].join(&item)))
+                        (target != canonical).then(|| Problem::Link(homes[0].join(&item)))
                     }
-                    Ok(_) => {
-                        (tree_hash(&path).ok().as_ref() != Some(&hash)).then_some(Problem::Mismatch)
-                    }
+                    Ok(_) => hash
+                        .as_ref()
+                        .filter(|hash| tree_hash(&path).ok().as_ref() != Some(*hash))
+                        .map(|_| Problem::Mismatch),
                 };
                 if let Some(problem) = problem {
                     problems.push((id.clone(), path, problem));
@@ -1991,6 +2004,8 @@ enum Problem {
     Modified,
     /// A link that does not point at the canonical copy, given.
     Link(PathBuf),
+    /// A link in the first folder, where chest places the canonical copy.
+    Linked,
     /// A path entry's source, which is gone.
     NoSource,
 }
@@ -2010,6 +2025,7 @@ fn describe((id, path, problem): &(String, PathBuf, Problem)) -> String {
         Problem::Mismatch => "does not match the lock".to_owned(),
         Problem::Modified => "was modified since chest installed it".to_owned(),
         Problem::Link(canonical) => format!("does not link to {}", canonical.display()),
+        Problem::Linked => "is a link where chest places the copy".to_owned(),
     };
     format!("{id}: {} {what}", path.display())
 }

@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
 use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_core::chest::lock::Locked;
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
@@ -428,17 +429,40 @@ fn list(target: &Target) -> anyhow::Result<()> {
                 project.manifest.grants(entry)
             ));
         }
-        match project.installed_root(name).map(|root| package_meta(&root)) {
-            Some(Ok(meta)) => {
-                if let Some(description) = meta.description {
-                    out(&format!("    {description}"));
-                }
+        let description = match project.installed_root(name).map(|root| package_meta(&root)) {
+            Some(Ok(meta)) => meta.description,
+            Some(Err(err)) => {
+                say(&format!("warning: {id}: {err}"));
+                None
             }
-            Some(Err(err)) => say(&format!("warning: {id}: {err}")),
-            None => {}
+            None => locked.and_then(|locked| item_description(&project, section, locked)),
+        };
+        if let Some(description) = description {
+            out(&format!("    {description}"));
         }
     }
     Ok(())
+}
+
+/// The frontmatter `description` of the skill or subagent `locked` places,
+/// from its canonical copy. `None` for an entry that places several, or
+/// none.
+fn item_description(project: &Project, section: Section, locked: &Locked) -> Option<String> {
+    let placed = project.placed(section, locked);
+    let copy = placed.first()?;
+    if placed
+        .iter()
+        .any(|path| path.file_name() != copy.file_name())
+    {
+        return None;
+    }
+    let file = match section {
+        Section::Skills => copy.join("SKILL.md"),
+        _ => copy.clone(),
+    };
+    let text = std::fs::read_to_string(file).ok()?;
+    let (frontmatter, _) = yapi_core::resources::parse_frontmatter(&text).ok()?;
+    frontmatter.get("description")?.as_str().map(str::to_owned)
 }
 
 async fn outdated(target: &Target, npm: &mut Npm) -> anyhow::Result<()> {

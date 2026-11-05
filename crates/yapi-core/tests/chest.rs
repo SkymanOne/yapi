@@ -1668,7 +1668,14 @@ async fn removed_entry_unplaced() {
         );
         let entry = project.manifest.skills["notes"].clone();
         assert_eq!(project.state(Section::Skills, "notes", &entry), "edited");
-        assert_eq!(project.verify().unwrap(), [edited]);
+        // verify names what is wrong with the link, once.
+        let canonical = root.join(".agents/skills/notes");
+        let wrong = format!(
+            "skills.notes: {} does not link to {}",
+            link.display(),
+            canonical.display()
+        );
+        assert_eq!(project.verify().unwrap(), [wrong]);
         let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
         let report = sync(&mut open(&dir, empty), Mode::Resolve).await;
         assert!(

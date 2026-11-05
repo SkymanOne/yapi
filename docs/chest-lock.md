@@ -23,7 +23,7 @@ A pinned tarball must come from the registry configured for its package, at the 
 
 ## Verify installed copies
 
-`chest verify` checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a `[patch]` installs, so chest checks those copies against what it installed, and reports a path entry whose source is gone. `verify` exits with 1 when one is missing or doesn't match.
+`chest verify` checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a `[patch]` installs, so chest checks those copies against what it installed, checks a path entry's links against its canonical copy, and reports a path entry whose source is gone. `verify` exits with 1 when one is missing or doesn't match.
 
 ## Update entries
 
