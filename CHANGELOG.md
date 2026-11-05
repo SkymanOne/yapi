@@ -4,6 +4,15 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Add `settings.toml`, the same settings as `settings.json` in TOML, which yapi edits in place and keeps your comments ([#305](https://github.com/SkymanOne/yapi/pull/305)).
+- Add `--project-only` and `YAPI_PROJECT_ONLY`, which run yapi with only the project's packages, chest entries, skills and MCP servers, and the `projectOnly` setting with `ctrl+o` in `yapi config` to keep chosen global items such as themes ([#305](https://github.com/SkymanOne/yapi/pull/305)).
+
+### Fixes
+
+- Various bug fixes ([#305](https://github.com/SkymanOne/yapi/pull/305)).
+
 ## [0.4.0] - 2026-11-04
 
 ### Additions
