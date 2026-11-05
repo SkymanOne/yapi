@@ -98,7 +98,12 @@ fn settings(
         Some(packages) => serde_json::from_value(packages.clone()).context("reading `packages`")?,
         None => Vec::new(),
     };
-    let folder = path.parent().map_or_else(PathBuf::new, Path::to_path_buf);
+    // Sources resolve as yapi resolves them: against the settings' folder.
+    let folder = std::path::absolute(path)?
+        .parent()
+        .map_or_else(PathBuf::new, Path::to_path_buf);
+    // Messages name the file read, `settings.json` or `settings.toml`.
+    let file = path.file_name().unwrap_or_default().to_string_lossy();
     let mut added = 0;
     for package in &packages {
         let (spec, filtered) = match package {
@@ -109,6 +114,8 @@ fn settings(
             capabilities: Some(vec!["all".into()]),
             ..Entry::default()
         };
+        // `yapi remove` reads a relative path from the current folder.
+        let mut removed = spec.clone();
         match source::parse(&spec) {
             Source::Npm { name, version, .. } => {
                 entry.npm = Some(name);
@@ -121,7 +128,8 @@ fn settings(
                 entry.rev = reference;
             }
             Source::Local { path } => {
-                let absolute = folder.join(yapi_core::tools::path::expand_home(&path));
+                let absolute = source::local_path(&path, &folder);
+                removed = absolute.to_string_lossy().into_owned();
                 entry.path = Some(match target.scope {
                     Scope::Project => relative(&target.base(), &absolute),
                     Scope::Global => absolute.to_string_lossy().into_owned(),
@@ -132,7 +140,7 @@ fn settings(
             // Importing without these filters would load more than settings.json does.
             if filtered.extensions.is_some() || filtered.autoload == Some(false) {
                 say(&format!(
-                    "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from settings.json"
+                    "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from {file}"
                 ));
                 continue;
             }
@@ -150,7 +158,7 @@ fn settings(
         if add(document, Section::Extensions, &name, &entry)? {
             added += 1;
             out(&format!(
-                "extensions.{name}  from {spec}. Once chest installs it, remove it from settings.json with `yapi remove{} {spec}`.",
+                "extensions.{name}  from {spec}. Once chest installs it, remove it from {file} with `yapi remove{} {removed}`.",
                 if target.scope == Scope::Project {
                     " -l"
                 } else {

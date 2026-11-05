@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 use yapi_ai::auth::lock::FileLock;
 use yapi_core::chest::hash::tree_hash;
 use yapi_core::chest::lock::Lock;
+use yapi_core::chest::manifest::Section;
 use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
 use yapi_core::packages::npm::{Npm, Pinned};
@@ -295,6 +296,8 @@ async fn git_skill_locked_commit() {
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
     let inputs = yapi_core::chest::startup::installed_inputs(&project, &root, &mut Vec::new());
     assert!(inputs.skills.is_empty(), "{:?}", inputs.skills);
+    let entry = project.manifest.skills["pdf"].clone();
+    assert_eq!(project.state(Section::Skills, "pdf", &entry), "outdated");
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
@@ -344,6 +347,7 @@ async fn skills_without_path() {
             ("skills/pdf/SKILL.md", "# pdf\n"),
             ("skills/xlsx/SKILL.md", "# xlsx\n"),
             ("skills/xlsx/data/table.csv", "a,b\n"),
+            ("skills/review.md", "# review\n"),
             ("agents/reviewer.md", "# reviewer\n"),
             ("agents/README.md", "# about\n"),
             ("README.md", "# skills\n"),
@@ -356,10 +360,14 @@ async fn skills_without_path() {
     );
     let mut project = open(&dir, &manifest);
     let report = sync(&mut project, Mode::Resolve).await;
-    // An item whose name is not an entry name is skipped, not the package.
+    // An item whose name is not an entry name is skipped, not the package,
+    // and so is a single-file skill, which chest doesn't install.
     assert_eq!(
         report.warnings,
-        ["agents.team: agents/README.md was skipped: `README.md` is not a valid name"]
+        [
+            "skills.anthropic: skills/review.md was skipped: it is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+            "agents.team: agents/README.md was skipped: `README.md` is not a valid name",
+        ]
     );
     let root = dir.join("project");
     let lock = project.lock.clone().unwrap();

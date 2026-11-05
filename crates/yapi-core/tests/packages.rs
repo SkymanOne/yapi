@@ -1298,6 +1298,16 @@ async fn local_packages_scope_relative() {
         packages.list()[0].extensions,
         [dir.join("project/tools/index.ts")]
     );
+    // Removing by absolute path matches either scope's relative entry.
+    packages.install("./tools", true).await.unwrap();
+    assert_eq!(
+        packages.settings().document(Scope::Project)["packages"],
+        json!(["../tools"])
+    );
+    let absolute = dir.join("project/tools").to_string_lossy().into_owned();
+    for local in [true, false] {
+        assert!(packages.remove(&absolute, local).await.unwrap(), "{local}");
+    }
     assert_eq!(std::env::current_dir().unwrap(), previous);
 }
 

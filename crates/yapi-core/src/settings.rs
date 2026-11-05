@@ -253,6 +253,24 @@ fn valid_fields(path: &mut Vec<String>, object: Map<String, Value>) -> Map<Strin
     valid
 }
 
+/// The global `httpProxy` setting in `agent_dir`, when its settings file
+/// reads and sets one.
+pub fn http_proxy(agent_dir: &Path) -> Option<String> {
+    let path = agent_dir.join(ConfigFile::Settings.file_name());
+    read_document(&path)
+        .ok()?
+        .get("httpProxy")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// pi's `applyHttpProxySettings`: the global `httpProxy` setting stands in
+/// for unset proxy variables, for yapi and for chest alike.
+pub fn apply_http_proxy() {
+    let proxy = http_proxy(&crate::config::agent_dir());
+    yapi_ai::http::set_settings_proxy(proxy.as_deref());
+}
+
 impl SettingsManager {
     /// Loads both scopes, the project's from `project_dir`, and that only
     /// when `project_trusted`.
@@ -655,7 +673,11 @@ mod tests {
                 case["name"]
             );
         }
+        // chest and yapi read the proxy from the same file.
+        std::fs::write(&file, r#"{"httpProxy": "http://proxy:8080"}"#).unwrap();
+        assert_eq!(http_proxy(&dir).as_deref(), Some("http://proxy:8080"));
         std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(http_proxy(&dir), None);
     }
 
     #[tokio::test]

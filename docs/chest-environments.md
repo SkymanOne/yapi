@@ -49,7 +49,7 @@ With `-g`, `chest init` looks for each agent's folder in your home folder:
 | OpenCode | `~/.config/opencode` | `~/.config/opencode/skills` | `~/.config/opencode/agent` |
 | yapi | `~/.yapi` | `~/.agents/skills` | `~/.yapi/agent/agents` |
 
-When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`.
+When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`. With `YAPI_CODING_AGENT_DIR` set, yapi's subagents go to the `agents` folder inside it instead, which is where yapi reads them.
 
 For both the project and the global manifest, chest keeps its download cache and its record of what it placed in `~/.chest`.
 

@@ -243,13 +243,18 @@ pub(super) fn items(
         };
         selected_files(package, listed.map(Vec::as_slice), key, kind)
     };
+    // yapi loads a lone `.md` file as a skill too, but chest installs folders.
+    let mut single = Vec::new();
     let mut items: Vec<(String, PathBuf)> = files
         .into_iter()
         .filter_map(|file| match section {
             Section::Skills if file.file_name()? == "SKILL.md" => {
                 file.parent().map(Path::to_path_buf)
             }
-            Section::Skills => None,
+            Section::Skills => {
+                single.push(file);
+                None
+            }
             _ => Some(file),
         })
         .filter_map(|item| Some((item.file_name()?.to_string_lossy().into_owned(), item)))
@@ -259,14 +264,24 @@ pub(super) fn items(
     for (_, item) in &items {
         inside(package, item)?;
     }
-    let mut warnings = Vec::new();
+    let shown = |path: &Path| {
+        path.strip_prefix(package)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    };
+    let mut warnings: Vec<String> = single
+        .iter()
+        .map(|file| {
+            format!(
+                "{} was skipped: it is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+                shown(file)
+            )
+        })
+        .collect();
     let mut kept: Vec<Item> = Vec::new();
     for (item, path) in items {
-        let shown = path
-            .strip_prefix(package)
-            .unwrap_or(&path)
-            .display()
-            .to_string();
+        let shown = shown(&path);
         if !valid_name(&item) {
             warnings.push(format!("{shown} was skipped: `{item}` is not a valid name"));
         } else if kept.iter().any(|(other, _)| *other == item) {
@@ -276,6 +291,12 @@ pub(super) fn items(
         } else {
             kept.push((item, path));
         }
+    }
+    if let (true, Some(file)) = (kept.is_empty(), single.first()) {
+        return Err(invalid(format!(
+            "the package provides no {key} that chest installs: {} is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+            shown(file)
+        )));
     }
     if kept.is_empty() {
         return Err(invalid(format!("the package provides no {key}")));

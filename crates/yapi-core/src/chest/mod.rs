@@ -526,6 +526,30 @@ impl Project {
         entry.git.is_none() && entry.npm.is_none() || self.recorded(section, locked, record)
     }
 
+    /// The state of entry `name` of `section` that yapi's startup acts on,
+    /// as `chest list` shows it: `patched` under `[patch]`, `stale` when not
+    /// locked or locked for another source, `missing` when not in place,
+    /// `outdated` when in place as an older lock pinned it, else `installed`.
+    pub fn state(&self, section: Section, name: &str, entry: &Entry) -> &'static str {
+        if self.manifest.patch.contains_key(name) {
+            return "patched";
+        }
+        let locked = self.lock.as_ref().and_then(|lock| {
+            lock.section(section)
+                .iter()
+                .find(|locked| locked.name == name)
+                .filter(|locked| fresh(entry, locked))
+        });
+        match locked {
+            None => "stale",
+            Some(locked) if !self.present(section, locked) => "missing",
+            Some(locked) if !self.holds_locked(section, entry, locked, &self.record()) => {
+                "outdated"
+            }
+            Some(_) => "installed",
+        }
+    }
+
     /// Whether everything `locked` occupies is there. A link in the first
     /// folder, where the copy belongs, counts as missing, as after the
     /// folders were reordered. An extension from a path loads where it is,

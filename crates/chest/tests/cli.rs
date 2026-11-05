@@ -480,6 +480,21 @@ fn verify_detects_tamper() {
         ],
     );
     ok(&scratch, &["verify"]);
+    // `list` shows the state yapi acts on at startup.
+    let state = |scratch: &Scratch| {
+        let listed = text(&ok(scratch, &["list"]));
+        let row = listed
+            .lines()
+            .find(|line| line.starts_with("skills.pdf"))
+            .unwrap_or_default();
+        row.split("  ").nth(2).unwrap_or_default().to_owned()
+    };
+    assert_eq!(state(&scratch), "installed");
+    let manifest = scratch.project.join("chest.toml");
+    let pinned = read(&manifest);
+    write(&manifest, &pinned.replace("skills/pdf", "skills/other"));
+    assert_eq!(state(&scratch), "stale");
+    write(&manifest, &pinned);
     write(
         &scratch.project.join(".agents/skills/pdf/SKILL.md"),
         "# tampered\n",
@@ -545,6 +560,32 @@ fn ci_implies_frozen() {
 fn global_scope_home() {
     let scratch = scratch("global");
     let remote = skill_remote(&scratch);
+    // With no agent found, subagents go to yapi's agent folder, wherever
+    // `YAPI_CODING_AGENT_DIR` puts it.
+    let moved = scratch.home.join("moved").display().to_string();
+    let args = ["-g", "init", "--yes"];
+    let output = chest(&scratch, &args, &[("YAPI_CODING_AGENT_DIR", &moved)]);
+    assert!(output.status.success(), "{}", text(&output));
+    let manifest = read(&scratch.home.join(".chest/chest.toml"));
+    assert!(
+        manifest.contains("agents = [\"~/moved/agents\"]"),
+        "{manifest}"
+    );
+    std::fs::remove_file(scratch.home.join(".chest/chest.toml")).unwrap();
+    // An agent folder outside the home folder, where the global manifest
+    // never installs, is left out with the reason.
+    let outside = scratch.project.join("agent");
+    let outside = &outside.display().to_string();
+    let output = chest(&scratch, &args, &[("YAPI_CODING_AGENT_DIR", outside)]);
+    assert!(output.status.success(), "{}", text(&output));
+    let said = text(&output);
+    let reason = format!(
+        "Left out yapi's subagent folder {outside}/agents: the global manifest installs only inside your home folder"
+    );
+    assert!(said.contains(&reason), "{said}");
+    let manifest = read(&scratch.home.join(".chest/chest.toml"));
+    assert!(!manifest.contains("agents ="), "{manifest}");
+    std::fs::remove_file(scratch.home.join(".chest/chest.toml")).unwrap();
     std::fs::create_dir_all(scratch.home.join(".claude")).unwrap();
     ok(&scratch, &["-g", "init", "--yes"]);
     let manifest = read(&scratch.home.join(".chest/chest.toml"));
@@ -595,7 +636,14 @@ fn import_settings_packages() {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     let said = text(&output);
-    assert!(said.contains("yapi remove -l npm:@acme/ext@^1"), "{said}");
+    // A path names the package from any folder.
+    let local = scratch.project.join("local-ext");
+    for remove in [
+        "yapi remove -l npm:@acme/ext@^1".to_owned(),
+        format!("yapi remove -l {}`", local.display()),
+    ] {
+        assert!(said.contains(&remove), "{remove}\n{said}");
+    }
     // A filter chest cannot express leaves the package in settings.json.
     for spec in ["npm:@acme/picky", "npm:@acme/quiet"] {
         let skipped = format!(
@@ -608,17 +656,40 @@ fn import_settings_packages() {
         "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
+    // Messages name the file read, such as a `settings.toml` a path names.
+    let toml =
+        "packages = [\"npm:tomled\", { source = \"npm:@acme/picky\", extensions = [\"x.ts\"] }]\n";
+    write(&scratch.dir.join("toml/settings.toml"), toml);
+    let said = text(&ok(
+        &scratch,
+        &["import", "--settings", "../toml/settings.toml"],
+    ));
+    for message in [
+        "remove it from settings.toml with `yapi remove -l npm:tomled`",
+        "so it keeps loading from settings.toml",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
     // A path names another file for either flag, and one flag is required.
-    write(
-        &scratch.dir.join("other.json"),
-        r#"{"packages": ["npm:other"]}"#,
-    );
+    // Its local sources resolve against its own folder, as yapi resolves
+    // them, also when the path is relative or a `file://` URL.
+    let file_url = format!("file://{}", scratch.dir.join("filed").display());
+    let other = json!({"packages": ["npm:other", "./tools/pkg", file_url]});
+    write(&scratch.dir.join("other.json"), &other.to_string());
     ok(&scratch, &["import", "--settings", "../other.json"]);
     let manifest = read(&scratch.project.join("chest.toml"));
-    assert!(
-        manifest.contains("other = { npm = \"other\", capabilities = [\"all\"] }"),
-        "{manifest}"
-    );
+    for line in [
+        "other = { npm = \"other\", capabilities = [\"all\"] }",
+        "pkg = { path = \"../tools/pkg\", capabilities = [\"all\"] }",
+        "filed = { path = \"../filed\", capabilities = [\"all\"] }",
+    ] {
+        assert!(manifest.contains(line), "{line}\n{manifest}");
+    }
+    // So does a bare file name in the current folder.
+    write(&scratch.project.join("bare.json"), r#"{"packages": ["npm:bare"]}"#);
+    ok(&scratch, &["import", "--settings", "bare.json"]);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(manifest.contains("bare = { npm = \"bare\""), "{manifest}");
     let flagless = chest(&scratch, &["import", "../other.json"], &[]);
     assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 

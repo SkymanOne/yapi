@@ -160,6 +160,7 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         true => Some(lock(&target).await?),
         false => None,
     };
+    yapi_core::settings::apply_http_proxy();
     let mut npm = Npm::new(npm::config());
     match cli.command {
         Command::Init(args) => init::run(&target, &args)?,
@@ -396,10 +397,7 @@ fn list(target: &Target) -> anyhow::Result<()> {
                     "not locked".into()
                 }
             });
-        let state = match locked {
-            Some(locked) if project.present(section, locked) => "installed",
-            _ => "missing",
-        };
+        let state = project.state(section, name, entry);
         out(&format!("{id}  {pinned}  {state}  {}", source(entry)));
         if section == Section::Extensions {
             out(&format!(

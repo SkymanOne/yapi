@@ -108,7 +108,7 @@ const AGENTS: [Agent; 7] = [
         agents: Some(".yapi/agents"),
         home_marker: ".yapi",
         home_skills: ".agents/skills",
-        home_agents: Some(".yapi/agent/agents"),
+        home_agents: Some(YAPI_HOME_AGENTS),
     },
 ];
 
@@ -127,6 +127,10 @@ fn offered(
         };
         let folder = match scope {
             Scope::Project => folder.to_owned(),
+            Scope::Global if folder == YAPI_HOME_AGENTS => match yapi_home_agents() {
+                Ok(folder) => folder,
+                Err(_) => continue,
+            },
             Scope::Global => format!("~/{folder}"),
         };
         let index = folders
@@ -178,6 +182,20 @@ fn list(values: &[String]) -> String {
     format!("[{}]", quoted.join(", "))
 }
 
+/// yapi's global subagent folder in [`AGENTS`], relative to the home folder.
+const YAPI_HOME_AGENTS: &str = ".yapi/agent/agents";
+
+/// yapi's global subagent folder, in the agent folder that
+/// `YAPI_CODING_AGENT_DIR` may move, from `~`. The global manifest installs
+/// only inside the home folder, so a folder outside it is the error.
+fn yapi_home_agents() -> Result<String, std::path::PathBuf> {
+    let agents = yapi_core::config::agent_dir().join("agents");
+    match agents.strip_prefix(home_dir()) {
+        Ok(path) => Ok(format!("~/{}", path.display())),
+        Err(_) => Err(agents),
+    }
+}
+
 /// Runs `chest init`.
 pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
     let exists = target.path.exists();
@@ -204,13 +222,19 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
             });
             // Without an agent found, subagents go where yapi reads them.
             let yapi = match target.scope {
-                Scope::Project => ".yapi/agents",
-                Scope::Global => "~/.yapi/agent/agents",
+                Scope::Project => Ok(".yapi/agents".to_owned()),
+                Scope::Global => yapi_home_agents(),
             };
+            if let Err(folder) = &yapi {
+                say(&format!(
+                    "Left out yapi's subagent folder {}: the global manifest installs only inside your home folder",
+                    folder.display()
+                ));
+            }
             let defaults = match found.is_empty() {
                 true => folders
                     .iter()
-                    .position(|folder| folder == yapi)
+                    .position(|folder| yapi.as_ref().is_ok_and(|yapi| folder == yapi))
                     .into_iter()
                     .collect(),
                 false => found,
