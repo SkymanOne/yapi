@@ -33,7 +33,7 @@ chest refuses the same values, so chest and yapi always agree on the manifest. [
 
 ## Install global packages
 
-> **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project, unless a [project-only run](project-only.md#what-gets-installed) can keep none of its entries.
+> **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project, unless a [project-only run](project-only.md#global-packages-yapi-still-installs) can keep none of its entries.
 
 `-g` uses `~/.chest/chest.toml` instead of the project's manifest. Its folders can be anywhere under your home folder, such as `~/.claude/skills`. Its extensions go to `~/.chest/store`, and it writes no `.gitignore`. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.
 
@@ -49,7 +49,7 @@ With `-g`, `chest init` looks for each agent's folder in your home folder:
 | OpenCode | `~/.config/opencode` | `~/.config/opencode/skills` | `~/.config/opencode/agent` |
 | yapi | `~/.yapi` | `~/.agents/skills` | `~/.yapi/agent/agents` |
 
-When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`. With `YAPI_CODING_AGENT_DIR` set, yapi's subagents go to the `agents` folder inside it instead, which is where yapi reads them.
+When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`. With `YAPI_CODING_AGENT_DIR` set, yapi's subagents go to the `agents` folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, `chest init` leaves it out and says why, because the global manifest installs only inside your home folder.
 
 For both the project and the global manifest, chest keeps its download cache and its record of what it placed in `~/.chest`.
 

@@ -49,11 +49,11 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 ## Turn resources on and off
 
-`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`, or in `settings.toml` when that's the folder's file. Tab switches between global settings and the current project, and `yapi config -l` starts with the project. In the Global Resources view, `ctrl+o` keeps the selected item in [project-only runs](project-only.md#choose-kept-items-in-yapi-config).
+`yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`, or in `settings.toml` when that's the folder's file. Tab switches between global settings and the current project, and `yapi config -l` starts with the project. In the Global Resources view, `ctrl+o` keeps the selected item in [project-only runs](project-only.md#keep-items-from-yapi-config).
 
 Before it opens, `yapi config` installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, `yapi config` prints the error and exits. `PI_OFFLINE` skips these installs.
 
-To run with only a project's packages and none of your global ones, start yapi with `--project-only`. [Run yapi with project packages only](project-only.md) covers the mode.
+To run with only a project's packages and none of your global ones, start yapi with `--project-only`. [Run yapi with only the project's packages](project-only.md) covers the mode.
 
 ## Project packages with chest
 

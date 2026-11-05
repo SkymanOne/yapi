@@ -17,7 +17,7 @@ Set `YAPI_CODING_AGENT_DIR` to move the global folder. The table lists where yap
 | Credentials | `~/.yapi/agent/auth.json` |
 | Model Context Protocol (MCP) servers | `~/.yapi/agent/mcp.json` and `.yapi/mcp.json` |
 | Project packages | `chest.toml` and `chest.lock` in the project, and `~/.chest/chest.toml`. See [Project packages from chest](#project-packages-from-chest). |
-| Global items for project-only runs | `projectOnly` in `~/.yapi/agent/settings.json`. See [Run yapi with project packages only](project-only.md). |
+| Global items for project-only runs | `projectOnly` in `~/.yapi/agent/settings.json`. See [Run yapi with only the project's packages](project-only.md). |
 | Documentation for the model | `~/.yapi/agent/docs`. See [Documentation for the model](install.md#documentation-for-the-model). |
 
 `/settings` edits common settings in place. Files in a project's `.yapi` folder load only after you [trust the project](security.md#project-trust). [`--project-only`](project-only.md) runs yapi with the project's packages and leaves out your global ones.
@@ -34,7 +34,7 @@ When one folder holds both files, every yapi command that reads that folder stop
 Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
 ```
 
-A project's folder counts only once you trust the project, because yapi reads it only then.
+In a project, the check waits until you trust the project, because yapi doesn't read its `.yapi` folder before then.
 
 ### How the formats map
 
@@ -48,7 +48,7 @@ A project's folder counts only once you trust the project, because yapi reads it
 
 TOML has no `null`, so a setting yapi sets to `null` is removed from the file, and a `null` inside an array can't be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can't be written either.
 
-This `settings.json`:
+Here are the same settings in both formats. In `settings.json`:
 
 ```json
 {
@@ -63,7 +63,7 @@ This `settings.json`:
 }
 ```
 
-is this `settings.toml`:
+In `settings.toml`:
 
 ```toml
 # The model for new sessions.
@@ -92,13 +92,13 @@ skills = ["!legacy/**"]
 
 ### How yapi writes the file
 
-`/settings`, `yapi config`, `yapi install` and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. A `[[packages]]` array of tables stays one while every entry is a table, and becomes an inline array once it holds a plain source, such as after `yapi install npm:@acme/pi-tools`. New arrays are inline. A new object becomes a `[table]` at the top level, and an inline table inside another table.
+`/settings`, `yapi config`, `yapi install` and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as `packages`, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If `packages` is an array of tables, it stays one until an entry is a plain source string, such as after `yapi install npm:@acme/pi-tools`. yapi then writes it as a multi-line inline array. The comments above the first `[[packages]]` header go above `packages`, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a `[table]` at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.
 
 ### Switch to TOML
 
 With yapi closed, write `settings.toml` with your settings, then delete `settings.json`. A yapi that's still running keeps writing the file it loaded, which can bring `settings.json` back beside the new file.
 
-`yapi import pi` copies Pi's `settings.json`. When yapi's folder already holds `settings.toml`, it skips Pi's settings and says so, so you can copy them by hand.
+`yapi import pi` copies Pi's `settings.json`. When yapi's folder already holds `settings.toml`, the import skips Pi's settings and says so. Copy what you need into `settings.toml` by hand.
 
 ## Project packages from chest
 
