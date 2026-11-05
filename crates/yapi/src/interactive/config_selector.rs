@@ -774,13 +774,26 @@ impl ConfigSelector {
             Span::raw(" ".repeat(spacing)),
         ];
         first.extend(hint);
+        // The settings file each scope writes, `settings.json` or `settings.toml`.
+        let file = |scope| {
+            let path = self.settings.file(scope);
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned());
+            name.unwrap_or_else(|| "settings.json".to_owned())
+        };
         let scope_hint = if self.project {
             format!(
-                "{}/settings.json · inherited global resources are dimmed",
-                yapi_core::config::PROJECT_DIR
+                "{}/{} · inherited global resources are dimmed",
+                yapi_core::config::PROJECT_DIR,
+                file(Scope::Project)
             )
         } else {
-            format!("~/{}/agent/settings.json", yapi_core::config::PROJECT_DIR)
+            format!(
+                "~/{}/agent/{}",
+                yapi_core::config::PROJECT_DIR,
+                file(Scope::Global)
+            )
         };
         vec![
             lines::truncate(&Line::from(first), width, ""),

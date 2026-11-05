@@ -447,6 +447,9 @@ fn ask_project_trust(parsed: &mut args::Args) -> anyhow::Result<()> {
     let agent_dir = yapi_core::config::agent_dir();
     let project = startup::project_dir(parsed, &std::env::current_dir()?);
     let settings = yapi_core::settings::SettingsManager::load(&agent_dir, &project, false);
+    if let Some(conflict) = settings.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     let view = settings.settings();
     let store = yapi_core::trust::TrustStore::new(&agent_dir);
     if !yapi_core::trust::needs_prompt(

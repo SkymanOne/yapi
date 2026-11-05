@@ -14,6 +14,7 @@ use crate::tools::path::home_dir;
 
 const TRUST_REQUIRING: &[&str] = &[
     "settings.json",
+    "settings.toml",
     "mcp.json",
     "extensions",
     "skills",
@@ -268,6 +269,21 @@ mod tests {
             text,
             format!("{{\n  \"{}\": true\n}}\n", parent_dir.display())
         );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Each of pi's project files asks for trust, and so does yapi's
+    /// `settings.toml`, which holds the same settings.
+    #[test]
+    fn project_files_need_trust() {
+        let root = std::env::temp_dir().join(format!("yapi-trust-files-{}", std::process::id()));
+        for file in ["settings.json", "settings.toml"] {
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join(PROJECT_DIR)).unwrap();
+            assert!(!requires_trust(&root));
+            std::fs::write(root.join(PROJECT_DIR).join(file), "").unwrap();
+            assert!(requires_trust(&root), "{file}");
+        }
         std::fs::remove_dir_all(&root).unwrap();
     }
 

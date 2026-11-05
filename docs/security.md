@@ -139,7 +139,7 @@ When routing keeps an event from an extension that listens on its channel, yapi 
 
 Some files in a project can change how yapi behaves and can run code. Until you trust the project, yapi loads none of them, and no project extension runs:
 
-- `settings.json`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md` in the project's `.yapi` folder
+- `settings.json` or `settings.toml`, `mcp.json`, `extensions`, `skills`, `prompts`, `themes`, `SYSTEM.md` and `APPEND_SYSTEM.md` in the project's `.yapi` folder
 - an `.agents/skills` folder in the project or a parent folder
 - a [chest](chest-extensions.md#how-yapi-loads-a-manifest) manifest that installs anything
 

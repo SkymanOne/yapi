@@ -39,6 +39,7 @@ yapi installs Pi's packages with its own client and keeps its own folders:
 | Area | Pi | yapi |
 |---|---|---|
 | Folders | `~/.pi/agent`, project `.pi/`, `PI_CODING_AGENT_DIR` | `~/.yapi/agent`, project `.yapi/`, `YAPI_CODING_AGENT_DIR`, and `YAPI_` in place of `PI_` for the session directory variable. Same formats, and `yapi import pi` copies Pi's state. |
+| Settings format | `settings.json` | `settings.json`, or the same settings in `settings.toml`, one of them per folder. yapi keeps a TOML file's comments when it writes. See [Write settings in TOML](configuration.md#write-settings-in-toml). |
 | Package installs | `npm install`, with lifecycle scripts | A built-in npm client that skips lifecycle scripts. `npmCommand` applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output. |
 | Git sources | A host or ref may start with `-` | yapi refuses a host or ref that starts with `-`, because git would read it as an option. Clones run as `git clone -- <repo>`. |
 | Sign-ins after `yapi import pi` | Pi keeps its sign-ins in its own `auth.json` and `mcp-auth.json` | `yapi import pi` copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with `/login` or `/mcp login`. |

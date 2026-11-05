@@ -30,6 +30,10 @@ chest warns that entries aren't locked, or that their lock is stale, when `chest
 
 `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. [Lock, verify and update packages](chest-lock.md) covers the lock.
 
+## yapi finds two settings files
+
+The error `Both settings.json and settings.toml are in <folder>. Keep one of them.` means that folder holds both forms of its settings file, and yapi won't guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to `settings.toml` can write `settings.json` again, so switch with yapi closed. [Write settings in TOML](configuration.md#write-settings-in-toml) covers the format.
+
 ## An extension's call is refused
 
 An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant.

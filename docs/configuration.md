@@ -1,12 +1,12 @@
 # Configure yapi
 
-yapi keeps global configuration in `~/.yapi/agent` and project configuration in a project's `.yapi` folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi's format, described in Pi's [settings documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md).
+yapi keeps global configuration in `~/.yapi/agent` and project configuration in a project's `.yapi` folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi's format, described in Pi's [settings documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md). Settings can also be [written in TOML](#write-settings-in-toml), which only yapi reads.
 
 Set `YAPI_CODING_AGENT_DIR` to move the global folder. The table lists where yapi reads each kind of configuration:
 
 | What | Where |
 |---|---|
-| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
+| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json`, or `settings.toml` in either folder |
 | Project instructions | `AGENTS.override.md`, `AGENTS.md` or `CLAUDE.md` in the project, its parent folders and `~/.yapi/agent` |
 | System prompt | `SYSTEM.md` replaces it and `APPEND_SYSTEM.md` extends it, in `.yapi/` or `~/.yapi/agent/`. `--append-system-prompt` extends it in place of `APPEND_SYSTEM.md`. |
 | Skills | `~/.yapi/agent/skills`, `~/.agents/skills`, `.yapi/skills` and `.agents/skills` |
@@ -20,6 +20,84 @@ Set `YAPI_CODING_AGENT_DIR` to move the global folder. The table lists where yap
 | Documentation for the model | `~/.yapi/agent/docs`. See [Documentation for the model](install.md#documentation-for-the-model). |
 
 `/settings` edits common settings in place. Files in a project's `.yapi` folder load only after you [trust the project](security.md#project-trust).
+
+## Write settings in TOML
+
+> **yapi and chest only.** Pi and other agents read only `settings.json`.
+
+yapi also reads its settings from `settings.toml`, in `~/.yapi/agent` or a project's `.yapi` folder. It holds the same settings as `settings.json`, in the same structure, and TOML lets you add comments. Choose the format per folder: yapi reads and writes whichever file a folder has. Wherever these docs say `settings.json`, `settings.toml` works the same.
+
+When one folder holds both files, every yapi command that reads that folder stops with this error, and so does `chest import --settings`:
+
+```text
+Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
+```
+
+A project's folder counts only once you trust the project, because yapi reads it only then.
+
+### How the formats map
+
+| JSON | TOML |
+|---|---|
+| object | table |
+| array | array |
+| string, boolean | string, boolean |
+| integer, float | integer, float |
+| `null` | none: leave the key out |
+
+TOML has no `null`, so a setting yapi sets to `null` is removed from the file, and a `null` inside an array can't be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can't be written either.
+
+This `settings.json`:
+
+```json
+{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-5",
+  "compaction": { "enabled": true, "reserveTokens": 16384 },
+  "packages": [
+    "npm:@acme/pi-tools",
+    { "source": "git:github.com/acme/skills@v2", "skills": ["!legacy/**"] }
+  ],
+  "projectOnly": { "themes": ["*"] }
+}
+```
+
+is this `settings.toml`:
+
+```toml
+# The model for new sessions.
+defaultProvider = "anthropic"
+defaultModel = "claude-sonnet-4-5"
+packages = [
+  "npm:@acme/pi-tools",
+  { source = "git:github.com/acme/skills@v2", skills = ["!legacy/**"] },
+]
+
+[compaction]
+enabled = true
+reserveTokens = 16384
+
+[projectOnly]
+themes = ["*"]
+```
+
+Keys outside a table, such as `packages`, go before the first `[table]` header, as TOML requires. When every `packages` entry is an object, the list can also be an array of tables. The example above can't use one, because `npm:@acme/pi-tools` is a string:
+
+```toml
+[[packages]]
+source = "git:github.com/acme/skills@v2"
+skills = ["!legacy/**"]
+```
+
+### How yapi writes the file
+
+`/settings`, `yapi config`, `yapi install` and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. A `[[packages]]` array of tables stays one while every entry is a table, and becomes an inline array once it holds a plain source, such as after `yapi install npm:@acme/pi-tools`. New arrays are inline. A new object becomes a `[table]` at the top level, and an inline table inside another table.
+
+### Switch to TOML
+
+With yapi closed, write `settings.toml` with your settings, then delete `settings.json`. A yapi that's still running keeps writing the file it loaded, which can bring `settings.json` back beside the new file.
+
+`yapi import pi` copies Pi's `settings.json`. When yapi's folder already holds `settings.toml`, it skips Pi's settings and says so, so you can copy them by hand.
 
 ## Project packages from chest
 

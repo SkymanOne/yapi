@@ -38,10 +38,13 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
     };
     let mut document = ManifestDocument::parse(&text, target.scope)?;
     let added = if args.settings {
-        let path = args.path.clone().unwrap_or_else(|| match target.scope {
-            Scope::Project => target.base().join(".yapi/settings.json"),
-            Scope::Global => yapi_core::config::agent_dir().join("settings.json"),
-        });
+        let path = match args.path.clone() {
+            Some(path) => path,
+            None => yapi_core::settings::settings_file(&match target.scope {
+                Scope::Project => target.base().join(".yapi"),
+                Scope::Global => yapi_core::config::agent_dir(),
+            })?,
+        };
         settings(target, &path, &mut document)?
     } else {
         let path = args
@@ -93,7 +96,14 @@ fn settings(
     path: &Path,
     document: &mut ManifestDocument,
 ) -> anyhow::Result<usize> {
-    let settings = json(path)?;
+    // Either form of the settings file, as yapi reads it.
+    if !path.exists() {
+        bail!("reading {}: No such file or directory", path.display());
+    }
+    let settings = Value::Object(
+        yapi_core::settings::read_settings(path)
+            .with_context(|| format!("parsing {}", path.display()))?,
+    );
     let packages: Vec<PackageSource> = match settings.get("packages") {
         Some(packages) => serde_json::from_value(packages.clone()).context("reading `packages`")?,
         None => Vec::new(),

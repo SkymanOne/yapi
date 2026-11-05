@@ -18,7 +18,7 @@ yapi keeps global state in its agent folder and project state in `.yapi/`:
 |---|---|
 | Global state | `~/.yapi/agent` (move it with `YAPI_CODING_AGENT_DIR`) |
 | Project state | `.yapi/` in the project, read only after you trust the project |
-| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
+| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json`. Either can be `settings.toml` instead, with the same settings, but not both in one folder. |
 | Credentials | `~/.yapi/agent/auth.json` |
 | Custom providers and models | `~/.yapi/agent/models.json` |
 | Sessions | `~/.yapi/agent/sessions/`, one JSON Lines file per session, grouped by project (move them with `YAPI_CODING_AGENT_SESSION_DIR` or `--session-dir`) |

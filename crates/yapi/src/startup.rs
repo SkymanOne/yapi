@@ -297,6 +297,9 @@ pub fn load_settings(
 ) -> anyhow::Result<(SettingsManager, bool)> {
     use std::io::IsTerminal;
     let global = SettingsManager::load(agent_dir, project, false);
+    if let Some(conflict) = global.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     let view = global.settings();
     let store = TrustStore::new(agent_dir);
     let default = view.default_project_trust;
@@ -315,6 +318,9 @@ pub fn load_settings(
     } else {
         global
     };
+    if let Some(conflict) = settings.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     Ok((settings, trusted))
 }
 

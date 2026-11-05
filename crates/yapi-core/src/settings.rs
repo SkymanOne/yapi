@@ -19,11 +19,15 @@ use crate::config::PROJECT_DIR;
 /// Which file a setting lives in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
-    /// `<agent>/settings.json`.
+    /// `<agent>/settings.json`, or `settings.toml` there.
     Global,
-    /// `<project>/.yapi/settings.json`.
+    /// `<project>/.yapi/settings.json`, or `settings.toml` there.
     Project,
 }
+
+/// The TOML form of a folder's settings file, which yapi reads and writes
+/// in place of `settings.json`.
+pub const TOML_FILE: &str = "settings.toml";
 
 /// Settings errors.
 #[derive(Debug, thiserror::Error)]
@@ -36,7 +40,7 @@ pub enum SettingsError {
         /// The cause.
         source: std::io::Error,
     },
-    /// The file is not valid settings JSON.
+    /// The file is not valid settings JSON or TOML.
     #[error("Failed to parse {path}: {message}")]
     Parse {
         /// The file.
@@ -44,6 +48,502 @@ pub enum SettingsError {
         /// What is wrong.
         message: String,
     },
+    /// A folder holds both forms of its settings file.
+    #[error("Both settings.json and settings.toml are in {}. Keep one of them.", dir.display())]
+    Conflict {
+        /// The folder.
+        dir: PathBuf,
+    },
+}
+
+/// The settings file of folder `dir`: `settings.toml` when it holds one,
+/// else `settings.json`, which a first write creates. A folder that holds
+/// both is a [`SettingsError::Conflict`].
+pub fn settings_file(dir: &Path) -> Result<PathBuf, SettingsError> {
+    let json = dir.join(ConfigFile::Settings.file_name());
+    let toml = dir.join(TOML_FILE);
+    match (json.exists(), toml.exists()) {
+        (true, true) => Err(SettingsError::Conflict {
+            dir: dir.to_path_buf(),
+        }),
+        (_, true) => Ok(toml),
+        _ => Ok(json),
+    }
+}
+
+/// The settings document in the `settings.json` or `settings.toml` at
+/// `path`, read as yapi reads it. A missing file is an empty document.
+pub fn read_settings(path: &Path) -> Result<Map<String, Value>, SettingsError> {
+    read_document(path)
+}
+
+fn is_toml(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "toml")
+}
+
+/// The TOML document at `path` as written, with its text, or an empty one
+/// when there is none.
+fn read_toml_document(path: &Path) -> Result<(toml_edit::DocumentMut, String), SettingsError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((toml_edit::DocumentMut::new(), String::new()));
+        }
+        Err(source) => {
+            return Err(SettingsError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    let document = text
+        .strip_prefix('\u{feff}')
+        .unwrap_or(&text)
+        .parse()
+        .map_err(|err: toml_edit::TomlError| SettingsError::Parse {
+            path: path.to_path_buf(),
+            message: err.to_string(),
+        })?;
+    Ok((document, text))
+}
+
+/// `written`, which toml_edit wrote for a document read from `text`, with
+/// the byte order mark and line endings of `text`, as toml_edit ends its
+/// lines with `\n`. Blank lines that start it and not `text`, as after
+/// removing the first table, go.
+fn as_read(text: &str, written: String) -> String {
+    let (bom, text) = match text.strip_prefix('\u{feff}') {
+        Some(text) => ("\u{feff}", text),
+        None => ("", text),
+    };
+    let written = match text.starts_with(['\r', '\n']) {
+        true => written,
+        false => written.trim_start_matches(['\r', '\n']).to_owned(),
+    };
+    let written = match text.contains("\r\n") {
+        true => written.replace("\r\n", "\n").replace('\n', "\r\n"),
+        false => written,
+    };
+    format!("{bom}{written}")
+}
+
+/// The settings that TOML `document` from `path` holds, as `settings.json`
+/// would hold them, migrated as pi migrates JSON. A date or time is no
+/// setting, so it fails.
+fn toml_settings(
+    path: &Path,
+    document: &toml_edit::DocumentMut,
+) -> Result<Map<String, Value>, SettingsError> {
+    let mut map = toml_table(document.as_table()).map_err(|message| SettingsError::Parse {
+        path: path.to_path_buf(),
+        message,
+    })?;
+    migrate(&mut map);
+    Ok(map)
+}
+
+fn toml_table(table: &dyn toml_edit::TableLike) -> Result<Map<String, Value>, String> {
+    let mut map = Map::new();
+    for (key, item) in table.iter() {
+        if let Some(value) = toml_item(item)? {
+            map.insert(key.to_owned(), value);
+        }
+    }
+    Ok(map)
+}
+
+fn toml_item(item: &toml_edit::Item) -> Result<Option<Value>, String> {
+    Ok(match item {
+        toml_edit::Item::None => None,
+        toml_edit::Item::Value(value) => Some(toml_value(value)?),
+        toml_edit::Item::Table(table) => Some(Value::Object(toml_table(table)?)),
+        toml_edit::Item::ArrayOfTables(tables) => Some(Value::Array(
+            tables
+                .iter()
+                .map(|table| toml_table(table).map(Value::Object))
+                .collect::<Result<_, _>>()?,
+        )),
+    })
+}
+
+fn toml_value(value: &toml_edit::Value) -> Result<Value, String> {
+    use toml_edit::Value as Toml;
+    Ok(match value {
+        Toml::String(text) => Value::String(text.value().clone()),
+        Toml::Integer(number) => Value::from(*number.value()),
+        Toml::Float(number) => serde_json::Number::from_f64(*number.value())
+            .map(Value::Number)
+            .ok_or_else(|| format!("{} is not a number JSON can hold", number.value()))?,
+        Toml::Boolean(flag) => Value::Bool(*flag.value()),
+        Toml::Datetime(date) => {
+            return Err(format!(
+                "{} is a date or time, which no setting takes",
+                date.value()
+            ));
+        }
+        Toml::Array(items) => Value::Array(items.iter().map(toml_value).collect::<Result<_, _>>()?),
+        Toml::InlineTable(table) => Value::Object(toml_table(table)?),
+    })
+}
+
+/// `value` as a TOML value: objects as inline tables, `null` keys left out.
+fn json_to_toml(value: &Value) -> Result<toml_edit::Value, String> {
+    Ok(match value {
+        Value::Null => return Err("TOML has no null in an array".to_owned()),
+        Value::Bool(flag) => (*flag).into(),
+        Value::Number(number) => match (number.as_i64(), number.as_f64()) {
+            (Some(integer), _) => integer.into(),
+            (None, Some(float)) if !number.is_u64() => float.into(),
+            _ => return Err(format!("{number} is beyond the integers TOML holds")),
+        },
+        Value::String(text) => text.as_str().into(),
+        Value::Array(items) => {
+            let mut array = toml_edit::Array::new();
+            for item in items {
+                array.push(json_to_toml(item)?);
+            }
+            array.into()
+        }
+        Value::Object(map) => {
+            let mut table = toml_edit::InlineTable::new();
+            for (key, value) in map.iter().filter(|(_, value)| !value.is_null()) {
+                table.insert(key, json_to_toml(value)?);
+            }
+            table.into()
+        }
+    })
+}
+
+/// Brings `table` in line with `new`, key by key, so unchanged keys keep their
+/// comments and layout: keys `new` lacks or sets to `null` go, changed ones
+/// change in place, and new ones are added. `root` makes new objects
+/// standard tables rather than inline ones. `lines` says the table's keys
+/// start their lines, as in a standard table.
+fn reconcile(
+    table: &mut dyn toml_edit::TableLike,
+    new: &Map<String, Value>,
+    root: bool,
+    lines: bool,
+) -> Result<(), String> {
+    let gone: Vec<String> = table
+        .iter()
+        .map(|(key, _)| key.to_owned())
+        .filter(|key| new.get(key).is_none_or(Value::is_null))
+        .collect();
+    for key in gone {
+        table.remove(&key);
+    }
+    for (key, value) in new.iter().filter(|(_, value)| !value.is_null()) {
+        // shortcut: the text before a value on its line is known only where
+        // keys start lines, not in dotted keys or inline tables; upgrade if
+        // their arrays need it.
+        let line = table.key(key).filter(|_| lines).map(|key| {
+            let decor = key.leaf_decor();
+            let prefix = raw(decor.prefix());
+            let indent = &prefix[prefix.rfind('\n').map_or(0, |at| at + 1)..];
+            format!("{indent}{}{}=", key.display_repr(), raw(decor.suffix()))
+        });
+        let in_place = match table.get_mut(key) {
+            Some(item) => reconcile_item(item, value, line.as_deref())?,
+            None => false,
+        };
+        // New, or a table that becomes a value: a key of its own.
+        if !in_place {
+            let old = table.remove(key);
+            let mut item = match (root, json_to_toml(value)?) {
+                (true, toml_edit::Value::InlineTable(inline)) => {
+                    toml_edit::Item::Table(inline.into_table())
+                }
+                (_, value) => toml_edit::Item::Value(value),
+            };
+            // An array of tables that becomes an inline array keeps the
+            // comments above its headers.
+            let mut above = None;
+            if let (
+                Some(toml_edit::Item::ArrayOfTables(tables)),
+                toml_edit::Item::Value(toml_edit::Value::Array(array)),
+                Value::Array(items),
+            ) = (&old, &mut item, value)
+            {
+                above = tables
+                    .get(0)
+                    .map(|first| raw(first.decor().prefix()).to_owned());
+                *array = tables_to_array(tables, items)?;
+            }
+            table.insert(key, item);
+            if let (Some(above), Some(mut key)) = (above, table.key_mut(key)) {
+                key.leaf_decor_mut().set_prefix(above);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The text of a decor part, which a parsed or built document holds.
+fn raw(text: Option<&toml_edit::RawString>) -> &str {
+    text.and_then(toml_edit::RawString::as_str)
+        .unwrap_or_default()
+}
+
+/// `text` split after its first line break, into the end of a line and the
+/// lines after it. Without a line break, all of it is the rest.
+fn split_line(text: &str) -> (&str, &str) {
+    text.find('\n')
+        .map_or(("", text), |at| text.split_at(at + 1))
+}
+
+/// For each entry of `new`, the index of the entry of `old` whose comments
+/// it keeps: an equal one no other entry keeps, wherever it was, else the
+/// one at its own index, when no entry keeps that.
+fn pick(old: &[Option<Value>], new: &[Value]) -> Vec<Option<usize>> {
+    let mut kept = vec![false; old.len()];
+    let mut picks: Vec<Option<usize>> = new
+        .iter()
+        .map(|entry| {
+            let index = (0..old.len())
+                .find(|index| !kept[*index] && old[*index].as_ref() == Some(entry))?;
+            kept[index] = true;
+            Some(index)
+        })
+        .collect();
+    for index in 0..new.len().min(old.len()) {
+        if picks[index].is_none() && !kept[index] {
+            picks[index] = Some(index);
+        }
+    }
+    picks
+}
+
+/// Brings inline `array`, which holds values, in line with `items`. A value
+/// keeps the comment lines above it and the rest of its own line, as its
+/// decor holds them, and every value the indent of its place. A new value
+/// takes the layout of the last one, on a line of its own in a multi-line
+/// array. `line` is the text before `[` on its line, when known.
+fn reconcile_array(
+    array: &mut toml_edit::Array,
+    items: &[Value],
+    line: Option<&str>,
+) -> Result<(), String> {
+    let old: Vec<toml_edit::Value> = array.iter().cloned().collect();
+    let last = old.len().saturating_sub(1);
+    let mut suffixes: Vec<String> = old
+        .iter()
+        .map(|value| raw(value.decor().suffix()).to_owned())
+        .collect();
+    // Without a trailing comma, the last value's suffix ends its line.
+    let mut after = raw(Some(array.trailing())).to_owned();
+    if !array.trailing_comma() {
+        after = std::mem::take(&mut suffixes[last]) + &after;
+    }
+    // What follows `[`, the lines above each value, and the end of each
+    // value's line.
+    let prefixes: Vec<&str> = old
+        .iter()
+        .map(|value| raw(value.decor().prefix()))
+        .collect();
+    let (head, first) = split_line(prefixes[0]);
+    let mut leads = vec![first];
+    let mut tails = Vec::new();
+    for prefix in &prefixes[1..] {
+        let (tail, lead) = split_line(prefix);
+        tails.push(tail);
+        leads.push(lead);
+    }
+    let (tail, close) = split_line(&after);
+    tails.push(tail);
+    let comments = |lead: &str| lead.rfind('\n').map_or("", |at| &lead[..=at]).to_owned();
+    // In a multi-line array, a new value and the one after it start their
+    // own lines, as does a value after the old last one. A new last value
+    // ends its line as the last one did.
+    let multi_line = prefixes.iter().any(|prefix| prefix.contains('\n')) || after.contains('\n');
+    let new_tail = if multi_line { "\n" } else { "" };
+    // The first value's column, as blanks that keep the line's tabs.
+    let column: Option<String> = line.map(|line| {
+        let text = format!("{line}[{}", prefixes[0]);
+        text.chars()
+            .map(|c| if c == '\t' { c } else { ' ' })
+            .collect()
+    });
+    let indent = |index: usize| match index > 0 && last == 0 && !prefixes[0].contains('\n') {
+        // One value on the line of `[` has no separator to copy: on lines
+        // of their own, the values after it line up with it.
+        true => match (multi_line, &column) {
+            (true, Some(column)) => column.clone(),
+            _ => " ".to_owned(),
+        },
+        false => {
+            let lead = leads[index.min(last)];
+            let at = lead.rfind('\n').map_or(0, |at| at + 1);
+            lead[at..].to_owned()
+        }
+    };
+    let end = if tails[last].contains('\n') { "\n" } else { "" };
+    let values: Vec<Option<Value>> = old.iter().map(|value| toml_value(value).ok()).collect();
+    let picks = pick(&values, items);
+    let new_last = matches!(picks.last(), Some(None));
+    array.clear();
+    let mut before = head.to_owned();
+    let mut previous = None;
+    for (index, (item, picked)) in items.iter().zip(picks).enumerate() {
+        let mut value = match picked {
+            Some(at) if values[at].as_ref() == Some(item) => old[at].clone(),
+            _ => json_to_toml(item)?,
+        };
+        let starts_line = picked.is_none() || previous == Some(last);
+        if index > 0 && starts_line && !before.ends_with('\n') {
+            before += new_tail;
+        }
+        previous = picked;
+        let lead = picked.map_or(String::new(), |at| comments(leads[at]));
+        let decor = value.decor_mut();
+        decor.set_prefix(before + &lead + &indent(index));
+        decor.set_suffix(picked.map_or("", |at| suffixes[at].as_str()));
+        array.push_formatted(value);
+        before = picked.map_or(new_tail, |at| tails[at]).to_owned();
+    }
+    let trailing = match (items.is_empty(), new_last) {
+        (true, _) => String::new(),
+        (false, true) => end.to_owned() + close,
+        (false, false) => before + close,
+    };
+    array.set_trailing(trailing);
+    Ok(())
+}
+
+/// `items`, the entries of array of tables `tables`, as a multi-line inline
+/// array. Each value keeps, as lines above it, the comments of the table it
+/// was: those on its header line, between its keys, at the ends of their
+/// lines and inside their arrays, and those above its header, except the
+/// first table's, which go above the key.
+fn tables_to_array(
+    tables: &toml_edit::ArrayOfTables,
+    items: &[Value],
+) -> Result<toml_edit::Array, String> {
+    let values: Vec<Option<Value>> = tables
+        .iter()
+        .map(|table| toml_table(table).ok().map(Value::Object))
+        .collect();
+    let mut array = toml_edit::Array::new();
+    for (item, picked) in items.iter().zip(pick(&values, items)) {
+        let mut texts = Vec::new();
+        if let Some(at) = picked
+            && let Some(table) = tables.get(at)
+        {
+            if at > 0 {
+                texts.push(raw(table.decor().prefix()));
+            }
+            texts.push(raw(table.decor().suffix()));
+            for (keys, value) in table.get_values() {
+                let key = keys.last().and_then(|key| key.leaf_decor().prefix());
+                texts.push(raw(key));
+                nested_comments(value, &mut texts);
+                texts.push(raw(value.decor().suffix()));
+            }
+        }
+        let comments: String = texts
+            .iter()
+            .flat_map(|text| text.lines())
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| format!("\n  {line}"))
+            .collect();
+        let mut value = json_to_toml(item)?;
+        value.decor_mut().set_prefix(format!("{comments}\n  "));
+        value.decor_mut().set_suffix("");
+        array.push_formatted(value);
+    }
+    if !array.is_empty() {
+        array.set_trailing_comma(true);
+        array.set_trailing("\n");
+    }
+    Ok(array)
+}
+
+/// Adds to `texts` the decor inside `value`, where an array holds the
+/// comments between its values. An inline table holds none.
+fn nested_comments<'a>(value: &'a toml_edit::Value, texts: &mut Vec<&'a str>) {
+    if let toml_edit::Value::Array(array) = value {
+        for item in array.iter() {
+            texts.push(raw(item.decor().prefix()));
+            nested_comments(item, texts);
+            texts.push(raw(item.decor().suffix()));
+        }
+        texts.push(raw(Some(array.trailing())));
+    }
+}
+
+/// Brings `item` in line with `value` in place, or returns false when it
+/// must give way to a new key, as a table does to a plain value. `line` is
+/// the text before the value on its line, when known.
+fn reconcile_item(
+    item: &mut toml_edit::Item,
+    value: &Value,
+    line: Option<&str>,
+) -> Result<bool, String> {
+    if toml_item(item).ok().flatten().as_ref() == Some(value) {
+        return Ok(true);
+    }
+    match (&mut *item, value) {
+        (toml_edit::Item::Table(table), Value::Object(map)) => {
+            let lines = !table.is_dotted();
+            reconcile(table, map, false, lines)?;
+            return Ok(true);
+        }
+        (toml_edit::Item::Value(toml_edit::Value::InlineTable(table)), Value::Object(map)) => {
+            reconcile(table, map, false, false)?;
+            return Ok(true);
+        }
+        // An array of tables stays one while every entry is a table.
+        // Empty, it would print as nothing and lose its key. Each entry
+        // keeps the table of an equal one, with its comments.
+        (toml_edit::Item::ArrayOfTables(tables), Value::Array(items))
+            if !items.is_empty() && items.iter().all(Value::is_object) =>
+        {
+            let old: Vec<toml_edit::Table> = tables.iter().cloned().collect();
+            let values: Vec<Option<Value>> = old
+                .iter()
+                .map(|table| toml_table(table).ok().map(Value::Object))
+                .collect();
+            let picks = pick(&values, items);
+            // The file prints tables by position, so moved ones swap theirs.
+            let mut positions: Vec<Option<isize>> = picks
+                .iter()
+                .flatten()
+                .map(|at| old[*at].position())
+                .collect();
+            positions.sort();
+            let mut positions = positions.into_iter();
+            let mut next = toml_edit::ArrayOfTables::new();
+            for (entry, picked) in items.iter().zip(picks) {
+                let Value::Object(map) = entry else { continue };
+                let mut table = picked.map_or_else(toml_edit::Table::new, |at| old[at].clone());
+                if picked.is_some() {
+                    table.set_position(positions.next().flatten());
+                }
+                reconcile(&mut table, map, false, true)?;
+                next.push(table);
+            }
+            *tables = next;
+            return Ok(true);
+        }
+        (toml_edit::Item::Value(toml_edit::Value::Array(array)), Value::Array(items))
+            if !array.is_empty() =>
+        {
+            let line = line.map(|line| format!("{line}{}", raw(array.decor().prefix())));
+            reconcile_array(array, items, line.as_deref())?;
+            return Ok(true);
+        }
+        (toml_edit::Item::Value(old), _) => {
+            // A replaced value keeps the comments around it.
+            let mut next = json_to_toml(value)?;
+            *next.decor_mut() = old.decor().clone();
+            *old = next;
+            return Ok(true);
+        }
+        _ => {}
+    }
+    Ok(false)
 }
 
 /// Both scopes and their merged view.
@@ -62,9 +562,14 @@ pub struct SettingsManager {
     /// written, so a broken file is not overwritten.
     broken: [bool; 2],
     errors: Vec<String>,
+    /// A folder read that holds both settings files.
+    conflict: Option<String>,
 }
 
 fn read_document(path: &Path) -> Result<Map<String, Value>, SettingsError> {
+    if is_toml(path) {
+        return toml_settings(path, &read_toml_document(path)?.0);
+    }
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
@@ -256,7 +761,7 @@ fn valid_fields(path: &mut Vec<String>, object: Map<String, Value>) -> Map<Strin
 /// The global `httpProxy` setting in `agent_dir`, when its settings file
 /// reads and sets one.
 pub fn http_proxy(agent_dir: &Path) -> Option<String> {
-    let path = agent_dir.join(ConfigFile::Settings.file_name());
+    let path = settings_file(agent_dir).ok()?;
     read_document(&path)
         .ok()?
         .get("httpProxy")?
@@ -274,20 +779,37 @@ pub fn apply_http_proxy() {
 impl SettingsManager {
     /// Loads both scopes, the project's from `project_dir`, and that only
     /// when `project_trusted`.
+    /// A folder that holds both `settings.json` and `settings.toml` loads as
+    /// empty, is never written and sets [`SettingsManager::conflict`].
     pub fn load(agent_dir: &Path, project_dir: &Path, project_trusted: bool) -> SettingsManager {
-        let global_path = agent_dir.join(ConfigFile::Settings.file_name());
-        let project_path = project_dir
-            .join(PROJECT_DIR)
-            .join(ConfigFile::Settings.file_name());
-        let mut errors = Vec::new();
+        let project_folder = project_dir.join(PROJECT_DIR);
+        let mut conflict = None;
         let mut broken = [false; 2];
+        // An untrusted project's folder is never read, so it never conflicts.
+        let mut locate = |dir: &Path, scope: usize, read: bool| {
+            let json = dir.join(ConfigFile::Settings.file_name());
+            match read.then(|| settings_file(dir)) {
+                Some(Ok(path)) => path,
+                Some(Err(err)) => {
+                    conflict.get_or_insert(err.to_string());
+                    broken[scope] = true;
+                    json
+                }
+                None => json,
+            }
+        };
+        let global_path = locate(agent_dir, 0, true);
+        let project_path = locate(&project_folder, 1, project_trusted);
+        let mut errors = Vec::new();
         // pi reports a file that fails to load and continues without it.
         let mut read = |path: &Path, scope: usize| match read_document(path) {
+            _ if broken[scope] => Map::new(),
             Ok(document) => document,
             Err(error) => {
                 let message = match error {
                     SettingsError::Parse { message, .. } => message,
                     SettingsError::Io { source, .. } => source.to_string(),
+                    SettingsError::Conflict { .. } => error.to_string(),
                 };
                 errors.push(format!(
                     "Invalid settings file {}: {message}",
@@ -314,9 +836,25 @@ impl SettingsManager {
             merged: Settings::default(),
             broken,
             errors,
+            conflict,
         };
         manager.remerge();
         manager
+    }
+
+    /// The file that holds `scope`'s settings: `settings.json` or
+    /// `settings.toml`.
+    pub fn file(&self, scope: Scope) -> &Path {
+        match scope {
+            Scope::Global => &self.global_path,
+            Scope::Project => &self.project_path,
+        }
+    }
+
+    /// Why the settings must not be used: a folder they read holds both
+    /// `settings.json` and `settings.toml`. Commands stop with it.
+    pub fn conflict(&self) -> Option<&str> {
+        self.conflict.as_deref()
     }
 
     /// Settings with no files behind them.
@@ -583,14 +1121,42 @@ impl SettingsManager {
             };
             let _lock = FileLock::acquire_blocking(path)
                 .map_err(|err| failed(std::io::Error::other(err)))?;
-            let mut current = read_document(path)?;
+            // A TOML file is read once, as a document that keeps its
+            // comments and layout.
+            let mut toml = is_toml(path)
+                .then(|| read_toml_document(path))
+                .transpose()?;
+            let mut current = match &toml {
+                Some((document, _)) => toml_settings(path, document)?,
+                None => read_document(path)?,
+            };
             change(&mut current);
-            let text = ConfigFile::Settings
-                .render(&Value::Object(current.clone()))
-                .map_err(|err| SettingsError::Parse {
-                    path: path.clone(),
-                    message: err.to_string(),
-                })?;
+            let parse_error = |message: String| SettingsError::Parse {
+                path: path.clone(),
+                message,
+            };
+            let text = match &mut toml {
+                Some((document, text)) => {
+                    // Without keys, a file's comments are its trailing
+                    // text, which new keys would come before.
+                    let leading = document
+                        .is_empty()
+                        .then(|| raw(Some(document.trailing())).to_owned());
+                    reconcile(document.as_table_mut(), &current, true, true)
+                        .map_err(parse_error)?;
+                    if let Some(mut leading) = leading.filter(|_| !document.is_empty()) {
+                        if !leading.is_empty() && !leading.ends_with('\n') {
+                            leading.push('\n');
+                        }
+                        document.decor_mut().set_prefix(leading);
+                        document.set_trailing("");
+                    }
+                    as_read(text, document.to_string())
+                }
+                None => ConfigFile::Settings
+                    .render(&Value::Object(current.clone()))
+                    .map_err(|err| parse_error(err.to_string()))?,
+            };
             write_atomic(path, text.as_bytes(), 0o666).map_err(failed)?;
             written = Some(current);
         }
@@ -860,6 +1426,276 @@ mod tests {
         );
         assert_eq!(first.document(Scope::Global).len(), 3);
         assert!(!dir.join("settings.json.lock").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `settings.toml` holds what `settings.json` holds, and writes change
+    /// only what changed, keeping comments and layout.
+    #[test]
+    fn toml_settings_round_trip() {
+        let dir = std::env::temp_dir().join(format!("yapi-settings-toml-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = dir.join("settings.toml");
+        let text = "# The model.\ndefaultModel = \"m\" # inline\nqueueMode = \"all\"\nenabledModels = [\"a\"]\n\n[compaction]\n# Kept.\nenabled = true\nreserveTokens = 100\n\n[modelThinkingLevels]\n\"p/a\" = \"high\"\n\"p/b\" = \"low\"\n\n[[packages]]\nsource = \"git:github.com/acme/skills@v2\"\nskills = [\"!legacy/**\"]\n\n[projectOnly]\nthemes = [\"*\"]\n";
+        std::fs::write(&toml, text).unwrap();
+        let json = json!({
+            "defaultModel": "m",
+            "enabledModels": ["a"],
+            "compaction": {"enabled": true, "reserveTokens": 100},
+            "modelThinkingLevels": {"p/a": "high", "p/b": "low"},
+            "packages": [{"source": "git:github.com/acme/skills@v2", "skills": ["!legacy/**"]}],
+            "projectOnly": {"themes": ["*"]},
+            "steeringMode": "all",
+        });
+        let mut manager = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        assert_eq!(manager.file(Scope::Global), toml);
+        assert_eq!(Value::Object(manager.document(Scope::Global).clone()), json);
+
+        // A nested change, a removal, a nested removal and the migration of
+        // `queueMode` leave the rest of the file as it was.
+        manager
+            .set_nested(
+                Scope::Global,
+                "compaction",
+                "reserveTokens",
+                Some(json!(200)),
+            )
+            .unwrap();
+        manager.set(Scope::Global, "enabledModels", None).unwrap();
+        manager
+            .set_nested(Scope::Global, "modelThinkingLevels", "p/b", None)
+            .unwrap();
+        // An object entry changes in place, keeping the array of tables.
+        let changed =
+            json!([{"source": "git:github.com/acme/skills@v3", "skills": ["!legacy/**"]}]);
+        manager
+            .set(Scope::Global, "packages", Some(changed))
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&toml).unwrap(),
+            "# The model.\ndefaultModel = \"m\" # inline\nsteeringMode = \"all\"\n\n[compaction]\n# Kept.\nenabled = true\nreserveTokens = 200\n\n[modelThinkingLevels]\n\"p/a\" = \"high\"\n\n[[packages]]\nsource = \"git:github.com/acme/skills@v3\"\nskills = [\"!legacy/**\"]\n\n[projectOnly]\nthemes = [\"*\"]\n"
+        );
+        // A plain source makes `packages` a multi-line inline array, and
+        // `null` removes a key, while one in an array and an integer TOML
+        // can't hold fail.
+        let mixed = json!(["npm:x", {"source": "git:github.com/acme/skills@v3"}]);
+        manager
+            .set(Scope::Global, "packages", Some(mixed.clone()))
+            .unwrap();
+        manager
+            .set(Scope::Global, "projectOnly", Some(Value::Null))
+            .unwrap();
+        let reread = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        assert_eq!(reread.document(Scope::Global)["packages"], mixed);
+        assert!(!reread.document(Scope::Global).contains_key("projectOnly"));
+        assert_eq!(
+            std::fs::read_to_string(&toml).unwrap(),
+            "# The model.\ndefaultModel = \"m\" # inline\nsteeringMode = \"all\"\n\npackages = [\n  \"npm:x\",\n  { source = \"git:github.com/acme/skills@v3\" },\n]\n\n[compaction]\n# Kept.\nenabled = true\nreserveTokens = 200\n\n[modelThinkingLevels]\n\"p/a\" = \"high\"\n"
+        );
+        let null = manager.set(Scope::Global, "list", Some(json!([null])));
+        assert!(null.is_err(), "{null:?}");
+        let big = manager.set(Scope::Global, "big", Some(json!(u64::MAX)));
+        assert!(big.is_err(), "{big:?}");
+
+        // Each kept entry of `packages` keeps its comments and line breaks,
+        // whether a table or a value, and a new one the layout of the last.
+        let themes = r#"{ source = "npm:@acme/pi-themes", skills = [] }"#;
+        let tables = "theme = \"g\"\n\n# Themes from npm, skills off.\n[[packages]] # shared\nsource = \"npm:@acme/pi-themes\" # pinned by the team\n# No skills.\nskills = []\n\n# My local tools.\n[[packages]]\nsource = \"../pkgs/local\"\nprompts = []\n";
+        let inline = format!("packages = [\n  \"../pkgs/local\", # local tools\n  {themes},\n]\n");
+        let commented =
+            "packages = [\n  # First.\n  \"a\", # one\n  \"b\", # two\n  \"c\" # three\n]\n";
+        for (text, packages, expected) in [
+            // Removing a table takes its own comments along.
+            (
+                tables,
+                json!([{"source": "../pkgs/local", "prompts": []}]),
+                "theme = \"g\"\n\n# My local tools.\n[[packages]]\nsource = \"../pkgs/local\"\nprompts = []\n".to_owned(),
+            ),
+            // Tables that swap keep their comments, in the new order.
+            (
+                tables,
+                json!([{"source": "../pkgs/local", "prompts": []}, {"source": "npm:@acme/pi-themes", "skills": []}]),
+                "theme = \"g\"\n\n# My local tools.\n[[packages]]\nsource = \"../pkgs/local\"\nprompts = []\n\n# Themes from npm, skills off.\n[[packages]] # shared\nsource = \"npm:@acme/pi-themes\" # pinned by the team\n# No skills.\nskills = []\n".to_owned(),
+            ),
+            (
+                &inline,
+                json!(["../pkgs/local", {"source": "npm:@acme/pi-themes", "skills": []}, "../pkgs/new"]),
+                format!("packages = [\n  \"../pkgs/local\", # local tools\n  {themes},\n  \"../pkgs/new\",\n]\n"),
+            ),
+            (
+                &inline,
+                json!([{"source": "npm:@acme/pi-themes", "skills": []}]),
+                format!("packages = [\n  {themes},\n]\n"),
+            ),
+            (
+                commented,
+                json!(["a", "c", "d"]),
+                "packages = [\n  # First.\n  \"a\", # one\n  \"c\", # three\n  \"d\"\n]\n".to_owned(),
+            ),
+            (
+                "packages = [\"a\", \"b\"] # kept\n",
+                json!(["b", "c"]),
+                "packages = [\"b\", \"c\"] # kept\n".to_owned(),
+            ),
+            // A plain source makes the tables a multi-line array, with the
+            // first table's comments above the key and the others' on their
+            // values, as are those inside each table.
+            (
+                tables,
+                json!([{"source": "npm:@acme/pi-themes", "skills": []}, {"source": "../pkgs/local", "prompts": []}, "../pkgs/new"]),
+                format!("theme = \"g\"\n\n# Themes from npm, skills off.\npackages = [\n  # shared\n  # pinned by the team\n  # No skills.\n  {themes},\n  # My local tools.\n  {{ source = \"../pkgs/local\", prompts = [] }},\n  \"../pkgs/new\",\n]\n"),
+            ),
+            // So are the comments inside a table's arrays.
+            (
+                "[[packages]]\nsource = \"../pkgs/local\"\nskills = [\n  # keep this\n  \"lpskill\", # and this\n]\n",
+                json!([{"source": "../pkgs/local", "skills": ["lpskill"]}, "../pkgs/new"]),
+                "packages = [\n  # keep this\n  # and this\n  { source = \"../pkgs/local\", skills = [\"lpskill\"] },\n  \"../pkgs/new\",\n]\n".to_owned(),
+            ),
+            // A removed first table leaves no blank line at the start.
+            (
+                "[[packages]]\nsource = \"npm:x\"\n\n# Kept.\n[[packages]]\nsource = \"npm:y\"\n",
+                json!([{"source": "npm:y"}]),
+                "# Kept.\n[[packages]]\nsource = \"npm:y\"\n".to_owned(),
+            ),
+            // One value on one line has no separator to copy.
+            (
+                "packages = [\"npm:a\"]\n",
+                json!(["npm:a", "../pkg2"]),
+                "packages = [\"npm:a\", \"../pkg2\"]\n".to_owned(),
+            ),
+            // In a multi-line array, a new value and the one after it start
+            // their own lines, even where `]` follows the last value.
+            (
+                "packages = [\"a\",\n            \"b\"]\n",
+                json!(["a", "b", "c"]),
+                "packages = [\"a\",\n            \"b\",\n            \"c\"]\n".to_owned(),
+            ),
+            (
+                "packages = [\n  \"a\"]\n",
+                json!(["z", "a", "c"]),
+                "packages = [\n  \"z\",\n  \"a\",\n  \"c\"]\n".to_owned(),
+            ),
+            // On lines of their own, values after one on the line of `[`
+            // line up with it.
+            (
+                "packages = [\"a\",\n]\n",
+                json!(["a", "c"]),
+                "packages = [\"a\",\n            \"c\",\n]\n".to_owned(),
+            ),
+            (
+                "packages = [\"a\" # one\n]\n",
+                json!(["a", "c"]),
+                "packages = [\"a\", # one\n            \"c\"\n]\n".to_owned(),
+            ),
+            // A value that moves keeps its comments, and one after the old
+            // last value starts its own line.
+            (
+                "packages = [\"a\", # main\n            \"b\"]\n",
+                json!(["b", "a"]),
+                "packages = [\"b\",\n            \"a\" # main\n]\n".to_owned(),
+            ),
+            (
+                "packages = [\"a\", # main\n            \"b\", # two\n            \"c\"]\n",
+                json!(["b", "a", "c"]),
+                "packages = [\"b\", # two\n            \"a\", # main\n            \"c\"]\n".to_owned(),
+            ),
+            // New keys follow the comments of a file without keys.
+            (
+                "# only a comment\n",
+                json!(["npm:x"]),
+                "# only a comment\npackages = [\"npm:x\"]\n".to_owned(),
+            ),
+            (
+                "# no line break",
+                json!(["npm:x"]),
+                "# no line break\npackages = [\"npm:x\"]\n".to_owned(),
+            ),
+            // A file with a byte order mark keeps it.
+            (
+                "\u{feff}packages = [\"a\"]\n",
+                json!(["a", "b"]),
+                "\u{feff}packages = [\"a\", \"b\"]\n".to_owned(),
+            ),
+            // A file with CRLF line endings keeps them.
+            (
+                "# Mine.\r\npackages = [\r\n  \"a\", # one\r\n]\r\ntheme = \"g\"\r\n",
+                json!(["a", "b"]),
+                "# Mine.\r\npackages = [\r\n  \"a\", # one\r\n  \"b\",\r\n]\r\ntheme = \"g\"\r\n".to_owned(),
+            ),
+            // An array of tables emptied keeps its key, as `packages = []`,
+            // and the comments above it.
+            (
+                "theme = \"g\"\n\n# The only package.\n[[packages]]\nsource = \"npm:x\"\n",
+                json!([]),
+                "theme = \"g\"\n\n# The only package.\npackages = []\n".to_owned(),
+            ),
+        ] {
+            std::fs::write(&toml, text).unwrap();
+            let mut manager = SettingsManager::load(&dir, &dir.join("cwd"), false);
+            manager
+                .set(Scope::Global, "packages", Some(packages.clone()))
+                .unwrap();
+            assert_eq!(std::fs::read_to_string(&toml).unwrap(), expected, "{text}");
+            let reread = SettingsManager::load(&dir, &dir.join("cwd"), false);
+            assert_eq!(reread.document(Scope::Global)["packages"], packages);
+        }
+
+        // A date is no setting, so the file is reported and never written.
+        std::fs::write(&toml, "theme = 1979-05-27\n").unwrap();
+        let mut dated = SettingsManager::load(&dir, &dir.join("cwd"), false);
+        assert!(
+            dated.errors()[0].contains("is a date or time"),
+            "{:?}",
+            dated.errors()
+        );
+        dated
+            .set(Scope::Global, "theme", Some(json!("dark")))
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&toml).unwrap(),
+            "theme = 1979-05-27\n"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A folder with both settings files loads as empty, is never written
+    /// and reports the conflict, unless it is an untrusted project's.
+    #[test]
+    fn both_files_conflict() {
+        let dir = std::env::temp_dir().join(format!("yapi-settings-both-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let project = dir.join("cwd");
+        for folder in [dir.clone(), project.join(PROJECT_DIR)] {
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join("settings.json"), "{\"theme\": \"dark\"}").unwrap();
+            std::fs::write(folder.join("settings.toml"), "theme = \"light\"\n").unwrap();
+        }
+        let untrusted = SettingsManager::load(&dir, &project, false);
+        let conflict = untrusted.conflict().unwrap();
+        assert_eq!(
+            conflict,
+            format!(
+                "Both settings.json and settings.toml are in {}. Keep one of them.",
+                dir.display()
+            )
+        );
+        std::fs::remove_file(dir.join("settings.toml")).unwrap();
+        assert_eq!(
+            SettingsManager::load(&dir, &project, false).conflict(),
+            None
+        );
+        let mut trusted = SettingsManager::load(&dir, &project, true);
+        assert!(trusted.conflict().unwrap().contains(".yapi"));
+        assert!(trusted.document(Scope::Project).is_empty());
+        trusted
+            .set(Scope::Project, "theme", Some(json!("x")))
+            .unwrap();
+        let toml = project.join(PROJECT_DIR).join("settings.toml");
+        assert_eq!(
+            std::fs::read_to_string(toml).unwrap(),
+            "theme = \"light\"\n"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

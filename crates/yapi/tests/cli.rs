@@ -218,6 +218,31 @@ export default function (pi) {
     assert!(stderr.contains("available: basic,pro\n"), "{stderr}");
 }
 
+/// A folder that holds both `settings.json` and `settings.toml` stops each
+/// command that reads it, rather than yapi guessing which file wins.
+#[test]
+fn settings_conflict_stops() {
+    let home = common::scratch("settings-conflict");
+    let agent = home.join("agent");
+    std::fs::create_dir_all(&agent).unwrap();
+    std::fs::write(agent.join("settings.json"), "{}").unwrap();
+    std::fs::write(agent.join("settings.toml"), "").unwrap();
+    let message = format!(
+        "Both settings.json and settings.toml are in {}. Keep one of them.",
+        agent.display()
+    );
+    for args in [&["-p", "hi"][..], &["install", "npm:x"], &["config"]] {
+        let output = common::yapi(&home)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{args:?}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains(&message), "{args:?}: {stderr}");
+    }
+}
+
 /// `--enable-logging` appends extension messages to `yapi.log` in the agent
 /// directory. Without it, yapi writes no log.
 #[test]
