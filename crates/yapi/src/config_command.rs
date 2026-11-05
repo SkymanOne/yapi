@@ -70,11 +70,20 @@ async fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
     }
     // Global mode shows what the user's settings alone resolve to.
     let global_settings = SettingsManager::load(&agent_dir, &cwd, false);
-    if !yapi_core::tools::external::offline() {
+    let offline = yapi_core::tools::external::offline();
+    if !offline {
         let npm_config = yapi_core::packages::npm::config();
         install_packages(&cwd, &agent_dir, &global_settings, &settings, npm_config)
             .await
             .map_err(anyhow::Error::msg)?;
+    }
+    // chest puts back what its locks pin, as a run does, so the lists show
+    // what a run loads.
+    for (path, message) in yapi_core::chest::startup::load(&cwd, trusted, offline)
+        .await
+        .problems
+    {
+        eprintln!("Warning: {path}: {message}");
     }
     let builtins = crate::startup::BUILTINS;
     // chest's installed entries as a run would load them: the global

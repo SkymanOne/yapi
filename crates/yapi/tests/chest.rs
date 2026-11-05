@@ -307,7 +307,9 @@ async fn stale_lock_warns() {
     assert!(output.status.success(), "{output:?}");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("whose lock is stale, were skipped: run `chest install`"),
+        stderr.contains(
+            "chest.toml: extensions.open is not locked, or its lock is stale, so it was skipped: run `chest install`"
+        ),
         "{stderr}"
     );
     assert!(!commands(&home, &["--approve"], &[]).contains_key("open"));
@@ -321,6 +323,16 @@ async fn stale_lock_warns() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     let escaped = stderr.contains("invalid version `\\u{1b}[2J`");
     assert!(escaped && !stderr.contains('\x1b'), "{stderr:?}");
+
+    // A stale global manifest is named by its path and its own command.
+    std::fs::remove_file(home.join("chest.toml")).unwrap();
+    install(&home, &files, ".chest/chest.toml", manifest).await;
+    let global = manifest.replace("open.js", "moved.js");
+    std::fs::write(home.join(".chest/chest.toml"), global).unwrap();
+    let output = common::yapi(&home).arg("--help").output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let named = "~/.chest/chest.toml: extensions.open is not locked, or its lock is stale, so it was skipped: run `chest -g install`";
+    assert!(stderr.contains(named), "{stderr}");
 }
 
 /// A project whose manifest only describes it as a package needs no trust,
@@ -409,6 +421,22 @@ async fn chest_skills_loaded() {
     for name in ["skill:demo", "skill:patched"] {
         assert!(loaded.contains_key(name), "{name}: {loaded:?}");
     }
+
+    // `yapi config` puts back a missing copy, as a run does, and lists it.
+    std::fs::remove_dir_all(home.join(".claude/skills/demo")).unwrap();
+    let env = [
+        ("HOME", home.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", home.join("agent").into_os_string()),
+    ];
+    let args = ["config", "-l", "-a"].map(str::to_owned);
+    let yapi = Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let mut pty = yapi_mock::pty::Pty::spawn(yapi, &args, &home, &env, (100, 30), true).unwrap();
+    let listed = |rows: &[String]| rows.iter().any(|row| row.contains("chest:demo"));
+    let shown = pty.wait_for(Duration::from_secs(20), listed);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.write("\x1b").unwrap();
+    pty.finish().unwrap();
+    assert!(home.join(".claude/skills/demo/SKILL.md").exists());
 }
 
 /// `CHEST_MANIFEST` names the project manifest yapi reads, inside the

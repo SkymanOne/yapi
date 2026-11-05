@@ -198,7 +198,9 @@ fn display_path(path: &str, home: Option<&Path>) -> String {
 }
 
 fn is_package(source: &SourceInfo) -> bool {
-    source.source.starts_with("npm:") || source.source.starts_with("git:")
+    ["npm:", "git:", "chest:"]
+        .iter()
+        .any(|prefix| source.source.starts_with(prefix))
 }
 
 /// pi's `getShortPath`: a package file relative to its package.
@@ -686,6 +688,20 @@ pub fn conflicts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chest extension shows as its entry, as packages do, not as a path
+    /// into chest's store.
+    #[test]
+    fn chest_extension_label() {
+        let source = SourceInfo {
+            path: "/p/.yapi/chest/todo/index.ts".into(),
+            source: "chest:todo".into(),
+            scope: "project".into(),
+            origin: "package".into(),
+            base_dir: Some("/p/.yapi/chest/todo".into()),
+        };
+        assert_eq!(extension_labels(&[source], None), ["chest:todo"]);
+    }
 
     #[test]
     fn logo_half_block_rows() {

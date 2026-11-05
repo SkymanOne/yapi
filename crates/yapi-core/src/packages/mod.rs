@@ -71,7 +71,8 @@ pub fn install_location(source: &Source, base: &Path) -> PathBuf {
 /// settings entries and the discovered directories, each enabled or not,
 /// with `builtins` as the built-in extensions. Packages that are not
 /// installed are left out. `extra` packages, such as chest's, follow the
-/// settings' packages, and `skills` are skill folders placed for them.
+/// settings' packages of their scope, the project's before the user's, and
+/// `skills` are skill folders placed for them.
 pub fn resolve_resources(
     project_root: &Path,
     agent_dir: &Path,

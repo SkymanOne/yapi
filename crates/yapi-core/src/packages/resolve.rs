@@ -122,7 +122,21 @@ impl ResolvedPaths {
             ..metadata.clone()
         };
         let list = self.of_mut(kind);
-        if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
+        // A chest entry's file also takes the other spellings of its path,
+        // such as discovery's through a linked folder.
+        let chest = |resource: &&Resolved| resource.info.source.starts_with("chest:");
+        let same_file = || {
+            list.iter().any(|resource| chest(&resource)).then_some(())?;
+            let file = std::fs::canonicalize(&info.path).ok()?;
+            list.iter().filter(chest).find(|resource| {
+                std::fs::canonicalize(&resource.info.path).is_ok_and(|other| other == file)
+            })
+        };
+        let listed = list
+            .iter()
+            .find(|resource| resource.info.path == info.path)
+            .or_else(same_file);
+        if let Some(listed) = listed {
             let other = (&listed.info.source, &listed.info.scope) != (&info.source, &info.scope);
             if kind == ResourceType::Extensions && other {
                 self.shadowed.push(info);
@@ -992,18 +1006,26 @@ pub fn package_resources(
 /// then built-in extensions, ordered by precedence without repeats.
 pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
     let mut acc = ResolvedPaths::default();
-    for package in &input.packages {
-        collect_package(
-            &mut acc,
-            &package.root,
-            package.filter.as_ref(),
-            super::source::is_local(&package.source),
-            metadata(&package.source, &package.scope, "package", None),
-        );
-    }
-    for skill in &input.skills {
-        let meta = metadata(&skill.source, &skill.scope, "package", None);
-        acc.add(ResourceType::Skills, &skill.root, &meta, true);
+    // The project's packages and skills come before the user's, whichever
+    // manager installed them. Settings list the project's first already.
+    for project in [true, false] {
+        let ours = |input: &&PackageInput| (input.scope == "project") == project;
+        for package in input.packages.iter().filter(ours) {
+            collect_package(
+                &mut acc,
+                &package.root,
+                package.filter.as_ref(),
+                super::source::is_local(&package.source),
+                metadata(&package.source, &package.scope, "package", None),
+            );
+        }
+        for skill in input.skills.iter().filter(ours) {
+            let meta = metadata(&skill.source, &skill.scope, "package", None);
+            // By its file, as discovery names a skill folder.
+            let file = skill.root.join("SKILL.md");
+            let path = if file.is_file() { &file } else { &skill.root };
+            acc.add(ResourceType::Skills, path, &meta, true);
+        }
     }
     for (index, kind) in ResourceType::ALL.into_iter().enumerate() {
         let project_meta = metadata("local", "project", "top-level", None);

@@ -14,7 +14,7 @@ use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::{Npm, escaped};
 use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
-use crate::settings::Scope;
+use crate::settings::{Scope, SettingsManager};
 use crate::tools::path::home_dir;
 
 /// The project manifest of `project_root`: the file [`MANIFEST_ENV`] names
@@ -219,6 +219,9 @@ pub struct Installed {
     /// those whose folder holds too much, which run with no grant if
     /// something else loads them.
     pub closed: Vec<PathBuf>,
+    /// The package identity of each loaded npm or git extension entry, such
+    /// as `npm:@acme/todo`, with the entry's id and its manifest's path.
+    pub identities: Vec<(String, String, String)>,
 }
 
 impl Installed {
@@ -227,7 +230,50 @@ impl Installed {
         self.skills.extend(other.skills);
         self.policies.extend(other.policies);
         self.closed.extend(other.closed);
+        self.identities.extend(other.identities);
     }
+}
+
+/// Problems, by manifest path, for each package that two managers install
+/// so that both copies load: a chest extension entry and a `packages` entry
+/// of `settings`, or entries of the project and the global manifest.
+pub fn duplicates(installed: &Installed, settings: &SettingsManager) -> Vec<(String, String)> {
+    let mut problems = Vec::new();
+    for scope in [Scope::Project, Scope::Global] {
+        for package in crate::packages::settings_packages(settings, scope) {
+            let Some(source) = crate::packages::entry_source(&package) else {
+                continue;
+            };
+            let id = crate::packages::source::parse(source).identity(Path::new(""));
+            for (other, entry, path) in &installed.identities {
+                if *other == id {
+                    problems.push((
+                        path.clone(),
+                        format!(
+                            "{entry} is also in the packages of settings as {source}, so both copies load: remove one of them"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    for (index, (id, entry, path)) in installed.identities.iter().enumerate() {
+        let earlier = installed.identities[..index]
+            .iter()
+            .find(|(other, _, other_path)| other == id && other_path != path);
+        if let Some((_, other, other_path)) = earlier {
+            problems.push((
+                path.clone(),
+                format!(
+                    "{entry} installs the same package as {other} in {other_path}, so both copies load: remove one of them"
+                ),
+            ));
+        }
+    }
+    problems
+        .into_iter()
+        .map(|(path, message)| (escaped(&path), escaped(&message)))
+        .collect()
 }
 
 /// What chest gives one run of yapi, with the problems to show by manifest
@@ -265,12 +311,15 @@ pub fn installed_inputs(
     };
     let mut installed = Installed::default();
     let lock = project.lock.clone().unwrap_or_default();
+    let record = project.record();
+    // A copy an older lock pinned stays out until it is put back.
     let current = |section: Section, name: &str, entry: &Entry| {
         lock.section(section)
             .iter()
             .find(|locked| locked.name == name)
             .filter(|locked| fresh(entry, locked))
             .filter(|locked| project.present(section, locked))
+            .filter(|locked| project.holds_locked(section, entry, locked, &record))
             .cloned()
     };
     for (name, entry) in &project.manifest.extensions {
@@ -333,6 +382,20 @@ pub fn installed_inputs(
         };
         let key = (scope.to_owned(), source.clone());
         installed.policies.insert(key, policy);
+        let identity = match (&entry.npm, &entry.git) {
+            (Some(npm), _) => Some(format!("npm:{npm}")),
+            (None, Some(git)) => {
+                let parsed = crate::packages::source::parse(&format!("git:{git}"));
+                Some(parsed.identity(Path::new("")))
+            }
+            (None, None) => None,
+        };
+        if let Some(identity) = identity.filter(|_| !patched) {
+            let path = project.path.display().to_string();
+            installed
+                .identities
+                .push((identity, format!("extensions.{name}"), path));
+        }
         installed.packages.push(PackageInput {
             source,
             scope: scope.to_owned(),
@@ -346,24 +409,38 @@ pub fn installed_inputs(
     };
     for (name, entry) in &project.manifest.skills {
         let patch = project.manifest.patch.get(name);
-        let roots = match (
+        let roots: Vec<PathBuf> = match (
             patch.and_then(|patch| patch.path.as_deref()),
             current(Section::Skills, name, entry),
         ) {
             // A patched skill loads where `chest install` placed it, else
-            // from its patch.
+            // from its patch. A patch of a whole package, as `chest install`
+            // reads it, places each of its skills under its own name.
             (Some(path), _) => {
-                let placed = home.join(placed_name(Section::Skills, name));
-                let root = if placed.exists() {
-                    placed
-                } else {
-                    project.resolve(path)
-                };
-                if !root.exists() {
-                    problems.push(format!("skills.{name}: {} does not exist", root.display()));
+                let patch = project.resolve(path);
+                if !patch.exists() {
+                    problems.push(format!("skills.{name}: {} does not exist", patch.display()));
                     continue;
                 }
-                vec![root]
+                let package = entry.path.is_none() && (entry.git.is_some() || entry.npm.is_some());
+                let items = if package {
+                    match super::fetch::items(&patch, Section::Skills, None, name) {
+                        Ok((items, _)) => items,
+                        Err(err) => {
+                            problems.push(format!("skills.{name}: {err}"));
+                            continue;
+                        }
+                    }
+                } else {
+                    vec![(placed_name(Section::Skills, name), patch)]
+                };
+                items
+                    .into_iter()
+                    .map(|(item, from)| {
+                        let placed = home.join(item);
+                        if placed.exists() { placed } else { from }
+                    })
+                    .collect()
             }
             (None, Some(locked)) => locked_items(Section::Skills, &locked)
                 .into_iter()
@@ -416,8 +493,9 @@ fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
         .installed
         .extend(installed_inputs(project, project_root, &mut problems));
     let path = project.path.display().to_string();
+    // Print mode shows only the message, so it names its manifest.
     for problem in problems {
-        loaded.warn((path.clone(), problem));
+        loaded.warn((path.clone(), format!("{}: {problem}", project.label())));
     }
 }
 

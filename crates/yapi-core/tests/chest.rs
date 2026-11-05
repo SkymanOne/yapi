@@ -22,6 +22,7 @@ use yapi_core::chest::lock::Lock;
 use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
 use yapi_core::packages::npm::{Npm, Pinned};
+use yapi_core::packages::resolve::ResourceType;
 use yapi_core::packages::resolve_resources;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
@@ -288,11 +289,18 @@ async fn git_skill_locked_commit() {
     // install puts back what the lock pins.
     let updated = read(&project.lock_path());
     std::fs::write(project.lock_path(), &before).unwrap();
+    // Startup never loads a copy that the lock no longer pins, as after a
+    // pull brings a teammate's lock.
+    let report = sync(&mut project, Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
+    let inputs = yapi_core::chest::startup::installed_inputs(&project, &root, &mut Vec::new());
+    assert!(inputs.skills.is_empty(), "{:?}", inputs.skills);
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
     std::fs::write(project.lock_path(), updated).unwrap();
-    sync(&mut project, Mode::Resolve).await;
+    let report = sync(&mut project, Mode::Startup { offline: false }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
 
     // A lock moved to another commit, or to no commit, is refused on replay.
@@ -778,8 +786,20 @@ async fn npm_extension_locked() {
     // Its index file, which no manifest lists, runs with the entry's
     // grants and loads modules from the whole store folder.
     let (root, agent) = (dir.join("project"), dir.join("agent"));
+    // The same package from the user's settings loads after the project's
+    // entry, with a warning that both copies load.
+    let user_copy = agent.join("npm/node_modules/ext");
+    std::fs::create_dir_all(&user_copy).unwrap();
+    std::fs::write(user_copy.join("index.js"), "").unwrap();
+    let package_json = r#"{"name": "ext", "pi": {"extensions": ["./index.js"]}}"#;
+    std::fs::write(user_copy.join("package.json"), package_json).unwrap();
+    std::fs::write(
+        agent.join("settings.json"),
+        r#"{"packages": ["npm:ext@^1"]}"#,
+    )
+    .unwrap();
     let inputs = installed_inputs(&project, &root, &mut Vec::new());
-    let settings = SettingsManager::load(&agent, &root, false);
+    let settings = SettingsManager::load(&agent, &root, true);
     let packages = (&inputs.packages, &inputs.skills);
     let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
     let policies = file_policies(&resolved, &inputs, &mut Vec::new());
@@ -789,6 +809,30 @@ async fn npm_extension_locked() {
         "{policy:?}"
     );
     assert_eq!(policy.root.as_ref(), Some(&store));
+    let sources: Vec<&str> = resolved
+        .enabled(ResourceType::Extensions)
+        .map(|info| info.source.as_str())
+        .collect();
+    assert_eq!(sources, ["chest:ext", "npm:ext@^1"]);
+    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings);
+    let [(path, message)] = &duplicates[..] else {
+        panic!("{duplicates:?}");
+    };
+    assert!(path.ends_with("chest.toml"), "{path}");
+    assert!(
+        message.starts_with("extensions.ext is also in the packages of settings as npm:ext@^1"),
+        "{message}"
+    );
+    // A placed skill in a folder yapi reads on its own resolves once, as
+    // chest's.
+    let skills: Vec<(&str, &str)> = resolved
+        .enabled(ResourceType::Skills)
+        .filter(|info| Path::new(&info.path).starts_with(&root))
+        .map(|info| (info.path.as_str(), info.source.as_str()))
+        .collect();
+    let guide_file = guide.join("SKILL.md").display().to_string();
+    assert_eq!(skills, [(guide_file.as_str(), "chest:guide")]);
+    std::fs::remove_file(agent.join("settings.json")).unwrap();
 
     // A mirror that serves only the tarballs rebuilds the same store. The
     // replay downloads them at once, so they may come in either order.
@@ -967,12 +1011,23 @@ async fn startup_skips_stale() {
     let manifest = skill_manifest(&remote, "v1");
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Unchanged)]);
+    // Offline, a skill missing a link keeps loading from its copy in a
+    // folder yapi reads on its own, and one without that copy is left out.
+    std::fs::remove_file(root.join(".claude/skills/pdf")).unwrap();
+    let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
+    assert_eq!(
+        report.warnings,
+        [
+            "chest.toml: skills.pdf could not be put back offline, so its copy in a folder yapi reads on its own keeps loading"
+        ]
+    );
     std::fs::remove_dir_all(root.join(".agents/skills/pdf")).unwrap();
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: true }).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
     assert_eq!(
         report.warnings,
-        ["chest.toml: skills.pdf could not be put back offline, so they were skipped"]
+        ["chest.toml: skills.pdf could not be put back offline, so it was left out"]
     );
     std::fs::remove_dir(&held).unwrap();
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
@@ -989,10 +1044,11 @@ async fn startup_skips_stale() {
             ("skills.notes", Outcome::Skipped)
         ]
     );
-    assert_eq!(report.warnings.len(), 1);
-    assert!(
-        report.warnings[0].ends_with("run `chest install`"),
-        "{report:?}"
+    assert_eq!(
+        report.warnings,
+        [
+            "chest.toml: skills.pdf, skills.notes are not locked, or their lock is stale, so they were skipped: run `chest install`"
+        ]
     );
     assert!(!root.join(".agents/skills/notes").exists());
     assert_eq!(
@@ -1332,11 +1388,21 @@ async fn path_source_notice() {
     let package = format!(
         "{folders}team = {{ git = \"localhost/nowhere/repo\", rev = \"v1\" }}\n\n[patch]\nteam = {{ path = \"local/pack\" }}\n"
     );
-    sync(&mut open(&dir, &package), Mode::Resolve).await;
+    let mut team = open(&dir, &package);
+    sync(&mut team, Mode::Resolve).await;
     for skill in ["one", "two"] {
         let placed = dir.join(format!("project/.agents/skills/{skill}/SKILL.md"));
         assert_eq!(read(&placed), format!("# {skill}\n"));
     }
+    // yapi loads those placed items, not the patch's whole folder.
+    let inputs = installed_inputs(&team, &dir.join("project"), &mut Vec::new());
+    let roots: Vec<PathBuf> = inputs
+        .skills
+        .iter()
+        .map(|skill| skill.root.clone())
+        .collect();
+    let skills = dir.join("project/.agents/skills");
+    assert_eq!(roots, [skills.join("one"), skills.join("two")]);
 
     // A git extension loads modules from its store folder, whatever its
     // `path`, and an npm one from its store folder too.

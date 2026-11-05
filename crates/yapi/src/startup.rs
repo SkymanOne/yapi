@@ -1164,6 +1164,11 @@ async fn start_extensions(
     for (path, message) in &chest.problems {
         let _ = install_failed(path, message.clone());
     }
+    for (path, message) in
+        yapi_core::chest::startup::duplicates(&chest.installed, packages.settings())
+    {
+        let _ = install_failed(&path, message);
+    }
     let mut issues = Vec::new();
     let mut missing = Vec::new();
     let mut requested = Vec::new();

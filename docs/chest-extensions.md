@@ -63,19 +63,27 @@ At startup and on `/reload`, yapi reads two manifests:
 
 A project manifest that installs anything asks for trust, as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust. `CHEST_MANIFEST` can name another project manifest, as [How yapi reads CHEST_MANIFEST](chest-environments.md#how-yapi-reads-chest_manifest) describes.
 
-yapi puts back every skill, subagent and extension that the lock pins and that's missing. With `--offline` or `PI_OFFLINE` set, it warns about them instead.
+yapi puts back every skill, subagent and extension that the lock pins and that's missing. It also puts back an entry whose copy holds what an older lock pinned, as after you pull a lock that a teammate's `chest update` wrote. chest's record of what it placed tells yapi which copy it has, so startup reads no file contents. With `--offline` or `PI_OFFLINE` set, yapi warns about these entries and leaves them out instead, so a copy the lock no longer pins never loads.
 
-yapi leaves out an entry that isn't locked, or whose lock no longer matches the manifest, and warns you to run `chest install`. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the `.gitignore` block.
+yapi leaves out an entry that isn't locked, or whose lock no longer matches the manifest, and warns you to run `chest install`, or `chest -g install` for `~/.chest/chest.toml`. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the `.gitignore` block.
 
-An entry under `[patch]` needs no lock entry. A patched extension loads from its patch. A patched skill loads from where `chest install` placed it, or else from its patch.
+An entry under `[patch]` needs no lock entry. A patched extension loads from its patch. A patched skill loads from where `chest install` placed it, or else from its patch. For an entry without `path`, which takes every skill of a package, that holds for each skill the patch's folder provides.
 
 yapi loads the installed extensions as packages named `chest:<name>`. Only chest names packages this way, so yapi ignores a `packages` entry in settings that starts with `chest:`. Each chest extension runs with the [capabilities](chest-manifest.md#what-each-capability-allows) its entry grants and with its [event policy](chest-manifest.md#event-bus-routing). Packages from `yapi install` keep every grant.
 
 When a native extension uses a capability its entry doesn't grant, yapi warns at startup, because it will deny those calls. [How yapi enforces grants](security.md#how-yapi-enforces-grants) covers the checks.
 
-yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn't read on its own, such as `.claude/skills`.
+yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn't read on its own, such as `.claude/skills`. A skill in a folder yapi also reads on its own, such as `.agents/skills`, loads once, as chest's.
 
-`yapi config` lists chest's extensions and skills as a run loads them, marked as managed by chest. They're read-only there, because the manifest decides what loads. [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
+yapi never removes placed copies. After you remove an entry from the manifest, or while its lock is stale, its copies in folders yapi reads on its own, such as `.agents/skills`, keep loading until `chest install` removes them.
+
+Before it opens, `yapi config` puts back missing entries as a run does. It lists chest's extensions and skills as a run loads them, marked as managed by chest. They're read-only there, because the manifest decides what loads. [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
+
+## When a package is installed both ways
+
+A package can be a chest entry and also a `packages` entry in settings, such as after `chest import --settings` or a `yapi install` of a package the project's manifest lists. yapi then loads both copies: the chest entry's with the capabilities it grants, and the other with every grant. Both register the same tools and run the same hooks.
+
+The project's packages, from its manifest and its settings, load before your global ones, so the project's copy wins its tool and skill names. yapi warns at startup about each package installed both ways, and about a package that both the project's manifest and `~/.chest/chest.toml` install. Remove one of the two, with `yapi remove <source>` or by deleting the chest entry.
 
 ## Import packages from settings.json
 

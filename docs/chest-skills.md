@@ -60,4 +60,4 @@ When someone edits an item after chest installed it, chest leaves the item as it
 
 > **yapi only.**
 
-yapi does more with the same entries. In a trusted project, it puts back missing skills and subagents when it starts. It also loads skills from folders it doesn't read on its own. [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) describes it.
+yapi does more with the same entries. When it starts, it puts back missing skills and subagents: those of `~/.chest/chest.toml` in every project, and those of the project's manifest once you trust the project. It also loads skills from folders it doesn't read on its own. [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) describes it.

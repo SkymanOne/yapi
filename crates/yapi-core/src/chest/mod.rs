@@ -262,9 +262,10 @@ enum AtStartup {
     Stale,
     /// In place, or patched: kept.
     Present,
-    /// Missing, and offline: skipped.
+    /// Missing or outdated, and offline: skipped.
     Missing,
-    /// Missing: put back from the lock.
+    /// Missing, or in place as an older lock pinned it: put back from the
+    /// lock.
     Replay,
 }
 
@@ -427,6 +428,25 @@ impl Project {
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
     }
 
+    /// How messages name the manifest: its file name in a project, and its
+    /// path from `~` for the global one, which no project folder holds.
+    fn label(&self) -> String {
+        match (self.scope, self.path.strip_prefix(&self.home)) {
+            (Scope::Global, Ok(path)) => format!("~/{}", path.display()),
+            (Scope::Global, Err(_)) => self.path.display().to_string(),
+            (Scope::Project, _) => self.file_name(),
+        }
+    }
+
+    /// The command that installs the manifest's entries, for messages.
+    fn install_command(&self) -> String {
+        match (self.scope, self.file_name().as_str()) {
+            (Scope::Global, _) => "chest -g install".to_owned(),
+            (Scope::Project, "chest.toml") => "chest install".to_owned(),
+            (Scope::Project, name) => format!("chest --manifest {name} install"),
+        }
+    }
+
     /// The skill, agent and extension entries, in manifest order.
     fn entries(&self) -> impl Iterator<Item = (Section, &String, &Entry)> {
         self.manifest.entries()
@@ -483,6 +503,27 @@ impl Project {
             };
             hash.as_ref().is_some_and(holds)
         })
+    }
+
+    /// The record of what chest placed for this manifest's project, read
+    /// without its lock: for startup, which only reads it.
+    fn record(&self) -> Record {
+        let path = Record::path(&self.state, &self.root(), self.scope);
+        Record::load(&path, &self.root(), &self.file_name())
+    }
+
+    /// Whether the copies of `locked` that [`Project::present`] finds are
+    /// the ones the lock pins: by `record` for a git or npm entry, and
+    /// always for one from a path, which has no hash. A copy that an older
+    /// lock pinned is present but not pinned.
+    fn holds_locked(
+        &self,
+        section: Section,
+        entry: &Entry,
+        locked: &Locked,
+        record: &Record,
+    ) -> bool {
+        entry.git.is_none() && entry.npm.is_none() || self.recorded(section, locked, record)
     }
 
     /// Whether everything `locked` occupies is there. A link in the first
@@ -549,8 +590,9 @@ impl Project {
             (None, false) => Lock::default(),
             (None, true) => {
                 report.warnings.push(format!(
-                    "{} has no lock, so nothing from it was installed: run `chest install`",
-                    self.file_name()
+                    "{} has no lock, so nothing from it was installed: run `{}`",
+                    self.label(),
+                    self.install_command()
                 ));
                 return Ok(report);
             }
@@ -686,7 +728,7 @@ impl Project {
         }
         let mut work = fetch::Work::new(&self.cache)?;
         let mut staged: Vec<Staged> = Vec::new();
-        let mut stale = false;
+        let mut stale = Vec::new();
         for (section, name, entry) in self.entries() {
             let locked = old
                 .section(section)
@@ -708,9 +750,9 @@ impl Project {
                 if names.is_empty() || names.iter().any(|n| n == name));
             let keep = match mode {
                 Mode::Startup { offline } => {
-                    match self.at_startup(section, name, entry, locked, *offline) {
+                    match self.at_startup(section, name, entry, locked, record, *offline) {
                         AtStartup::Stale => {
-                            stale = true;
+                            stale.push(target.id.clone());
                             Some(Outcome::Skipped)
                         }
                         AtStartup::Present => Some(Outcome::Unchanged),
@@ -756,8 +798,8 @@ impl Project {
                 }
             }
         }
-        if stale {
-            report.warnings.push(self.stale_warning());
+        if !stale.is_empty() {
+            report.warnings.push(self.stale_warning(&stale));
         }
         Ok((staged, work))
     }
@@ -1258,15 +1300,15 @@ impl Project {
     /// lock pins is missing, to be put back. When nothing is, every entry is
     /// reported unchanged.
     fn check_frozen(&self, report: &mut Report) -> Result<bool, ChestError> {
-        let name = self.file_name();
+        let (name, install) = (self.label(), self.install_command());
         let lock = self
             .lock
             .as_ref()
-            .ok_or_else(|| invalid(format!("{name} has no lock: run `chest install`")))?;
+            .ok_or_else(|| invalid(format!("{name} has no lock: run `{install}`")))?;
         let drift = lock.drift(&self.manifest);
         if !drift.is_empty() {
             return Err(invalid(format!(
-                "The lock of {name} is out of date for {}: run `chest install`",
+                "The lock of {name} is out of date for {}: run `{install}`",
                 drift.join(", ")
             )));
         }
@@ -1378,28 +1420,33 @@ impl Project {
         self.lock = self.read_lock()?;
         let Some(lock) = &self.lock else {
             report.warnings.push(format!(
-                "{} has no lock, so nothing from it was installed: run `chest install`",
-                self.file_name()
+                "{} has no lock, so nothing from it was installed: run `{}`",
+                self.label(),
+                self.install_command()
             ));
             return Ok(true);
         };
+        let record = self.record();
         let mut entries = Vec::new();
-        let mut stale = false;
-        let mut missing = Vec::new();
+        let mut stale = Vec::new();
+        let (mut missing, mut loading) = (Vec::new(), Vec::new());
         for (section, name, entry) in self.entries() {
             let locked = lock
                 .section(section)
                 .iter()
                 .find(|locked| &locked.name == name);
             let id = format!("{}.{name}", section.key());
-            let outcome = match self.at_startup(section, name, entry, locked, offline) {
+            let outcome = match self.at_startup(section, name, entry, locked, &record, offline) {
                 AtStartup::Stale => {
-                    stale = true;
+                    stale.push(id.clone());
                     Outcome::Skipped
                 }
                 AtStartup::Present => Outcome::Unchanged,
                 AtStartup::Missing => {
-                    missing.push(id.clone());
+                    match locked.is_some_and(|locked| self.read_by_yapi(section, locked)) {
+                        true => loading.push(id.clone()),
+                        false => missing.push(id.clone()),
+                    }
                     Outcome::Skipped
                 }
                 AtStartup::Replay => return Ok(false),
@@ -1407,28 +1454,67 @@ impl Project {
             entries.push((id, outcome));
         }
         report.entries = entries;
-        if stale {
-            report.warnings.push(self.stale_warning());
+        if !stale.is_empty() {
+            report.warnings.push(self.stale_warning(&stale));
         }
+        let label = self.label();
         if !missing.is_empty() {
+            let skipped = if missing.len() == 1 {
+                "it was"
+            } else {
+                "they were"
+            };
             report.warnings.push(format!(
-                "{}: {} could not be put back offline, so they were skipped",
-                self.file_name(),
+                "{label}: {} could not be put back offline, so {skipped} left out",
                 missing.join(", ")
+            ));
+        }
+        if !loading.is_empty() {
+            let copies = match loading.len() {
+                1 => "its copy in a folder yapi reads on its own keeps",
+                _ => "their copies in folders yapi reads on its own keep",
+            };
+            report.warnings.push(format!(
+                "{label}: {} could not be put back offline, so {copies} loading",
+                loading.join(", ")
             ));
         }
         Ok(true)
     }
 
+    /// Whether yapi loads a copy of skill entry `locked` on its own, beside
+    /// what chest gives it: one of its items is in a skills folder of
+    /// [`Project::homes`] that yapi reads anyway, such as `.agents/skills`.
+    fn read_by_yapi(&self, section: Section, locked: &Locked) -> bool {
+        if section != Section::Skills {
+            return false;
+        }
+        let own = match self.scope {
+            Scope::Project => [".agents/skills", ".yapi/skills"].map(|dir| self.base.join(dir)),
+            Scope::Global => [
+                self.home.join(".agents/skills"),
+                crate::config::agent_dir().join("skills"),
+            ],
+        };
+        let own = own.map(|folder| real_path(&folder));
+        let homes = self.homes(section);
+        let items = locked_items(section, locked);
+        let read = homes.iter().filter(|home| own.contains(home));
+        read.flat_map(|home| items.iter().map(move |(item, _)| home.join(item)))
+            .any(|copy| copy.exists())
+    }
+
     /// What startup does with entry `name` of `section`, locked as
-    /// `locked`: a stale or unlocked entry is skipped, a present or patched
-    /// one kept, and a missing one put back, unless `offline`.
+    /// `locked`: a stale or unlocked entry is skipped, a patched one or one
+    /// in place as the lock pins it, by `record`, kept, and a missing or
+    /// outdated one put back, unless `offline`.
     fn at_startup(
         &self,
         section: Section,
         name: &str,
         entry: &Entry,
         locked: Option<&Locked>,
+        record: &Record,
         offline: bool,
     ) -> AtStartup {
         let patched = self.manifest.patch.contains_key(name);
@@ -1436,7 +1522,10 @@ impl Project {
             return AtStartup::Stale;
         }
         // A patched entry loads from its patch, or where `chest install` put it.
-        if patched || locked.is_some_and(|locked| self.present(section, locked)) {
+        let pinned = |locked: &Locked| {
+            self.present(section, locked) && self.holds_locked(section, entry, locked, record)
+        };
+        if patched || locked.is_some_and(pinned) {
             return AtStartup::Present;
         }
         if offline {
@@ -1446,10 +1535,18 @@ impl Project {
         }
     }
 
-    fn stale_warning(&self) -> String {
+    /// The warning for entries `ids` that are not locked, or whose lock is
+    /// stale.
+    fn stale_warning(&self, ids: &[String]) -> String {
+        let (verb, lock, skipped) = match ids.len() {
+            1 => ("is", "its", "it was"),
+            _ => ("are", "their", "they were"),
+        };
         format!(
-            "{}: entries that are not locked, or whose lock is stale, were skipped: run `chest install`",
-            self.file_name()
+            "{}: {} {verb} not locked, or {lock} lock is stale, so {skipped} skipped: run `{}`",
+            self.label(),
+            ids.join(", "),
+            self.install_command()
         )
     }
 
@@ -1458,11 +1555,11 @@ impl Project {
     /// what they point to. Returns one line per problem, so none means all
     /// match.
     pub fn verify(&self) -> Result<Vec<String>, ChestError> {
-        let name = self.file_name();
+        let (name, install) = (self.label(), self.install_command());
         let lock = self
             .lock
             .as_ref()
-            .ok_or_else(|| invalid(format!("{name} has no lock: run `chest install`")))?;
+            .ok_or_else(|| invalid(format!("{name} has no lock: run `{install}`")))?;
         Ok(self.problems(lock).iter().map(describe).collect())
     }
 
