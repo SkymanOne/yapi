@@ -822,7 +822,7 @@ async fn npm_extension_locked() {
         .map(|info| info.source.as_str())
         .collect();
     assert_eq!(sources, ["chest:ext", "npm:ext@^1"]);
-    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings);
+    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings, None);
     let [(path, message)] = &duplicates[..] else {
         panic!("{duplicates:?}");
     };
@@ -831,6 +831,11 @@ async fn npm_extension_locked() {
         message.starts_with("extensions.ext is also in the packages of settings as npm:ext@^1"),
         "{message}"
     );
+    // A project-only run leaves the user's copy out unless it keeps it, so
+    // there is nothing to warn of.
+    let keep = yapi_core::packages::resolve::ProjectOnly::default();
+    let left_out = yapi_core::chest::startup::duplicates(&inputs, &settings, Some(&keep));
+    assert!(left_out.is_empty(), "{left_out:?}");
     // A placed skill in a folder yapi reads on its own resolves once, as
     // chest's.
     let skills: Vec<(&str, &str)> = resolved

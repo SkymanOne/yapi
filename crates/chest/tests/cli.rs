@@ -686,7 +686,10 @@ fn import_settings_packages() {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     // So does a bare file name in the current folder.
-    write(&scratch.project.join("bare.json"), r#"{"packages": ["npm:bare"]}"#);
+    write(
+        &scratch.project.join("bare.json"),
+        r#"{"packages": ["npm:bare"]}"#,
+    );
     ok(&scratch, &["import", "--settings", "bare.json"]);
     let manifest = read(&scratch.project.join("chest.toml"));
     assert!(manifest.contains("bare = { npm = \"bare\""), "{manifest}");

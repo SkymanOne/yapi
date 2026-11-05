@@ -896,12 +896,24 @@ fn load_theme(
     match theme_named(&name, files, agent_dir, colors, mode) {
         Ok(theme) => (theme, None),
         // pi names the theme in its errors when it loads the active one.
-        Err(error) => (
-            system_theme(colors, mode),
-            Some(format!(
-                "Failed to load theme \"{name}\": {error}\nFell back to the system theme."
-            )),
-        ),
+        Err(error) => {
+            let mut message =
+                format!("Failed to load theme \"{name}\": {error}\nFell back to the system theme.");
+            // shortcut: only the agent folder's themes count, as the resolver
+            // drops a global package's unseen; upgrade if it reports them.
+            let global = yapi_types::rpc::SourceInfo {
+                path: agent_dir.join("themes").to_string_lossy().into_owned(),
+                ..Default::default()
+            };
+            if yapi_core::config::project_only()
+                && themes::ThemeFiles::load(&[global]).path(&name).is_some()
+            {
+                message.push_str(
+                    "\nProject-only runs load a global theme only when `projectOnly.themes` keeps it.",
+                );
+            }
+            (system_theme(colors, mode), Some(message))
+        }
     }
 }
 
@@ -919,7 +931,8 @@ fn system_theme(colors: &yapi_tui::terminal::TerminalColors, mode: ColorMode) ->
 }
 
 /// pi's `loadTheme`: the theme called `name`, from the registered theme
-/// files, the built-in themes, then the agent directory's `themes`.
+/// files, the built-in themes, then the agent directory's `themes`, except
+/// in a project-only run.
 fn theme_named(
     name: &str,
     files: &themes::ThemeFiles,
@@ -936,7 +949,13 @@ fn theme_named(
     {
         return Ok(theme);
     }
-    let path = registered.unwrap_or_else(|| agent_dir.join("themes").join(format!("{name}.json")));
+    // A project-only run reads the agent directory's themes only as the
+    // resolver kept them, which registers them.
+    let fallback = (!yapi_core::config::project_only())
+        .then(|| agent_dir.join("themes").join(format!("{name}.json")));
+    let path = registered
+        .or(fallback)
+        .ok_or_else(|| format!("Theme not found: {name}"))?;
     let text = std::fs::read_to_string(&path).map_err(|_| format!("Theme not found: {name}"))?;
     Theme::from_json(name, &text, mode).map_err(|error| error.to_string())
 }

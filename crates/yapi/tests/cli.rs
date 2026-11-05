@@ -243,6 +243,129 @@ fn settings_conflict_stops() {
     }
 }
 
+/// `--project-only` and `YAPI_PROJECT_ONLY` load the project's resources
+/// and, of the user's, only those `projectOnly` keeps. The processes yapi
+/// starts see the variable, and an untrusted project gets a warning.
+#[test]
+fn project_only_skips_globals() {
+    let home = common::scratch("project-only");
+    let project = home.join("project");
+    let command = |name: &str| {
+        format!(
+            "export default function (pi) {{ pi.registerCommand({name:?}, {{ description: String(process.env.YAPI_PROJECT_ONLY), handler: async () => {{}} }}); }}\n"
+        )
+    };
+    let skill = |name: &str| format!("---\nname: {name}\ndescription: Shows {name}\n---\nDo it.\n");
+    let files = [
+        ("agent/extensions/global.ts", command("global")),
+        (".agents/skills/gone/SKILL.md", skill("gone")),
+        (".agents/skills/kept/SKILL.md", skill("kept")),
+        (
+            "agent/settings.toml",
+            "[projectOnly]\nskills = [\"~/.agents/skills/kept\"]\n".to_owned(),
+        ),
+        ("project/.git/HEAD", String::new()),
+        ("project/.yapi/extensions/local.ts", command("local")),
+        ("project/.agents/skills/ours/SKILL.md", skill("ours")),
+    ];
+    for (path, text) in &files {
+        let path = home.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let listed = |args: &[&str], env: &[(&str, &str)]| {
+        let mut yapi = common::yapi(&home);
+        yapi.current_dir(&project)
+            .args(args)
+            .envs(env.iter().copied());
+        let commands = common::rpc_commands(&mut yapi);
+        let mut found: Vec<(String, String)> = commands
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|command| {
+                let text = |key: &str| command[key].as_str().unwrap_or_default().to_owned();
+                (text("name"), text("description"))
+            })
+            .filter(|(name, _)| !name.is_empty())
+            .collect();
+        found.sort();
+        found
+    };
+    let names = |found: &[(String, String)]| -> Vec<String> {
+        found.iter().map(|(name, _)| name.clone()).collect()
+    };
+    let everything = listed(&["--approve"], &[]);
+    for name in ["global", "local", "skill:gone", "skill:kept", "skill:ours"] {
+        assert!(
+            names(&everything).iter().any(|found| found == name),
+            "{name}: {everything:?}"
+        );
+    }
+    let local = |found: &[(String, String)]| {
+        let entry = found.iter().find(|(name, _)| name == "local");
+        entry.map(|(_, description)| description.clone())
+    };
+    assert_eq!(local(&everything).as_deref(), Some("undefined"));
+    for (args, env) in [
+        (&["--approve", "--project-only"][..], &[][..]),
+        (&["--approve"][..], &[("YAPI_PROJECT_ONLY", "1")][..]),
+    ] {
+        let found = listed(args, env);
+        let kept = names(&found);
+        for name in ["local", "skill:kept", "skill:ours"] {
+            assert!(kept.iter().any(|found| found == name), "{name}: {found:?}");
+        }
+        for name in ["global", "skill:gone"] {
+            assert!(!kept.iter().any(|found| found == name), "{name}: {found:?}");
+        }
+        assert_eq!(local(&found).as_deref(), Some("1"));
+    }
+    let output = common::yapi(&home)
+        .current_dir(&project)
+        .args(["--no-approve", "--project-only", "--help"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let warning = "--project-only: the project isn't trusted, so none of its packages load";
+    assert_eq!(stderr.matches(warning).count(), 1, "{stderr}");
+
+    // A missing theme points to `projectOnly.themes` only when the agent
+    // folder has a theme by that name, which is the one inside its file.
+    std::fs::create_dir_all(home.join("agent/themes")).unwrap();
+    let mut mine: serde_json::Value = serde_json::from_str(yapi_tui::theme::DARK_THEME).unwrap();
+    mine["name"] = "mine".into();
+    std::fs::write(home.join("agent/themes/file.json"), mine.to_string()).unwrap();
+    for (theme, hinted) in [("file", false), ("mine", true)] {
+        let settings = format!("theme = {theme:?}\n\n[projectOnly]\nskills = []\n");
+        std::fs::write(home.join("agent/settings.toml"), settings).unwrap();
+        let env = [
+            ("HOME", home.clone().into_os_string()),
+            ("YAPI_CODING_AGENT_DIR", home.join("agent").into_os_string()),
+            ("PI_OFFLINE", "1".into()),
+            ("ANTHROPIC_API_KEY", "mock".into()),
+        ];
+        let args = [
+            "--approve",
+            "--project-only",
+            "--no-session",
+            "--model",
+            "anthropic/claude-sonnet-4-5",
+        ]
+        .map(str::to_owned);
+        let yapi = std::path::Path::new(env!("CARGO_BIN_EXE_yapi"));
+        let pty = yapi_mock::pty::Pty::spawn(yapi, &args, &project, &env, (100, 30), true).unwrap();
+        let missing = format!("Theme not found: {theme}");
+        let shown = |rows: &[String]| rows.iter().any(|row| row.contains(&missing));
+        let wait = std::time::Duration::from_secs(20);
+        assert!(pty.wait_for(wait, shown).is_some(), "{:#?}", pty.rows());
+        let rows = pty.rows();
+        let hint = rows.iter().any(|row| row.contains("`projectOnly.themes`"));
+        assert_eq!(hint, hinted, "{rows:#?}");
+        pty.finish().unwrap();
+    }
+}
+
 /// `--enable-logging` appends extension messages to `yapi.log` in the agent
 /// directory. Without it, yapi writes no log.
 #[test]

@@ -33,7 +33,7 @@ chest refuses the same values, so chest and yapi always agree on the manifest. [
 
 ## Install global packages
 
-> **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project.
+> **Any agent.** Only yapi loads global extensions, and it reads the global manifest in every project, unless a [project-only run](project-only.md#what-gets-installed) can keep none of its entries.
 
 `-g` uses `~/.chest/chest.toml` instead of the project's manifest. Its folders can be anywhere under your home folder, such as `~/.claude/skills`. Its extensions go to `~/.chest/store`, and it writes no `.gitignore`. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.
 

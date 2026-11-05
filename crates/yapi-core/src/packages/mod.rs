@@ -98,6 +98,8 @@ pub fn resolve_resources(
     packages.extend(extra.iter().cloned());
     let user = resolve::settings_lists(settings.document(Scope::Global));
     let project = resolve::settings_lists(settings.document(Scope::Project));
+    let project_only = crate::config::project_only()
+        .then(|| resolve::ProjectOnly::from_settings(settings.document(Scope::Global)));
     resolve::resolve(&resolve::ResolveInput {
         cwd: project_root.to_path_buf(),
         agent_dir: agent_dir.to_path_buf(),
@@ -109,6 +111,7 @@ pub fn resolve_resources(
         user: [&user[0], &user[1], &user[2], &user[3]],
         project: [&project[0], &project[1], &project[2], &project[3]],
         builtins,
+        project_only,
     })
 }
 
@@ -143,6 +146,8 @@ pub struct PackageManager {
     settings: SettingsManager,
     npm: npm::Npm,
     progress: Box<dyn Fn(&str) + Send + Sync>,
+    /// In a project-only run, what it keeps of the user's packages.
+    project_only: Option<resolve::ProjectOnly>,
 }
 
 impl std::fmt::Debug for PackageManager {
@@ -324,7 +329,14 @@ impl PackageManager {
             settings,
             npm: npm::Npm::new(npm_config),
             progress: Box::new(|_| {}),
+            project_only: None,
         }
+    }
+
+    /// Makes [`PackageManager::install_missing`] install only the user's
+    /// packages that `keep`, a project-only run's keep list, could need.
+    pub fn project_only(&mut self, keep: resolve::ProjectOnly) {
+        self.project_only = Some(keep);
     }
 
     /// Reports the start of each install, removal and update.
@@ -928,7 +940,16 @@ impl PackageManager {
             |source, in_scope| parse(source).identity(&self.base(named_scope(in_scope))),
         );
         let mut attempted = Vec::new();
-        for (_, _, source, in_scope) in packages {
+        for (_, scope, source, in_scope) in packages {
+            // A project-only run installs only the user's packages it could
+            // keep. A project's `autoload: false` entry still finds the
+            // user's copy.
+            let keep = self.project_only.as_ref();
+            if scope == "user"
+                && keep.is_some_and(|keep| !keep.needs_package(&source, &self.agent_dir))
+            {
+                continue;
+            }
             // An `autoload: false` entry and the user's entry it adjusts
             // install the same package.
             if attempted.contains(&(source.clone(), in_scope)) {

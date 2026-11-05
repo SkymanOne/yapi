@@ -101,6 +101,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     yapi_core::settings::apply_http_proxy();
+    // A shell can turn the mode on as it activates a virtual environment.
+    if parsed.project_only || yapi_core::config::env_flag(yapi_core::config::PROJECT_ONLY_ENV) {
+        yapi_core::config::set_project_only();
+    }
     let mut failed = false;
     for diagnostic in &parsed.diagnostics {
         if diagnostic.error {

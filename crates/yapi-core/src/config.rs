@@ -17,6 +17,26 @@ pub const SESSION_DIR_ENV: &str = "YAPI_CODING_AGENT_SESSION_DIR";
 /// Set once offline mode is on for the process.
 static OFFLINE: AtomicBool = AtomicBool::new(false);
 
+/// Environment variable that turns on project-only mode, as
+/// `--project-only` does. Child processes get it while the mode is on.
+pub const PROJECT_ONLY_ENV: &str = "YAPI_PROJECT_ONLY";
+
+/// Set once project-only mode is on for the process.
+static PROJECT_ONLY: AtomicBool = AtomicBool::new(false);
+
+/// Turns on project-only mode for the process: runs load the project's
+/// packages, skills and MCP servers, and of the user's only those the
+/// global `projectOnly` setting keeps. Every child's environment gets
+/// `YAPI_PROJECT_ONLY=1`, so a yapi it starts runs in the mode too.
+pub fn set_project_only() {
+    PROJECT_ONLY.store(true, Ordering::Relaxed);
+}
+
+/// Whether project-only mode is on for the process.
+pub fn project_only() -> bool {
+    PROJECT_ONLY.load(Ordering::Relaxed)
+}
+
 /// The variables pi sets on its own process in offline mode.
 const OFFLINE_ENV: [&str; 2] = ["PI_OFFLINE", "PI_SKIP_VERSION_CHECK"];
 
@@ -43,8 +63,9 @@ pub fn env_set(name: &str) -> bool {
 
 /// Variables every child process gets, as pi sets them on its own process:
 /// the agent markers `PI_CODING_AGENT=true` and `AI_AGENT=yapi`, the offline
-/// variables in offline mode, and the proxy from the `httpProxy` setting
-/// where the environment has none.
+/// variables in offline mode, `YAPI_PROJECT_ONLY=1` in project-only mode,
+/// and the proxy from the `httpProxy` setting where the environment has
+/// none.
 pub fn child_env() -> Vec<(&'static str, String)> {
     let mut env = vec![
         ("PI_CODING_AGENT", "true".to_owned()),
@@ -52,6 +73,9 @@ pub fn child_env() -> Vec<(&'static str, String)> {
     ];
     if OFFLINE.load(Ordering::Relaxed) {
         env.extend(OFFLINE_ENV.map(|name| (name, "1".to_owned())));
+    }
+    if project_only() {
+        env.push((PROJECT_ONLY_ENV, "1".to_owned()));
     }
     env.extend(yapi_ai::http::proxy_env());
     env

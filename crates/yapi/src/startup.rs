@@ -703,7 +703,8 @@ fn build(
         &extensions.resolved
     } else {
         // What chest installed, as the run's extensions saw it.
-        let chest = yapi_core::chest::startup::installed(&project, trusted);
+        let global = yapi_core::chest::startup::reads_global(&settings);
+        let chest = yapi_core::chest::startup::installed(&project, trusted, global);
         fresh = yapi_core::packages::resolve_resources(
             &project,
             &agent_dir,
@@ -1158,6 +1159,13 @@ async fn start_extensions(
         run.settings.clone(),
         yapi_core::packages::npm::config(),
     );
+    let keep = yapi_core::config::project_only().then(|| {
+        let global = run.settings.document(yapi_core::settings::Scope::Global);
+        yapi_core::packages::resolve::ProjectOnly::from_settings(global)
+    });
+    if let Some(keep) = &keep {
+        packages.project_only(keep.clone());
+    }
     let offline = yapi_core::tools::external::offline();
     // Installs missing packages. What they provide comes from pi's resolver.
     // Unlike pi, a failure does not stop the others (docs/compat.md).
@@ -1165,13 +1173,27 @@ async fn start_extensions(
         let _ = packages.install_missing(&mut install_failed).await;
     }
     // A reload reads the manifests again, so what they grant applies.
-    let chest =
-        yapi_core::chest::startup::load(run.settings.project_dir(), run.trusted, offline).await;
+    let global = yapi_core::chest::startup::reads_global(&run.settings);
+    let project_dir = run.settings.project_dir();
+    let chest = yapi_core::chest::startup::load(project_dir, run.trusted, offline, global).await;
     for (path, message) in &chest.problems {
         let _ = install_failed(path, message.clone());
     }
+    // Each session and reload starts extensions again, so the warning goes
+    // out once.
+    static UNTRUSTED: std::sync::Once = std::sync::Once::new();
+    if yapi_core::config::project_only()
+        && !run.trusted
+        && yapi_core::trust::requires_trust(project_dir)
+    {
+        UNTRUSTED.call_once(|| {
+            let message = "--project-only: the project isn't trusted, so none of its packages load"
+                .to_owned();
+            let _ = install_failed(&project_dir.display().to_string(), message);
+        });
+    }
     for (path, message) in
-        yapi_core::chest::startup::duplicates(&chest.installed, packages.settings())
+        yapi_core::chest::startup::duplicates(&chest.installed, packages.settings(), keep.as_ref())
     {
         let _ = install_failed(&path, message);
     }

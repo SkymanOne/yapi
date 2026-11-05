@@ -13,7 +13,9 @@ use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
 use super::{Mode, Project, locked_items};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::{Npm, escaped};
-use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
+use crate::packages::resolve::{
+    PackageInput, ProjectOnly, ResolvedPaths, ResourceType, package_resources,
+};
 use crate::settings::{Scope, SettingsManager};
 use crate::tools::path::home_dir;
 
@@ -220,8 +222,9 @@ pub struct Installed {
     /// something else loads them.
     pub closed: Vec<PathBuf>,
     /// The package identity of each loaded npm or git extension entry, such
-    /// as `npm:@acme/todo`, with the entry's id and its manifest's path.
-    pub identities: Vec<(String, String, String)>,
+    /// as `npm:@acme/todo`, with the entry's name, its manifest's path, and
+    /// whether that is the user's global manifest.
+    pub identities: Vec<(String, String, String, bool)>,
 }
 
 impl Installed {
@@ -234,38 +237,64 @@ impl Installed {
     }
 }
 
+/// Whether a run reads the user's global manifest: always, except in a
+/// project-only run whose `projectOnly` setting in `settings` can keep none
+/// of its entries, so nothing global is put back for nothing.
+pub fn reads_global(settings: &SettingsManager) -> bool {
+    !crate::config::project_only()
+        || crate::packages::resolve::ProjectOnly::from_settings(settings.document(Scope::Global))
+            .needs_chest()
+}
+
 /// Problems, by manifest path, for each package that two managers install
 /// so that both copies load: a chest extension entry and a `packages` entry
-/// of `settings`, or entries of the project and the global manifest.
-pub fn duplicates(installed: &Installed, settings: &SettingsManager) -> Vec<(String, String)> {
+/// of `settings`, or entries of the project and the global manifest. With
+/// `keep`, a project-only run's keep list, a global copy it leaves out
+/// doesn't count.
+pub fn duplicates(
+    installed: &Installed,
+    settings: &SettingsManager,
+    keep: Option<&ProjectOnly>,
+) -> Vec<(String, String)> {
+    let loads = |source: &str, global: bool| {
+        !global || keep.is_none_or(|keep| keep.keeps_package(source, Path::new("")))
+    };
+    let identities: Vec<_> = installed
+        .identities
+        .iter()
+        .filter(|(_, name, _, global)| loads(&format!("chest:{name}"), *global))
+        .collect();
     let mut problems = Vec::new();
     for scope in [Scope::Project, Scope::Global] {
         for package in crate::packages::settings_packages(settings, scope) {
             let Some(source) = crate::packages::entry_source(&package) else {
                 continue;
             };
+            if !loads(source, scope == Scope::Global) {
+                continue;
+            }
             let id = crate::packages::source::parse(source).identity(Path::new(""));
-            for (other, entry, path) in &installed.identities {
+            for (other, name, path, _) in &identities {
                 if *other == id {
                     problems.push((
                         path.clone(),
                         format!(
-                            "{entry} is also in the packages of settings as {source}, so both copies load: remove one of them"
+                            "extensions.{name} is also in the packages of settings as {source}, so both copies load: remove one of them"
                         ),
                     ));
                 }
             }
         }
     }
-    for (index, (id, entry, path)) in installed.identities.iter().enumerate() {
-        let earlier = installed.identities[..index]
+    for (index, (id, name, path, _)) in identities.iter().enumerate() {
+        let earlier = identities[..index]
             .iter()
-            .find(|(other, _, other_path)| other == id && other_path != path);
-        if let Some((_, other, other_path)) = earlier {
+            .find(|(other, _, other_path, _)| other == id && other_path != path);
+        if let Some((_, other, other_path, _)) = earlier {
             problems.push((
                 path.clone(),
                 format!(
-                    "{entry} installs the same package as {other} in {other_path}, so both copies load: remove one of them"
+                    "extensions.{name} installs the same package as extensions.{other} in {other_path}, so both copies load: remove one of them"
                 ),
             ));
         }
@@ -392,9 +421,10 @@ pub fn installed_inputs(
         };
         if let Some(identity) = identity.filter(|_| !patched) {
             let path = project.path.display().to_string();
+            let global = project.scope == Scope::Global;
             installed
                 .identities
-                .push((identity, format!("extensions.{name}"), path));
+                .push((identity, name.clone(), path, global));
         }
         installed.packages.push(PackageInput {
             source,
@@ -461,9 +491,13 @@ pub fn installed_inputs(
 }
 
 /// The manifests yapi reads for `project_root` that install anything: the
-/// project's, only when `trusted`, then the user's global one, or why each
-/// cannot be read.
-fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String, String)>> {
+/// project's, only when `trusted`, then the user's global one, only when
+/// `global`, or why each cannot be read.
+fn manifests(
+    project_root: &Path,
+    trusted: bool,
+    global: bool,
+) -> Vec<Result<Project, (String, String)>> {
     let mut found = Vec::new();
     if trusted && let Err(problem) = from_env() {
         let problem = format!("{problem}, so no project manifest loads");
@@ -471,7 +505,7 @@ fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String,
     }
     let project = trusted.then(|| project_manifest(project_root)).flatten();
     let project = project.map(|path| (path, Scope::Project));
-    let global = Some((home_dir().join(".chest/chest.toml"), Scope::Global));
+    let global = global.then(|| (home_dir().join(".chest/chest.toml"), Scope::Global));
     for (path, scope) in [project, global].into_iter().flatten() {
         if !path.exists() {
             continue;
@@ -501,9 +535,9 @@ fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
 
 /// What chest gives a run in `project_root`, as [`load`] would, without
 /// installing anything: for `yapi config`, which shows what a run loads.
-pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
+pub fn installed(project_root: &Path, trusted: bool, global: bool) -> Loaded {
     let mut loaded = Loaded::default();
-    for project in manifests(project_root, trusted) {
+    for project in manifests(project_root, trusted, global) {
         match project {
             Ok(project) => add(&mut loaded, &project, project_root),
             Err(problem) => loaded.warn(problem),
@@ -513,14 +547,14 @@ pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
 }
 
 /// What chest gives a run of yapi in `project_root`: the project manifest,
-/// only when `trusted`, and the user's global one, each when it installs
-/// anything. Each puts back what its lock pins and is missing, unless
-/// `offline`, and skips stale or unlocked entries with a warning. It never
-/// writes a lock or `.gitignore`.
-pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
+/// only when `trusted`, and the user's global one, only when `global`, each
+/// when it installs anything. Each puts back what its lock pins and is
+/// missing, unless `offline`, and skips stale or unlocked entries with a
+/// warning. It never writes a lock or `.gitignore`.
+pub async fn load(project_root: &Path, trusted: bool, offline: bool, global: bool) -> Loaded {
     let mut loaded = Loaded::default();
     let mut npm = None;
-    for project in manifests(project_root, trusted) {
+    for project in manifests(project_root, trusted, global) {
         let mut project = match project {
             Ok(project) => project,
             Err(problem) => {
@@ -556,7 +590,7 @@ mod tests {
     #[test]
     fn startup_load_send() {
         fn send<T: Send>(_: T) {}
-        send(load(Path::new("."), false, true));
+        send(load(Path::new("."), false, true, true));
     }
 
     /// A chest file whose package has no policy runs with none, with a

@@ -46,5 +46,6 @@ These flags change how yapi behaves when another program runs it:
 | `--offline` | Skip startup network work |
 | `--enable-logging` | Append a log to `~/.yapi/agent/yapi.log`. See [Read yapi's log](troubleshooting.md#read-yapis-log). |
 | `--project-dir <dir>` | Take the project from another folder. See [Project trust](security.md#project-trust). |
+| `--project-only` | Load only the project's packages, skills and MCP servers. `YAPI_PROJECT_ONLY=1` does the same. See [Run yapi with project packages only](project-only.md). |
 
 `yapi --help` lists every flag.

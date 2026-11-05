@@ -23,6 +23,8 @@ Describe servers in `~/.yapi/agent/mcp.json`, or in `.yapi/mcp.json` for one pro
 
 Pi's [MCP documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md) describes every option.
 
+A [project-only run](project-only.md) connects the project's servers, and of `~/.yapi/agent/mcp.json` only those that the `mcpServers` list of your `projectOnly` setting names.
+
 ## Manage servers
 
 `yapi mcp` edits the file and checks servers without starting a session. These commands add the two servers above, list them and remove one:

@@ -59,11 +59,11 @@ Extensions with identical grants always hear each other. Across different grants
 At startup and on `/reload`, yapi reads two manifests:
 
 - the project's manifest, when the project is [trusted](security.md#project-trust)
-- `~/.chest/chest.toml`, in every project
+- `~/.chest/chest.toml`, in every project, except for the entries a [project-only run](project-only.md) leaves out
 
 A project manifest that installs anything asks for trust, as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust. `CHEST_MANIFEST` can name another project manifest, as [How yapi reads CHEST_MANIFEST](chest-environments.md#how-yapi-reads-chest_manifest) describes.
 
-yapi puts back every skill, subagent and extension that the lock pins and that's missing. It also puts back an entry whose copy holds what an older lock pinned, as after you pull a lock that a teammate's `chest update` wrote. chest's record of what it placed tells yapi which copy it has, so startup reads no file contents. With `--offline` or `PI_OFFLINE` set, yapi warns about these entries and leaves them out instead, so a copy the lock no longer pins never loads.
+yapi puts back every skill, subagent and extension that the lock pins and that's missing. It also puts back an entry whose copy holds what an older lock pinned, as after you pull a lock that a teammate's `chest update` wrote. chest's record of what it placed tells yapi which copy it has, so startup reads no file contents. With `--offline` or `PI_OFFLINE` set, yapi warns about these entries and leaves them out instead. So an extension never loads from a copy the lock no longer pins, and neither does a skill in a folder yapi doesn't read on its own, such as `.claude/skills`. A skill's copy in a folder yapi reads on its own, such as `.agents/skills`, keeps loading, and the warning says so.
 
 yapi leaves out an entry that isn't locked, or whose lock no longer matches the manifest, and warns you to run `chest install`, or `chest -g install` for `~/.chest/chest.toml`. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the `.gitignore` block.
 
@@ -77,7 +77,7 @@ yapi loads each placed skill from its canonical copy, in the first skills folder
 
 yapi never removes placed copies. After you remove an entry from the manifest, or while its lock is stale, its copies in folders yapi reads on its own, such as `.agents/skills`, keep loading until `chest install` removes them.
 
-Before it opens, `yapi config` puts back missing entries as a run does. It lists chest's extensions and skills as a run loads them, marked as managed by chest. They're read-only there, because the manifest decides what loads. [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
+Before it opens, `yapi config` puts back missing entries as a run does. It lists chest's extensions and skills as a run loads them, marked as managed by chest. Space leaves them alone, because the manifest decides what loads. In the Global Resources view, `ctrl+o` can still keep a global chest item in [project-only runs](project-only.md). [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
 
 ## When a package is installed both ways
 

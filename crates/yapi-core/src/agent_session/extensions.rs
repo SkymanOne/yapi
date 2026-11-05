@@ -606,11 +606,16 @@ impl AgentSession {
     /// The context extensions get, with `cancel` for the operation at hand.
     pub(super) fn extension_context(&self, cancel: CancellationToken) -> Context {
         let (ui, mode, _) = lock(&self.inner.binding).clone();
-        let (project_dir, project_trusted) = {
+        let (project_dir, project_trusted, project_only_mcp) = {
             let settings = lock(&self.inner.settings);
+            let keep = crate::config::project_only().then(|| {
+                let global = settings.document(crate::settings::Scope::Global);
+                crate::packages::resolve::ProjectOnly::from_settings(global).mcp_servers
+            });
             (
                 settings.project_dir().to_path_buf(),
                 settings.project_trusted(),
+                keep,
             )
         };
         Context {
@@ -618,6 +623,7 @@ impl AgentSession {
             agent_dir: self.inner.agent_dir.clone(),
             project_dir,
             project_trusted,
+            project_only_mcp,
             mode,
             ui,
             tools: self.inner.tools.clone(),

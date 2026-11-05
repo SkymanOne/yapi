@@ -78,17 +78,17 @@ async fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
             .map_err(anyhow::Error::msg)?;
     }
     // chest puts back what its locks pin, as a run does, so the lists show
-    // what a run loads.
-    for (path, message) in yapi_core::chest::startup::load(&cwd, trusted, offline)
+    // what a run loads. Each message names its manifest, as in print mode.
+    for (_, message) in yapi_core::chest::startup::load(&cwd, trusted, offline, true)
         .await
         .problems
     {
-        eprintln!("Warning: {path}: {message}");
+        eprintln!("Warning: {message}");
     }
     let builtins = crate::startup::BUILTINS;
     // chest's installed entries as a run would load them: the global
     // manifest's alone, then the project's too when it is trusted.
-    let chest = |trusted| yapi_core::chest::startup::installed(&cwd, trusted).installed;
+    let chest = |trusted| yapi_core::chest::startup::installed(&cwd, trusted, true).installed;
     let user_chest = chest(false);
     let global = resolve_resources(
         &cwd,

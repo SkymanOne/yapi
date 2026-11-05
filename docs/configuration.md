@@ -17,9 +17,10 @@ Set `YAPI_CODING_AGENT_DIR` to move the global folder. The table lists where yap
 | Credentials | `~/.yapi/agent/auth.json` |
 | Model Context Protocol (MCP) servers | `~/.yapi/agent/mcp.json` and `.yapi/mcp.json` |
 | Project packages | `chest.toml` and `chest.lock` in the project, and `~/.chest/chest.toml`. See [Project packages from chest](#project-packages-from-chest). |
+| Global items for project-only runs | `projectOnly` in `~/.yapi/agent/settings.json`. See [Run yapi with project packages only](project-only.md). |
 | Documentation for the model | `~/.yapi/agent/docs`. See [Documentation for the model](install.md#documentation-for-the-model). |
 
-`/settings` edits common settings in place. Files in a project's `.yapi` folder load only after you [trust the project](security.md#project-trust).
+`/settings` edits common settings in place. Files in a project's `.yapi` folder load only after you [trust the project](security.md#project-trust). [`--project-only`](project-only.md) runs yapi with the project's packages and leaves out your global ones.
 
 ## Write settings in TOML
 

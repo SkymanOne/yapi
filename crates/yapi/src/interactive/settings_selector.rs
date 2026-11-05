@@ -1355,7 +1355,10 @@ pub(super) fn available_themes(
     let mut names: Vec<(String, Option<std::path::PathBuf>)> = [system, "dark", "light"]
         .map(|name| (name.to_owned(), None))
         .into();
-    if let Ok(entries) = std::fs::read_dir(agent_dir.join("themes")) {
+    // A project-only run lists the agent directory's themes only as the
+    // resolver kept them, among `files`.
+    let folder = (!yapi_core::config::project_only()).then(|| agent_dir.join("themes"));
+    if let Some(Ok(entries)) = folder.map(std::fs::read_dir) {
         let mut paths: Vec<std::path::PathBuf> = entries
             .flatten()
             .map(|entry| entry.path())

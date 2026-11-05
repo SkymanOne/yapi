@@ -329,10 +329,13 @@ async fn stale_lock_warns() {
     install(&home, &files, ".chest/chest.toml", manifest).await;
     let global = manifest.replace("open.js", "moved.js");
     std::fs::write(home.join(".chest/chest.toml"), global).unwrap();
-    let output = common::yapi(&home).arg("--help").output().unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
     let named = "~/.chest/chest.toml: extensions.open is not locked, or its lock is stale, so it was skipped: run `chest -g install`";
-    assert!(stderr.contains(named), "{stderr}");
+    // `yapi config` names it once too, before it finds no terminal.
+    for args in [&["--help"][..], &["config"]] {
+        let output = common::yapi(&home).args(args).output().unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains(&format!("Warning: {named}")), "{stderr}");
+    }
 }
 
 /// A project whose manifest only describes it as a package needs no trust,

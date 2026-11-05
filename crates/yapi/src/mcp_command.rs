@@ -187,7 +187,7 @@ pub async fn run(args: &[String]) -> u8 {
             return 1;
         }
     };
-    let loaded = load(&agent_dir, &cwd, trusted);
+    let loaded = load(&agent_dir, &cwd, trusted, None);
     let untrusted_note = (!trusted && project_config.exists()).then(|| {
         format!(
             "{} is ignored because the project is not trusted. Start {APP_NAME} in the project to trust it.",
@@ -625,7 +625,7 @@ fn remove(args: &[String], project_config: &Path, cwd: &Path, agent_dir: &Path) 
             0
         }
         Ok(false) => {
-            let other = load(agent_dir, cwd, true)
+            let other = load(agent_dir, cwd, true, None)
                 .servers
                 .into_iter()
                 .find(|server| server.name == *name && server.scope != scope);
