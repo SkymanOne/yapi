@@ -117,7 +117,9 @@ Between the project's settings and yours, Pi's rule applies, and the project's e
 
 `chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
 
-Import leaves `settings.json` alone. For each package it imports, it prints the `yapi remove -l` command to run once chest installs it. Run it from the project folder, since `-l` edits the `.yapi/settings.json` of the folder you run it in. With `-g`, it imports the agent folder's `settings.json` and prints `yapi remove` without `-l`, which works from any folder.
+Each entry is named after the last part of its source. Import skips a package the manifest already has, at any version, and a different package whose name the manifest already uses. To import that one, add it under another name with `chest add <source> --name <name>`.
+
+Import leaves `settings.json` alone. For each package it imports, it prints the `yapi remove -l` command to run once chest installs it. Run it from the project folder, since `-l` edits the `.yapi/settings.json` of the folder you run it in. `yapi remove -l` changes only a trusted project's settings, so until you trust the project, the command adds `--approve`. With `-g`, it imports the agent folder's `settings.json` into `~/.chest/chest.toml`, which `chest -g install` installs, and prints `yapi remove` without `-l`, which works from any folder.
 
 After importing, narrow each entry's capabilities and run `chest install` right away. Then run the `yapi remove` commands that import printed. Until `chest install` locks an entry, yapi leaves it out:
 

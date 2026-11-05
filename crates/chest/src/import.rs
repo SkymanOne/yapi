@@ -8,8 +8,9 @@ use clap::Args;
 use serde_json::Value;
 use yapi_core::chest::manifest::{Entry, ManifestDocument, Section, valid_name};
 use yapi_core::packages::source::{self, Source};
-use yapi_core::settings::Scope;
+use yapi_core::settings::{Scope, SettingsManager};
 use yapi_core::tools::path::relative;
+use yapi_core::trust::{TrustStore, resolve_trusted};
 use yapi_types::settings::PackageSource;
 
 use crate::{Target, out, say, write};
@@ -51,12 +52,20 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
             .path
             .clone()
             .unwrap_or_else(|| target.base().join("skills-lock.json"));
-        skills_lock(&path, &mut document)?
+        skills_lock(&path, &target.base(), &mut document)?
     };
     write(target, &document.to_string())?;
+    let (entries, them) = match added {
+        1 => ("entry", "it"),
+        _ => ("entries", "them"),
+    };
+    let home = yapi_core::tools::path::home_dir();
+    let (manifest, install) = (
+        yapi_core::chest::manifest_label(&target.path, target.scope, &home),
+        yapi_core::chest::install_command(&target.path, target.scope),
+    );
     say(&format!(
-        "Added {added} entries to {}. Run `chest install` to install them.",
-        target.name()
+        "Added {added} {entries} to {manifest}. Run `{install}` to install {them}."
     ));
     Ok(())
 }
@@ -67,21 +76,41 @@ fn json(path: &Path) -> anyhow::Result<Value> {
     yapi_types::json::parse(&text).with_context(|| format!("parsing {}", path.display()))
 }
 
-/// Adds `entry` as `name` in `section`, unless an entry has the name.
+/// Adds `entry` as `name` in `section`, unless the manifest has its
+/// package or another package holds the name. Then it warns, naming the
+/// entry as `what`, and adds nothing. Paths resolve against `base`.
 fn add(
     document: &mut ManifestDocument,
-    section: Section,
-    name: &str,
+    (section, name): (Section, &str),
     entry: &Entry,
+    what: &str,
+    base: &Path,
 ) -> anyhow::Result<bool> {
     let manifest = document.manifest();
-    let taken = Section::ALL
-        .into_iter()
-        .any(|section| manifest.section(section).contains_key(name));
-    if taken {
-        say(&format!(
-            "warning: skipped {name}, which the manifest already has"
-        ));
+    let entries = || {
+        Section::ALL.into_iter().flat_map(|section| {
+            let entries = manifest.section(section).iter();
+            entries.map(move |(name, entry)| (section, name.as_str(), entry))
+        })
+    };
+    let package = identity(entry, base);
+    // A patch names an entry's package, not one of its own.
+    let same = entries().find(|&(section, _, other)| {
+        section != Section::Patch && package.is_some() && identity(other, base) == package
+    });
+    let reason = match same {
+        Some((section, other, _)) => Some(format!(
+            "the manifest already has it as {}.{other}",
+            section.key()
+        )),
+        None => entries()
+            .find(|&(_, other, _)| other == name)
+            .map(|(section, ..)| {
+                format!("the manifest's {}.{name} is another package", section.key())
+            }),
+    };
+    if let Some(reason) = reason {
+        say(&format!("warning: skipped {what}: {reason}"));
         return Ok(false);
     }
     document.set_entry(section, name, entry)?;
@@ -114,6 +143,22 @@ fn settings(
         .map_or_else(PathBuf::new, Path::to_path_buf);
     // Messages name the file read, `settings.json` or `settings.toml`.
     let file = path.file_name().unwrap_or_default().to_string_lossy();
+    let base = target.base();
+    // `yapi remove -l` changes the settings of a project yapi trusts, and
+    // `--approve` trusts it for that command.
+    let remove = match target.scope {
+        Scope::Global => "yapi remove",
+        Scope::Project => {
+            let agent_dir = yapi_core::config::agent_dir();
+            let settings = SettingsManager::load(&agent_dir, &base, false);
+            let default = settings.settings().default_project_trust;
+            let store = TrustStore::new(&agent_dir);
+            match resolve_trusted(&base, &store, None, default).unwrap_or(false) {
+                true => "yapi remove -l",
+                false => "yapi remove -l --approve",
+            }
+        }
+    };
     let mut added = 0;
     for package in &packages {
         let (spec, filtered) = match package {
@@ -165,19 +210,26 @@ fn settings(
             ));
             continue;
         }
-        if add(document, Section::Extensions, &name, &entry)? {
+        if add(document, (Section::Extensions, &name), &entry, &spec, &base)? {
             added += 1;
             out(&format!(
-                "extensions.{name}  from {spec}. Once chest installs it, remove it from {file} with `yapi remove{} {removed}`.",
-                if target.scope == Scope::Project {
-                    " -l"
-                } else {
-                    ""
-                }
+                "extensions.{name}  from {spec}. Once chest installs it, remove it from {file} with `{remove} {removed}`."
             ));
         }
     }
     Ok(added)
+}
+
+/// The package `entry` installs, as settings packages are matched, with
+/// the folder it takes from that package.
+fn identity(entry: &Entry, base: &Path) -> Option<(String, Option<String>)> {
+    let (source, folder) = match (&entry.npm, &entry.git, &entry.path) {
+        (Some(npm), ..) => (source::parse(&format!("npm:{npm}")), entry.path.clone()),
+        (None, Some(git), _) => (source::parse(&format!("git:{git}")), entry.path.clone()),
+        (None, None, Some(path)) => (Source::Local { path: path.clone() }, None),
+        (None, None, None) => return None,
+    };
+    Some((source.identity(base), folder))
 }
 
 /// The last part of an entry's source, lowercased, as its name.
@@ -200,7 +252,8 @@ fn name_of(entry: &Entry) -> String {
 
 /// The skills of a `skills-lock.json` (skills.sh's `LocalSkillLockFile`)
 /// as skill entries, without their hashes, which chest computes its own way.
-fn skills_lock(path: &Path, document: &mut ManifestDocument) -> anyhow::Result<usize> {
+/// A skill of a source type chest doesn't know is left out, with a warning.
+fn skills_lock(path: &Path, base: &Path, document: &mut ManifestDocument) -> anyhow::Result<usize> {
     let lock = json(path)?;
     if lock.get("version").and_then(Value::as_u64) != Some(1) {
         bail!(
@@ -231,26 +284,39 @@ fn skills_lock(path: &Path, document: &mut ManifestDocument) -> anyhow::Result<u
                 entry.path = folder;
             }
             Some("local") => entry.path = Some(source.clone()),
-            _ => {
+            Some(kind @ ("github" | "gitlab" | "git")) => {
                 let has_host = source.contains("://")
                     || source
                         .split('/')
                         .next()
                         .is_some_and(|first| first.contains('.'));
+                let host = if kind == "gitlab" {
+                    "gitlab.com"
+                } else {
+                    "github.com"
+                };
                 let repo = text("sourceUrl").unwrap_or_else(|| match has_host {
                     true => source.clone(),
-                    false => format!("github.com/{source}"),
+                    false => format!("{host}/{source}"),
                 });
                 entry.git = Some(repo.strip_prefix("git:").unwrap_or(&repo).to_owned());
                 entry.rev = text("ref");
                 entry.path = folder.filter(|folder| !folder.is_empty());
+            }
+            kind => {
+                let reason = match kind {
+                    Some(kind) => format!("chest can't install its sourceType {kind:?}"),
+                    None => "it has no sourceType".to_owned(),
+                };
+                say(&format!("warning: skipped {name}: {reason}"));
+                continue;
             }
         }
         if !valid_name(name) {
             say(&format!("warning: skipped {name}: not a valid entry name"));
             continue;
         }
-        if add(document, Section::Skills, name, &entry)? {
+        if add(document, (Section::Skills, name), &entry, name, base)? {
             added += 1;
             out(&format!("skills.{name}  from {source}"));
         }

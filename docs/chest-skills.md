@@ -58,6 +58,12 @@ When someone edits an item after chest installed it, chest leaves the item as it
 
 `chest import --skills-lock` turns the skills of a skills.sh `skills-lock.json` into skill entries. It reads the `skills-lock.json` beside the manifest, or the file you name. chest computes its own hashes, so it drops the file's. Run `chest install` after importing.
 
+Import takes skills from GitHub, GitLab, other git hosts, local folders and `node_modules`. It skips, with a warning:
+
+- a skill of another `sourceType`
+- a skill the manifest already has, from the same package and folder
+- a different skill whose name the manifest already uses
+
 ## What yapi adds
 
 > **yapi only.**

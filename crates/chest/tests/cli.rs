@@ -950,11 +950,12 @@ fn import_settings_packages() {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     let said = text(&output);
-    // A path names the package from any folder.
+    // The project isn't trusted yet, so `yapi remove -l` needs `--approve`,
+    // and a path names the package from any folder.
     let local = scratch.project.join("local-ext");
     for remove in [
-        "yapi remove -l npm:@acme/ext@^1".to_owned(),
-        format!("yapi remove -l {}`", local.display()),
+        "with `yapi remove -l --approve npm:@acme/ext@^1`".to_owned(),
+        format!("with `yapi remove -l --approve {}`", local.display()),
     ] {
         assert!(said.contains(&remove), "{remove}\n{said}");
     }
@@ -971,6 +972,12 @@ fn import_settings_packages() {
     );
     assert_eq!(read(&path), settings.to_string());
     // Messages name the file read, such as a `settings.toml` a path names.
+    // Once the project is trusted, the command needs no `--approve`.
+    let trust = json!({ scratch.project.to_str().unwrap(): true });
+    write(
+        &scratch.home.join(".yapi/agent/trust.json"),
+        &trust.to_string(),
+    );
     let toml =
         "packages = [\"npm:tomled\", { source = \"npm:@acme/picky\", extensions = [\"x.ts\"] }]\n";
     write(&scratch.dir.join("toml/settings.toml"), toml);
@@ -1004,9 +1011,31 @@ fn import_settings_packages() {
         &scratch.project.join("bare.json"),
         r#"{"packages": ["npm:bare"]}"#,
     );
-    ok(&scratch, &["import", "--settings", "bare.json"]);
+    let said = text(&ok(&scratch, &["import", "--settings", "bare.json"]));
+    let added = "Added 1 entry to chest.toml. Run `chest install` to install it.";
+    assert!(said.contains(added), "{said}");
     let manifest = read(&scratch.project.join("chest.toml"));
     assert!(manifest.contains("bare = { npm = \"bare\""), "{manifest}");
+    // With `-g`, the message names the global manifest and its command.
+    write(
+        &scratch.home.join(".yapi/agent/settings.json"),
+        r#"{"packages": ["npm:mine"]}"#,
+    );
+    let said = text(&ok(&scratch, &["-g", "import", "--settings"]));
+    let added = "Added 1 entry to ~/.chest/chest.toml. Run `chest -g install` to install it.";
+    assert!(said.contains(added), "{said}");
+    // A package the manifest has is skipped, also at another version, and
+    // so is another package whose name it has.
+    let clash = r#"{"packages": ["npm:@acme/ext@^2", "npm:@other/ext"]}"#;
+    write(&scratch.project.join("clash.json"), clash);
+    let said = text(&ok(&scratch, &["import", "--settings", "clash.json"]));
+    for message in [
+        "warning: skipped npm:@acme/ext@^2: the manifest already has it as extensions.ext",
+        "warning: skipped npm:@other/ext: the manifest's extensions.ext is another package",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
     let flagless = chest(&scratch, &["import", "../other.json"], &[]);
     assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 
@@ -1063,19 +1092,43 @@ fn import_skills_lock() {
         "pdf": {"source": "anthropics/skills", "sourceType": "github", "ref": "v1", "skillPath": "skills/pdf/SKILL.md", "computedHash": "abc"},
         "docx": {"source": "acme/docs", "sourceUrl": "https://gitlab.com/acme/docs.git", "sourceType": "git", "skillPath": "docx/SKILL.md", "computedHash": "def"},
         "notes": {"source": "tools/notes", "sourceType": "local", "computedHash": "ghi"},
+        "sheets": {"source": "acme/sheets", "sourceType": "gitlab", "computedHash": "jkl"},
+        "weird": {"source": "a/b", "sourceType": "npm", "computedHash": "mno"},
     }});
     write(&scratch.project.join("skills-lock.json"), &lock.to_string());
     init(&scratch);
-    ok(&scratch, &["import", "--skills-lock"]);
+    let said = text(&ok(&scratch, &["import", "--skills-lock"]));
     let manifest = read(&scratch.project.join("chest.toml"));
     for line in [
         "pdf = { git = \"github.com/anthropics/skills\", rev = \"v1\", path = \"skills/pdf\" }",
         "docx = { git = \"https://gitlab.com/acme/docs.git\", path = \"docx\" }",
         "notes = { path = \"tools/notes\" }",
+        "sheets = { git = \"gitlab.com/acme/sheets\" }",
     ] {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     assert!(!manifest.contains("abc"));
+    // A source type chest doesn't know is skipped, not taken for git.
+    let unknown = "warning: skipped weird: chest can't install its sourceType \"npm\"";
+    assert!(said.contains(unknown), "{said}");
+    assert!(!manifest.contains("weird"), "{manifest}");
+    // Skills match by package and folder: another folder of a package the
+    // manifest has is added, and another package by a taken name isn't.
+    let again = json!({"version": 1, "skills": {
+        "xlsx": {"source": "anthropics/skills", "sourceType": "github", "skillPath": "skills/xlsx/SKILL.md"},
+        "word": {"source": "acme/docs", "sourceUrl": "https://gitlab.com/acme/docs.git", "sourceType": "git", "skillPath": "docx/SKILL.md"},
+        "pdf": {"source": "other/skills", "sourceType": "github", "skillPath": "skills/pdf/SKILL.md"},
+    }});
+    write(&scratch.project.join("again.json"), &again.to_string());
+    let said = text(&ok(&scratch, &["import", "--skills-lock", "again.json"]));
+    for message in [
+        "skills.xlsx  from anthropics/skills",
+        "warning: skipped word: the manifest already has it as skills.docx",
+        "warning: skipped pdf: the manifest's skills.pdf is another package",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
+    assert!(!read(&scratch.project.join("chest.toml")).contains("other/skills"));
 }
 
 #[test]

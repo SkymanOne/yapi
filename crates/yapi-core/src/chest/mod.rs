@@ -283,6 +283,30 @@ enum AtStartup {
     Replay,
 }
 
+/// How messages name manifest `path` of `scope`: its file name in a
+/// project, and its path from `~`, the folder `home`, for the global one,
+/// which no project folder holds.
+pub fn manifest_label(path: &Path, scope: Scope, home: &Path) -> String {
+    match (scope, path.strip_prefix(home)) {
+        (Scope::Global, Ok(path)) => format!("~/{}", path.display()),
+        (Scope::Global, Err(_)) => path.display().to_string(),
+        (Scope::Project, _) => path
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+    }
+}
+
+/// The command that installs the entries of manifest `path` of `scope`, for
+/// messages.
+pub fn install_command(path: &Path, scope: Scope) -> String {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    match (scope, &*name) {
+        (Scope::Global, _) => "chest -g install".to_owned(),
+        (Scope::Project, "chest.toml") => "chest install".to_owned(),
+        (Scope::Project, name) => format!("chest --manifest {name} install"),
+    }
+}
+
 impl Project {
     /// The manifest at `path` and its lock, the file beside it named with
     /// `.lock` for `.toml`: `chest.dev.toml` locks in `chest.dev.lock`.
@@ -442,23 +466,14 @@ impl Project {
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
     }
 
-    /// How messages name the manifest: its file name in a project, and its
-    /// path from `~` for the global one, which no project folder holds.
+    /// How messages name the manifest, as [`manifest_label`] does.
     fn label(&self) -> String {
-        match (self.scope, self.path.strip_prefix(&self.home)) {
-            (Scope::Global, Ok(path)) => format!("~/{}", path.display()),
-            (Scope::Global, Err(_)) => self.path.display().to_string(),
-            (Scope::Project, _) => self.file_name(),
-        }
+        manifest_label(&self.path, self.scope, &self.home)
     }
 
     /// The command that installs the manifest's entries, for messages.
     fn install_command(&self) -> String {
-        match (self.scope, self.file_name().as_str()) {
-            (Scope::Global, _) => "chest -g install".to_owned(),
-            (Scope::Project, "chest.toml") => "chest install".to_owned(),
-            (Scope::Project, name) => format!("chest --manifest {name} install"),
-        }
+        install_command(&self.path, self.scope)
     }
 
     /// The skill, agent and extension entries, in manifest order.
