@@ -64,9 +64,11 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> ChestError + '_ {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     /// `chest install`: keep what is locked, fresh and present, holding
-    /// what the lock pins as chest's record says, replay what is locked and
+    /// what the lock pins as chest's record says. Replay what is locked and
     /// fresh but missing or different, resolve the rest, then write the
     /// lock and the `.gitignore` block and remove what the manifest dropped.
+    /// A copy chest placed that changed since stays as it is, and its entry
+    /// is [`Outcome::Edited`].
     Resolve,
     /// `chest update`: [`Mode::Resolve`], resolving the named entries, or
     /// all with no names, again even when their lock is fresh.
@@ -92,6 +94,8 @@ pub enum Outcome {
     Replayed,
     /// Already in place as locked.
     Unchanged,
+    /// Left as it is, wholly or in part: someone edited a copy chest placed.
+    Edited,
     /// Left alone: stale, unlocked, offline, or not installed when frozen.
     Skipped,
     /// Removed, because the manifest no longer has it.
@@ -526,26 +530,56 @@ impl Project {
         entry.git.is_none() && entry.npm.is_none() || self.recorded(section, locked, record)
     }
 
+    /// The copies `locked` occupies that `record` says changed since chest
+    /// placed them: [`Problem::Modified`] when still there, else
+    /// [`Problem::Missing`]. A patched extension loads from its patch, so its
+    /// store folder may go.
+    fn changed(
+        &self,
+        section: Section,
+        locked: &Locked,
+        record: &Record,
+    ) -> Vec<(PathBuf, Problem)> {
+        let placed = self.placed(section, locked).into_iter();
+        let changed = placed.filter(|path| record.held(path) == Held::Modified);
+        changed
+            .filter_map(|path| match path.symlink_metadata() {
+                Ok(_) => Some((path, Problem::Modified)),
+                Err(_) => (section != Section::Extensions).then_some((path, Problem::Missing)),
+            })
+            .collect()
+    }
+
     /// The state of entry `name` of `section` that yapi's startup acts on,
-    /// as `chest list` shows it: `patched` under `[patch]`, `stale` when not
-    /// locked or locked for another source, `missing` when not in place,
-    /// `outdated` when in place as an older lock pinned it, else `installed`.
+    /// as `chest list` shows it: under `[patch]`, `missing` when a copy chest
+    /// placed is gone, `edited` when one changed since, else `patched`.
+    /// Otherwise, `stale` when not locked or locked for another source,
+    /// `missing` when not in place, `edited` when a copy chest placed
+    /// changed since, whatever lock pinned it, `outdated` when in place as an
+    /// older lock pinned it, else `installed`. Startup hashes no copies, so
+    /// it loads an `edited` entry that the lock still pins, or that is
+    /// patched, as it would unedited.
     pub fn state(&self, section: Section, name: &str, entry: &Entry) -> &'static str {
-        if self.manifest.patch.contains_key(name) {
-            return "patched";
-        }
         let locked = self.lock.as_ref().and_then(|lock| {
             lock.section(section)
                 .iter()
                 .find(|locked| locked.name == name)
                 .filter(|locked| fresh(entry, locked))
         });
+        let record = self.record();
+        let changed = |locked: &Locked, problem: Problem| {
+            let changed = self.changed(section, locked, &record);
+            changed.iter().any(|(_, found)| *found == problem)
+        };
+        let patched = self.manifest.patch.contains_key(name);
         match locked {
+            Some(locked) if patched && changed(locked, Problem::Missing) => "missing",
+            Some(locked) if patched && changed(locked, Problem::Modified) => "edited",
+            _ if patched => "patched",
             None => "stale",
             Some(locked) if !self.present(section, locked) => "missing",
-            Some(locked) if !self.holds_locked(section, entry, locked, &self.record()) => {
-                "outdated"
-            }
+            Some(locked) if changed(locked, Problem::Modified) => "edited",
+            Some(locked) if !self.holds_locked(section, entry, locked, &record) => "outdated",
             Some(_) => "installed",
         }
     }
@@ -634,7 +668,14 @@ impl Project {
         let (staged, _work) = self
             .prepare(&mode, &old, &record, npm, progress, &mut report)
             .await?;
-        let committed = self.commit(&staged, &old, &mut record, &record_path, &mut report);
+        let committed = self.commit(
+            &staged,
+            &old,
+            frozen,
+            &mut record,
+            &record_path,
+            &mut report,
+        );
         let occupied = match committed {
             Ok(occupied) => occupied,
             Err(err) => {
@@ -785,7 +826,21 @@ impl Project {
                     }
                 }
                 Mode::Frozen if present => Some(Outcome::Unchanged),
-                _ if fresh && present && recorded && !local && !named => Some(Outcome::Unchanged),
+                _ if fresh && present && recorded && !local && !named => {
+                    let problems =
+                        locked.map_or_else(Vec::new, |locked| self.copy_problems(section, locked));
+                    for problem in &problems {
+                        report.warnings.push(format!(
+                            "{}, so chest left it as it is: delete it and run `{}` to put back the locked copy",
+                            describe(problem),
+                            self.install_command()
+                        ));
+                    }
+                    Some(match problems.is_empty() {
+                        true => Outcome::Unchanged,
+                        false => Outcome::Edited,
+                    })
+                }
                 _ => None,
             };
             if let Some(outcome) = keep {
@@ -1084,12 +1139,16 @@ impl Project {
     /// what is there now must be chest's. That is a path the record lists and
     /// that still holds what chest put there, or an unrecorded path that
     /// holds exactly what the lock pins and what is about to replace it, with
-    /// no `.git` inside, which chest then adopts. Each target is recorded
-    /// before it is written, so a failure partway leaves it owned.
+    /// no `.git` inside, which chest then adopts. A recorded path that
+    /// changed since fails a `frozen` sync. Otherwise its item stays as it
+    /// is, with a warning, and its entry is [`Outcome::Edited`]. Each target
+    /// is recorded before it is written, so a failure partway leaves it
+    /// owned.
     fn commit(
         &self,
         staged: &[Staged],
         old: &Lock,
+        frozen: bool,
         record: &mut Record,
         record_path: &Path,
         report: &mut Report,
@@ -1104,6 +1163,7 @@ impl Project {
         }
         // Each placement: what it copies, where to, and the hash it brings.
         let mut placements: Vec<Vec<(PathBuf, Vec<PathBuf>, String)>> = Vec::new();
+        let mut outcomes = Vec::new();
         for staged in staged {
             let planned = match &staged.content {
                 Content::Items(items) => {
@@ -1119,8 +1179,11 @@ impl Project {
                 }
                 Content::Nothing => Vec::new(),
             };
-            for (_, targets, hash) in &planned {
-                for target in targets {
+            let mut placing = Vec::new();
+            let mut left = false;
+            for (source, targets, hash) in planned {
+                let mut edited = false;
+                for target in &targets {
                     let refuse =
                         |why: &str| invalid(format!("{}: {why} {}", staged.id, target.display()));
                     place::within(&root, target)
@@ -1134,15 +1197,30 @@ impl Project {
                     match record.held(target) {
                         Held::Owned => {}
                         Held::Modified => {
-                            return Err(invalid(format!(
-                                "{}: {} was modified since chest installed it: remove it or restore it, then run chest again",
+                            let edit = format!(
+                                "{}: {} was modified since chest installed it",
                                 staged.id,
                                 target.display()
-                            )));
+                            );
+                            let how = format!(
+                                "delete it and run `{}` to put back the locked copy",
+                                self.install_command()
+                            );
+                            if frozen {
+                                return Err(invalid(format!("{edit}: {how}")));
+                            }
+                            let mut warning = format!("{edit}, so chest left it as it is: {how}");
+                            // yapi loads an extension only where the record holds what the lock pins.
+                            if staged.section == Section::Extensions && !record.holds(target, &hash)
+                            {
+                                warning.push_str(", and until then yapi does not load it");
+                            }
+                            report.warnings.push(warning);
+                            edited = true;
                         }
                         Held::Unrecorded => {
                             let lock_pins = pinned.get(target);
-                            let adoptable = lock_pins == Some(hash)
+                            let adoptable = lock_pins == Some(&hash)
                                 && content_hash(target).as_ref() == lock_pins
                                 && !has_git(target);
                             if !adoptable {
@@ -1150,15 +1228,30 @@ impl Project {
                                     "refusing to replace what chest did not install at",
                                 ));
                             }
-                            record.adopt(target, hash);
+                            record.adopt(target, &hash);
                         }
                     }
                 }
+                // An edited item stays whole, its links included.
+                if edited {
+                    left = true;
+                } else {
+                    placing.push((source, targets, hash));
+                }
             }
-            placements.push(planned);
+            let outcome = match left {
+                true => Outcome::Edited,
+                false => staged.outcome,
+            };
+            if left {
+                discard(std::slice::from_ref(staged));
+            }
+            outcomes.push(outcome);
+            placements.push(placing);
         }
         record.save(record_path)?;
-        for (staged, planned) in staged.iter().zip(placements) {
+        let entries = staged.iter().zip(placements).zip(outcomes);
+        for ((staged, planned), outcome) in entries {
             for (source, targets, hash) in planned {
                 let before: Vec<_> = targets.iter().map(|target| record.get(target)).collect();
                 // Until it is noted, a target is chest's with the old or the new content.
@@ -1186,7 +1279,7 @@ impl Project {
                 record.save(record_path)?;
                 placed?;
             }
-            report.entries.push((staged.id.clone(), staged.outcome));
+            report.entries.push((staged.id.clone(), outcome));
         }
         Ok(occupied.into_iter().collect())
     }
@@ -1226,8 +1319,9 @@ impl Project {
                 match record.held(&path) {
                     Held::Modified => {
                         report.warnings.push(format!(
-                            "{} was modified since chest installed it, so it stays: remove it or restore it",
-                            path.display()
+                            "{} was modified since chest installed it, so chest left it as it is: delete it, or undo the edit and run `{}` to remove it",
+                            path.display(),
+                            self.install_command()
                         ));
                         continue;
                     }
@@ -1360,38 +1454,56 @@ impl Project {
     }
 
     /// Each installed copy of a locked git or npm entry that does not match
-    /// the lock: canonical copies, copy fallbacks and store folders by their
-    /// hash, links by what they point to. `[patch]` entries are not hashed.
+    /// the lock, as [`Project::copy_problems`] finds them, and each copy of
+    /// a path entry, which has no hash, or of a `[patch]` entry, which is
+    /// not hashed, that chest's record says changed or is gone.
     fn problems(&self, lock: &Lock) -> Vec<(String, PathBuf, Problem)> {
+        let record = self.record();
         let mut problems = Vec::new();
         for section in [Section::Skills, Section::Agents, Section::Extensions] {
-            let homes = self.homes(section);
             for locked in lock.section(section) {
-                if self.manifest.patch.contains_key(&locked.name) {
-                    continue;
+                problems.extend(self.copy_problems(section, locked));
+                let path_entry = locked.git.is_none() && locked.npm.is_none();
+                if path_entry || self.manifest.patch.contains_key(&locked.name) {
+                    let id = format!("{}.{}", section.key(), locked.name);
+                    let changed = self.changed(section, locked, &record).into_iter();
+                    problems.extend(changed.map(|(path, problem)| (id.clone(), path, problem)));
                 }
-                let id = format!("{}.{}", section.key(), locked.name);
-                for (item, hash) in locked_items(section, locked) {
-                    let Some(hash) = hash else { continue };
-                    let canonical = homes.first().map(|home| home.join(&item));
-                    for (index, home) in homes.iter().enumerate() {
-                        let path = home.join(&item);
-                        let problem = match path.symlink_metadata() {
-                            Err(_) => Some(Problem::Missing),
-                            Ok(metadata) if metadata.is_symlink() => {
-                                let target = path.canonicalize().ok();
-                                let canonical =
-                                    canonical.as_ref().and_then(|c| c.canonicalize().ok());
-                                (index == 0 || target != canonical)
-                                    .then(|| Problem::Link(homes[0].join(&item)))
-                            }
-                            Ok(_) => (tree_hash(&path).ok().as_ref() != Some(&hash))
-                                .then_some(Problem::Mismatch),
-                        };
-                        if let Some(problem) = problem {
-                            problems.push((id.clone(), path, problem));
-                        }
+            }
+        }
+        problems
+    }
+
+    /// Each installed copy of `locked`, a git or npm entry of `section`,
+    /// that does not match the lock: canonical copies, copy fallbacks and
+    /// store folders by their hash, links by what they point to. `[patch]`
+    /// entries are not hashed.
+    fn copy_problems(&self, section: Section, locked: &Locked) -> Vec<(String, PathBuf, Problem)> {
+        let mut problems = Vec::new();
+        if self.manifest.patch.contains_key(&locked.name) {
+            return problems;
+        }
+        let homes = self.homes(section);
+        let id = format!("{}.{}", section.key(), locked.name);
+        for (item, hash) in locked_items(section, locked) {
+            let Some(hash) = hash else { continue };
+            let canonical = homes.first().map(|home| home.join(&item));
+            for (index, home) in homes.iter().enumerate() {
+                let path = home.join(&item);
+                let problem = match path.symlink_metadata() {
+                    Err(_) => Some(Problem::Missing),
+                    Ok(metadata) if metadata.is_symlink() => {
+                        let target = path.canonicalize().ok();
+                        let canonical = canonical.as_ref().and_then(|c| c.canonicalize().ok());
+                        (index == 0 || target != canonical)
+                            .then(|| Problem::Link(homes[0].join(&item)))
                     }
+                    Ok(_) => {
+                        (tree_hash(&path).ok().as_ref() != Some(&hash)).then_some(Problem::Mismatch)
+                    }
+                };
+                if let Some(problem) = problem {
+                    problems.push((id.clone(), path, problem));
                 }
             }
         }
@@ -1576,8 +1688,9 @@ impl Project {
 
     /// Checks every installed copy of a locked git or npm entry: canonical
     /// copies, copy fallbacks and store folders by their hash, and links by
-    /// what they point to. Returns one line per problem, so none means all
-    /// match.
+    /// what they point to. Copies of path and `[patch]` entries are checked
+    /// by chest's record of what it placed. Returns one line per problem, so
+    /// none means all match.
     pub fn verify(&self) -> Result<Vec<String>, ChestError> {
         let (name, install) = (self.label(), self.install_command());
         let lock = self
@@ -1672,6 +1785,8 @@ enum Problem {
     Missing,
     /// A copy whose hash differs from the lock's.
     Mismatch,
+    /// A copy of a path or `[patch]` entry that changed since chest placed it.
+    Modified,
     /// A link that does not point at the canonical copy, given.
     Link(PathBuf),
 }
@@ -1688,6 +1803,7 @@ fn describe((id, path, problem): &(String, PathBuf, Problem)) -> String {
     let what = match problem {
         Problem::Missing => "is missing".to_owned(),
         Problem::Mismatch => "does not match the lock".to_owned(),
+        Problem::Modified => "was modified since chest installed it".to_owned(),
         Problem::Link(canonical) => format!("does not link to {}", canonical.display()),
     };
     format!("{id}: {} {what}", path.display())

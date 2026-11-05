@@ -482,14 +482,15 @@ fn verify_detects_tamper() {
     );
     ok(&scratch, &["verify"]);
     // `list` shows the state yapi acts on at startup.
-    let state = |scratch: &Scratch| {
+    let state_of = |scratch: &Scratch, id: &str| {
         let listed = text(&ok(scratch, &["list"]));
         let row = listed
             .lines()
-            .find(|line| line.starts_with("skills.pdf"))
+            .find(|line| line.starts_with(&format!("{id}  ")))
             .unwrap_or_default();
         row.split("  ").nth(2).unwrap_or_default().to_owned()
     };
+    let state = |scratch: &Scratch| state_of(scratch, "skills.pdf");
     assert_eq!(state(&scratch), "installed");
     let manifest = scratch.project.join("chest.toml");
     let pinned = read(&manifest);
@@ -507,6 +508,48 @@ fn verify_detects_tamper() {
         "{}",
         text(&output)
     );
+    // Install keeps the edited copy and says so, and how to put back the
+    // locked one, which list shows too.
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("edited     skills.pdf"), "{said}");
+    let how = ".agents/skills/pdf does not match the lock, so chest left it as it is: delete it and run `chest install` to put back the locked copy";
+    assert!(said.contains(how), "{said}");
+    let skill = scratch.project.join(".agents/skills/pdf");
+    assert_eq!(read(&skill.join("SKILL.md")), "# tampered\n");
+    assert_eq!(state(&scratch), "edited");
+    std::fs::remove_dir_all(&skill).unwrap();
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("replayed   skills.pdf"), "{said}");
+    assert_eq!(state(&scratch), "installed");
+
+    // An edited copy of a path entry stays too, while a new entry installs,
+    // and list and verify say so.
+    write(&scratch.dir.join("hello/SKILL.md"), "# hello\n");
+    write(&scratch.dir.join("new/SKILL.md"), "# new\n");
+    ok(&scratch, &["add", "../hello"]);
+    let hello = scratch.project.join(".agents/skills/hello/SKILL.md");
+    write(&hello, "# mine\n");
+    let added = read(&manifest) + "new = { path = \"../new\" }\n";
+    write(&manifest, &added);
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("edited     skills.hello"), "{said}");
+    assert!(said.contains("installed  skills.new"), "{said}");
+    let how = ".agents/skills/hello was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy";
+    assert!(said.contains(how), "{said}");
+    assert_eq!(read(&hello), "# mine\n");
+    assert_eq!(
+        read(&scratch.project.join(".agents/skills/new/SKILL.md")),
+        "# new\n"
+    );
+    assert_eq!(state_of(&scratch, "skills.hello"), "edited");
+    // A deleted copy of a path entry is missing.
+    std::fs::remove_dir_all(scratch.project.join(".agents/skills/new")).unwrap();
+    let said = text(&chest(&scratch, &["verify"], &[]));
+    assert!(said.contains(".agents/skills/new is missing"), "{said}");
+    let output = chest(&scratch, &["verify"], &[]);
+    assert_eq!(output.status.code(), Some(1));
+    let edited = ".agents/skills/hello was modified since chest installed it";
+    assert!(text(&output).contains(edited), "{}", text(&output));
 }
 
 #[test]

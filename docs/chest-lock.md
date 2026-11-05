@@ -23,13 +23,13 @@ A pinned tarball must come from the registry configured for its package, at the 
 
 ## Verify installed copies
 
-`chest verify` checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn't match.
+`chest verify` checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a `[patch]` installs, so chest checks those copies against what it installed. `verify` exits with 1 when one is missing or doesn't match.
 
 ## Update entries
 
 > **Any agent**, except the warning about extension requests, which matters only in yapi.
 
-`chest outdated` lists entries whose source has a newer commit for its `rev`, or a newer npm version in range. It also shows npm's `latest`. `chest update` moves the named entries, or all of them, to those versions, installs them and writes the lock.
+`chest outdated` lists entries whose source has a newer commit for its `rev`, or a newer npm version in range. It also shows npm's `latest`. `chest update` moves the named entries, or all of them, to those versions, installs them and writes the lock. A copy that someone edited stays as it is while the lock moves on, and its entry shows as `edited`.
 
 When an updated extension now requests capabilities or event channels beyond its grants, `chest update` warns and grants nothing more.
 

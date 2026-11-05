@@ -68,4 +68,6 @@ A path that points outside the project gets a notice on each install. chest refu
 
 chest also refuses an extension's path source or patch whose folder is or holds the home folder, the agent folder, the filesystem's root or the project, because the extension could load any file there.
 
+`chest list` shows a patched entry as `patched`, as `edited` when someone changed a copy that chest installed from the patch, and as `missing` when that copy is gone. `chest verify` reports both. `chest install` puts a missing copy back from the patch, also with `--frozen`, which fails on an edited copy instead.
+
 yapi loads a patched entry without a lock entry, as [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) describes.

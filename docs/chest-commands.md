@@ -11,9 +11,9 @@ This page lists every chest command with its flags, then how chest uses a proxy,
 | `chest remove <name>` | | Removes the entry and what chest installed for it. |
 | `chest install` | `--frozen` | Installs what the manifest lists, as the lock pins it, and writes the lock. With `--frozen`, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither. |
 | `chest update [names]` | | Moves the entries, or all, to the newest version or commit their source allows. |
-| `chest list` | | Lists each entry with its locked version or commit, its state, its capabilities and description. The state is what yapi acts on at startup. `installed`: in place as the lock pins it. `outdated`: in place as an older lock pinned it. `stale`: not locked, or the lock no longer matches the manifest. `patched`: under `[patch]`. `missing`: locked but not in place. |
+| `chest list` | | Lists each entry with its locked version or commit, its state, its capabilities and description. `installed`: in place as the lock pins it. `edited`: a copy changed since chest installed it, whatever the lock pins now. `outdated`: in place as an older lock pinned it. `stale`: not locked, or the lock no longer matches the manifest. `patched`: under `[patch]`. `missing`: locked but not in place. yapi acts on the same states at startup. It doesn't hash copies, so it treats an `edited` entry as `installed`, or as `outdated` when the lock pins another version. |
 | `chest outdated` | | Lists entries whose source has something newer. |
-| `chest verify` | | Checks installed copies against the lock. |
+| `chest verify` | | Checks installed copies against the lock, and copies of path and `[patch]` entries against what chest installed. |
 | `chest import` | `--settings` or `--skills-lock`, `[path]` | Turns settings.json packages or a skills-lock.json into entries. |
 | `chest check [path]` | | Compares the capabilities that the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests in its `chest.toml` or `package.json`. `path` is the current folder by default. A `.wasm` file belongs to the nearest folder above it with either file. Fails when the package's `[package]` doesn't parse. |
 

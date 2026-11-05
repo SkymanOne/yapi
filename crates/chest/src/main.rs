@@ -280,6 +280,7 @@ pub fn print_report(report: &Report) {
             Outcome::Installed => "installed",
             Outcome::Replayed => "replayed",
             Outcome::Unchanged => "unchanged",
+            Outcome::Edited => "edited",
             Outcome::Skipped => "skipped",
             Outcome::Removed => "removed",
         };

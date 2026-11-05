@@ -50,7 +50,7 @@ The next install removes both.
 
 Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it didn't record when that copy already holds exactly what the lock pins. chest keeps its record in `~/.chest/state`, outside the project.
 
-When someone edits an item after chest installed it, chest leaves the item as it is and asks you to remove or restore it.
+When someone edits an item after chest installed it, chest leaves the item as it is, even when the lock now pins another version, and installs the other entries as usual. `chest install`, `chest update` and `chest list` show the entry as `edited`, and `chest verify` reports the item. To get the locked copy back, delete the item and run `chest install`. `chest install --frozen` fails on an edited item instead.
 
 ## Import from skills.sh
 

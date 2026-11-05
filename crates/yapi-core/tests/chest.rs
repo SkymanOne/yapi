@@ -248,7 +248,36 @@ async fn git_skill_locked_commit() {
     std::fs::create_dir_all(root.join("local/pdf")).unwrap();
     std::fs::write(root.join("local/pdf/SKILL.md"), "# local\n").unwrap();
     let patched = skill_manifest(&remote, "v1") + "\n[patch]\npdf = { path = \"local/pdf\" }\n";
-    sync(&mut open(&dir, &patched), Mode::Resolve).await;
+    let mut patch = open(&dir, &patched);
+    sync(&mut patch, Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
+    // An edited copy of a patched entry stays, except in a frozen install,
+    // and list and verify report it.
+    std::fs::write(canonical.join("SKILL.md"), "# local edit\n").unwrap();
+    let edit = format!(
+        "skills.pdf: {} was modified since chest installed it",
+        canonical.display()
+    );
+    let how = "delete it and run `chest install` to put back the locked copy";
+    assert_eq!(frozen(&mut patch).await.unwrap_err(), edit);
+    let entry = patch.manifest.skills["pdf"].clone();
+    assert_eq!(patch.state(Section::Skills, "pdf", &entry), "edited");
+    assert_eq!(patch.verify().unwrap(), std::slice::from_ref(&edit));
+    let report = sync(&mut patch, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
+    assert_eq!(
+        report.warnings,
+        [format!("{edit}, so chest left it as it is: {how}")]
+    );
+    std::fs::write(canonical.join("SKILL.md"), "# local\n").unwrap();
+    sync(&mut patch, Mode::Resolve).await;
+    // A deleted copy of a patched entry is missing, and a frozen install
+    // puts it back from the patch.
+    std::fs::remove_dir_all(&canonical).unwrap();
+    assert_eq!(patch.state(Section::Skills, "pdf", &entry), "missing");
+    let gone = format!("skills.pdf: {} is missing", canonical.display());
+    assert_eq!(patch.verify().unwrap(), [gone]);
+    frozen(&mut patch).await.unwrap();
     assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
@@ -271,16 +300,34 @@ async fn git_skill_locked_commit() {
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
 
-    // An installed copy the user edited is not replaced.
+    // An installed copy the user edited is not replaced, also once the lock
+    // moves, as an update or a teammate's lock moves it, nor at startup.
     std::fs::write(canonical.join("SKILL.md"), "# edited\n").unwrap();
-    let error = failed(&mut project, Mode::Update(Vec::new())).await;
-    assert!(
-        error.contains("was modified since chest installed it"),
-        "{error}"
-    );
-    assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
-    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
     let before = read(&project.lock_path());
+    let left = format!(
+        "skills.pdf: {} was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy",
+        canonical.display()
+    );
+    let entry = project.manifest.skills["pdf"].clone();
+    for mode in [
+        Mode::Update(Vec::new()),
+        Mode::Resolve,
+        Mode::Startup { offline: false },
+    ] {
+        let report = sync(&mut project, mode).await;
+        assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
+        assert_eq!(report.warnings, [left.as_str()]);
+        assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
+        let locked = &project.lock.as_ref().unwrap().skills[0];
+        assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+        assert_eq!(project.state(Section::Skills, "pdf", &entry), "edited");
+    }
+    let error = frozen(&mut project).await.unwrap_err();
+    assert!(error.ends_with(".agents/skills/pdf does not match the lock"));
+    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    std::fs::write(project.lock_path(), &before).unwrap();
     let report = sync(&mut project, Mode::Update(Vec::new())).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
@@ -323,6 +370,35 @@ async fn git_skill_locked_commit() {
         assert!(error.starts_with(expected), "{error}");
         assert!(!canonical.exists());
     }
+
+    // An edited extension stays too. yapi loads it while the lock pins what
+    // chest placed, and says it leaves it out once the lock moves on.
+    remote.commit(&[("tool/index.ts", "export default () => {};\n")], "tool");
+    let tool = format!(
+        "[extensions]\ntool = {{ git = \"{}\", rev = \"tool\", path = \"tool\" }}\n",
+        remote.source
+    );
+    let mut project = open(&dir, &tool);
+    sync(&mut project, Mode::Resolve).await;
+    let store = root.join(".yapi/chest/tool");
+    std::fs::write(store.join("index.ts"), "// mine\n").unwrap();
+    let left = format!(
+        "extensions.tool: {} was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy",
+        store.display()
+    );
+    let loads = |project: &Project| {
+        let inputs = installed_inputs(project, &root, &mut Vec::new());
+        !inputs.packages.is_empty()
+    };
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(report.warnings, [left.as_str()]);
+    assert!(loads(&project));
+    remote.commit(&[("tool/index.ts", "export default () => 2;\n")], "tool");
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(outcomes(&report), [("extensions.tool", Outcome::Edited)]);
+    let moved = format!("{left}, and until then yapi does not load it");
+    assert_eq!(report.warnings, [moved]);
+    assert!(!loads(&project));
 
     // Without `rev`, an entry follows the remote's default branch, also
     // once it is renamed.
@@ -1527,22 +1603,45 @@ async fn removed_entry_unplaced() {
     assert_eq!(read(&root.join(".agents/skills/mine/SKILL.md")), "# mine\n");
 
     // A link the user points at their own skill is theirs: not replaced,
-    // and not removed, with a warning.
+    // while other entries install, and not removed, with a warning.
     #[cfg(unix)]
     {
         let link = root.join(".claude/skills/notes");
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("../../.agents/skills/mine", &link).unwrap();
-        let error = failed(&mut open(&dir, manifest), Mode::Resolve).await;
-        assert!(
-            error.contains(".claude/skills/notes was modified since chest installed it"),
-            "{error}"
+        std::fs::create_dir_all(root.join("extra")).unwrap();
+        std::fs::write(root.join("extra/SKILL.md"), "# extra\n").unwrap();
+        let mut project = open(&dir, &format!("{manifest}extra = {{ path = \"extra\" }}\n"));
+        let report = sync(&mut project, Mode::Resolve).await;
+        assert_eq!(
+            outcomes(&report),
+            [
+                ("skills.notes", Outcome::Edited),
+                ("skills.extra", Outcome::Installed)
+            ]
         );
+        let edited = format!(
+            "skills.notes: {} was modified since chest installed it",
+            link.display()
+        );
+        assert_eq!(
+            report.warnings,
+            [format!(
+                "{edited}, so chest left it as it is: delete it and run `chest install` to put back the locked copy"
+            )]
+        );
+        assert_eq!(
+            read(&root.join(".claude/skills/extra/SKILL.md")),
+            "# extra\n"
+        );
+        let entry = project.manifest.skills["notes"].clone();
+        assert_eq!(project.state(Section::Skills, "notes", &entry), "edited");
+        assert_eq!(project.verify().unwrap(), [edited]);
         let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
         let report = sync(&mut open(&dir, empty), Mode::Resolve).await;
         assert!(
-            report.warnings.iter().any(|warning| warning.contains(
-                ".claude/skills/notes was modified since chest installed it, so it stays"
+            report.warnings.iter().any(|warning| warning.ends_with(
+                ".claude/skills/notes was modified since chest installed it, so chest left it as it is: delete it, or undo the edit and run `chest install` to remove it"
             )),
             "{report:?}"
         );
