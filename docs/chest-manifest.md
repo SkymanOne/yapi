@@ -13,7 +13,7 @@ chest picks one manifest per command:
 - chest uses `chest.toml` in the current folder, and only there.
 - `--manifest <path>` names another, and `CHEST_MANIFEST` sets the default for it.
 - An environment's manifest is a complete manifest of its own, such as `chest.dev.toml`. Its lock is the same name with `.lock` for `.toml`, here `chest.dev.lock`.
-- `-g` uses the global manifest, `~/.chest/chest.toml`.
+- `-g` uses the global manifest, `~/.chest/chest.toml`. It can't be combined with `--manifest`.
 - chest refuses a `chest.toml` or `chest.lock` that's a symbolic link, so a cloned project can't point chest at a file outside it.
 
 Paths in a manifest are relative to the manifest's folder. A project manifest keeps every folder inside the project. The global manifest may use `~` and absolute paths, and installs only inside your home folder.

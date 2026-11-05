@@ -57,8 +57,9 @@ impl ResourceType {
     }
 }
 
-/// pi's extension files, and yapi's native extensions.
-fn is_extension_file(name: &str) -> bool {
+/// Whether file `name` is an extension yapi loads: pi's extension files,
+/// and yapi's native extensions.
+pub fn is_extension_file(name: &str) -> bool {
     name.ends_with(".ts") || name.ends_with(".js") || name.ends_with(".wasm")
 }
 

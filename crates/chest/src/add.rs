@@ -3,21 +3,25 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, bail};
+use anyhow::bail;
 use clap::Args;
 use yapi_core::chest::Mode;
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta, valid_name,
 };
+use yapi_core::chest::startup::{package_identity, same_package};
 use yapi_core::extensions::{EventPolicy, Grants};
 use yapi_core::packages::npm::Npm;
+use yapi_core::packages::resolve::is_extension_file;
 use yapi_core::packages::source::{self, Source};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
-use crate::check::{Inspected, inspect, say_capped, unknown_capability, unsupported_import};
+use crate::check::{
+    Inspected, extension_file, inspect, say_capped, unknown_capability, unsupported_import,
+};
 use crate::prompt::Prompt;
-use crate::{Target, open, read, requests, say, source, sync, write};
+use crate::{Target, Usage, open, read, requests, say, source, sync, write};
 
 /// What `all` means, said before it is granted.
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
@@ -65,20 +69,47 @@ fn entry(args: &AddArgs, target: &Target) -> anyhow::Result<Entry> {
         path: args.path.clone(),
         ..Entry::default()
     };
+    let conflict = |message: String| Err(Usage(message).into());
     match parse(&args.source)? {
         Source::Npm { name, version, .. } => {
+            if args.rev.is_some() {
+                return conflict("--rev conflicts with an npm source: use --version".into());
+            }
+            if let (Some(version), Some(_)) = (&version, &args.version) {
+                return conflict(format!(
+                    "--version conflicts with the version `{version}` in the source: give one of them"
+                ));
+            }
             entry.npm = Some(name);
             entry.version = args.version.clone().or(version);
         }
         Source::Git {
             repo, reference, ..
         } => {
+            if args.version.is_some() {
+                return conflict("--version conflicts with a git source: use --rev".into());
+            }
+            if let (Some(reference), Some(_)) = (&reference, &args.rev) {
+                return conflict(format!(
+                    "--rev conflicts with the revision `{reference}` in the source: give one of them"
+                ));
+            }
             entry.git = Some(repo);
             entry.rev = args.rev.clone().or(reference);
         }
         Source::Local { path } => {
             if args.path.is_some() {
-                bail!("--path is for git and npm sources. Give the path itself as the source.");
+                return conflict(
+                    "--path is for git and npm sources. Give the path itself as the source.".into(),
+                );
+            }
+            if args.rev.is_some() || args.version.is_some() {
+                let flag = if args.rev.is_some() {
+                    "--rev"
+                } else {
+                    "--version"
+                };
+                return conflict(format!("{flag} conflicts with a path source"));
             }
             let absolute = std::path::absolute(&path)?;
             entry.path = Some(match target.scope {
@@ -153,8 +184,6 @@ fn item(root: &Path, entry: &Entry) -> PathBuf {
 /// package with extensions an extension.
 fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
     let item = item(root, entry);
-    let extension =
-        |name: &str| name.ends_with(".wasm") || name.ends_with(".ts") || name.ends_with(".js");
     let name = item.file_name().unwrap_or_default().to_string_lossy();
     if item.is_file() {
         let folder = item.parent().and_then(Path::file_name);
@@ -164,7 +193,7 @@ fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
         if name.ends_with(".md") {
             return Ok(Section::Agents);
         }
-        if extension(&name) {
+        if is_extension_file(&name) {
             return Ok(Section::Extensions);
         }
     }
@@ -279,19 +308,16 @@ fn meaning(capability: &str) -> &'static str {
     }
 }
 
-/// The capabilities to grant: `--grant`, where `none` is the empty start,
-/// then each requested or `used` one the person accepts. Requests that are
-/// not capabilities, such as `process`, are skipped with a warning, so they
-/// are never asked about or written.
+/// The capabilities to grant: `--grant`, which [`run`] checked, where
+/// `none` is the empty start, then each requested or `used` one the person
+/// accepts. Requests that are not capabilities, such as `process`, are
+/// skipped with a warning, so they are never asked about or written.
 fn grants(
     prompt: &Prompt,
     args: &AddArgs,
     meta: &PackageMeta,
     used: &[&str],
 ) -> anyhow::Result<Vec<String>> {
-    Grants::parse(&args.grant)
-        .map_err(anyhow::Error::msg)
-        .context("--grant")?;
     let mut granted: Vec<String> = args
         .grant
         .iter()
@@ -390,6 +416,7 @@ fn nested(root: &Path, name: &str) {
 
 /// Runs `chest add`.
 pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Result<()> {
+    let requested = Grants::parse(&args.grant).map_err(|err| Usage(format!("--grant: {err}")))?;
     let before = read(target)?;
     let mut document = ManifestDocument::parse(&before, target.scope)?;
     let mut entry = entry(&args, target)?;
@@ -423,6 +450,18 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
                 source(&old)
             );
         }
+        if !args.grant.is_empty() && section != Section::Extensions {
+            return Err(Usage("--grant is for extensions only".into()).into());
+        }
+        let current = Grants::parse(old.capabilities.as_deref().unwrap_or_default());
+        if !args.grant.is_empty() && current != Ok(requested) {
+            return Err(Usage(format!(
+                "{}.{name} keeps its grants, so --grant can't change them: edit its `capabilities` in {}",
+                section.key(),
+                target.name()
+            ))
+            .into());
+        }
         // The same source again moves its version or rev, keeping its grants.
         let updated = Entry {
             rev: entry.rev.clone().or(old.rev.clone()),
@@ -443,17 +482,48 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
             Some(section) => section,
             None => infer(&fetched.root, &entry)?,
         };
+        // Another entry for the package and `path`, or for the whole
+        // package beside one folder of it, would load it twice.
+        let identity = |entry: &Entry| {
+            package_identity(entry).ok_or_else(|| {
+                let path = entry.path.clone().unwrap_or_default();
+                Source::Local { path }.identity(&target.base())
+            })
+        };
+        let added = identity(&entry);
+        let same = |old: &Entry| match (identity(old), &added) {
+            (Ok(old), Ok(added)) => same_package(&old, added),
+            (old, added) => old == *added,
+        };
+        let mut entries = document.manifest().section(section).iter();
+        if let Some((other, old)) = entries.find(|(_, old)| same(old)) {
+            bail!(
+                "{}.{other} already installs {}: change that entry instead",
+                section.key(),
+                source(old)
+            );
+        }
         if section == Section::Skills && item(&fetched.root, &entry).is_file() {
             let shown = args.path.as_deref().unwrap_or(&args.source);
             bail!(
                 "{shown} is a single-file skill, and chest installs only skill folders that hold a SKILL.md"
             );
         }
+        if section == Section::Extensions {
+            let shown = args.path.as_deref().unwrap_or(&args.source);
+            extension_file(&item(&fetched.root, &entry), shown)?;
+        }
         let meta = package_meta(&fetched.root)?;
         show(&meta);
         nested(&fetched.root, &name);
         if section == Section::Extensions {
             let inspected = inspect(&item(&fetched.root, &entry));
+            if inspected.components.is_empty() && inspected.scripts.is_empty() {
+                let shown = args.path.as_deref().unwrap_or(&args.source);
+                bail!(
+                    "{shown} holds no extension. An extension folder needs an `index.ts` or `index.js`, an `extensions` folder, or a `package.json` or `chest.toml` that lists extension files it holds."
+                );
+            }
             show_used(&inspected);
             let prompt = Prompt::new(args.yes);
             let granted = grants(&prompt, &args, &meta, &inspected.used())?;
@@ -463,7 +533,7 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
                 say(&format!("note: {name} {warning}"));
             }
         } else if !args.grant.is_empty() {
-            bail!("--grant is for extensions only");
+            return Err(Usage("--grant is for extensions only".into()).into());
         }
         section
     };

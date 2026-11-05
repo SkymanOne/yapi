@@ -304,7 +304,9 @@ async fn add_writes_entry() {
         read(&scratch.project.join(".gitignore"))
             .contains(".agents/skills/pdf\n.claude/skills/pdf\n")
     );
-    // A git URL is a git source without `git:`.
+    // A git URL is a git source without `git:`. pdf goes first, since a
+    // second entry for its package and path is refused.
+    ok(&scratch, &["remove", "pdf"]);
     let url = remote.source.replace("git:localhost", "git://localhost");
     let args = ["add", &url, "--path", "skills/pdf", "--name", "url"];
     ok(&scratch, &args);
@@ -321,6 +323,12 @@ async fn add_writes_entry() {
     }
     let said = text(&ok(&scratch, &["add", "../pack"]));
     assert!(said.contains("installed  skills.pack"), "{said}");
+    let again = chest(&scratch, &["add", "../pack/", "--name", "pack2"], &[]);
+    assert!(
+        text(&again).contains("skills.pack already installs path ../pack:"),
+        "{}",
+        text(&again)
+    );
     for skill in ["one", "two"] {
         let placed = scratch.project.join(".agents/skills").join(skill);
         assert_eq!(read(&placed.join("SKILL.md")), format!("# {skill}\n"));
@@ -391,7 +399,11 @@ fn add_existing_entry() {
         ],
         "v1",
     );
-    remote.commit(&[("index.ts", "export default () => { /* 2 */ };\n")], "v2");
+    let v2 = [
+        ("index.ts", "export default () => { /* 2 */ };\n"),
+        ("ext-a/index.ts", "export default () => {};\n"),
+    ];
+    remote.commit(&v2, "v2");
     init(&scratch);
     ok(
         &scratch,
@@ -425,6 +437,28 @@ fn add_existing_entry() {
         read(&scratch.project.join(".yapi/chest/todo/index.ts")),
         "export default () => { /* 2 */ };\n"
     );
+    // `--grant` must parse, and may only repeat the grants it keeps.
+    let again = |grant: &str| {
+        let args = ["add", &remote.source, "--name", "todo", "--grant", grant];
+        chest(&scratch, &[&args[..], &["--yes"]].concat(), &[])
+    };
+    for (grant, error) in [
+        (
+            "net",
+            "extensions.todo keeps its grants, so --grant can't change them: edit its `capabilities` in chest.toml",
+        ),
+        ("bogus", "--grant: unknown capability \"bogus\""),
+        (
+            "none,fs",
+            "--grant: \"none\" cannot be combined with other capabilities",
+        ),
+    ] {
+        let output = again(grant);
+        assert_eq!(output.status.code(), Some(2), "{grant}: {}", text(&output));
+        assert!(text(&output).contains(error), "{grant}: {}", text(&output));
+        assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    }
+    assert!(again("fs").status.success());
     // Another source under the same name is refused, and nothing changes.
     let clash = chest(
         &scratch,
@@ -438,7 +472,37 @@ fn add_existing_entry() {
         text(&clash)
     );
     assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // So is the same package under another name, whatever its rev.
+    let twice = chest(
+        &scratch,
+        &[
+            "add",
+            &format!("{}@v1", remote.source),
+            "--name",
+            "todo2",
+            "--yes",
+        ],
+        &[],
+    );
+    assert_eq!(twice.status.code(), Some(1));
+    let installs = format!(
+        "extensions.todo already installs git {} v2: change that entry instead",
+        remote
+            .source
+            .replace("git:", "https://")
+            .trim_end_matches(".git")
+    );
+    assert!(text(&twice).contains(&installs), "{}", text(&twice));
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // And one folder of it, which would load beside the whole package.
+    let v2 = format!("{}@v2", remote.source);
+    let args = ["add", &v2, "--path", "ext-a", "--name", "part", "--yes"];
+    let part = chest(&scratch, &args, &[]);
+    assert_eq!(part.status.code(), Some(1), "{}", text(&part));
+    assert!(text(&part).contains(&installs), "{}", text(&part));
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
     // Granting `all` says what it means, asked or not.
+    ok(&scratch, &["remove", "todo"]);
     let all = ok(
         &scratch,
         &[
@@ -469,6 +533,7 @@ fn add_rejects_misuse() {
     let git = format!("{}@v2", remote.source);
     let single =
         "is a single-file skill, and chest installs only skill folders that hold a SKILL.md";
+    let not_extension = "is not an extension: extension files end in `.ts`, `.js` or `.wasm`";
     let cases: Vec<(Vec<&str>, i32, String)> = vec![
         (
             vec!["add", &git, "--path", "skills/single.md"],
@@ -494,6 +559,57 @@ fn add_rejects_misuse() {
             vec!["add", "git://localhost/repo"],
             1,
             "git://localhost/repo is not a git repository chest can read".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf", "--extension"],
+            1,
+            "skills/pdf holds no extension. An extension folder needs an `index.ts` or `index.js`, an `extensions` folder, or a `package.json` or `chest.toml` that lists extension files it holds.".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf/SKILL.md", "--extension"],
+            1,
+            format!("skills/pdf/SKILL.md {not_extension}"),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md", "--extension"],
+            1,
+            format!("../loose/skills/single.md {not_extension}"),
+        ),
+        // Flags that conflict with the source are usage errors.
+        (
+            vec!["add", &git, "--rev", "v1"],
+            2,
+            "--rev conflicts with the revision `v2` in the source: give one of them".into(),
+        ),
+        (
+            vec!["add", &remote.source, "--version", "1"],
+            2,
+            "--version conflicts with a git source: use --rev".into(),
+        ),
+        (
+            vec!["add", "npm:pdf", "--rev", "v1"],
+            2,
+            "--rev conflicts with an npm source: use --version".into(),
+        ),
+        (
+            vec!["add", "npm:pdf@1", "--version", "2"],
+            2,
+            "--version conflicts with the version `1` in the source: give one of them".into(),
+        ),
+        (
+            vec!["add", "../loose", "--version", "1"],
+            2,
+            "--version conflicts with a path source".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf", "--grant", "fs"],
+            2,
+            "--grant is for extensions only".into(),
+        ),
+        (
+            vec!["-g", "--manifest", "chest.toml", "list"],
+            2,
+            "the argument '--global' cannot be used with '--manifest <PATH>'".into(),
         ),
     ];
     for (args, code, message) in &cases {
@@ -755,6 +871,10 @@ fn global_scope_home() {
     );
     assert!(scratch.home.join(".chest/chest.lock").exists());
     assert!(scratch.home.join(".chest/state/global.toml").exists());
+    // `-g` ignores CHEST_MANIFEST, which names a project's manifest.
+    let dev = [("CHEST_MANIFEST", "chest.dev.toml")];
+    let listed = text(&chest(&scratch, &["-g", "list"], &dev));
+    assert!(listed.starts_with("skills.pdf  "), "{listed}");
     assert!(!scratch.home.join(".gitignore").exists());
     assert!(
         !scratch.project.join("chest.toml").exists()

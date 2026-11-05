@@ -11,7 +11,7 @@ chest add npm:@acme/pi-subagent --grant all
 chest add git:github.com/acme/pi-todo --grant fs
 ```
 
-`chest add` treats a source as an extension when it's a `.wasm`, `.ts` or `.js` file, or a package that provides extensions or has an `index.ts` or `index.js`. Pass `--extension` when chest can't tell.
+`chest add` treats a source as an extension when it's a `.wasm`, `.ts` or `.js` file, or a package that provides extensions or has an `index.ts` or `index.js`. Pass `--extension` when chest can't tell. chest refuses a source that holds no extension, even with `--extension`.
 
 ## Grant capabilities
 

@@ -31,7 +31,7 @@ use yapi_core::tools::path::home_dir;
 )]
 struct Cli {
     /// Use the global manifest, ~/.chest/chest.toml.
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "manifest")]
     global: bool,
     /// Use this manifest instead of chest.toml in the current folder.
     /// CHEST_MANIFEST sets the default.
@@ -83,6 +83,19 @@ enum Command {
     },
 }
 
+/// A usage error that clap cannot see, such as a flag that conflicts with
+/// the source. chest exits with 2 on it, as on clap's own.
+#[derive(Debug)]
+pub struct Usage(pub String);
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Usage {}
+
 /// The manifest a command works on.
 pub struct Target {
     /// Its path.
@@ -121,7 +134,10 @@ fn main() -> ExitCode {
         // Errors quote the manifest and lock, and git's stderr keeps its lines.
         let error = printable(&format!("{err:#}"), &['\t', '\n']);
         let _ = writeln!(std::io::stderr(), "error: {error}");
-        ExitCode::FAILURE
+        match err.is::<Usage>() {
+            true => ExitCode::from(2),
+            false => ExitCode::FAILURE,
+        }
     })
 }
 

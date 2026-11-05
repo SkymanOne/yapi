@@ -8,7 +8,7 @@ use anyhow::bail;
 use yapi_core::chest::manifest::{PackageMeta, package_meta};
 use yapi_core::chest::wasm::{Capabilities, capabilities};
 use yapi_core::extensions::Grants;
-use yapi_core::packages::resolve::{ResourceType, package_resources};
+use yapi_core::packages::resolve::{ResourceType, is_extension_file, package_resources};
 use yapi_core::tools::path::relative;
 
 use crate::say;
@@ -97,6 +97,16 @@ pub fn inspect(item: &Path) -> Inspected {
         }
     }
     inspected
+}
+
+/// Fails unless `item`, which the error calls `shown`, is a folder or a
+/// file yapi loads as an extension.
+pub fn extension_file(item: &Path, shown: &str) -> anyhow::Result<()> {
+    let name = item.file_name().unwrap_or_default().to_string_lossy();
+    if item.is_file() && !is_extension_file(&name) {
+        bail!("{shown} is not an extension: extension files end in `.ts`, `.js` or `.wasm`");
+    }
+    Ok(())
 }
 
 /// The folder of the package that holds `item`: `item` itself when it is a
