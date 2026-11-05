@@ -69,17 +69,16 @@ pub fn install_location(source: &Source, base: &Path) -> PathBuf {
 /// pi's `DefaultPackageManager.resolve` for the settings of the project in
 /// `project_root` and of `agent_dir`: every resource of installed packages,
 /// settings entries and the discovered directories, each enabled or not,
-/// with `builtins` as the built-in extensions. Packages that are not
-/// installed are left out. `extra` packages, such as chest's, follow the
-/// settings' packages of their scope, the project's before the user's, and
-/// `skills` are skill folders placed for them.
+/// with `builtins` as the built-in extensions, and the packages and placed
+/// skills that `chest` installed. Packages that are not installed are left
+/// out, and so is each copy of a package that another source installs too,
+/// as [`LeftOut`](crate::chest::startup::LeftOut) decides.
 pub fn resolve_resources(
     project_root: &Path,
     agent_dir: &Path,
     settings: &SettingsManager,
     builtins: &[&str],
-    extra: &[resolve::PackageInput],
-    skills: &[resolve::PackageInput],
+    chest: &crate::chest::startup::Installed,
 ) -> resolve::ResolvedPaths {
     let project_dir = project_root.join(PROJECT_DIR);
     let base = |scope: &str| {
@@ -89,17 +88,32 @@ pub fn resolve_resources(
             agent_dir.to_path_buf()
         }
     };
+    let project_only = crate::config::project_only()
+        .then(|| resolve::ProjectOnly::from_settings(settings.document(Scope::Global)));
+    let left_out =
+        crate::chest::startup::LeftOut::new(chest, settings, project_only.as_ref(), agent_dir);
+    let kept = |scope: Scope| {
+        let mut packages = settings_packages(settings, scope);
+        packages.retain(|entry| {
+            entry_source(entry).is_none_or(|source| !left_out.settings(scope, source))
+        });
+        packages
+    };
     let mut packages = resolve::package_inputs(
-        &settings_packages(settings, Scope::Project),
-        &settings_packages(settings, Scope::Global),
+        &kept(Scope::Project),
+        &kept(Scope::Global),
         base,
         |source, scope| install_location(source, &base(scope)),
     );
-    packages.extend(extra.iter().cloned());
+    packages.extend(
+        chest
+            .packages
+            .iter()
+            .filter(|input| !left_out.chest(input))
+            .cloned(),
+    );
     let user = resolve::settings_lists(settings.document(Scope::Global));
     let project = resolve::settings_lists(settings.document(Scope::Project));
-    let project_only = crate::config::project_only()
-        .then(|| resolve::ProjectOnly::from_settings(settings.document(Scope::Global)));
     resolve::resolve(&resolve::ResolveInput {
         cwd: project_root.to_path_buf(),
         agent_dir: agent_dir.to_path_buf(),
@@ -107,7 +121,7 @@ pub fn resolve_resources(
         home: crate::tools::path::home_dir(),
         project_trusted: settings.project_trusted(),
         packages,
-        skills: skills.to_vec(),
+        skills: chest.skills.clone(),
         user: [&user[0], &user[1], &user[2], &user[3]],
         project: [&project[0], &project[1], &project[2], &project[3]],
         builtins,

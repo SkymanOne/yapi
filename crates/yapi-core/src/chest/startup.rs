@@ -5,7 +5,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use yapi_types::settings::FilteredPackage;
+use serde::Deserialize as _;
+use yapi_types::settings::{DefaultProjectTrust, FilteredPackage};
 
 use super::fetch::placed_name;
 use super::lock::fresh;
@@ -18,6 +19,7 @@ use crate::packages::resolve::{
 };
 use crate::settings::{Scope, SettingsManager};
 use crate::tools::path::home_dir;
+use crate::trust::{TrustStore, resolve_trusted};
 
 /// The project manifest of `project_root`: the file [`MANIFEST_ENV`] names
 /// relative to it, else `chest.toml`. `None` when the variable names a file
@@ -221,9 +223,9 @@ pub struct Installed {
     /// those whose folder holds too much, which run with no grant if
     /// something else loads them.
     pub closed: Vec<PathBuf>,
-    /// The package identity of each loaded npm or git extension entry, such
-    /// as `npm:@acme/todo`, with the entry's name, its manifest's path, and
-    /// whether that is the user's global manifest.
+    /// The [`package_identity`] of each loaded npm or git extension entry,
+    /// such as `npm:@acme/todo`, with the entry's name, its manifest's path,
+    /// and whether that is the user's global manifest.
     pub identities: Vec<(String, String, String, bool)>,
 }
 
@@ -246,63 +248,218 @@ pub fn reads_global(settings: &SettingsManager) -> bool {
             .needs_chest()
 }
 
-/// Problems, by manifest path, for each package that two managers install
-/// so that both copies load: a chest extension entry and a `packages` entry
-/// of `settings`, or entries of the project and the global manifest. With
-/// `keep`, a project-only run's keep list, a global copy it leaves out
-/// doesn't count.
+/// One install of an npm or git package, as [`LeftOut`] compares them.
+#[derive(Clone, Debug, PartialEq)]
+enum Install {
+    /// A chest extension entry: its name, its manifest's path, and whether
+    /// that is the user's global manifest.
+    Chest {
+        name: String,
+        path: String,
+        global: bool,
+    },
+    /// A `packages` entry of a scope's settings, by its source.
+    Settings { scope: Scope, source: String },
+}
+
+/// The copies a run leaves out of each npm or git package that several
+/// sources install, so it loads once, from the first of: the project's
+/// manifest, the project's settings `packages`, the global manifest and the
+/// global settings `packages`. Of two entries of one manifest, the first
+/// loads. pi's own rules decide between two settings copies.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LeftOut(Vec<(Install, Install)>);
+
+impl LeftOut {
+    /// The copies left out of `installed` and the packages of `settings`,
+    /// each with the copy that loads instead. With `keep`, a project-only
+    /// run's keep list, a global copy that only a kind list keeps comes
+    /// after the copies the run keeps whole, and one it keeps no file of
+    /// doesn't count. Global paths are relative to `agent_dir`.
+    pub fn new(
+        installed: &Installed,
+        settings: &SettingsManager,
+        keep: Option<&ProjectOnly>,
+        agent_dir: &Path,
+    ) -> LeftOut {
+        let rank = |source: &str, global: bool| match keep {
+            Some(keep) if global && !keep.keeps_package(source, agent_dir) => {
+                keep.needs_package(source, agent_dir).then_some(1)
+            }
+            _ => Some(0),
+        };
+        let chest = |global: bool| {
+            let identities = installed.identities.iter();
+            identities
+                .filter(move |(_, _, _, other)| *other == global)
+                .filter_map(move |(id, name, path, global)| {
+                    let rank = rank(&format!("chest:{name}"), *global)?;
+                    let (name, path, global) = (name.clone(), path.clone(), *global);
+                    Some((rank, id.clone(), Install::Chest { name, path, global }))
+                })
+        };
+        let from_settings = |scope: Scope| {
+            let packages = crate::packages::settings_packages(settings, scope);
+            let sources = packages
+                .iter()
+                .filter_map(crate::packages::entry_source)
+                .filter_map(|source| {
+                    let rank = rank(source, scope == Scope::Global)?;
+                    let id = crate::packages::source::parse(source).identity(Path::new(""));
+                    let source = source.to_owned();
+                    Some((rank, id, Install::Settings { scope, source }))
+                });
+            sources.collect::<Vec<_>>()
+        };
+        let mut copies: Vec<(u8, String, Install)> = chest(false)
+            .chain(from_settings(Scope::Project))
+            .chain(chest(true))
+            .chain(from_settings(Scope::Global))
+            .collect();
+        // Two settings copies are pi's to decide.
+        let pair = |a: &Install, b: &Install| {
+            !matches!((a, b), (Install::Settings { .. }, Install::Settings { .. }))
+        };
+        if let Some(keep) = keep {
+            // A global copy's files are read only when it collides.
+            let home = home_dir();
+            let input = |copy: &Install| match copy {
+                Install::Chest { name, .. } => {
+                    let source = format!("chest:{name}");
+                    let mut inputs = installed.packages.iter();
+                    let found =
+                        inputs.find(|input| input.scope == "user" && input.source == source);
+                    found.cloned()
+                }
+                Install::Settings { source, .. } => {
+                    let global = crate::packages::settings_packages(settings, Scope::Global);
+                    let inputs = crate::packages::resolve::package_inputs(
+                        &[],
+                        &global,
+                        |_| agent_dir.to_path_buf(),
+                        |source, _| crate::packages::install_location(source, agent_dir),
+                    );
+                    inputs.into_iter().find(|input| input.source == *source)
+                }
+            };
+            let counts: Vec<bool> = copies
+                .iter()
+                .enumerate()
+                .map(|(index, (rank, id, copy))| {
+                    let mut others = copies.iter().enumerate();
+                    *rank == 0
+                        || !others.any(|(other_index, (_, other, install))| {
+                            other_index != index && same_package(id, other) && pair(copy, install)
+                        })
+                        || input(copy)
+                            .is_some_and(|input| keep.keeps_part(&input, agent_dir, &home))
+                })
+                .collect();
+            let copies_counts = copies.into_iter().zip(counts);
+            copies = copies_counts
+                .filter_map(|(copy, counts)| counts.then_some(copy))
+                .collect();
+        }
+        // Stable, so each rank keeps the order above.
+        copies.sort_by_key(|(rank, ..)| *rank);
+        let mut left_out = Vec::new();
+        // Only copies that load count, as a whole package overlaps two of
+        // its folders that don't overlap each other.
+        let mut loaded: Vec<(&str, &Install)> = Vec::new();
+        for (_, id, copy) in &copies {
+            let kept = loaded.iter().find(|(other, _)| same_package(other, id));
+            match kept {
+                Some((_, kept)) if pair(kept, copy) => {
+                    left_out.push((copy.clone(), (*kept).clone()));
+                }
+                _ => loaded.push((id, copy)),
+            }
+        }
+        LeftOut(left_out)
+    }
+
+    /// Whether chest's package `input` is left out.
+    pub fn chest(&self, input: &PackageInput) -> bool {
+        self.0.iter().any(|(copy, _)| match copy {
+            Install::Chest { name, global, .. } => {
+                input.source == format!("chest:{name}") && (input.scope == "user") == *global
+            }
+            Install::Settings { .. } => false,
+        })
+    }
+
+    /// Whether the `packages` entry of `scope`'s settings with `source` is
+    /// left out.
+    pub fn settings(&self, scope: Scope, source: &str) -> bool {
+        let copy = Install::Settings {
+            scope,
+            source: source.to_owned(),
+        };
+        self.0.iter().any(|(left_out, _)| *left_out == copy)
+    }
+
+    /// A warning for each copy left out, by the path of the chest manifest
+    /// involved, that says which copy loads and how to remove the other.
+    /// With `approve`, the command for a project's settings trusts the
+    /// project for that command.
+    pub fn problems(&self, approve: bool) -> Vec<(String, String)> {
+        let place = |copy: &Install| match copy {
+            Install::Chest { name, path, .. } => format!("extensions.{name} in {path}"),
+            Install::Settings { scope, source } => match scope {
+                Scope::Project => format!("{source} in the project's settings"),
+                Scope::Global => format!("{source} in the global settings"),
+            },
+        };
+        let local = match approve {
+            true => "yapi remove -l --approve",
+            false => "yapi remove -l",
+        };
+        let problems = self.0.iter().map(|(copy, kept)| {
+            let remove = match copy {
+                Install::Chest { name, global, .. } => match global {
+                    true => format!("chest -g remove {name}"),
+                    false => format!("chest remove {name}"),
+                },
+                Install::Settings { scope, source } => match scope {
+                    Scope::Project => format!("{local} {source}"),
+                    Scope::Global => format!("yapi remove {source}"),
+                },
+            };
+            let message = format!(
+                "{} is left out, because {} installs the same package: remove it with `{remove}`",
+                place(copy),
+                place(kept),
+            );
+            // Two settings copies are pi's to decide, so one is chest's.
+            let path = match (copy, kept) {
+                (Install::Chest { path, .. }, _) | (_, Install::Chest { path, .. }) => path.clone(),
+                _ => String::new(),
+            };
+            (escaped(&path), escaped(&message))
+        });
+        problems.collect()
+    }
+}
+
+/// The warnings, by manifest path, for each copy of a package that a run
+/// leaves out because another source installs it too, as [`LeftOut`]
+/// decides. Their `yapi remove -l` commands take `--approve` unless the
+/// project of `settings` is trusted without it, by the decisions in
+/// `agent_dir` or the global `defaultProjectTrust`.
 pub fn duplicates(
     installed: &Installed,
     settings: &SettingsManager,
     keep: Option<&ProjectOnly>,
+    agent_dir: &Path,
 ) -> Vec<(String, String)> {
-    let loads = |source: &str, global: bool| {
-        !global || keep.is_none_or(|keep| keep.keeps_package(source, Path::new("")))
-    };
-    let identities: Vec<_> = installed
-        .identities
-        .iter()
-        .filter(|(_, name, _, global)| loads(&format!("chest:{name}"), *global))
-        .collect();
-    let mut problems = Vec::new();
-    for scope in [Scope::Project, Scope::Global] {
-        for package in crate::packages::settings_packages(settings, scope) {
-            let Some(source) = crate::packages::entry_source(&package) else {
-                continue;
-            };
-            if !loads(source, scope == Scope::Global) {
-                continue;
-            }
-            let id = crate::packages::source::parse(source).identity(Path::new(""));
-            for (other, name, path, _) in &identities {
-                if *other == id {
-                    problems.push((
-                        path.clone(),
-                        format!(
-                            "extensions.{name} is also in the packages of settings as {source}, so both copies load: remove one of them"
-                        ),
-                    ));
-                }
-            }
-        }
-    }
-    for (index, (id, name, path, _)) in identities.iter().enumerate() {
-        let earlier = identities[..index]
-            .iter()
-            .find(|(other, _, other_path, _)| other == id && other_path != path);
-        if let Some((_, other, other_path, _)) = earlier {
-            problems.push((
-                path.clone(),
-                format!(
-                    "extensions.{name} installs the same package as extensions.{other} in {other_path}, so both copies load: remove one of them"
-                ),
-            ));
-        }
-    }
-    problems
-        .into_iter()
-        .map(|(path, message)| (escaped(&path), escaped(&message)))
-        .collect()
+    // As `yapi remove -l` decides it, without this run's `--approve`.
+    let default = settings
+        .document(Scope::Global)
+        .get("defaultProjectTrust")
+        .and_then(|value| DefaultProjectTrust::deserialize(value).ok());
+    let store = TrustStore::new(agent_dir);
+    let trusted = resolve_trusted(settings.project_dir(), &store, None, default);
+    LeftOut::new(installed, settings, keep, agent_dir).problems(!trusted.unwrap_or(false))
 }
 
 /// What chest gives one run of yapi, with the problems to show by manifest
@@ -323,6 +480,40 @@ impl Loaded {
     fn warn(&mut self, (path, message): (String, String)) {
         self.problems.push((escaped(&path), escaped(&message)));
     }
+}
+
+/// The package that npm or git extension entry `entry` installs, as
+/// [`LeftOut`] compares copies: `npm:<name>` or `git:<host>/<path>`, as
+/// settings packages are matched. An entry with `path` takes one folder of
+/// it, which `#<path>` names, without `.` or empty segments.
+pub fn package_identity(entry: &Entry) -> Option<String> {
+    let package = match (&entry.npm, &entry.git) {
+        (Some(npm), _) => format!("npm:{npm}"),
+        (None, Some(git)) => {
+            crate::packages::source::parse(&format!("git:{git}")).identity(Path::new(""))
+        }
+        (None, None) => return None,
+    };
+    let path = entry.path.iter().flat_map(|path| path.split('/'));
+    let path: Vec<&str> = path
+        .filter(|segment| !matches!(*segment, "" | "."))
+        .collect();
+    Some(match path.is_empty() {
+        true => package,
+        false => format!("{package}#{}", path.join("/")),
+    })
+}
+
+/// Whether two [`package_identity`] values, or settings identities, name
+/// copies of one package: the same package and `path`, or the whole package
+/// and one folder of it. Two `path`s of one package are two packages.
+pub fn same_package(a: &str, b: &str) -> bool {
+    let folder_of = |whole: &str, folder: &str| {
+        folder
+            .strip_prefix(whole)
+            .is_some_and(|rest| rest.starts_with('#'))
+    };
+    a == b || folder_of(a, b) || folder_of(b, a)
 }
 
 /// The extensions and skills `project` has installed, locked and up to
@@ -411,15 +602,9 @@ pub fn installed_inputs(
         };
         let key = (scope.to_owned(), source.clone());
         installed.policies.insert(key, policy);
-        let identity = match (&entry.npm, &entry.git) {
-            (Some(npm), _) => Some(format!("npm:{npm}")),
-            (None, Some(git)) => {
-                let parsed = crate::packages::source::parse(&format!("git:{git}"));
-                Some(parsed.identity(Path::new("")))
-            }
-            (None, None) => None,
-        };
-        if let Some(identity) = identity.filter(|_| !patched) {
+        // A patched entry still installs its package, so its patch loads in
+        // place of other copies.
+        if let Some(identity) = package_identity(entry) {
             let path = project.path.display().to_string();
             let global = project.scope == Scope::Global;
             installed

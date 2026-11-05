@@ -90,24 +90,10 @@ async fn configure(local: bool, trust: Option<bool>) -> anyhow::Result<u8> {
     // manifest's alone, then the project's too when it is trusted.
     let chest = |trusted| yapi_core::chest::startup::installed(&cwd, trusted, true).installed;
     let user_chest = chest(false);
-    let global = resolve_resources(
-        &cwd,
-        &agent_dir,
-        &global_settings,
-        &builtins,
-        &user_chest.packages,
-        &user_chest.skills,
-    );
+    let global = resolve_resources(&cwd, &agent_dir, &global_settings, &builtins, &user_chest);
     let project = if trusted {
         let both = chest(true);
-        resolve_resources(
-            &cwd,
-            &agent_dir,
-            &settings,
-            &builtins,
-            &both.packages,
-            &both.skills,
-        )
+        resolve_resources(&cwd, &agent_dir, &settings, &builtins, &both)
     } else {
         global.clone()
     };

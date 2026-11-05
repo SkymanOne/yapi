@@ -710,8 +710,7 @@ fn build(
             &agent_dir,
             &settings,
             &BUILTINS,
-            &chest.installed.packages,
-            &chest.installed.skills,
+            &chest.installed,
         );
         &fresh
     };
@@ -1192,8 +1191,9 @@ async fn start_extensions(
             let _ = install_failed(&project_dir.display().to_string(), message);
         });
     }
+    let settings = packages.settings();
     for (path, message) in
-        yapi_core::chest::startup::duplicates(&chest.installed, packages.settings(), keep.as_ref())
+        yapi_core::chest::startup::duplicates(&chest.installed, settings, keep.as_ref(), &agent_dir)
     {
         let _ = install_failed(&path, message);
     }
@@ -1251,8 +1251,7 @@ async fn start_extensions(
         &agent_dir,
         packages.settings(),
         &BUILTINS,
-        &chest.installed.packages,
-        &chest.installed.skills,
+        &chest.installed,
     );
     for (folder, message) in &resolved.problems {
         let _ = install_failed(folder, message.clone());

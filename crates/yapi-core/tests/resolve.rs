@@ -530,6 +530,53 @@ fn project_only_keeps() {
         .collect();
     assert_eq!(sources, [("project", "auto")]);
     assert!(resolved.shadowed.is_empty(), "{:?}", resolved.shadowed);
+
+    // Without the mode, a project chest skill, placed in a folder yapi
+    // reads, and a project chest extension come before the user's folders,
+    // which can hold a skill or a tool of the same name.
+    let input = ResolveInput {
+        cwd: root.join("project"),
+        agent_dir: root.join("agent"),
+        project_dir: root.join("project/.yapi"),
+        home: root.join("home"),
+        project_trusted: true,
+        packages: vec![PackageInput {
+            scope: "project".into(),
+            ..package("chest:notes", "notes")
+        }],
+        skills: vec![PackageInput {
+            scope: "project".into(),
+            ..package("chest:ps", "project/.agents/skills/ps")
+        }],
+        ..ResolveInput::default()
+    };
+    let resolved = resolve(&input);
+    let order = |kind| -> Vec<(String, String)> {
+        let infos = resolved
+            .enabled(kind)
+            .filter(|info| info.source != "builtin");
+        let relative = |info: &yapi_types::rpc::SourceInfo| {
+            let path = Path::new(&info.path).strip_prefix(&root).unwrap();
+            (path.display().to_string(), info.source.clone())
+        };
+        infos.map(relative).collect()
+    };
+    let pair = |path: &str, source: &str| (path.to_owned(), source.to_owned());
+    assert_eq!(
+        order(ResourceType::Skills),
+        [
+            pair("project/.agents/skills/ps/SKILL.md", "chest:ps"),
+            pair("home/.agents/skills/pdf/SKILL.md", "auto"),
+        ]
+    );
+    assert_eq!(
+        order(ResourceType::Extensions),
+        [
+            pair("notes/n.ts", "chest:notes"),
+            pair("project/.yapi/extensions/p.ts", "auto"),
+            pair("agent/extensions/global.ts", "auto"),
+        ]
+    );
 }
 
 /// The `projectOnly` setting, and how it matches one resource.

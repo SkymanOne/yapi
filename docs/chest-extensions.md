@@ -75,20 +75,53 @@ When a native extension uses a capability its entry doesn't grant, yapi warns at
 
 yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn't read on its own, such as `.claude/skills`. A skill in a folder yapi also reads on its own, such as `.agents/skills`, loads once, as chest's.
 
+When two skills share a name, the first one yapi loads keeps it, as in Pi. Load order also decides which extension a tool conflict names. yapi loads resources in this order:
+
+1. The paths that the project's settings list under `skills`, `extensions`, `prompts` and `themes`
+2. The project's chest entries
+3. The project's folders that yapi reads on its own, such as `.yapi/skills` and `.agents/skills`
+4. The paths that your global settings list under those keys
+5. The entries of `~/.chest/chest.toml`
+6. The global folders, such as `~/.agents/skills` and the agent folder's `skills` and `extensions`
+7. The packages from settings, in Pi's order
+
+So a skill that the project's settings list, such as with `"skills": ["../hand-skills"]`, keeps its name over a project chest skill.
+
 yapi never removes placed copies. After you remove an entry from the manifest, or while its lock is stale, its copies in folders yapi reads on its own, such as `.agents/skills`, keep loading until `chest install` removes them.
 
 Before it opens, `yapi config` puts back missing entries as a run does. It lists chest's extensions and skills as a run loads them, marked as managed by chest. Space leaves them alone, because the manifest decides what loads. In the Global Resources view, `ctrl+o` can still keep a global chest item in [project-only runs](project-only.md). [Project packages from chest](configuration.md#project-packages-from-chest) lists the files.
 
 ## When a package is installed both ways
 
-A package can be a chest entry and also a `packages` entry in settings, such as after `chest import --settings` or a `yapi install` of a package the project's manifest lists. yapi then loads both copies: the chest entry's with the capabilities it grants, and the other with every grant. Both register the same tools and run the same hooks.
+A package can be a chest entry and also a `packages` entry in settings, such as after `chest import --settings` or a `yapi install` of a package the project's manifest lists. Two copies would register the same tools, and a tool registered twice stops yapi, as in Pi. So yapi loads an npm or git package once, from the first of these that installs it:
 
-The project's packages, from its manifest and its settings, load before your global ones, so the project's copy wins its tool and skill names. yapi warns at startup about each package installed both ways, and about a package that both the project's manifest and `~/.chest/chest.toml` install. Remove one of the two, with `yapi remove <source>` or by deleting the chest entry.
+1. The project's manifest
+2. The project's settings
+3. `~/.chest/chest.toml`
+4. Your global settings
+
+Two entries of one manifest that install the same package count too, and the first one loads. An entry with `path` takes one folder of its package. It's the same package as a copy of the whole package, and as an entry with the same source and `path`, however the `path` is spelled, such as `ext-a`, `./ext-a` or `ext-a/`. Two entries that take different folders of one repository both load. An entry with a [`[patch]`](chest-manifest.md#patch) counts as the package it names, so when it loads, its patch loads in place of the other copies.
+
+In a [project-only run](project-only.md), a global copy counts only when the run keeps something of it: `projectOnly.packages` keeps it, or a pattern under `extensions`, `skills`, `prompts` or `themes` matches one of its files. The project's copies and the global copies that `packages` keeps come first, in the order above. A global copy that only a pattern keeps comes after them. So a package that `packages` keeps loads whole, and a pattern that names one copy's file keeps that copy.
+
+yapi leaves out the other copies and warns about each one at startup, with the command that removes it:
+
+- `yapi remove -l <source>` for a copy in the project's settings, with `--approve` while your trust in the project isn't saved
+- `yapi remove <source>` for a copy in your global settings
+- `chest remove <name>` for an entry of the project's manifest
+- `chest -g remove <name>` for an entry of `~/.chest/chest.toml`
+
+Between the project's settings and yours, Pi's rule applies, and the project's entry wins. A path package installed both ways names the same files, so they load once, with the chest entry's capabilities.
 
 ## Import packages from settings.json
 
 `chest import --settings` turns the packages of `.yapi/settings.json` into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
 
-Import leaves `settings.json` alone. For each package it imports, it prints the `yapi remove -l` command to run once chest installs it. With `-g`, it imports the agent folder's `settings.json` and prints `yapi remove` without `-l`.
+Import leaves `settings.json` alone. For each package it imports, it prints the `yapi remove -l` command to run once chest installs it. Run it from the project folder, since `-l` edits the `.yapi/settings.json` of the folder you run it in. With `-g`, it imports the agent folder's `settings.json` and prints `yapi remove` without `-l`, which works from any folder.
 
-After importing, narrow each entry's capabilities and run `chest install`. Then run the `yapi remove` commands that import printed.
+After importing, narrow each entry's capabilities and run `chest install` right away. Then run the `yapi remove` commands that import printed. Until `chest install` locks an entry, yapi leaves it out:
+
+- An npm or git package loads from the copy in settings, with every capability.
+- A path package's files belong to the chest entry, which doesn't load yet, so they run with no capabilities. That's on purpose: a file that chest manages never runs with more than its entry grants.
+
+Once chest installs an entry, yapi loads chest's copy and leaves out the one in settings, with a warning, until you remove it.

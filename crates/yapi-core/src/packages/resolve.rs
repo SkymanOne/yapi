@@ -977,12 +977,14 @@ fn auto_discovered(input: &ResolveInput<'_>, acc: &mut ResolvedPaths) {
     }
 }
 
-/// pi's `resourcePrecedenceRank`.
+/// pi's `resourcePrecedenceRank`, with chest's entries ranked as their
+/// scope's discovered folders, which hold their placed skills: collected
+/// first, they win the names they share there.
 fn precedence(info: &SourceInfo) -> u8 {
     if info.source == "builtin" {
         return 5;
     }
-    if info.origin == "package" {
+    if info.origin == "package" && !info.source.starts_with("chest:") {
         return 4;
     }
     let scope = if info.scope == "project" { 0 } else { 2 };
@@ -1178,11 +1180,13 @@ impl ProjectOnly {
         agent_dir: &Path,
         home: &Path,
     ) -> bool {
-        let package = info.origin == "package"
-            && self
-                .packages
-                .iter()
-                .any(|entry| entry == "*" || same_package(entry, &info.source, agent_dir));
+        let package = info.origin == "package" && self.keeps_package(&info.source, agent_dir);
+        package || self.keeps_path(Path::new(&info.path), kind, agent_dir, home)
+    }
+
+    /// Whether `kind`'s patterns match the global file `path`, as for
+    /// [`keeps`](Self::keeps).
+    fn keeps_path(&self, path: &Path, kind: ResourceType, agent_dir: &Path, home: &Path) -> bool {
         let patterns: Vec<String> = self.kinds[kind as usize]
             .iter()
             .map(|pattern| match pattern.strip_prefix("~/") {
@@ -1191,7 +1195,19 @@ impl ProjectOnly {
                 None => pattern.clone(),
             })
             .collect();
-        package || matches_any_pattern(Path::new(&info.path), &patterns, agent_dir)
+        matches_any_pattern(path, &patterns, agent_dir)
+    }
+
+    /// Whether a kind list keeps a resource that the user's package `input`
+    /// loads, as [`resolve`] lists them, with paths as for
+    /// [`keeps`](Self::keeps).
+    pub fn keeps_part(&self, input: &PackageInput, agent_dir: &Path, home: &Path) -> bool {
+        let local = super::source::is_local(&input.source);
+        let resources = package_resources(&input.root, input.filter.as_ref(), local);
+        ResourceType::ALL.into_iter().any(|kind| {
+            let mut files = resources.enabled(kind);
+            files.any(|info| self.keeps_path(Path::new(&info.path), kind, agent_dir, home))
+        })
     }
 
     /// Whether a project-only run needs the user's package `source` on

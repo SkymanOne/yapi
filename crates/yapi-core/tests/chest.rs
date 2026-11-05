@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use yapi_ai::auth::lock::FileLock;
 use yapi_core::chest::hash::tree_hash;
 use yapi_core::chest::lock::Lock;
-use yapi_core::chest::manifest::Section;
+use yapi_core::chest::manifest::{Entry, Section};
 use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
 use yapi_core::packages::npm::{Npm, Pinned};
@@ -794,8 +794,8 @@ async fn npm_extension_locked() {
     // Its index file, which no manifest lists, runs with the entry's
     // grants and loads modules from the whole store folder.
     let (root, agent) = (dir.join("project"), dir.join("agent"));
-    // The same package from the user's settings loads after the project's
-    // entry, with a warning that both copies load.
+    // The same package from the user's settings is left out, so only the
+    // project's entry loads, with a warning that says how to remove it.
     let user_copy = agent.join("npm/node_modules/ext");
     std::fs::create_dir_all(&user_copy).unwrap();
     std::fs::write(user_copy.join("index.js"), "").unwrap();
@@ -808,8 +808,7 @@ async fn npm_extension_locked() {
     .unwrap();
     let inputs = installed_inputs(&project, &root, &mut Vec::new());
     let settings = SettingsManager::load(&agent, &root, true);
-    let packages = (&inputs.packages, &inputs.skills);
-    let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
+    let resolved = resolve_resources(&root, &agent, &settings, &[], &inputs);
     let policies = file_policies(&resolved, &inputs, &mut Vec::new());
     let policy = &policies.files[&store.join("node_modules/ext/index.js")];
     assert!(
@@ -821,20 +820,22 @@ async fn npm_extension_locked() {
         .enabled(ResourceType::Extensions)
         .map(|info| info.source.as_str())
         .collect();
-    assert_eq!(sources, ["chest:ext", "npm:ext@^1"]);
-    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings, None);
+    assert_eq!(sources, ["chest:ext"]);
+    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings, None, &agent);
     let [(path, message)] = &duplicates[..] else {
         panic!("{duplicates:?}");
     };
     assert!(path.ends_with("chest.toml"), "{path}");
-    assert!(
-        message.starts_with("extensions.ext is also in the packages of settings as npm:ext@^1"),
-        "{message}"
+    assert_eq!(
+        message,
+        &format!(
+            "npm:ext@^1 in the global settings is left out, because extensions.ext in {path} installs the same package: remove it with `yapi remove npm:ext@^1`"
+        )
     );
     // A project-only run leaves the user's copy out unless it keeps it, so
     // there is nothing to warn of.
     let keep = yapi_core::packages::resolve::ProjectOnly::default();
-    let left_out = yapi_core::chest::startup::duplicates(&inputs, &settings, Some(&keep));
+    let left_out = yapi_core::chest::startup::duplicates(&inputs, &settings, Some(&keep), &agent);
     assert!(left_out.is_empty(), "{left_out:?}");
     // A placed skill in a folder yapi reads on its own resolves once, as
     // chest's.
@@ -845,6 +846,302 @@ async fn npm_extension_locked() {
         .collect();
     let guide_file = guide.join("SKILL.md").display().to_string();
     assert_eq!(skills, [(guide_file.as_str(), "chest:guide")]);
+    // The project's settings come before a global entry of the package,
+    // which is left out, and pi's rules leave out the user's settings copy.
+    let global_manifest = agent.join("chest.toml").display().to_string();
+    let global = yapi_core::chest::startup::Installed {
+        packages: vec![yapi_core::packages::resolve::PackageInput {
+            source: "chest:gext".into(),
+            scope: "user".into(),
+            root: user_copy.clone(),
+            filter: None,
+        }],
+        identities: vec![(
+            "npm:ext".into(),
+            "gext".into(),
+            global_manifest.clone(),
+            true,
+        )],
+        ..Default::default()
+    };
+    std::fs::write(
+        root.join(".yapi/settings.json"),
+        r#"{"packages": ["npm:ext"]}"#,
+    )
+    .unwrap();
+    let settings = SettingsManager::load(&agent, &root, true);
+    let resolved = resolve_resources(&root, &agent, &settings, &[], &global);
+    assert_eq!(resolved.enabled(ResourceType::Extensions).count(), 0);
+    let duplicates = yapi_core::chest::startup::duplicates(&global, &settings, None, &agent);
+    let message = format!(
+        "extensions.gext in {global_manifest} is left out, because npm:ext in the project's settings installs the same package: remove it with `chest -g remove gext`"
+    );
+    assert_eq!(duplicates, [(global_manifest.clone(), message)]);
+
+    // Which copy loads and what the warning says, for chest entries by
+    // name, scope and source, the packages of the project's and the global
+    // settings, a project-only run's keep list, and whether the project's
+    // trust is saved.
+    let project_manifest = root.join("chest.toml").display().to_string();
+    let (p, g) = (project_manifest.as_str(), global_manifest.as_str());
+    let npm = |name: &str| Entry {
+        npm: Some(name.into()),
+        ..Entry::default()
+    };
+    let git = |path: Option<&str>| Entry {
+        git: Some("https://example.test/acme/mono".into()),
+        path: path.map(str::to_owned),
+        ..Entry::default()
+    };
+    let left = |manifest: &str, copy: &str, kept: &str, remove: &str| {
+        let message = format!(
+            "{copy} is left out, because {kept} installs the same package: remove it with `{remove}`"
+        );
+        (manifest.to_owned(), message)
+    };
+    // Each entry's copy holds an extension and a theme.
+    let copy = dir.join("chest-copy");
+    for file in ["extensions/gext.ts", "themes/dark.json"] {
+        std::fs::create_dir_all(copy.join(file).parent().unwrap()).unwrap();
+        std::fs::write(copy.join(file), "{}").unwrap();
+    }
+    let installs = |entries: &[(&str, bool, Entry)]| {
+        let mut installed = yapi_core::chest::startup::Installed::default();
+        for (name, global, entry) in entries {
+            let manifest = if *global { g } else { p };
+            let id = yapi_core::chest::startup::package_identity(entry).unwrap();
+            let name = (*name).to_owned();
+            installed
+                .packages
+                .push(yapi_core::packages::resolve::PackageInput {
+                    source: format!("chest:{name}"),
+                    scope: if *global { "user" } else { "project" }.into(),
+                    root: copy.clone(),
+                    filter: None,
+                });
+            installed
+                .identities
+                .push((id, name, manifest.to_owned(), *global));
+        }
+        installed
+    };
+    // A patched entry loads its patch, with no lock.
+    std::fs::create_dir_all(root.join("patches/gx")).unwrap();
+    let patched = open(
+        &dir,
+        "[extensions]\ngx = { git = \"https://example.test/acme/mono\", rev = \"v1\" }\n\n[patch]\ngx = { path = \"patches/gx\" }\n",
+    );
+    let patched = installed_inputs(&patched, &root, &mut Vec::new());
+    let all = json!({"extensions": ["*"]});
+    let (in_g, in_p) = (
+        format!("extensions.gext in {g}"),
+        format!("extensions.pext in {p}"),
+    );
+    let rows = [
+        // A kind list keeps a global copy's files, so it counts, after
+        // the project's copies and those the run keeps whole.
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            all.clone(),
+            false,
+            vec![left(
+                g,
+                "npm:ext in the global settings",
+                &in_g,
+                "yapi remove npm:ext",
+            )],
+        ),
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            all,
+            false,
+            vec![left(
+                p,
+                "npm:ext in the global settings",
+                &in_p,
+                "yapi remove npm:ext",
+            )],
+        ),
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"packages": ["npm:ext"], "themes": ["*"]}),
+            false,
+            vec![left(
+                g,
+                &in_g,
+                "npm:ext in the global settings",
+                "chest -g remove gext",
+            )],
+        ),
+        // A copy that a kind list keeps no file of doesn't count, so the
+        // settings copy keeps the file the pattern names.
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"extensions": ["npm/node_modules/ext/index.js"]}),
+            false,
+            vec![],
+        ),
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"skills": ["pdf"]}),
+            false,
+            vec![],
+        ),
+        // Entries with a `path` take different folders of one repository,
+        // and both load. The whole repository holds each, as an entry or in
+        // settings, so it's left out after one loads.
+        (
+            installs(&[
+                ("ma", false, git(Some("ext-a"))),
+                ("mono", true, git(None)),
+                ("mb", true, git(Some("ext-b"))),
+            ]),
+            json!([]),
+            json!(["git:example.test/acme/mono"]),
+            Value::Null,
+            false,
+            vec![
+                left(
+                    g,
+                    &format!("extensions.mono in {g}"),
+                    &format!("extensions.ma in {p}"),
+                    "chest -g remove mono",
+                ),
+                left(
+                    p,
+                    "git:example.test/acme/mono in the global settings",
+                    &format!("extensions.ma in {p}"),
+                    "yapi remove git:example.test/acme/mono",
+                ),
+            ],
+        ),
+        // Of one manifest's entries, the whole repository after one folder
+        // of it, and other spellings of that folder, are left out.
+        (
+            installs(&[
+                ("ma", false, git(Some("ext-a"))),
+                ("mono", false, git(None)),
+                ("dot", false, git(Some("./ext-a/"))),
+                ("root", false, git(Some("."))),
+            ]),
+            json!([]),
+            json!([]),
+            Value::Null,
+            false,
+            ["mono", "dot", "root"]
+                .map(|name| {
+                    left(
+                        p,
+                        &format!("extensions.{name} in {p}"),
+                        &format!("extensions.ma in {p}"),
+                        &format!("chest remove {name}"),
+                    )
+                })
+                .into(),
+        ),
+        // A patched entry is its package, so its patch loads.
+        (
+            patched,
+            json!(["git:example.test/acme/mono"]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![left(
+                p,
+                "git:example.test/acme/mono in the project's settings",
+                &format!("extensions.gx in {p}"),
+                "yapi remove -l --approve git:example.test/acme/mono",
+            )],
+        ),
+        // Of two entries of one manifest, the first loads.
+        (
+            installs(&[
+                ("x1", false, npm("x")),
+                ("x2", false, npm("x")),
+                ("y1", true, npm("y")),
+                ("y2", true, npm("y")),
+            ]),
+            json!([]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![
+                left(
+                    p,
+                    &format!("extensions.x2 in {p}"),
+                    &format!("extensions.x1 in {p}"),
+                    "chest remove x2",
+                ),
+                left(
+                    g,
+                    &format!("extensions.y2 in {g}"),
+                    &format!("extensions.y1 in {g}"),
+                    "chest -g remove y2",
+                ),
+            ],
+        ),
+        // `yapi remove -l` needs `--approve` until the trust is saved.
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!(["npm:ext"]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![left(
+                p,
+                "npm:ext in the project's settings",
+                &in_p,
+                "yapi remove -l --approve npm:ext",
+            )],
+        ),
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!(["npm:ext"]),
+            json!([]),
+            Value::Null,
+            true,
+            vec![left(
+                p,
+                "npm:ext in the project's settings",
+                &in_p,
+                "yapi remove -l npm:ext",
+            )],
+        ),
+    ];
+    let trust = yapi_core::trust::TrustStore::new(&agent);
+    for (installed, project, global, keep, saved, expected) in rows {
+        std::fs::write(
+            root.join(".yapi/settings.json"),
+            json!({"packages": project}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            agent.join("settings.json"),
+            json!({"packages": global}).to_string(),
+        )
+        .unwrap();
+        trust.set(&root, Some(saved)).unwrap();
+        let settings = SettingsManager::load(&agent, &root, true);
+        let keep = (!keep.is_null()).then(|| {
+            let document = json!({"projectOnly": keep});
+            yapi_core::packages::resolve::ProjectOnly::from_settings(document.as_object().unwrap())
+        });
+        let warned =
+            yapi_core::chest::startup::duplicates(&installed, &settings, keep.as_ref(), &agent);
+        assert_eq!(warned, expected, "{:?}", installed.identities);
+    }
+    trust.set(&root, None).unwrap();
+    std::fs::remove_file(root.join(".yapi/settings.json")).unwrap();
     std::fs::remove_file(agent.join("settings.json")).unwrap();
 
     // A mirror that serves only the tarballs rebuilds the same store. The
