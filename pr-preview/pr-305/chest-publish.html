@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1037d747.js";
+            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-21820864.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,16 +214,18 @@ extensions = ["extensions/index.ts"]
 <p>Before you publish a native extension, run <code>chest check</code> in the package folder. It compares the capabilities each <code>.wasm</code> extension uses with the ones the package requests:</p>
 <pre><code class="language-sh">chest check
 </code></pre>
-<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. These are errors, and make chest exit with 1:</p>
+<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports. An import of <code>wasi:filesystem</code>, for example, counts as using <code>fs</code>.</p>
+<p><code>chest check</code> reports an error and exits with 1 when it finds either of these:</p>
 <ul>
 <li>a capability the extension uses that the package doesn’t request</li>
 <li>an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi doesn’t support, because extensions reach the network through the SDK’s <code>fetch</code></li>
 </ul>
-<p><code>chest add</code> warns about such an import. These are warnings:</p>
+<p>It warns about these and still exits with 0:</p>
 <ul>
 <li>a capability the package requests that no extension uses</li>
 <li>a capability the build records that this version of chest doesn’t know, such as one a newer SDK adds, which chest doesn’t check</li>
 </ul>
+<p><code>chest add</code> also warns when an extension imports <code>wasi:sockets</code> or <code>wasi:http</code>.</p>
 <p>An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JavaScript and TypeScript extensions have nothing to read before they run, so yapi checks them only at runtime.</p>
 
                     </main>

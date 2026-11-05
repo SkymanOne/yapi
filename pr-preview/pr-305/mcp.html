@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1037d747.js";
+            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-21820864.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,7 +197,7 @@
 }
 </code></pre>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP documentation</a> describes every option.</p>
-<p>A <a href="project-only.html">project-only run</a> connects the project’s servers, and of <code>~/.yapi/agent/mcp.json</code> only those that the <code>mcpServers</code> list of your <code>projectOnly</code> setting names.</p>
+<p>A <a href="project-only.html">project-only run</a> connects the project’s servers. From <code>~/.yapi/agent/mcp.json</code>, it connects only the servers that <code>mcpServers</code> in your <code>projectOnly</code> setting names.</p>
 <h2 id="manage-servers"><a class="header" href="#manage-servers">Manage servers</a></h2>
 <p><code>yapi mcp</code> edits the file and checks servers without starting a session. These commands add the two servers above, list them and remove one:</p>
 <pre><code class="language-sh">yapi mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .

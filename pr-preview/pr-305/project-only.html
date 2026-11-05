@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Run yapi with Project Packages Only - yapi</title>
+        <title>Run yapi with Only the Project&#x27;s Packages - yapi</title>
 
 
         <!-- Custom HTML head -->
@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1037d747.js";
+            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-21820864.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,40 +179,32 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="run-yapi-with-project-packages-only"><a class="header" href="#run-yapi-with-project-packages-only">Run yapi with project packages only</a></h1>
+                        <h1 id="run-yapi-with-only-the-projects-packages"><a class="header" href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a></h1>
 <blockquote>
 <p><strong>yapi only.</strong></p>
 </blockquote>
-<p><code>--project-only</code> runs yapi with only the packages, skills and Model Context Protocol (MCP) servers that the project provides, such as the entries of its <code>chest.toml</code>. Your global ones stay out, unless you choose to keep some. Use it to check that a project’s packages cover what it needs, to keep a project’s tools apart from your own, or in CI. It works with or without a <code>chest.toml</code>.</p>
-<p>The mode leaves out what you installed. Your other settings still apply, and so do global instruction files such as <code>~/.yapi/agent/AGENTS.md</code> and <code>SYSTEM.md</code>, so two people’s project-only runs of one project can differ.</p>
-<p>This page covers how to turn the mode on, what loads in it, how to keep chosen global items such as themes, and how to check what loaded.</p>
-<h2 id="turn-it-on"><a class="header" href="#turn-it-on">Turn it on</a></h2>
-<p>Pass <code>--project-only</code> for one run:</p>
+<p><code>yapi --project-only</code> loads the project’s extensions, skills and Model Context Protocol (MCP) servers, and leaves out the ones you installed globally. Use it to check that a project’s <code>chest.toml</code> covers what the project needs, or to keep your personal extensions out of a CI run. It works in projects without a <code>chest.toml</code> too.</p>
+<p>Only what you installed stays out. Your settings, sign-ins and instruction files such as <code>~/.yapi/agent/AGENTS.md</code> still apply, so your project-only run can still differ from a teammate’s.</p>
+<p>This page covers turning the mode on, what loads, keeping global items such as a theme, and checking what loaded.</p>
+<h2 id="turn-on-project-only-mode"><a class="header" href="#turn-on-project-only-mode">Turn on project-only mode</a></h2>
+<p>Pass the flag for one run, or set <code>YAPI_PROJECT_ONLY</code> for every run in a shell:</p>
 <pre><code class="language-sh">yapi --project-only
+export YAPI_PROJECT_ONLY=1
 </code></pre>
-<p>Set <code>YAPI_PROJECT_ONLY</code> to turn it on for every run in a shell. yapi accepts <code>1</code>, <code>true</code> and <code>yes</code>:</p>
-<pre><code class="language-sh">export YAPI_PROJECT_ONLY=1
-</code></pre>
-<p><code>unset YAPI_PROJECT_ONLY</code> turns it off again. <code>/reload</code> keeps the mode.</p>
-<p>The mode applies to yapi runs only. Other commands work as usual: <code>yapi install</code> without <code>-l</code> still adds a package to your global settings, which project-only runs then leave out. Add a project’s packages with <code>chest add</code>, or with <code>yapi install -l</code>.</p>
-<p>The mode passes to the processes yapi starts: bash commands, extension processes, stdio MCP servers, and subagents that start another yapi. They get <code>YAPI_PROJECT_ONLY=1</code> in their environment. Extensions with the environment capability see it in <code>process.env</code> too. A process that an extension starts with an environment of its own, which leaves the variable out, runs without the mode.</p>
-<h2 id="what-loads"><a class="header" href="#what-loads">What loads</a></h2>
-<p>A project-only run loads these from a trusted project:</p>
+<p><code>YAPI_PROJECT_ONLY</code> accepts <code>1</code>, <code>true</code> or <code>yes</code>, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. <code>/reload</code> keeps the mode on.</p>
+<p>Programs that yapi starts inherit the variable: bash commands, extension processes, stdio MCP servers and subagents that start another yapi. An extension can give a process an environment of its own. If that environment leaves the variable out, the process runs normally.</p>
+<p>Only yapi runs follow the mode. <code>yapi install</code> without <code>-l</code> still adds a package to your global settings, and a project-only run then leaves it out. To add a package to the project, use <code>chest add</code> or <code>yapi install -l</code>.</p>
+<h2 id="what-a-project-only-run-loads"><a class="header" href="#what-a-project-only-run-loads">What a project-only run loads</a></h2>
+<p>From a trusted project, yapi loads:</p>
 <ul>
 <li>the project’s chest entries</li>
 <li>the <code>packages</code> and resource paths in <code>.yapi/settings.json</code></li>
 <li><code>.yapi/extensions</code>, <code>.yapi/skills</code>, <code>.yapi/prompts</code> and <code>.yapi/themes</code></li>
 <li>the servers in <code>.yapi/mcp.json</code></li>
-<li><code>.agents/skills</code> in the project and its parent folders up to the repository root, or up to <code>/</code> without a repository</li>
+<li><code>.agents/skills</code> in the project and each parent folder up to the repository root, or up to <code>/</code> outside a repository</li>
 </ul>
-<p>It also loads these, whatever the project:</p>
-<ul>
-<li>the built-in extensions, with your <code>+builtin:</code> and <code>-builtin:</code> choices</li>
-<li>the paths you pass with <code>-e</code>, <code>--skill</code>, <code>--prompt-template</code> and <code>--theme</code></li>
-<li>the global items that <a href="#keep-global-items"><code>projectOnly</code></a> keeps</li>
-</ul>
-<h2 id="whats-skipped"><a class="header" href="#whats-skipped">What’s skipped</a></h2>
-<p>Every other global item stays out:</p>
+<p>In every project, it also loads the built-in extensions, following your <code>+builtin:</code> and <code>-builtin:</code> choices. So do the paths you pass with <code>-e</code>, <code>--skill</code>, <code>--prompt-template</code> and <code>--theme</code>.</p>
+<p>It leaves out the rest of what you installed globally, unless you <a href="#keep-some-global-items">keep some of it</a>:</p>
 <ul>
 <li>the <code>packages</code> and resource paths in <code>~/.yapi/agent/settings.json</code></li>
 <li><code>~/.yapi/agent/extensions</code>, <code>~/.yapi/agent/skills</code>, <code>~/.yapi/agent/prompts</code> and <code>~/.yapi/agent/themes</code></li>
@@ -220,17 +212,10 @@
 <li>the entries of <code>~/.chest/chest.toml</code></li>
 <li>the servers in <code>~/.yapi/agent/mcp.json</code></li>
 </ul>
-<p>A trusted project can still load a global file on purpose: by its path in the project’s own settings, or with an <code>autoload: false</code> entry for a package you installed globally. You approved the project’s files when you trusted it, so yapi follows them.</p>
-<h2 id="what-stays-the-same"><a class="header" href="#what-stays-the-same">What stays the same</a></h2>
-<ul>
-<li>your settings, such as the model and the theme name</li>
-<li>your sign-ins in <code>auth.json</code> and <code>mcp-auth.json</code>, <code>models.json</code>, key bindings and project trust</li>
-<li>the <code>AGENTS.md</code> and <code>CLAUDE.md</code> files in the project, in the folders above it and in <code>~/.yapi/agent</code>. Add <code>--no-context-files</code> to leave them all out.</li>
-<li><code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code>: the project’s, or else yours in <code>~/.yapi/agent</code></li>
-</ul>
-<h2 id="keep-global-items"><a class="header" href="#keep-global-items">Keep global items</a></h2>
-<p>The <code>projectOnly</code> object in your global settings names the global items that still load in the mode. yapi reads it only from <code>~/.yapi/agent/settings.json</code>, or from <code>settings.toml</code> there, and ignores it in a project’s settings. That way a repository you clone can’t turn on your global extensions or servers.</p>
-<p>In <code>settings.json</code>:</p>
+<p>Everything else works as usual. Your settings, sign-ins, models, key bindings and trust decisions don’t change. <code>AGENTS.md</code> and <code>CLAUDE.md</code> still load from the project, its parent folders and <code>~/.yapi/agent</code>, and <code>--no-context-files</code> turns them off. <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> load from the project, or else from <code>~/.yapi/agent</code>.</p>
+<p>A trusted project can still load one of your global files on purpose. It can name the file’s path in its own settings, or add an <code>autoload: false</code> entry for a package you installed. You approved those files when you trusted the project.</p>
+<h2 id="keep-some-global-items"><a class="header" href="#keep-some-global-items">Keep some global items</a></h2>
+<p>To keep a global theme, skill or MCP server in project-only runs, list it under <code>projectOnly</code> in your global settings:</p>
 <pre><code class="language-json">{
   "projectOnly": {
     "packages": ["npm:@acme/pi-themes", "chest:notes"],
@@ -241,7 +226,7 @@
   }
 }
 </code></pre>
-<p>The same in <code>settings.toml</code>:</p>
+<p>In a <code>settings.toml</code>, the same list is a table:</p>
 <pre><code class="language-toml">[projectOnly]
 packages = ["npm:@acme/pi-themes", "chest:notes"]
 extensions = ["extensions/notify.ts"]
@@ -249,59 +234,54 @@ skills = ["~/.agents/skills/pdf"]
 themes = ["*"]
 mcpServers = ["github", "linear*"]
 </code></pre>
-<p>An item loads when <code>packages</code> keeps the package it comes from, or when the list for its kind matches it. Each key is optional, and <code>prompts</code> works like <code>extensions</code>.</p>
-<h3 id="packages"><a class="header" href="#packages"><code>packages</code></a></h3>
-<p><code>packages</code> keeps whole global packages, with every extension, skill, prompt and theme they provide. Write each source the way your global <code>packages</code> list writes it, such as <code>npm:@acme/pi-themes</code>, <code>git:github.com/acme/tools</code> or a local path. yapi compares packages by name, so <code>npm:@acme/pi-themes</code> also keeps the package installed as <code>npm:@acme/pi-themes@^2</code>. Name an entry of <code>~/.chest/chest.toml</code> as <code>chest:&lt;name&gt;</code>.</p>
-<p><code>"packages": ["*"]</code> keeps every global package and every global chest entry. It doesn’t keep files in your global folders, such as <code>~/.yapi/agent/extensions</code>, which the kind lists below cover.</p>
-<h3 id="extensions-skills-prompts-and-themes"><a class="header" href="#extensions-skills-prompts-and-themes"><code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code></a></h3>
-<p>Each list keeps single global resources of its kind, wherever they come from: your global folders, a path in your settings, a global package or a global chest entry. Entries use Pi’s glob patterns, and each one matches any of these:</p>
+<p>yapi reads <code>projectOnly</code> only from <code>~/.yapi/agent</code>, never from a project’s settings, so a repository you clone can’t turn your global extensions back on. Every key is optional, and <code>prompts</code> works like <code>extensions</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>To keep</th><th>Add</th></tr>
+</thead>
+<tbody>
+<tr><td>Every global theme</td><td><code>"themes": ["*"]</code></td></tr>
+<tr><td>One package, with everything it provides</td><td><code>"packages": ["npm:@acme/pi-themes"]</code></td></tr>
+<tr><td>One skill from <code>~/.agents/skills</code></td><td><code>"skills": ["~/.agents/skills/pdf"]</code></td></tr>
+<tr><td>One entry of <code>~/.chest/chest.toml</code></td><td><code>"packages": ["chest:notes"]</code></td></tr>
+<tr><td>The GitHub MCP server</td><td><code>"mcpServers": ["github"]</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="keep-whole-packages"><a class="header" href="#keep-whole-packages">Keep whole packages</a></h3>
+<p><code>packages</code> keeps every extension, skill, prompt template and theme a global package provides. Write each source the way your global <code>packages</code> list writes it, such as <code>npm:@acme/pi-themes</code> or <code>git:github.com/acme/tools</code>. Versions don’t count, so <code>npm:@acme/pi-themes</code> also keeps a package installed as <code>npm:@acme/pi-themes@^2</code>.</p>
+<p>Write <code>chest:&lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code>, and <code>*</code> to keep every global package and chest entry. <code>*</code> doesn’t cover loose files in your global folders, such as <code>~/.yapi/agent/extensions</code>, which the lists below do.</p>
+<h3 id="keep-single-extensions-skills-prompts-or-themes"><a class="header" href="#keep-single-extensions-skills-prompts-or-themes">Keep single extensions, skills, prompts or themes</a></h3>
+<p><code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code> each keep the resources of their kind that a pattern matches. They work wherever the resource comes from: a global folder, a path in your settings, a global package or a chest entry. Patterns use Pi’s glob syntax, and each one is matched against:</p>
 <ul>
-<li>the path relative to <code>~/.yapi/agent</code>, such as <code>extensions/notify.ts</code> or <code>themes/dark.json</code></li>
+<li>the path inside <code>~/.yapi/agent</code>, such as <code>extensions/notify.ts</code> or <code>themes/dark.json</code></li>
 <li>the file name, such as <code>notify.ts</code></li>
-<li>the whole path, where <code>~</code> stands for your home folder, such as <code>~/.agents/skills/pdf</code></li>
+<li>the whole path, with <code>~</code> for your home folder, such as <code>~/.agents/skills/pdf</code></li>
 </ul>
-<p>For a skill in a folder, the folder also matches, so <code>~/.agents/skills/pdf</code> keeps <code>~/.agents/skills/pdf/SKILL.md</code>. <code>*</code> matches every resource of the kind. <code>"themes": ["*"]</code> keeps every global theme, including the themes inside global packages, without loading those packages’ extensions.</p>
-<p>Your <code>theme</code> setting names a theme but doesn’t keep it. When it names a global theme, add that theme to <code>themes</code>, or yapi warns and falls back to the system theme.</p>
-<h3 id="mcpservers"><a class="header" href="#mcpservers"><code>mcpServers</code></a></h3>
-<p><code>mcpServers</code> keeps servers from <code>~/.yapi/agent/mcp.json</code>, by name. Entries can use <code>*</code>, such as <code>linear*</code>, and <code>*</code> alone keeps every server. A kept server keeps its <code>auth</code>, so a server that sends the token of a provider you signed in to with <code>/login</code> keeps working. The servers in the project’s <code>.yapi/mcp.json</code> always load.</p>
-<h3 id="what-gets-installed"><a class="header" href="#what-gets-installed">What gets installed</a></h3>
-<p>A project-only run installs a global package only when <code>projectOnly</code> could keep part of it:</p>
+<p>A skill’s folder matches too, so <code>~/.agents/skills/pdf</code> keeps <code>~/.agents/skills/pdf/SKILL.md</code>. <code>"themes": ["*"]</code> keeps every global theme, including the ones inside packages, without loading those packages’ extensions.</p>
+<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi warns and uses the system theme.</p>
+<h3 id="keep-mcp-servers"><a class="header" href="#keep-mcp-servers">Keep MCP servers</a></h3>
+<p><code>mcpServers</code> keeps servers from <code>~/.yapi/agent/mcp.json</code> by name, and accepts patterns such as <code>linear*</code>. A kept server keeps its <code>auth</code>, so a server that sends a token from <code>/login</code> still works. The project’s own servers in <code>.yapi/mcp.json</code> always connect.</p>
+<h3 id="global-packages-yapi-still-installs"><a class="header" href="#global-packages-yapi-still-installs">Global packages yapi still installs</a></h3>
+<p>A project-only run installs or restores a global package only when <code>projectOnly</code> could keep part of it:</p>
 <ul>
-<li>A <code>packages</code> entry installs the package it names.</li>
-<li><code>*</code> in <code>packages</code>, or a kind list that isn’t empty, installs every global package, since a pattern can match a file inside any of them.</li>
-<li>Any of these, or a <code>chest:</code> entry, puts back every missing entry of <code>~/.chest/chest.toml</code>.</li>
+<li>a package that <code>packages</code> names</li>
+<li>every global package, when <code>packages</code> holds <code>*</code> or another list has an entry, because a pattern can match a file inside any package</li>
+<li>the missing entries of <code>~/.chest/chest.toml</code>, in either of those cases or when <code>packages</code> names a <code>chest:</code> entry</li>
 </ul>
-<p>Otherwise the run installs nothing global.</p>
-<h3 id="examples"><a class="header" href="#examples">Examples</a></h3>
-<p>Keep every global theme:</p>
-<pre><code class="language-json">{ "projectOnly": { "themes": ["*"] } }
-</code></pre>
-<p>Keep one theme package, with everything it provides:</p>
-<pre><code class="language-json">{ "projectOnly": { "packages": ["npm:@acme/pi-themes"] } }
-</code></pre>
-<p>Keep one skill from <code>~/.agents/skills</code>:</p>
-<pre><code class="language-json">{ "projectOnly": { "skills": ["~/.agents/skills/pdf"] } }
-</code></pre>
-<p>Keep one entry of <code>~/.chest/chest.toml</code>:</p>
-<pre><code class="language-json">{ "projectOnly": { "packages": ["chest:notes"] } }
-</code></pre>
-<p>Keep the GitHub MCP server:</p>
-<pre><code class="language-json">{ "projectOnly": { "mcpServers": ["github"] } }
-</code></pre>
-<h2 id="choose-kept-items-in-yapi-config"><a class="header" href="#choose-kept-items-in-yapi-config">Choose kept items in yapi config</a></h2>
-<p><code>yapi config</code> lists every global extension, skill, prompt template and theme, whether the mode is on or not. In the Global Resources view, where <code>yapi config</code> opens, select an item and press <code>ctrl+o</code> to keep it in project-only runs. Press it again to stop keeping it. yapi writes the item’s path to <code>projectOnly</code> in your global settings, and kept items show <code>project-only</code> beside them.</p>
-<ul>
-<li>yapi writes a path relative to <code>~/.yapi/agent</code> when the item is inside it, else from <code>~</code>, else the whole path. A skill in a folder is written as its folder, and a skill that’s a single <code>.md</code> file as that file.</li>
-<li><code>ctrl+o</code> works on chest’s items too, which Space leaves alone.</li>
-<li><code>ctrl+o</code> does nothing on built-in extensions, which project-only runs never leave out, or on an item that a pattern or a <code>packages</code> entry keeps. Edit those in the settings file.</li>
-<li><code>ctrl+o</code> does nothing in the project view, which Tab opens, because yapi ignores <code>projectOnly</code> in a project’s settings.</li>
-</ul>
-<p><code>yapi config</code> lists neither packages nor MCP servers, so edit <code>packages</code> and <code>mcpServers</code> in the settings file.</p>
+<p>With no <code>projectOnly</code> list, a project-only run downloads nothing for your global packages.</p>
+<h2 id="keep-items-from-yapi-config"><a class="header" href="#keep-items-from-yapi-config">Keep items from yapi config</a></h2>
+<p>You can also build the list in <code>yapi config</code>, which opens on the Global Resources view. Select an extension, skill, prompt template or theme and press <code>ctrl+o</code> to keep it. Kept items show <code>project-only</code>, and <code>ctrl+o</code> again stops keeping the item.</p>
+<p>yapi saves the item’s path inside <code>~/.yapi/agent</code>, or from <code>~</code> for anything else in your home folder. It saves a skill in a folder as that folder, and a single-file skill as the file.</p>
+<p><code>ctrl+o</code> works on chest items, which Space leaves alone. It skips built-in extensions, which load anyway, and items that a pattern or a <code>packages</code> entry already keeps. It does nothing in the project view that Tab opens, because yapi ignores a project’s <code>projectOnly</code>. <code>yapi config</code> doesn’t list packages or MCP servers, so edit <code>packages</code> and <code>mcpServers</code> in the settings file.</p>
 <h2 id="check-what-loaded"><a class="header" href="#check-what-loaded">Check what loaded</a></h2>
-<p>The header at startup lists the loaded context files, skills, prompt templates and extensions, each with its scope. <code>/mcp</code> lists the MCP servers. When the <code>quietStartup</code> setting hides the header, start yapi with <code>--verbose</code> to show it.</p>
-<h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
-<p>An untrusted project’s files don’t load. When an untrusted project has files that need trust, yapi warns once: <code>--project-only: the project isn't trusted, so none of its packages load</code>. The run then loads the built-in extensions, the paths you pass on the command line and the global items <code>projectOnly</code> keeps.</p>
-<p>Interactive mode asks whether to trust the project first, as it always does. Trust the project, or pass <code>--approve</code> for one run. <a href="security.html#project-trust">Project trust</a> covers trust.</p>
+<p>The header at startup lists the loaded skills, prompt templates and extensions with their scope, and <code>/mcp</code> lists the MCP servers. If the <code>quietStartup</code> setting hides the header, start yapi with <code>--verbose</code>.</p>
+<h2 id="untrusted-projects"><a class="header" href="#untrusted-projects">Untrusted projects</a></h2>
+<p>yapi never loads an untrusted project’s files, in project-only runs or otherwise. When an untrusted project has files that need trust, yapi warns once:</p>
+<pre><code class="language-text">--project-only: the project isn't trusted, so none of its packages load
+</code></pre>
+<p>The run then has only the built-in extensions, the paths you passed on the command line and the global items you keep. Interactive mode asks whether to trust the project before it starts. Trust it, or pass <code>--approve</code> for one run. <a href="security.html#project-trust">Project trust</a> covers the details.</p>
 
                     </main>
 

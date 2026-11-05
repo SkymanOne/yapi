@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1037d747.js";
+            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-21820864.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -210,9 +210,9 @@ yapi -e git:github.com/your_user/your_repo
 </code></pre>
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. It installs an npm package again when its version no longer matches the source’s range, and updates a git source without a ref on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, yapi installs and updates nothing, and skips a source that isn’t installed yet.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>, or in <code>settings.toml</code> when that’s the folder’s file. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project. In the Global Resources view, <code>ctrl+o</code> keeps the selected item in <a href="project-only.html#choose-kept-items-in-yapi-config">project-only runs</a>.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>, or in <code>settings.toml</code> when that’s the folder’s file. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project. In the Global Resources view, <code>ctrl+o</code> keeps the selected item in <a href="project-only.html#keep-items-from-yapi-config">project-only runs</a>.</p>
 <p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
-<p>To run with only a project’s packages and none of your global ones, start yapi with <code>--project-only</code>. <a href="project-only.html">Run yapi with project packages only</a> covers the mode.</p>
+<p>To run with only a project’s packages and none of your global ones, start yapi with <code>--project-only</code>. <a href="project-only.html">Run yapi with only the project’s packages</a> covers the mode.</p>
 <h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
 <p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.</p>
 <p>Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html">Get started with chest</a> shows how to use chest, and the <a href="chest-manifest.html">chest.toml reference</a> lists every key.</p>

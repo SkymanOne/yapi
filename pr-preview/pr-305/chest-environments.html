@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1037d747.js";
+            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-21820864.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,7 +204,7 @@ chest install
 <p>chest refuses the same values, so chest and yapi always agree on the manifest. <a href="configuration.html#project-packages-from-chest">Project packages from chest</a> lists the files yapi reads.</p>
 <h2 id="install-global-packages"><a class="header" href="#install-global-packages">Install global packages</a></h2>
 <blockquote>
-<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project, unless a <a href="project-only.html#what-gets-installed">project-only run</a> can keep none of its entries.</p>
+<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project, unless a <a href="project-only.html#global-packages-yapi-still-installs">project-only run</a> can keep none of its entries.</p>
 </blockquote>
 <p><code>-g</code> uses <code>~/.chest/chest.toml</code> instead of the project’s manifest. Its folders can be anywhere under your home folder, such as <code>~/.claude/skills</code>. Its extensions go to <code>~/.chest/store</code>, and it writes no <code>.gitignore</code>. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.</p>
 <p>With <code>-g</code>, <code>chest init</code> looks for each agent’s folder in your home folder:</p>
