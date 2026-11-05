@@ -53,6 +53,13 @@ fn invalid(message: impl Into<String>) -> ChestError {
     ChestError::Invalid(message.into())
 }
 
+/// `path` with `/` between its parts. Only the platform's separator turns
+/// into one: on Unix a `\` is part of a name.
+fn slashed(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    text.replace(std::path::MAIN_SEPARATOR, "/")
+}
+
 fn io(path: &Path) -> impl FnOnce(std::io::Error) -> ChestError + '_ {
     move |source| ChestError::Io {
         path: path.to_path_buf(),
@@ -1523,7 +1530,7 @@ impl Project {
             let relative = path.strip_prefix(&root).map_err(|_| {
                 invalid(format!("{} is outside {}", path.display(), root.display()))
             })?;
-            Ok(relative.to_string_lossy().replace('\\', "/"))
+            Ok(slashed(relative))
         };
         let mut entries = Vec::new();
         for path in occupied {

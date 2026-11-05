@@ -94,7 +94,7 @@ impl Record {
 
     fn key(&self, path: &Path) -> String {
         let relative = path.strip_prefix(&self.root).unwrap_or(path);
-        relative.to_string_lossy().replace('\\', "/")
+        super::slashed(relative)
     }
 
     /// Whose `path` is, judged by what it holds now: a recorded copy by its

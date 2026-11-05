@@ -751,6 +751,19 @@ async fn gitignore_block_managed() {
             read(&root.join(".gitignore")),
             "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
         );
+
+        // A `\` in a folder name is part of the name, not a separator: its
+        // line escapes it, and the record keeps the copy chest's, so a new
+        // commit replaces it.
+        let folders = "[\".agents/skills\", \".claude/skills\"]";
+        let manifest = skill_manifest(&remote, "v1").replace(folders, "[\"a\\\\b\"]");
+        sync(&mut open(&dir, &manifest), Mode::Resolve).await;
+        assert!(read(&root.join(".gitignore")).contains("\na\\\\b/pdf\n"));
+        remote.commit(&[("skills/pdf/SKILL.md", "# pdf 2\n")], "v2");
+        let manifest = manifest.replace("\"v1\"", "\"v2\"");
+        let report = sync(&mut open(&dir, &manifest), Mode::Resolve).await;
+        assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
+        assert_eq!(read(&root.join("a\\b/pdf/SKILL.md")), "# pdf 2\n");
     }
 }
 
