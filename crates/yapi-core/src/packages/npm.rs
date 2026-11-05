@@ -965,7 +965,7 @@ fn read_manifest(dir: &Path) -> Option<Value> {
 }
 
 /// The file in a package's folder while its install has not finished.
-const INCOMPLETE: &str = ".yapi-incomplete";
+pub(crate) const INCOMPLETE: &str = ".yapi-incomplete";
 
 /// The version in the `package.json` at `dir`.
 fn manifest_version(dir: &Path) -> Option<String> {
@@ -1330,12 +1330,17 @@ fn write_manifest(root: &Path, manifest: Map<String, Value>) -> Result<(), NpmEr
 /// holder keeps the lock, and takes over the lock of a holder that died.
 pub(crate) async fn lock_root(root: &Path) -> Result<FileLock, NpmError> {
     std::fs::create_dir_all(root).map_err(io(root))?;
-    let manifest = root.join("package.json");
+    lock(&root.join("package.json")).await
+}
+
+/// Locks `path`, whose folder exists, against other processes until the
+/// lock is dropped, as [`lock_root`] does. The lock is a folder beside it.
+pub(crate) async fn lock(path: &Path) -> Result<FileLock, NpmError> {
     loop {
-        match FileLock::acquire(&manifest, &CancellationToken::new()).await {
+        match FileLock::acquire(path, &CancellationToken::new()).await {
             // A lock still held after the stale period is fresh: its holder is alive.
             Err(LockError::Held) => continue,
-            result => return result.map_err(|err| io(&manifest)(std::io::Error::other(err))),
+            result => return result.map_err(|err| io(path)(std::io::Error::other(err))),
         }
     }
 }

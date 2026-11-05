@@ -453,6 +453,9 @@ impl PackageManager {
     /// its dependencies, removing the clone when any step fails. A new clone
     /// first gets a `.gitignore` in `git_root`, the scope's `git` folder. An
     /// existing checkout is updated in place instead and kept when that fails.
+    /// Unlike pi, one install of `dir` runs at a time across processes, and
+    /// a clone whose install never finished, as when yapi was stopped, is
+    /// cloned again.
     async fn install_git(
         &mut self,
         repo: &str,
@@ -460,27 +463,42 @@ impl PackageManager {
         dir: &Path,
         git_root: Option<&Path>,
     ) -> Result<(), PackageError> {
-        if dir.exists() {
-            return self.update_git(dir, reference).await;
-        }
-        if let Some(git_root) = git_root {
-            npm::ensure_git_ignore(git_root)?;
-        }
         if let Some(parent) = dir.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|err| PackageError::Message(err.to_string()))?;
         }
+        // The lock is a folder beside the checkout, so it never enters it.
+        let lock = npm::lock(dir).await?;
+        let incomplete = clone_marker(dir);
+        if dir.exists() && !incomplete.exists() {
+            return self.update_git(dir, reference).await;
+        }
+        if dir.exists() {
+            std::fs::remove_dir_all(dir).map_err(|err| PackageError::Message(err.to_string()))?;
+        }
+        if let Some(git_root) = git_root {
+            npm::ensure_git_ignore(git_root)?;
+        }
         let target = dir.to_string_lossy().into_owned();
+        // Before the clone starts, so a clone cut off or still running never
+        // counts as installed.
+        std::fs::write(&incomplete, "").map_err(|err| PackageError::Message(err.to_string()))?;
         let installed: Result<(), PackageError> = async {
             run_git(&["clone", "--", repo, &target], None).await?;
             if let Some(reference) = reference {
                 run_git(&["checkout", reference], Some(dir)).await?;
             }
             npm::install_dependencies(&mut self.npm, dir).await?;
+            std::fs::remove_file(&incomplete)
+                .map_err(|err| PackageError::Message(err.to_string()))?;
             Ok(())
         }
         .await;
         if installed.is_err() {
+            let _ = std::fs::remove_dir_all(dir);
+            let _ = std::fs::remove_file(&incomplete);
+            // Without the lock's folder, the empty folders above go too.
+            drop(lock);
             self.remove_dir(dir);
         }
         installed
@@ -929,7 +947,7 @@ impl PackageManager {
                         Ok(())
                     }
                 }
-                _ if root.exists() => Ok(()),
+                _ if root.exists() && !clone_marker(&root).exists() => Ok(()),
                 Source::Git {
                     repo, reference, ..
                 } => {
@@ -945,6 +963,14 @@ impl PackageManager {
         }
         ControlFlow::Continue(())
     }
+}
+
+/// The file beside git checkout `dir` while its install has not finished:
+/// from before the clone starts until its dependencies are installed.
+fn clone_marker(dir: &Path) -> PathBuf {
+    let mut name = dir.file_name().unwrap_or_default().to_os_string();
+    name.push(npm::INCOMPLETE);
+    dir.with_file_name(name)
 }
 
 /// Whether the npm package at `dir` must be installed: it is missing or its
@@ -1049,6 +1075,17 @@ mod tests {
             .install_git(repo, None, &checkout, None)
             .await
             .unwrap();
+        // A clone whose install never finished, as when yapi was stopped,
+        // is cloned again rather than kept.
+        let incomplete = clone_marker(&checkout);
+        assert!(!incomplete.exists());
+        std::fs::write(&incomplete, "").unwrap();
+        std::fs::write(checkout.join("stray"), "").unwrap();
+        manager
+            .install_git(repo, None, &checkout, None)
+            .await
+            .unwrap();
+        assert!(!incomplete.exists() && !checkout.join("stray").exists());
         commit(&origin, "v2").await;
 
         manager
