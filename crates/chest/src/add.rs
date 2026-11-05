@@ -65,7 +65,7 @@ fn entry(args: &AddArgs, target: &Target) -> anyhow::Result<Entry> {
         path: args.path.clone(),
         ..Entry::default()
     };
-    match source::parse(&args.source) {
+    match parse(&args.source)? {
         Source::Npm { name, version, .. } => {
             entry.npm = Some(name);
             entry.version = args.version.clone().or(version);
@@ -88,6 +88,36 @@ fn entry(args: &AddArgs, target: &Target) -> anyhow::Result<Entry> {
         }
     }
     Ok(entry)
+}
+
+/// `text` as a source: a git URL, or scp-like `user@host:path`, as if
+/// `git:` came first. yapi's `install` keeps pi's reading, where only
+/// `https://`, `http://` and `ssh://` URLs are git sources.
+fn parse(text: &str) -> anyhow::Result<Source> {
+    let url = ["git://", "ssh://", "https://", "http://"]
+        .iter()
+        .any(|scheme| text.starts_with(scheme));
+    let scp = text
+        .split_once(':')
+        .is_some_and(|(left, _)| left.contains('@') && !left.contains('/'));
+    let git = url || scp || text.starts_with("git:");
+    let parsed = match url || scp {
+        true => source::parse(&format!("git:{text}")),
+        false => source::parse(text),
+    };
+    if git && matches!(parsed, Source::Local { .. }) {
+        let rest = text.strip_prefix("git:").unwrap_or(text);
+        let absolute = rest.split_once(':').filter(|(user_host, path)| {
+            !user_host.contains('/') && path.starts_with('/') && !path.starts_with("//")
+        });
+        if let Some((user_host, path)) = absolute {
+            bail!(
+                "{text} is not a git repository chest can read: in `user@host:path`, the path is relative to the remote home. For an absolute path, use ssh://{user_host}{path}"
+            );
+        }
+        bail!("{text} is not a git repository chest can read");
+    }
+    Ok(parsed)
 }
 
 /// A name for the entry from its source: the last part of its path, npm
@@ -118,14 +148,19 @@ fn item(root: &Path, entry: &Entry) -> PathBuf {
 }
 
 /// The section a package at `root` belongs in, judged from the item the
-/// entry picks: a `.md` file is a subagent, a folder with a `SKILL.md` a
-/// skill, and a package with extensions an extension.
+/// entry picks: a `.md` file in a `skills` folder is a single-file skill,
+/// another `.md` file a subagent, a folder with a `SKILL.md` a skill, and a
+/// package with extensions an extension.
 fn infer(root: &Path, entry: &Entry) -> anyhow::Result<Section> {
     let item = item(root, entry);
     let extension =
         |name: &str| name.ends_with(".wasm") || name.ends_with(".ts") || name.ends_with(".js");
     let name = item.file_name().unwrap_or_default().to_string_lossy();
     if item.is_file() {
+        let folder = item.parent().and_then(Path::file_name);
+        if name.ends_with(".md") && folder.is_some_and(|folder| folder == "skills") {
+            return Ok(Section::Skills);
+        }
         if name.ends_with(".md") {
             return Ok(Section::Agents);
         }
@@ -408,6 +443,12 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
             Some(section) => section,
             None => infer(&fetched.root, &entry)?,
         };
+        if section == Section::Skills && item(&fetched.root, &entry).is_file() {
+            let shown = args.path.as_deref().unwrap_or(&args.source);
+            bail!(
+                "{shown} is a single-file skill, and chest installs only skill folders that hold a SKILL.md"
+            );
+        }
         let meta = package_meta(&fetched.root)?;
         show(&meta);
         nested(&fetched.root, &name);
@@ -438,6 +479,46 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
 
 #[cfg(test)]
 mod tests {
+    use yapi_core::packages::source::Source;
+
+    #[test]
+    fn reads_git_urls() {
+        let repo = |source: &str| match super::parse(source).unwrap() {
+            Source::Git { repo, .. } => repo,
+            other => panic!("{source}: {other:?}"),
+        };
+        for (source, expected) in [
+            ("git://example.com/a/b", "git://example.com/a/b"),
+            ("git:git://example.com/a/b", "git://example.com/a/b"),
+            ("ssh://git@example.com/a/b", "ssh://git@example.com/a/b"),
+            ("https://example.com/a/b.git", "https://example.com/a/b"),
+            ("http://example.com/a/b", "http://example.com/a/b"),
+            ("git@example.com:a/b", "git@example.com:a/b"),
+            (
+                "ssh://me@example.com/srv/repo",
+                "ssh://me@example.com/srv/repo",
+            ),
+        ] {
+            assert_eq!(repo(source), expected, "{source}");
+        }
+        assert!(matches!(
+            super::parse("./a@b:c").unwrap(),
+            Source::Local { .. }
+        ));
+        assert!(super::parse("git@example.com:a").is_err());
+        // An absolute path on the host takes `ssh://`, as in pi.
+        for source in [
+            "me@example.com:/srv/repo",
+            "git:me@example.com:/srv/repo@v1",
+        ] {
+            let error = super::parse(source).unwrap_err().to_string();
+            assert!(
+                error.contains("use ssh://me@example.com/srv/repo"),
+                "{error}"
+            );
+        }
+    }
+
     #[test]
     fn capabilities_have_meanings() {
         for capability in yapi_core::extensions::CAPABILITIES {

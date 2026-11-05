@@ -84,6 +84,7 @@ These rules apply to every source:
 - A `git` value is a repository that `yapi install` accepts after `git:`, without a revision: put that in `rev`. `rev` must not start with `-`.
 - `path` inside a git or npm package stays inside it, without `..`. A path source may use `..` to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with `~`.
 - With `path`, a skills or agents entry installs one item under the entry's name. A subagent is a `.md` file, placed as `<name>.md`. Without `path`, it installs every skill or subagent the package provides, each under its own name.
+- A path source installs one item when it's a skill folder with a `SKILL.md` or a subagent file. A folder that isn't one is a package, and the entry installs every skill or subagent it provides, each under its own name.
 
 ### Extension keys
 

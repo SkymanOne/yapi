@@ -11,7 +11,9 @@ chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 ```
 
-chest tells a skill from a subagent by looking at the package. Pass `--skill` or `--agent` when it can't tell. With `--path`, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. chest installs skills that are folders with a `SKILL.md`. It skips a skill that's a single `.md` file, which yapi and Pi also load, with a warning.
+chest tells a skill from a subagent by looking at the package. Pass `--skill` or `--agent` when it can't tell. With `--path`, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn't a skill itself works the same way.
+
+chest installs skills that are folders with a `SKILL.md`. yapi and Pi also load a skill that's a single `.md` file, but chest doesn't install one. An entry for a whole package skips such files with a warning. An entry that names one fails, and `chest add` refuses a `.md` file in a `skills` folder. A `.md` file anywhere else is a subagent, and `--agent` adds any `.md` file as one.
 
 ## Choose folders for your agents
 

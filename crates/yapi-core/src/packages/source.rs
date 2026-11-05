@@ -149,7 +149,8 @@ fn git(source: &str) -> Option<Source> {
             reference,
         });
     }
-    // `git@host:user/repo` or `host/user/repo`.
+    // `git@host:user/repo` or `host/user/repo`. As pi's `buildGitSource`,
+    // `git@host:/srv/repo`, absolute on the host, is not a git source.
     let (repo_prefix, host, path) = if let Some((user_host, path)) = rest.split_once(':') {
         let host = user_host.rsplit('@').next()?.to_owned();
         (Some(user_host.to_owned()), host, path)
@@ -157,7 +158,8 @@ fn git(source: &str) -> Option<Source> {
         let (host, path) = rest.split_once('/')?;
         (None, host.to_owned(), path)
     };
-    if !(host.contains('.') || host == "localhost") || !safe_host(&host) {
+    let absolute = repo_prefix.is_some() && path.starts_with('/');
+    if !(host.contains('.') || host == "localhost") || !safe_host(&host) || absolute {
         return None;
     }
     let (path, reference) = split_reference(path);
@@ -272,8 +274,8 @@ mod tests {
             parse("https://github.com/user/repo#"),
             expected("https://github.com/user/repo", None)
         );
-        // Hosts that would leave `git/`, and hosts or refs that would pass
-        // for a git option.
+        // Hosts that would leave `git/`, hosts or refs that would pass for
+        // a git option, and scp-like paths that are absolute on the host.
         for source in [
             "git:../../..:Projects/app",
             "git:..:user/repo",
@@ -282,6 +284,7 @@ mod tests {
             "git:-ucmd.com:user/repo",
             "git:github.com/user/repo@--upload-pack=touch x",
             "https://github.com/user/repo#--upload-pack=touch x",
+            "git:git@github.com:/user/repo",
         ] {
             assert!(matches!(parse(source), Source::Local { .. }), "{source}");
         }

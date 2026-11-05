@@ -41,14 +41,17 @@ fn scratch(name: &str) -> Scratch {
 }
 
 /// What the child gets: the scratch home, no CI or CHEST_MANIFEST from the
-/// host, and `localhost/<path>` git sources mapped to local repositories.
+/// host, and `localhost/<path>` and `git://localhost/<path>` git sources
+/// mapped to local repositories.
 fn environment(scratch: &Scratch) -> Vec<(String, OsString)> {
     vec![
         ("HOME".into(), scratch.home.clone().into_os_string()),
         ("PATH".into(), std::env::var_os("PATH").unwrap_or_default()),
-        ("GIT_CONFIG_COUNT".into(), "1".into()),
+        ("GIT_CONFIG_COUNT".into(), "2".into()),
         ("GIT_CONFIG_KEY_0".into(), "url.file:///.insteadOf".into()),
         ("GIT_CONFIG_VALUE_0".into(), "https://localhost/".into()),
+        ("GIT_CONFIG_KEY_1".into(), "url.file:///.insteadOf".into()),
+        ("GIT_CONFIG_VALUE_1".into(), "git://localhost/".into()),
     ]
 }
 
@@ -301,6 +304,27 @@ async fn add_writes_entry() {
         read(&scratch.project.join(".gitignore"))
             .contains(".agents/skills/pdf\n.claude/skills/pdf\n")
     );
+    // A git URL is a git source without `git:`.
+    let url = remote.source.replace("git:localhost", "git://localhost");
+    let args = ["add", &url, "--path", "skills/pdf", "--name", "url"];
+    ok(&scratch, &args);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    let entry = format!(
+        "url = {{ git = \"{}\", path = ",
+        url.trim_end_matches(".git")
+    );
+    assert!(manifest.contains(&entry), "{manifest}");
+    // A local folder that provides several skills installs each of them.
+    for skill in ["one", "two"] {
+        let folder = scratch.dir.join("pack/skills").join(skill);
+        write(&folder.join("SKILL.md"), &format!("# {skill}\n"));
+    }
+    let said = text(&ok(&scratch, &["add", "../pack"]));
+    assert!(said.contains("installed  skills.pack"), "{said}");
+    for skill in ["one", "two"] {
+        let placed = scratch.project.join(".agents/skills").join(skill);
+        assert_eq!(read(&placed.join("SKILL.md")), format!("# {skill}\n"));
+    }
 
     // An npm extension, granted only what --grant lists.
     let package = json!({"name": "ext", "version": "1.0.0", "description": "To\u{1b}[2J\u{1b}[Hdo\u{9b}2J", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
@@ -431,6 +455,71 @@ fn add_existing_entry() {
         text(&all).contains("`all` is full access"),
         "{}",
         text(&all)
+    );
+}
+
+#[test]
+fn add_rejects_misuse() {
+    let scratch = scratch("misuse");
+    let remote = skill_remote(&scratch);
+    remote.commit(&[("skills/single.md", "# single\n")], "v2");
+    write(&scratch.dir.join("loose/skills/single.md"), "# single\n");
+    init(&scratch);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    let git = format!("{}@v2", remote.source);
+    let single =
+        "is a single-file skill, and chest installs only skill folders that hold a SKILL.md";
+    let cases: Vec<(Vec<&str>, i32, String)> = vec![
+        (
+            vec!["add", &git, "--path", "skills/single.md"],
+            1,
+            format!("skills/single.md {single}"),
+        ),
+        (
+            vec!["add", &git, "--path", "skills", "--skill"],
+            1,
+            "skills.skills: skills is not a skill folder with a SKILL.md".into(),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md"],
+            1,
+            format!("../loose/skills/single.md {single}"),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md", "--skill"],
+            1,
+            format!("../loose/skills/single.md {single}"),
+        ),
+        (
+            vec!["add", "git://localhost/repo"],
+            1,
+            "git://localhost/repo is not a git repository chest can read".into(),
+        ),
+    ];
+    for (args, code, message) in &cases {
+        let output = chest(&scratch, args, &[]);
+        let said = text(&output);
+        assert_eq!(output.status.code(), Some(*code), "{args:?}: {said}");
+        assert!(said.contains(message.as_str()), "{args:?}: {said}");
+        assert!(!said.contains(".chest/cache"), "{args:?}: {said}");
+        assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    }
+    // `--agent` still adds such a file as a subagent.
+    ok(&scratch, &["add", "../loose/skills/single.md", "--agent"]);
+    assert!(scratch.project.join(".yapi/agents/single.md").exists());
+    // An entry written by hand for one fails, named inside its source.
+    let repo = remote.source.trim_start_matches("git:");
+    let solo = format!(
+        "\n[skills]\nsolo = {{ git = \"{repo}\", rev = \"v2\", path = \"skills/single.md\" }}\n"
+    );
+    let manifest = read(&scratch.project.join("chest.toml")) + &solo;
+    write(&scratch.project.join("chest.toml"), &manifest);
+    let output = chest(&scratch, &["install"], &[]);
+    let said = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{said}");
+    assert!(
+        said.contains("skills.solo: skills/single.md is not a skill folder with a SKILL.md"),
+        "{said}"
     );
 }
 

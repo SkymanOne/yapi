@@ -11,7 +11,7 @@ use yapi_types::settings::{DefaultProjectTrust, FilteredPackage};
 use super::fetch::placed_name;
 use super::lock::fresh;
 use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
-use super::{Mode, Project, locked_items};
+use super::{Mode, Project};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::{Npm, escaped};
 use crate::packages::resolve::{
@@ -657,7 +657,8 @@ pub fn installed_inputs(
                     })
                     .collect()
             }
-            (None, Some(locked)) => locked_items(Section::Skills, &locked)
+            (None, Some(locked)) => project
+                .locked_items(Section::Skills, &locked)
                 .into_iter()
                 .map(|(item, _)| home.join(item))
                 .collect(),

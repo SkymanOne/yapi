@@ -1831,6 +1831,104 @@ async fn path_source_notice() {
         .collect();
     let skills = dir.join("project/.agents/skills");
     assert_eq!(roots, [skills.join("one"), skills.join("two")]);
+    // So does a path entry naming that folder, and startup finds its items
+    // in place and loads them.
+    let mut team = open(
+        &dir,
+        &format!("{folders}team = {{ path = \"local/pack\" }}\n"),
+    );
+    sync(&mut team, Mode::Resolve).await;
+    let report = sync(&mut team, Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.team", Outcome::Unchanged)]);
+    let inputs = installed_inputs(&team, &dir.join("project"), &mut Vec::new());
+    let roots: Vec<PathBuf> = inputs
+        .skills
+        .iter()
+        .map(|skill| skill.root.clone())
+        .collect();
+    assert_eq!(roots, [skills.join("one"), skills.join("two")]);
+    // Without its source, `list` and `verify` say so, rather than name a
+    // copy it never had.
+    let pack = dir.join("project/local/pack");
+    let moved = dir.join("project/local/moved");
+    std::fs::rename(&pack, &moved).unwrap();
+    let entry = team.manifest.skills["team"].clone();
+    assert_eq!(team.state(Section::Skills, "team", &entry), "no source");
+    let gone = format!("skills.team: its source {} is missing", pack.display());
+    assert_eq!(team.verify().unwrap(), [gone]);
+    std::fs::rename(&moved, &pack).unwrap();
+    // `install` skips it with a warning, for a package, a skill folder and an
+    // extension alike, keeps what it installed and the entry's lock, and
+    // `--frozen` fails on it. A dropped entry's copy is still removed, unless
+    // the missing folder held several items, whose copies chest can't name:
+    // then every copy in that section stays, and the warning lists them.
+    std::fs::write(
+        dir.join("project/local/ext.ts"),
+        "export default () => {};\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(dir.join("project/local/extra")).unwrap();
+    std::fs::write(dir.join("project/local/extra/SKILL.md"), "# extra\n").unwrap();
+    let extra = "extra = { path = \"local/extra\" }\n";
+    for (manifest, id, path, copies, holds) in [
+        (
+            format!("{folders}team = {{ path = \"local/pack\" }}\n"),
+            "skills.team",
+            "local/pack",
+            &["one", "two"][..],
+            true,
+        ),
+        (
+            format!("{folders}one = {{ path = \"local/pack/skills/one\" }}\n"),
+            "skills.one",
+            "local/pack/skills/one",
+            &["one"][..],
+            false,
+        ),
+        (
+            format!("{folders}\n[extensions]\next = {{ path = \"local/ext.ts\" }}\n"),
+            "extensions.ext",
+            "local/ext.ts",
+            &[][..],
+            false,
+        ),
+    ] {
+        let with_extra = manifest.replacen("[skills]\n", &format!("[skills]\n{extra}"), 1);
+        sync(&mut open(&dir, &with_extra), Mode::Resolve).await;
+        let extra_copy = dir.join("project/.agents/skills/extra");
+        assert!(extra_copy.exists());
+        let mut project = open(&dir, &manifest);
+        let source = dir.join("project").join(path);
+        std::fs::rename(&source, &moved).unwrap();
+        let report = sync(&mut project, Mode::Resolve).await;
+        assert_eq!(outcomes(&report)[0], (id, Outcome::Skipped));
+        let skipped = format!(
+            "{id}: {} does not exist, so chest skipped it: restore it or remove the entry",
+            source.display()
+        );
+        assert!(report.warnings.contains(&skipped), "{:?}", report.warnings);
+        for copy in copies {
+            assert!(
+                dir.join("project/.agents/skills").join(copy).exists(),
+                "{copy}"
+            );
+        }
+        let held = format!("{id}'s folder is missing and held several items, so chest keeps ");
+        let warned = report.warnings.iter().find(|w| w.starts_with(&held));
+        assert_eq!(warned.is_some(), holds, "{:?}", report.warnings);
+        assert!(warned.is_none_or(|warned| warned.contains(&extra_copy.display().to_string())));
+        assert_eq!(extra_copy.exists(), holds, "{id}");
+        let name = id.split_once('.').unwrap().1;
+        let lock = read(&dir.join("project/chest.lock"));
+        assert!(lock.contains(&format!("name = \"{name}\"")), "{lock}");
+        let error = failed(&mut project, Mode::Frozen).await;
+        assert_eq!(error, format!("{id}: {} does not exist", source.display()));
+        assert_eq!(read(&dir.join("project/chest.lock")), lock);
+        std::fs::rename(&moved, &source).unwrap();
+        // With the folder back, the held copy goes.
+        sync(&mut project, Mode::Resolve).await;
+        assert!(!extra_copy.exists(), "{id}");
+    }
 
     // A git extension loads modules from its store folder, whatever its
     // `path`, and an npm one from its store folder too.

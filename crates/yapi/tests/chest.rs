@@ -218,13 +218,13 @@ async fn chest_extensions_load() {
     // The global install cleans the test's store, not the developer's.
     let leftover = home.join(".chest/store/.left-staging");
     std::fs::create_dir_all(&leftover).unwrap();
+    std::fs::create_dir_all(home.join("proj")).unwrap();
     install(&home, &files, ".chest/chest.toml", &manifest).await;
     assert!(!leftover.exists());
     // chest refuses to install these, so they are not locked.
     let global = home.join(".chest/chest.toml");
     let all = format!("{manifest}all = {{ path = \"~\" }}\n");
     std::fs::write(global, all).unwrap();
-    std::fs::create_dir_all(home.join("proj")).unwrap();
     let up = "[extensions]\nup = { path = \"agent/../../..\" }\n";
     std::fs::write(home.join("proj/chest.toml"), up).unwrap();
     let args = ["--approve", "-e", "closed.js", "-e", "agent/wide.js"];
@@ -326,6 +326,8 @@ async fn stale_lock_warns() {
 
     // A stale global manifest is named by its path and its own command.
     std::fs::remove_file(home.join("chest.toml")).unwrap();
+    // Its paths start from `.chest`.
+    let files = [(".chest/open.js", open.as_str())];
     install(&home, &files, ".chest/chest.toml", manifest).await;
     let global = manifest.replace("open.js", "moved.js");
     std::fs::write(home.join(".chest/chest.toml"), global).unwrap();

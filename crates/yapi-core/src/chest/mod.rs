@@ -468,11 +468,48 @@ impl Project {
         }
     }
 
+    /// Each name `locked` occupies in its section's folders, with the hash
+    /// the lock pins for it. An extension from a path occupies none. A path
+    /// entry that names a package occupies each item the package provides
+    /// now, unhashed, as path entries are never hashed.
+    pub(crate) fn locked_items(
+        &self,
+        section: Section,
+        locked: &Locked,
+    ) -> Vec<(String, Option<String>)> {
+        if section == Section::Extensions {
+            let stored = locked.git.is_some() || locked.npm.is_some();
+            return stored
+                .then(|| (locked.name.clone(), locked.hash.clone()))
+                .into_iter()
+                .collect();
+        }
+        let path_source = match (&locked.git, &locked.npm) {
+            (None, None) => locked.path.as_deref().map(|path| self.resolve(path)),
+            _ => None,
+        };
+        if let Some(package) = path_source.filter(|source| fetch::is_package(section, source)) {
+            let items = fetch::items(&package, section, None, &locked.name);
+            let items = items.map(|(items, _)| items).unwrap_or_default();
+            return items.into_iter().map(|(name, _)| (name, None)).collect();
+        }
+        if locked.items.is_empty() {
+            return vec![(
+                fetch::placed_name(section, &locked.name),
+                locked.hash.clone(),
+            )];
+        }
+        let items = locked.items.iter();
+        items
+            .map(|item| (item.name.clone(), Some(item.hash.clone())))
+            .collect()
+    }
+
     /// The paths `locked` occupies: each of its items in each of its
     /// section's folders, or its store folder.
     pub fn placed(&self, section: Section, locked: &Locked) -> Vec<PathBuf> {
         let homes = self.homes(section);
-        let items = locked_items(section, locked);
+        let items = self.locked_items(section, locked);
         items
             .iter()
             .flat_map(|(name, _)| homes.iter().map(move |home| home.join(name)))
@@ -485,7 +522,7 @@ impl Project {
         for section in [Section::Skills, Section::Agents, Section::Extensions] {
             let homes = self.homes(section);
             for locked in lock.section(section) {
-                for (name, hash) in locked_items(section, locked) {
+                for (name, hash) in self.locked_items(section, locked) {
                     let Some(hash) = hash else { continue };
                     for home in &homes {
                         pinned.insert(home.join(&name), hash.clone());
@@ -501,7 +538,7 @@ impl Project {
     /// points to.
     fn recorded(&self, section: Section, locked: &Locked, record: &Record) -> bool {
         let homes = self.homes(section);
-        let items = locked_items(section, locked);
+        let items = self.locked_items(section, locked);
         items.iter().all(|(name, hash)| {
             let holds = |hash: &String| {
                 homes
@@ -574,13 +611,17 @@ impl Project {
     /// The state of entry `name` of `section` that yapi's startup acts on,
     /// as `chest list` shows it: under `[patch]`, `missing` when a copy chest
     /// placed is gone, `edited` when one changed since, else `patched`.
-    /// Otherwise, `stale` when not locked or locked for another source,
-    /// `missing` when not in place, `edited` when a copy chest placed
-    /// changed since, whatever lock pinned it, `outdated` when in place as an
-    /// older lock pinned it, else `installed`. Startup hashes no copies, so
-    /// it loads an `edited` entry that the lock still pins, or that is
-    /// patched, as it would unedited.
+    /// Otherwise, `no source` for a path entry whose source is gone, `stale`
+    /// when not locked or locked for another source, `missing` when not in
+    /// place, `edited` when a copy chest placed changed since, whatever lock
+    /// pinned it, `outdated` when in place as an older lock pinned it, else
+    /// `installed`. Startup hashes no copies, so it loads an `edited` entry
+    /// that the lock still pins, or that is patched, as it would unedited.
     pub fn state(&self, section: Section, name: &str, entry: &Entry) -> &'static str {
+        if self.no_source(name, entry) {
+            return "no source";
+        }
+        let patched = self.manifest.patch.contains_key(name);
         let locked = self.lock.as_ref().and_then(|lock| {
             lock.section(section)
                 .iter()
@@ -592,7 +633,6 @@ impl Project {
             let changed = self.changed(section, locked, &record);
             changed.iter().any(|(_, found)| *found == problem)
         };
-        let patched = self.manifest.patch.contains_key(name);
         match locked {
             Some(locked) if patched && changed(locked, Problem::Missing) => "missing",
             Some(locked) if patched && changed(locked, Problem::Modified) => "edited",
@@ -603,6 +643,17 @@ impl Project {
             Some(locked) if !self.holds_locked(section, entry, locked, &record) => "outdated",
             Some(_) => "installed",
         }
+    }
+
+    /// Whether entry `name` is a path entry, without a `[patch]`, whose
+    /// source is gone.
+    fn no_source(&self, name: &str, entry: &Entry) -> bool {
+        let path_source = match (&entry.git, &entry.npm) {
+            (None, None) => entry.path.as_deref(),
+            _ => None,
+        };
+        let patched = self.manifest.patch.contains_key(name);
+        !patched && path_source.is_some_and(|path| !self.resolve(path).exists())
     }
 
     /// Whether everything `locked` occupies is there. A link in the first
@@ -718,7 +769,8 @@ impl Project {
                 _ => lock.extensions.push(record),
             }
         }
-        self.remove_dropped(&old, &occupied, &mut record, &record_path, &mut report)?;
+        let kept = self.held_back(&old, &occupied, &record, &mut report);
+        self.remove_dropped(&old, &kept, &mut record, &record_path, &mut report)?;
         let text = lock.to_toml()?;
         // Frozen installs what the lock pins and never writes it.
         if !frozen && std::fs::read_to_string(&lock_path).ok().as_deref() != Some(text.as_str()) {
@@ -849,8 +901,22 @@ impl Project {
                         AtStartup::Replay => None,
                     }
                 }
-                Mode::Frozen if present && (recorded || locked.is_some_and(matches)) => {
+                Mode::Frozen
+                    if present
+                        && (recorded || locked.is_some_and(matches))
+                        && !self.no_source(name, entry) =>
+                {
                     Some(Outcome::Unchanged)
+                }
+                // Frozen fails on it as it stages, and the rest still install.
+                mode if *mode != Mode::Frozen && self.no_source(name, entry) => {
+                    let path = entry.path.as_deref().unwrap_or_default();
+                    report.warnings.push(format!(
+                        "{}: {} does not exist, so chest skipped it: restore it or remove the entry",
+                        target.id,
+                        self.resolve(path).display()
+                    ));
+                    Some(Outcome::Skipped)
                 }
                 _ if fresh && present && recorded && !local && !named => {
                     let problems =
@@ -971,6 +1037,10 @@ impl Project {
                     ..Locked::default()
                 }),
             };
+            let source = self.resolve(path);
+            if !source.exists() {
+                return Err(invalid(format!("{} does not exist", source.display())));
+            }
             if section == Section::Extensions {
                 let outcome = match resolve {
                     true => Outcome::Installed,
@@ -978,15 +1048,15 @@ impl Project {
                 };
                 return Ok(staged(record, Content::Nothing, outcome, Vec::new()));
             }
-            let source = self.resolve(path);
-            // A patch for a package's items, an entry without `path`, is
-            // such a package too.
+            // A path that is not one item, and a patch for a package's
+            // items, an entry without `path`, are such a package too.
             let patched_package =
                 target.patch.is_some() && path_source.is_none() && entry.path.is_none();
-            let (items, warnings) = if patched_package {
+            let path_package = target.patch.is_none() && fetch::is_package(section, &source);
+            let (items, warnings) = if patched_package || path_package {
                 fetch::items(&source, section, None, name)?
             } else {
-                fetch::check_item(section, &source)?;
+                fetch::check_item(section, &source, &source)?;
                 let item = (fetch::placed_name(section, name), source);
                 (vec![item], Vec::new())
             };
@@ -1324,6 +1394,60 @@ impl Project {
         Ok(occupied.into_iter().collect())
     }
 
+    /// `occupied`, with the copies kept for a skipped entry whose folder is
+    /// gone and held several items. Without the folder, chest can't name
+    /// that entry's copies, so every copy in its section that would be
+    /// removed stays, with a warning that lists them. A missing extension
+    /// places nothing, and a missing single item occupies its own name.
+    fn held_back(
+        &self,
+        old: &Lock,
+        occupied: &[PathBuf],
+        record: &Record,
+        report: &mut Report,
+    ) -> Vec<PathBuf> {
+        let recorded = record.paths();
+        let mut kept = occupied.to_vec();
+        for (section, name, entry) in self.entries() {
+            if section == Section::Extensions || !self.no_source(name, entry) {
+                continue;
+            }
+            let locked = old
+                .section(section)
+                .iter()
+                .find(|locked| &locked.name == name);
+            let Some(locked) = locked else { continue };
+            // A single item is recorded under the name it occupies.
+            if self
+                .placed(section, locked)
+                .iter()
+                .any(|path| recorded.contains(path))
+            {
+                continue;
+            }
+            let homes = self.homes(section);
+            let held: Vec<&PathBuf> = recorded
+                .iter()
+                .filter(|path| {
+                    path.parent()
+                        .is_some_and(|parent| homes.iter().any(|home| home == parent))
+                })
+                .filter(|path| !kept.contains(path))
+                .collect();
+            if held.is_empty() {
+                continue;
+            }
+            let list: Vec<String> = held.iter().map(|path| path.display().to_string()).collect();
+            report.warnings.push(format!(
+                "{}.{name}'s folder is missing and held several items, so chest keeps {}, which it would remove, as it can't tell that entry's copies apart: restore the folder or remove the entry",
+                section.key(),
+                list.join(", ")
+            ));
+            kept.extend(held.into_iter().cloned());
+        }
+        kept
+    }
+
     /// Removes what the record lists for this manifest that none of its
     /// entries occupies any more, when it still holds what chest put there.
     /// A path another manifest of the project still occupies stays theirs,
@@ -1476,7 +1600,7 @@ impl Project {
         let record = self.record();
         let (outdated, wrong): (Vec<_>, Vec<_>) = problems
             .iter()
-            .filter(|(_, _, problem)| *problem != Problem::Missing)
+            .filter(|(_, _, problem)| !matches!(problem, Problem::Missing | Problem::NoSource))
             .partition(|(_, path, problem)| {
                 *problem == Problem::Mismatch && record.held(path) == Held::Owned
             });
@@ -1484,11 +1608,13 @@ impl Project {
             let wrong: Vec<String> = wrong.into_iter().map(describe).collect();
             return Err(invalid(wrong.join("\n")));
         }
+        // A path entry whose source is gone fails as it is staged.
         let missing = !outdated.is_empty()
-            || self.entries().any(|(section, entry_name, _)| {
+            || self.entries().any(|(section, entry_name, entry)| {
                 let locked = lock.section(section).iter();
                 let mut found = locked.filter(|locked| &locked.name == entry_name);
-                found.any(|locked| !self.present(section, locked))
+                self.no_source(entry_name, entry)
+                    || found.any(|locked| !self.present(section, locked))
             });
         if !missing {
             for (section, entry_name, _) in self.entries() {
@@ -1500,9 +1626,10 @@ impl Project {
     }
 
     /// Each installed copy of a locked git or npm entry that does not match
-    /// the lock, as [`Project::copy_problems`] finds them, and each copy of
-    /// a path entry, which has no hash, or of a `[patch]` entry, which is
-    /// not hashed, that chest's record says changed or is gone.
+    /// the lock, as [`Project::copy_problems`] finds them, each copy of a
+    /// path entry, which has no hash, or of a `[patch]` entry, which is not
+    /// hashed, that chest's record says changed or is gone, and each path
+    /// entry's source that is gone.
     fn problems(&self, lock: &Lock) -> Vec<(String, PathBuf, Problem)> {
         let record = self.record();
         let mut problems = Vec::new();
@@ -1510,8 +1637,15 @@ impl Project {
             for locked in lock.section(section) {
                 problems.extend(self.copy_problems(section, locked));
                 let path_entry = locked.git.is_none() && locked.npm.is_none();
-                if path_entry || self.manifest.patch.contains_key(&locked.name) {
+                let patched = self.manifest.patch.contains_key(&locked.name);
+                if path_entry || patched {
                     let id = format!("{}.{}", section.key(), locked.name);
+                    // A patch's source is the patch, not the entry's `path`.
+                    let source = locked.path.as_deref().filter(|_| path_entry && !patched);
+                    let source = source.map(|path| self.resolve(path));
+                    if let Some(source) = source.filter(|source| !source.exists()) {
+                        problems.push((id.clone(), source, Problem::NoSource));
+                    }
                     let changed = self.changed(section, locked, &record).into_iter();
                     problems.extend(changed.map(|(path, problem)| (id.clone(), path, problem)));
                 }
@@ -1531,7 +1665,7 @@ impl Project {
         }
         let homes = self.homes(section);
         let id = format!("{}.{}", section.key(), locked.name);
-        for (item, hash) in locked_items(section, locked) {
+        for (item, hash) in self.locked_items(section, locked) {
             let Some(hash) = hash else { continue };
             let canonical = homes.first().map(|home| home.join(&item));
             for (index, home) in homes.iter().enumerate() {
@@ -1680,7 +1814,7 @@ impl Project {
         };
         let own = own.map(|folder| real_path(&folder));
         let homes = self.homes(section);
-        let items = locked_items(section, locked);
+        let items = self.locked_items(section, locked);
         let read = homes.iter().filter(|home| own.contains(home));
         read.flat_map(|home| items.iter().map(move |(item, _)| home.join(item)))
             .any(|copy| copy.exists())
@@ -1735,8 +1869,8 @@ impl Project {
     /// Checks every installed copy of a locked git or npm entry: canonical
     /// copies, copy fallbacks and store folders by their hash, and links by
     /// what they point to. Copies of path and `[patch]` entries are checked
-    /// by chest's record of what it placed. Returns one line per problem, so
-    /// none means all match.
+    /// by chest's record of what it placed, and each path entry's source
+    /// must be there. Returns one line per problem, so none means all match.
     pub fn verify(&self) -> Result<Vec<String>, ChestError> {
         let (name, install) = (self.label(), self.install_command());
         let lock = self
@@ -1835,6 +1969,8 @@ enum Problem {
     Modified,
     /// A link that does not point at the canonical copy, given.
     Link(PathBuf),
+    /// A path entry's source, which is gone.
+    NoSource,
 }
 
 /// What `sync` says while another chest command holds the lock of `file`.
@@ -1847,34 +1983,13 @@ fn waiting_for(file: &Path) -> String {
 
 fn describe((id, path, problem): &(String, PathBuf, Problem)) -> String {
     let what = match problem {
+        Problem::NoSource => return format!("{id}: its source {} is missing", path.display()),
         Problem::Missing => "is missing".to_owned(),
         Problem::Mismatch => "does not match the lock".to_owned(),
         Problem::Modified => "was modified since chest installed it".to_owned(),
         Problem::Link(canonical) => format!("does not link to {}", canonical.display()),
     };
     format!("{id}: {} {what}", path.display())
-}
-
-/// Each name `locked` occupies in its section's folders, with the hash the
-/// lock pins for it. An extension from a path occupies none.
-fn locked_items(section: Section, locked: &Locked) -> Vec<(String, Option<String>)> {
-    if section == Section::Extensions {
-        let stored = locked.git.is_some() || locked.npm.is_some();
-        return stored
-            .then(|| (locked.name.clone(), locked.hash.clone()))
-            .into_iter()
-            .collect();
-    }
-    if locked.items.is_empty() {
-        return vec![(
-            fetch::placed_name(section, &locked.name),
-            locked.hash.clone(),
-        )];
-    }
-    let items = locked.items.iter();
-    items
-        .map(|item| (item.name.clone(), Some(item.hash.clone())))
-        .collect()
 }
 
 /// Whether `path`, or what it links to, has a `.git` anywhere inside. Its
