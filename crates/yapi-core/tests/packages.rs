@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use yapi_ai::auth::lock::FileLock;
 use yapi_core::packages::PackageManager;
 use yapi_core::packages::npm::{self, Npm, Pinned};
+use yapi_core::packages::resolve::ProjectOnly;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::MockServer;
 use yapi_mock::{Cassette, Interaction, RequestMatch, Response};
@@ -1298,6 +1299,16 @@ async fn local_packages_scope_relative() {
         packages.list()[0].extensions,
         [dir.join("project/tools/index.ts")]
     );
+    // Removing by absolute path matches either scope's relative entry.
+    packages.install("./tools", true).await.unwrap();
+    assert_eq!(
+        packages.settings().document(Scope::Project)["packages"],
+        json!(["../tools"])
+    );
+    let absolute = dir.join("project/tools").to_string_lossy().into_owned();
+    for local in [true, false] {
+        assert!(packages.remove(&absolute, local).await.unwrap(), "{local}");
+    }
     assert_eq!(std::env::current_dir().unwrap(), previous);
 }
 
@@ -1659,6 +1670,34 @@ async fn autoload_delta_user_package() {
         .await;
     assert_eq!(outcome, ControlFlow::Continue(()));
     assert!(dir.join("agent/npm/node_modules/ext-pkg").exists());
+    assert!(!dir.join("project/.yapi/npm").exists());
+    assert_eq!(server.finish().unwrap().len(), 2);
+
+    // A project-only run that keeps nothing global installs no user package,
+    // but still the user's copy that such a project entry adjusts.
+    std::fs::remove_dir_all(dir.join("agent/npm")).unwrap();
+    std::fs::write(
+        dir.join("agent/settings.json"),
+        json!({"packages": ["npm:ext-pkg@^2", "npm:unused-pkg"]}).to_string(),
+    )
+    .unwrap();
+    let server = registry(|base| {
+        publish(
+            base,
+            "ext-pkg",
+            &[("2.0.0", json!({}), package.clone())],
+            "2.0.0",
+        )
+    })
+    .await;
+    let mut packages = manager(&dir, &server.url());
+    packages.project_only(ProjectOnly::default());
+    let outcome = packages
+        .install_missing(|_, message| ControlFlow::Break(message))
+        .await;
+    assert_eq!(outcome, ControlFlow::Continue(()));
+    assert!(dir.join("agent/npm/node_modules/ext-pkg").exists());
+    assert!(!dir.join("agent/npm/node_modules/unused-pkg").exists());
     assert!(!dir.join("project/.yapi/npm").exists());
     assert_eq!(server.finish().unwrap().len(), 2);
 }

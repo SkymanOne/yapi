@@ -11,11 +11,13 @@ use std::path::{Path, PathBuf};
 use ratatui_core::style::Modifier;
 use ratatui_core::text::{Line, Span};
 use serde_json::{Map, Value};
-use yapi_core::packages::resolve::{BUILTIN_PREFIX, ResolvedPaths, ResourceType, string_list};
+use yapi_core::packages::resolve::{
+    BUILTIN_PREFIX, ProjectOnly, ResolvedPaths, ResourceType, string_list,
+};
 use yapi_core::packages::source::{is_local, local_path};
 use yapi_core::packages::{entry_source, scope_dir, settings_packages};
 use yapi_core::settings::{Scope, SettingsManager};
-use yapi_core::tools::path::relative;
+use yapi_core::tools::path::{home_dir, relative};
 use yapi_tui::lines::{self, StyledLine, styled};
 use yapi_tui::select_list::visible_range;
 use yapi_tui::text::visible_width;
@@ -404,6 +406,75 @@ impl ConfigSelector {
         let _ = self.settings.set(scope, key, value);
     }
 
+    /// Whether a project-only run keeps global `item`, by the `projectOnly`
+    /// setting as it stands.
+    fn kept(&self, item: &Item) -> bool {
+        let keep = ProjectOnly::from_settings(self.settings.document(Scope::Global));
+        Self::item_scope(item) == Scope::Global
+            && item.info.source != "builtin"
+            && keep.keeps(&item.info, item.kind, &self.agent_dir, &home_dir())
+    }
+
+    /// How `ctrl+o` names `item` in `projectOnly`: relative to the agent
+    /// folder inside it, else from `~` inside the home folder, else whole. A
+    /// skill folder goes by the folder, a single-file skill by its file.
+    fn keep_path(&self, item: &Item) -> String {
+        let path = Path::new(&item.info.path);
+        let path = match (item.kind, path.file_name()) {
+            (ResourceType::Skills, Some(name)) if name == "SKILL.md" => {
+                path.parent().unwrap_or(path)
+            }
+            _ => path,
+        };
+        let home = home_dir();
+        match (path.strip_prefix(&self.agent_dir), path.strip_prefix(&home)) {
+            (Ok(inside), _) => inside.to_string_lossy().replace('\\', "/"),
+            (_, Ok(inside)) => format!("~/{}", inside.to_string_lossy().replace('\\', "/")),
+            _ => path.to_string_lossy().into_owned(),
+        }
+    }
+
+    /// `ctrl+o` in global mode: keeps the selected global resource in
+    /// project-only runs by its exact path, or stops keeping it. A built-in,
+    /// or a resource that a pattern or `packages` keeps, stays as it is.
+    fn toggle_keep(&mut self) {
+        // A project's `projectOnly` would be ignored.
+        if self.project {
+            return;
+        }
+        let row = self.filtered.get(self.selected).copied();
+        let Some(Row::Item(g, s, i)) = row else {
+            return;
+        };
+        let item = self.groups()[g].subgroups[s].items[i].clone();
+        if Self::item_scope(&item) != Scope::Global || item.info.source == "builtin" {
+            return;
+        }
+        let path = self.keep_path(&item);
+        let global = self.settings.document(Scope::Global);
+        let mut setting = global
+            .get("projectOnly")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let key = item.kind.key();
+        let mut list = string_list(&setting, key);
+        match list.iter().position(|entry| *entry == path) {
+            Some(index) => {
+                list.remove(index);
+            }
+            None if !self.kept(&item) => list.push(path),
+            None => return,
+        }
+        // An emptied list goes, and so does the setting once nothing is left.
+        match list.is_empty() {
+            true => setting.remove(key),
+            false => setting.insert(key.to_owned(), Value::from(list)),
+        };
+        let setting = (!setting.is_empty()).then_some(Value::Object(setting));
+        self.write(Scope::Global, "projectOnly", setting);
+    }
+
     /// A package entry as an object. A bare source becomes `{"source": ...}`.
     fn package_object(entry: &Value) -> Option<Map<String, Value>> {
         match entry {
@@ -732,7 +803,9 @@ impl ConfigSelector {
 
     fn suffix(&self, item: &Item, ui: &Ui<'_>) -> Option<Span<'static>> {
         if !self.project {
-            return None;
+            return self
+                .kept(item)
+                .then(|| Span::styled("  project-only", ui.theme.fg("muted")));
         }
         match self.override_state(item) {
             Override::Load => Some(Span::styled("  project load", ui.theme.fg("muted"))),
@@ -760,6 +833,9 @@ impl ConfigSelector {
             "toggle"
         };
         parts.push(key_hint(theme, "space", space));
+        if !self.project {
+            parts.push(key_hint(theme, "ctrl+o", "keep in project-only"));
+        }
         parts.push(key_hint(theme, "esc", "close"));
         let hint = parts.join(&Span::styled(" · ", theme.fg("muted")));
         let hint_width: usize = hint.iter().map(|span| visible_width(&span.content)).sum();
@@ -774,13 +850,26 @@ impl ConfigSelector {
             Span::raw(" ".repeat(spacing)),
         ];
         first.extend(hint);
+        // The settings file each scope writes, `settings.json` or `settings.toml`.
+        let file = |scope| {
+            let path = self.settings.file(scope);
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned());
+            name.unwrap_or_else(|| "settings.json".to_owned())
+        };
         let scope_hint = if self.project {
             format!(
-                "{}/settings.json · inherited global resources are dimmed",
-                yapi_core::config::PROJECT_DIR
+                "{}/{} · inherited global resources are dimmed",
+                yapi_core::config::PROJECT_DIR,
+                file(Scope::Project)
             )
         } else {
-            format!("~/{}/agent/settings.json", yapi_core::config::PROJECT_DIR)
+            format!(
+                "~/{}/agent/{}",
+                yapi_core::config::PROJECT_DIR,
+                file(Scope::Global)
+            )
         };
         vec![
             lines::truncate(&Line::from(first), width, ""),
@@ -922,6 +1011,8 @@ impl ConfigSelector {
             }
         } else if data == " " || kb.matches(data, "tui.select.confirm") {
             self.toggle();
+        } else if kb.decoder().matches(data, "ctrl+o") {
+            self.toggle_keep();
         } else {
             self.input.handle_input(data, kb);
             self.filter();
@@ -956,16 +1047,14 @@ mod tests {
         // Space leaves a global chest extension on.
         let dir = std::env::temp_dir().join(format!("yapi-config-chest-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let global = ResolvedPaths {
-            extensions: vec![yapi_core::packages::resolve::Resolved {
-                info: SourceInfo {
-                    scope: "user".into(),
-                    ..info("chest:todo")
-                },
-                enabled: true,
-            }],
-            ..ResolvedPaths::default()
-        };
+        let mut global = ResolvedPaths::default();
+        global.extensions = vec![yapi_core::packages::resolve::Resolved {
+            info: SourceInfo {
+                scope: "user".into(),
+                ..info("chest:todo")
+            },
+            enabled: true,
+        }];
         let settings = SettingsManager::load(&dir, &dir, false);
         let (cwd, agent) = (dir.clone(), dir.clone());
         let none = ResolvedPaths::default();
@@ -975,5 +1064,92 @@ mod tests {
         selector.selected = selector.filtered.iter().position(item).unwrap();
         selector.toggle();
         assert!(selector.groups[0][0].subgroups[0].items[0].enabled);
+    }
+
+    /// `ctrl+o` keeps a global resource in project-only runs by its path,
+    /// a skill by its folder or its single file, in the global settings
+    /// file whatever its format, and pressing it again stops keeping it.
+    #[test]
+    fn keep_key_writes_setting() {
+        let dir = std::env::temp_dir().join(format!("yapi-config-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.toml"), "# Mine.\ntheme = \"dark\"\n").unwrap();
+        let resource = |path: &str, source: &str| yapi_core::packages::resolve::Resolved {
+            info: SourceInfo {
+                path: dir.join(path).display().to_string(),
+                source: source.into(),
+                scope: "user".into(),
+                origin: "top-level".into(),
+                base_dir: None,
+            },
+            enabled: true,
+        };
+        let mut global = ResolvedPaths::default();
+        global.skills = vec![
+            resource("skills/pdf/SKILL.md", "auto"),
+            resource("skills/notes.md", "auto"),
+        ];
+        global.extensions = vec![resource("builtin:mcp", "builtin")];
+        let settings = SettingsManager::load(&dir, &dir, false);
+        let none = ResolvedPaths::default();
+        let mut selector = ConfigSelector::new(
+            &global,
+            &none,
+            settings,
+            dir.clone(),
+            dir.clone(),
+            24,
+            false,
+            false,
+        );
+        let rows: Vec<usize> = (0..selector.filtered.len())
+            .filter(|row| matches!(selector.filtered[*row], Row::Item(..)))
+            .collect();
+        let item = |selector: &ConfigSelector, row: usize| {
+            let Row::Item(g, s, i) = selector.filtered[row] else {
+                unreachable!()
+            };
+            selector.groups()[g].subgroups[s].items[i].clone()
+        };
+        let kept = |selector: &ConfigSelector| -> Vec<String> {
+            let setting = &selector.settings.document(Scope::Global)["projectOnly"];
+            let mut kept = string_list(setting.as_object().unwrap(), "skills");
+            kept.extend(string_list(setting.as_object().unwrap(), "extensions"));
+            kept
+        };
+        let row = |selector: &ConfigSelector, end: &str| {
+            let found = rows
+                .iter()
+                .find(|row| item(selector, **row).info.path.ends_with(end));
+            *found.unwrap()
+        };
+        let (pdf, notes) = (row(&selector, "pdf/SKILL.md"), row(&selector, "notes.md"));
+        for row in rows.iter().copied() {
+            selector.selected = row;
+            selector.toggle_keep();
+        }
+        let mut both = kept(&selector);
+        both.sort();
+        assert_eq!(both, ["skills/notes.md", "skills/pdf"]);
+        let skill = item(&selector, pdf);
+        assert!(selector.kept(&skill));
+        let text = std::fs::read_to_string(dir.join("settings.toml")).unwrap();
+        assert!(text.starts_with("# Mine.\ntheme = \"dark\"\n"), "{text}");
+        selector.selected = pdf;
+        selector.toggle_keep();
+        assert_eq!(kept(&selector), ["skills/notes.md"]);
+        assert!(!selector.kept(&skill));
+        // Project mode leaves the global setting alone.
+        selector.project = true;
+        selector.selected = notes;
+        selector.toggle_keep();
+        assert_eq!(kept(&selector), ["skills/notes.md"]);
+        // The last item kept leaves no empty list, nor an empty setting.
+        selector.project = false;
+        selector.toggle_keep();
+        let text = std::fs::read_to_string(dir.join("settings.toml")).unwrap();
+        assert_eq!(text, "# Mine.\ntheme = \"dark\"\n");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

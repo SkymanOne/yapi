@@ -81,6 +81,8 @@ pub struct Args {
     pub project_dir: Option<std::path::PathBuf>,
     /// yapi's `--enable-logging`.
     pub enable_logging: bool,
+    /// yapi's `--project-only`.
+    pub project_only: bool,
     pub messages: Vec<String>,
     pub file_args: Vec<String>,
     pub unknown_flags: IndexMap<String, FlagValue>,
@@ -267,6 +269,7 @@ pub fn parse(args: &[String]) -> Args {
             // `main` reads it from the raw arguments, as pi does.
             "--offline" => {}
             "--enable-logging" => result.enable_logging = true,
+            "--project-only" => result.project_only = true,
             _ if arg.starts_with('@') => result.file_args.push(arg[1..].to_owned()),
             _ if arg.starts_with("--") => {
                 let flag = &arg[2..];
@@ -353,6 +356,9 @@ mod tests {
 
         let parsed = args(&["--enable-logging", "hi"]);
         assert!(parsed.enable_logging && parsed.diagnostics.is_empty());
+        assert_eq!(parsed.messages, ["hi"]);
+        let parsed = args(&["--project-only", "hi"]);
+        assert!(parsed.project_only && parsed.unknown_flags.is_empty());
         assert_eq!(parsed.messages, ["hi"]);
     }
 }

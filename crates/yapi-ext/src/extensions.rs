@@ -399,8 +399,7 @@ impl ExtensionHost {
         options: Options,
         sources: &[SourceInfo],
     ) -> Result<Arc<ExtensionHost>, Error> {
-        let names: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
-        let bridge = SessionBridge::new(engine, &names, &options);
+        let bridge = SessionBridge::new(engine, sources, &options);
         let instance = Instance::start(engine, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, sources).await
     }
@@ -418,7 +417,7 @@ impl ExtensionHost {
         let component = tokio::task::spawn_blocking(move || compiler.native(&path))
             .await
             .map_err(|err| Error::Compile(err.to_string()))??;
-        let bridge = SessionBridge::new(engine, &[source.path.as_str()], &options);
+        let bridge = SessionBridge::new(engine, std::slice::from_ref(source), &options);
         let instance =
             Instance::start_component(engine, component, options.clone(), bridge.clone()).await?;
         ExtensionHost::start(instance, bridge, options, std::slice::from_ref(source)).await
@@ -2246,9 +2245,13 @@ struct SessionBridge {
     /// The channels each runtime, by number, missed of this runtime's
     /// events and was warned of this session, up to [`MISSED_WARNINGS`].
     missed: Mutex<HashMap<u64, Vec<String>>>,
-    /// The first file of the runtime's extensions, and how many more, for
-    /// short messages.
+    /// The first of the runtime's extensions, and how many more, for short
+    /// messages: a chest entry by its name in its manifest, any other by its
+    /// file.
     label: String,
+    /// Whether every extension of the runtime comes from a chest entry, so
+    /// advice can name the entry's `events`.
+    chest: bool,
     /// The run whose abort signal the guest holds, its id, and the task
     /// that aborts it with the run.
     run_signal: Mutex<Option<(CancellationToken, u64, tokio::task::JoinHandle<()>)>>,
@@ -2268,14 +2271,30 @@ fn not_bound() -> String {
 }
 
 impl SessionBridge {
-    fn new(engine: &Engine, files: &[&str], options: &Options) -> Arc<SessionBridge> {
-        let label = match files {
+    fn new(engine: &Engine, sources: &[SourceInfo], options: &Options) -> Arc<SessionBridge> {
+        let files: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
+        let entry = |source: &SourceInfo| {
+            yapi_core::chest::startup::entry_label(
+                &source.source,
+                &source.scope,
+                &options.project_dir,
+            )
+        };
+        let mut labels: Vec<String> = Vec::new();
+        for source in sources {
+            let label = entry(source).unwrap_or_else(|| source.path.clone());
+            if !labels.contains(&label) {
+                labels.push(label);
+            }
+        }
+        let label = match labels.as_slice() {
             [first, rest @ ..] if !rest.is_empty() => format!("{first} and {} more", rest.len()),
-            _ => files.join(", "),
+            _ => labels.join(", "),
         };
         Arc::new(SessionBridge {
             name: files.join(", "),
             label,
+            chest: !sources.is_empty() && sources.iter().all(|source| entry(source).is_some()),
             codemode: Arc::new(crate::codemode::Runner::with_engine(
                 engine.clone(),
                 crate::codemode::docs(),
@@ -2331,22 +2350,33 @@ impl SessionBridge {
     /// Why an event on `channel` from this runtime did not reach `receiver`,
     /// and which policy lists would let it.
     fn missed_event(&self, receiver: &SessionBridge, channel: &str) -> String {
-        let mut lists = Vec::new();
+        let mut fixes = Vec::new();
         if !self.events.sends(channel) {
-            lists.push(format!("events.send of {}", self.label));
+            fixes.push(self.allow("send", channel));
         }
         if !receiver.events.receives(channel) {
-            lists.push(format!("events.receive of {}", receiver.label));
+            fixes.push(receiver.allow("receive", channel));
         }
         // Both lists must allow the channel, so the advice names each that does not.
         format!(
-            "add \"{channel}\" to {}: pi.events \"{channel}\" from {} ({}) did not reach {} ({})",
-            lists.join(" and "),
+            "{}: pi.events \"{channel}\" from {} ({}) did not reach {} ({})",
+            fixes.join(" and "),
             self.label,
             self.grants,
             receiver.label,
             receiver.grants,
         )
+    }
+
+    /// What lets `channel` through this runtime's `list`, `send` or
+    /// `receive`. A chest entry with `events = "isolated"`, or two empty
+    /// lists, gets a list that holds the channel.
+    fn allow(&self, list: &str, channel: &str) -> String {
+        if self.chest && self.events == EventPolicy::isolated() {
+            let events = format!("{{ {list} = [\"{channel}\"] }}");
+            return format!("set events of {} to {events}", self.label);
+        }
+        format!("add \"{channel}\" to events.{list} of {}", self.label)
     }
 
     /// Warns that `receiver` missed this runtime's event on `channel`, once

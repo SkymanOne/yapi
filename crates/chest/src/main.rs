@@ -15,10 +15,11 @@ use std::process::ExitCode;
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
 use yapi_ai::auth::lock::{FileLock, write_atomic};
+use yapi_core::chest::lock::Locked;
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
-use yapi_core::chest::{Mode, Outcome, Project, Report};
+use yapi_core::chest::{Mode, Outcome, Outdated, Project, Report};
 use yapi_core::packages::npm::{self, Npm};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::home_dir;
@@ -31,7 +32,7 @@ use yapi_core::tools::path::home_dir;
 )]
 struct Cli {
     /// Use the global manifest, ~/.chest/chest.toml.
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "manifest")]
     global: bool,
     /// Use this manifest instead of chest.toml in the current folder.
     /// CHEST_MANIFEST sets the default.
@@ -54,10 +55,11 @@ enum Command {
     },
     /// Install what the manifest lists, as the lock pins it.
     Install {
-        /// Install exactly what the lock pins, missing items included, and
-        /// fail when the lock is missing or out of date or a copy no longer
-        /// matches it. Never writes chest.toml or the lock. The default when
-        /// CI is set.
+        /// Install exactly what the lock pins, missing items and copies an
+        /// older lock pinned included, and fail when the lock is missing or
+        /// out of date or a copy that someone edited, or that chest didn't
+        /// install, no longer matches it. Never writes chest.toml or the
+        /// lock. The default when CI is set.
         #[arg(long)]
         frozen: bool,
     },
@@ -72,7 +74,7 @@ enum Command {
     Outdated,
     /// Check every installed copy against the lock.
     Verify,
-    /// Turn settings.json packages or a skills-lock.json into entries.
+    /// Turn settings packages or a skills-lock.json into entries.
     Import(import::ImportArgs),
     /// Compare the capabilities a package's native extensions use with
     /// those it requests.
@@ -81,6 +83,19 @@ enum Command {
         path: Option<PathBuf>,
     },
 }
+
+/// A usage error that clap cannot see, such as a flag that conflicts with
+/// the source. chest exits with 2 on it, as on clap's own.
+#[derive(Debug)]
+pub struct Usage(pub String);
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Usage {}
 
 /// The manifest a command works on.
 pub struct Target {
@@ -98,10 +113,23 @@ impl Target {
             .map_or_else(PathBuf::new, Path::to_path_buf)
     }
 
-    /// The manifest's file name, as messages name it.
+    /// The manifest's file name.
     pub fn name(&self) -> String {
         let name = self.path.file_name().unwrap_or_default();
         name.to_string_lossy().into_owned()
+    }
+
+    /// `chest` with the flag that selects the manifest, for the commands
+    /// messages name, such as `chest -g`.
+    pub fn command(&self) -> String {
+        yapi_core::chest::command(&self.path, self.scope)
+    }
+
+    /// The manifest as messages name it: its file name in a project, and
+    /// `~/.chest/chest.toml` for the global one.
+    pub fn label(&self) -> String {
+        let home = yapi_core::tools::path::home_dir();
+        yapi_core::chest::manifest_label(&self.path, self.scope, &home)
     }
 }
 
@@ -120,7 +148,10 @@ fn main() -> ExitCode {
         // Errors quote the manifest and lock, and git's stderr keeps its lines.
         let error = printable(&format!("{err:#}"), &['\t', '\n']);
         let _ = writeln!(std::io::stderr(), "error: {error}");
-        ExitCode::FAILURE
+        match err.is::<Usage>() {
+            true => ExitCode::from(2),
+            false => ExitCode::FAILURE,
+        }
     })
 }
 
@@ -145,32 +176,38 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         (None, false) => std::env::current_dir()?.join("chest.toml"),
     };
     let target = Target { path, scope };
-    // Commands that write the manifest hold its lock from their first read
-    // to their last write, a rollback included. Init and import may create
-    // its folder, and a missing folder holds no manifest to protect.
+    // Commands that write the manifest, and installs, which remove what it
+    // no longer lists, hold its lock from their first read to their last
+    // write, a rollback included. Init and import may create its folder, and
+    // a missing folder holds no manifest to protect. A frozen install skips
+    // it, so a read-only project passes. It writes neither file, and fails
+    // when the lock it reads again under the lock's lock no longer fits the
+    // manifest.
+    let frozen = matches!(cli.command, Command::Install { frozen } if frozen || ci());
     let writes = match &cli.command {
         Command::Init(_) | Command::Import(_) => {
             std::fs::create_dir_all(target.base())?;
             true
         }
-        Command::Add(_) | Command::Remove { .. } | Command::Update { .. } => target.base().is_dir(),
+        Command::Install { .. } if frozen => false,
+        Command::Add(_)
+        | Command::Remove { .. }
+        | Command::Update { .. }
+        | Command::Install { .. } => target.base().is_dir(),
         _ => false,
     };
     let _held = match writes {
         true => Some(lock(&target).await?),
         false => None,
     };
+    yapi_core::settings::apply_http_proxy();
     let mut npm = Npm::new(npm::config());
     match cli.command {
         Command::Init(args) => init::run(&target, &args)?,
         Command::Add(args) => add::run(&target, args, &mut npm).await?,
         Command::Remove { name } => remove(&target, &name, &mut npm).await?,
-        Command::Install { frozen } => {
-            let mode = if frozen || ci() {
-                Mode::Frozen
-            } else {
-                Mode::Resolve
-            };
+        Command::Install { .. } => {
+            let mode = if frozen { Mode::Frozen } else { Mode::Resolve };
             sync(&target, mode, &mut npm).await?;
         }
         Command::Update { names } => update(&target, names, &mut npm).await?,
@@ -237,8 +274,9 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
     yapi_core::chest::refuse_link(&target.path)?;
     if !target.path.exists() {
         bail!(
-            "{} does not exist: run `chest init` first",
-            target.path.display()
+            "{} does not exist: run `{} init` first",
+            target.path.display(),
+            target.command()
         );
     }
     std::fs::read_to_string(&target.path)
@@ -274,6 +312,7 @@ pub fn print_report(report: &Report) {
             Outcome::Installed => "installed",
             Outcome::Replayed => "replayed",
             Outcome::Unchanged => "unchanged",
+            Outcome::Edited => "edited",
             Outcome::Skipped => "skipped",
             Outcome::Removed => "removed",
         };
@@ -396,10 +435,7 @@ fn list(target: &Target) -> anyhow::Result<()> {
                     "not locked".into()
                 }
             });
-        let state = match locked {
-            Some(locked) if project.present(section, locked) => "installed",
-            _ => "missing",
-        };
+        let state = project.state(section, name, entry);
         out(&format!("{id}  {pinned}  {state}  {}", source(entry)));
         if section == Section::Extensions {
             out(&format!(
@@ -407,44 +443,79 @@ fn list(target: &Target) -> anyhow::Result<()> {
                 project.manifest.grants(entry)
             ));
         }
-        match project.installed_root(name).map(|root| package_meta(&root)) {
-            Some(Ok(meta)) => {
-                if let Some(description) = meta.description {
-                    out(&format!("    {description}"));
-                }
+        let description = match project.installed_root(name).map(|root| package_meta(&root)) {
+            Some(Ok(meta)) => meta.description,
+            Some(Err(err)) => {
+                say(&format!("warning: {id}: {err}"));
+                None
             }
-            Some(Err(err)) => say(&format!("warning: {id}: {err}")),
-            None => {}
+            None => locked.and_then(|locked| item_description(&project, section, locked)),
+        };
+        if let Some(description) = description {
+            out(&format!("    {description}"));
         }
     }
     Ok(())
 }
 
+/// The frontmatter `description` of the skill or subagent `locked` places,
+/// from its canonical copy. `None` for an entry that places several, or
+/// none.
+fn item_description(project: &Project, section: Section, locked: &Locked) -> Option<String> {
+    let placed = project.placed(section, locked);
+    let copy = placed.first()?;
+    if placed
+        .iter()
+        .any(|path| path.file_name() != copy.file_name())
+    {
+        return None;
+    }
+    let file = match section {
+        Section::Skills => copy.join("SKILL.md"),
+        _ => copy.clone(),
+    };
+    let text = std::fs::read_to_string(file).ok()?;
+    let (frontmatter, _) = yapi_core::resources::parse_frontmatter(&text).ok()?;
+    frontmatter.get("description")?.as_str().map(str::to_owned)
+}
+
 async fn outdated(target: &Target, npm: &mut Npm) -> anyhow::Result<()> {
     let project = open(target)?;
-    let short = |text: &str| text[..text.len().min(12)].to_owned();
     let mut any = false;
-    for row in project.outdated(npm).await? {
-        let latest = row.latest.filter(|latest| *latest != row.wanted);
-        if row.wanted == row.locked && latest.is_none() {
-            continue;
-        }
+    for line in project
+        .outdated(npm)
+        .await?
+        .iter()
+        .filter_map(outdated_line)
+    {
         any = true;
-        let mut line = format!(
-            "{}  {} -> {}",
-            row.id,
-            short(&row.locked),
-            short(&row.wanted)
-        );
-        if let Some(latest) = latest {
-            line.push_str(&format!("  (latest {latest})"));
-        }
         out(&line);
     }
     if !any {
         say("Everything is up to date.");
     }
     Ok(())
+}
+
+/// What `chest outdated` says of `row`, if anything: the update it has,
+/// and npm's `latest` when that's newer still, outside the entry's range.
+fn outdated_line(row: &Outdated) -> Option<String> {
+    let short = |text: &str| text[..text.len().min(12)].to_owned();
+    // A `latest` the range already passed, as when the tag lags, is no news.
+    let latest = row.latest.as_ref();
+    let latest = latest.filter(|latest| npm::newer(latest, &row.wanted) != Some(false));
+    let (id, locked) = (&row.id, short(&row.locked));
+    match latest {
+        None if row.wanted == row.locked => None,
+        Some(latest) if row.wanted == row.locked => Some(format!(
+            "{id}  {locked}  (latest {latest} is outside its range)"
+        )),
+        _ => {
+            let update = format!("{id}  {locked} -> {}", short(&row.wanted));
+            let latest = latest.map(|latest| format!("  (latest {latest})"));
+            Some(update + &latest.unwrap_or_default())
+        }
+    }
 }
 
 fn verify(target: &Target) -> anyhow::Result<ExitCode> {
@@ -458,4 +529,39 @@ fn verify(target: &Target) -> anyhow::Result<ExitCode> {
         out(&problem);
     }
     Ok(ExitCode::FAILURE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outdated_lines_read() {
+        let row = |locked: &str, wanted: &str, latest: Option<&str>| Outdated {
+            id: "skills.review".into(),
+            locked: locked.into(),
+            wanted: wanted.into(),
+            latest: latest.map(Into::into),
+        };
+        let cases = [
+            (row("1.2.0", "1.2.0", None), None),
+            (row("1.2.0", "1.2.0", Some("1.2.0")), None),
+            (row("1.2.0", "1.2.0", Some("1.1.0")), None),
+            (
+                row("1.2.0", "1.2.0", Some("2.0.0")),
+                Some("skills.review  1.2.0  (latest 2.0.0 is outside its range)"),
+            ),
+            (
+                row("1.0.0", "1.2.0", Some("1.2.0")),
+                Some("skills.review  1.0.0 -> 1.2.0"),
+            ),
+            (
+                row("1.0.0", "1.2.0", Some("2.0.0")),
+                Some("skills.review  1.0.0 -> 1.2.0  (latest 2.0.0)"),
+            ),
+        ];
+        for (row, line) in cases {
+            assert_eq!(outdated_line(&row).as_deref(), line, "{row:?}");
+        }
+    }
 }

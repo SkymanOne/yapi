@@ -20,6 +20,13 @@ fn report(from: &Path, to: &Path, imported: &[Imported]) -> (usize, usize) {
         out("  nothing to import");
     }
     for entry in imported {
+        if entry.beside_toml {
+            out(&format!(
+                "  {}: not copied, because yapi keeps its settings in settings.toml there. Copy the settings you want into it by hand.",
+                entry.entry
+            ));
+            continue;
+        }
         let mut line = format!(
             "  {}: {} {} copied",
             entry.entry,

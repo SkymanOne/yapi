@@ -34,6 +34,9 @@ use super::{AgentSession, InputSource, Replacement, SessionChange, drain};
 /// What a handler result that changes the session's conversation needs.
 pub(super) const SESSION: &str = "the session grant";
 
+/// What the session drops from a tool_call block without [`SESSION`].
+const BLOCK_REASON: &str = "the reason of a tool_call block";
+
 /// The fields of a `tool_result` handler's result that change the result.
 const TOOL_RESULT_KEYS: [&str; 5] = [
     "content",
@@ -335,7 +338,7 @@ impl AgentHooks for Hooks {
                     return Some(yapi_agent::hooks::Block {
                         reason: self
                             .session
-                            .applies(extension, "tool_call", granted, SESSION)
+                            .part_applies(extension, BLOCK_REASON, granted, SESSION)
                             .then_some(reason),
                         terminate: false,
                     });
@@ -374,9 +377,10 @@ impl AgentHooks for Hooks {
                             .map_or(grants.is_all(), |tool| tool_granted(&grants, tool));
                     let missing =
                         format!("the session grant and the grants to run the {name} tool");
+                    let what = "the input change of a tool_call result";
                     if self
                         .session
-                        .applies(extension, "tool_call", granted, &missing)
+                        .part_applies(extension, what, granted, &missing)
                     {
                         event["input"] = input.clone();
                     }
@@ -387,7 +391,7 @@ impl AgentHooks for Hooks {
                     let granted = extension.grants().session;
                     let reason = result["reason"].as_str().filter(|_| {
                         self.session
-                            .applies(extension, "tool_call", granted, SESSION)
+                            .part_applies(extension, BLOCK_REASON, granted, SESSION)
                     });
                     return Some(yapi_agent::hooks::Block {
                         reason: reason.map(str::to_owned),
@@ -606,11 +610,16 @@ impl AgentSession {
     /// The context extensions get, with `cancel` for the operation at hand.
     pub(super) fn extension_context(&self, cancel: CancellationToken) -> Context {
         let (ui, mode, _) = lock(&self.inner.binding).clone();
-        let (project_dir, project_trusted) = {
+        let (project_dir, project_trusted, project_only_mcp) = {
             let settings = lock(&self.inner.settings);
+            let keep = crate::config::project_only().then(|| {
+                let global = settings.document(crate::settings::Scope::Global);
+                crate::packages::resolve::ProjectOnly::from_settings(global).mcp_servers
+            });
             (
                 settings.project_dir().to_path_buf(),
                 settings.project_trusted(),
+                keep,
             )
         };
         Context {
@@ -618,6 +627,7 @@ impl AgentSession {
             agent_dir: self.inner.agent_dir.clone(),
             project_dir,
             project_trusted,
+            project_only_mcp,
             mode,
             ui,
             tools: self.inner.tools.clone(),
@@ -648,13 +658,37 @@ impl AgentSession {
         granted
     }
 
+    /// [`AgentSession::applies`] for part `what` of a handler's result, such
+    /// as the input change of a tool_call result, which the warning names.
+    pub(super) fn part_applies(
+        &self,
+        extension: &Arc<dyn Extension>,
+        what: &str,
+        granted: bool,
+        missing: &str,
+    ) -> bool {
+        if !granted {
+            self.ignored(extension, what, missing);
+        }
+        granted
+    }
+
     /// Warns `extension`, once per event, that the session ignored a result
     /// of its `event` handler, which needs `missing`.
     pub(super) fn dropped(&self, extension: &Arc<dyn Extension>, event: &str, missing: &str) {
-        let path = extension.source().path;
-        if lock(&self.inner.dropped_results).insert((path.clone(), event.to_owned())) {
+        self.ignored(extension, &format!("a {event} result"), missing);
+    }
+
+    /// Warns `extension`, once per `what`, that the session ignored `what`,
+    /// which needs `missing`. A chest extension is named by its entry.
+    fn ignored(&self, extension: &Arc<dyn Extension>, what: &str, missing: &str) {
+        let source = extension.source();
+        if lock(&self.inner.dropped_results).insert((source.path.clone(), what.to_owned())) {
+            let project = self.project_dir();
+            let label = crate::chest::startup::entry_label(&source.source, &source.scope, &project);
+            let label = label.unwrap_or(source.path);
             extension.warn(&format!(
-                "Ignored a {event} result of extension {path}: it needs {missing}"
+                "Ignored {what} of extension {label}: it needs {missing}"
             ));
         }
     }

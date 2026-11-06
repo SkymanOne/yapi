@@ -17,7 +17,7 @@ The command copies Pi's agent folder, `~/.pi/agent` or `PI_CODING_AGENT_DIR`, in
 - the global `AGENTS.md` or `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`
 - sessions, prompt templates, skills, themes, extensions and packages
 
-The import keeps the files yapi already has, except a `settings.json` that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi's files for it, so the two installs never mix. It leaves out Pi's `lastChangelogVersion`, because that holds Pi's version.
+The import keeps the files yapi already has, except a `settings.json` that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi's files for it, so the two installs never mix. It leaves out Pi's `lastChangelogVersion`, because that holds Pi's version. When yapi keeps its settings in [`settings.toml`](configuration.md#write-settings-in-toml), the import skips Pi's `settings.json` and says so, since one folder can't hold both. Copy the settings you want into `settings.toml` by hand.
 
 After the import, yapi and Pi work side by side, and each opens the other's session files.
 

@@ -15,7 +15,7 @@ A pinned tarball must come from the registry configured for its package, at the 
 `chest install` has two modes:
 
 - **`chest install`**: keeps what's locked and present, installs what's locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.
-- **`chest install --frozen`**: installs exactly what the lock pins, including what's missing, as `npm ci` does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes `chest.toml` or `chest.lock`.
+- **`chest install --frozen`**: installs exactly what the lock pins, as `npm ci` does. It puts back what's missing, and replaces copies that chest installed for an older lock when nobody changed them since. It fails when the lock is missing or out of date, when someone edited a copy, or when a copy doesn't match its hash because chest didn't install it. It never writes `chest.toml` or `chest.lock`.
 
 ## Run chest in CI
 
@@ -23,16 +23,24 @@ A pinned tarball must come from the registry configured for its package, at the 
 
 ## Verify installed copies
 
-`chest verify` checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn't match.
+`chest verify` checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a `[patch]` installs, so chest checks those copies against what it installed, checks a path entry's links against its canonical copy, and reports a path entry whose source is gone. `verify` exits with 1 when one is missing or doesn't match.
 
 ## Update entries
 
 > **Any agent**, except the warning about extension requests, which matters only in yapi.
 
-`chest outdated` lists entries whose source has a newer commit for its `rev`, or a newer npm version in range. It also shows npm's `latest`. `chest update` moves the named entries, or all of them, to those versions, installs them and writes the lock.
+`chest outdated` lists entries whose source has a newer commit for its `rev`, or a newer npm version in range. It also shows npm's `latest` when that's newer than what the range allows. `chest update` moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn't change as `unchanged`. A path extension shows as `unchanged` even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as `edited`.
+
+An npm entry already at the newest version in its range is listed only when `latest` is newer, with no update:
+
+```text
+skills.review  1.2.0  (latest 2.0.0 is outside its range)
+```
+
+To move to it, change the entry's `version` and run `chest install`.
 
 When an updated extension now requests capabilities or event channels beyond its grants, `chest update` warns and grants nothing more.
 
 ## One command at a time
 
-One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it's waiting. A command that stopped without letting go of its lock holds it for 30s at most.
+One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it's waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.

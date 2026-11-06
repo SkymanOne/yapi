@@ -1763,7 +1763,12 @@ impl Extension for McpExtension {
 
     fn session_start<'a>(&'a self, ctx: &'a Context) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            let loaded = config::load(&ctx.agent_dir, &ctx.project_dir, ctx.project_trusted);
+            let loaded = config::load(
+                &ctx.agent_dir,
+                &ctx.project_dir,
+                ctx.project_trusted,
+                ctx.project_only_mcp.as_deref(),
+            );
             let generation = {
                 let mut shared = lock(&self.shared);
                 shared.config_errors = loaded.errors;
@@ -2016,6 +2021,7 @@ mod tests {
             agent_dir: PathBuf::new(),
             project_dir: PathBuf::new(),
             project_trusted: false,
+            project_only_mcp: None,
             mode: Mode::Print,
             ui: Arc::new(NoUi),
             tools,

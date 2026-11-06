@@ -203,13 +203,16 @@ impl Manifest {
     /// are unique across `[skills]`, `[agents]` and `[extensions]`. An entry
     /// takes `git` or `npm`, each with an optional `path`, or `path` alone.
     /// It takes `rev` only with `git` and `version` only with `npm`. A
-    /// `[patch]` entry takes `path` alone. Capability lists must parse as
+    /// `[patch]` entry takes `path` alone and names an entry of the other
+    /// sections. Capability lists must parse as
     /// [`Grants`]. In a project manifest, `[folders]` paths are relative,
     /// without `..` or a leading `~`, so they stay inside the project. The
     /// user's global manifest may name any folder here, but installs only
     /// under the home folder.
     pub fn parse(text: &str, scope: Scope) -> Result<Manifest, ChestError> {
-        let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
+        let document: DocumentMut = text
+            .parse()
+            .map_err(|err: toml_edit::TomlError| toml_error(text, err.message(), err.span()))?;
         Manifest::from_document(&document, scope)
     }
 
@@ -358,6 +361,9 @@ impl Manifest {
                 return Err(invalid(format!("patch.{name}: a patch takes `path` only")));
             };
             check_source(path, scope).map_err(|err| invalid(format!("patch.{name}: {err}")))?;
+            if !seen.contains_key(name.as_str()) {
+                return Err(invalid(format!("patch.{name}: no entry is named {name}")));
+            }
         }
         if let Some(capabilities) = self.package.as_ref().and_then(|p| p.capabilities.as_ref()) {
             Grants::parse(capabilities)
@@ -397,18 +403,12 @@ impl Entry {
                 ));
             }
             (Some(path), false) => check_source(path, scope).or_else(fail)?,
-            (Some(path), true) => {
-                let parts = Path::new(path).components();
-                let inside = parts
-                    .into_iter()
-                    .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
-                if path.is_empty() || !inside {
-                    return fail(format!(
-                        "`path`: \"{path}\" must be a folder inside the package"
-                    ));
-                }
+            (Some(path), true) if !inside_package(path) => {
+                return fail(format!(
+                    "`path`: \"{path}\" must be a folder inside the package"
+                ));
             }
-            (None, _) => {}
+            _ => {}
         }
         if let Some(git) = &self.git {
             match source::parse(&format!("git:{git}")) {
@@ -421,7 +421,11 @@ impl Entry {
                     ));
                 }
                 Source::Git { .. } => {}
-                _ => return fail(format!("`git`: not a git repository: {git}")),
+                _ => {
+                    let hint = ssh_hint(git).map(|hint| format!(": {hint}"));
+                    let hint = hint.unwrap_or_default();
+                    return fail(format!("`git`: not a git repository: {git}{hint}"));
+                }
             }
         }
         if section == Section::Extensions {
@@ -463,9 +467,31 @@ fn check_source(path: &str, scope: Scope) -> Result<(), String> {
     Ok(())
 }
 
+/// For a scp-like `git` source with an absolute path, `user@host:/path`,
+/// the advice to write it as an `ssh://` URL, since git reads the path
+/// relative to the remote home. `None` for any other source.
+pub fn ssh_hint(git: &str) -> Option<String> {
+    let (user_host, path) = git.split_once(':')?;
+    let absolute = !user_host.contains('/') && path.starts_with('/') && !path.starts_with("//");
+    absolute.then(|| {
+        format!(
+            "in `user@host:path`, the path is relative to the remote home. For an absolute path, use ssh://{user_host}{path}"
+        )
+    })
+}
+
 /// The environment variable that names a project's manifest, relative to
 /// the project's folder, for chest and yapi alike.
 pub const MANIFEST_ENV: &str = "CHEST_MANIFEST";
+
+/// Whether `path`, the `path` of a git or npm entry, stays inside its
+/// package: relative and without `..`.
+pub fn inside_package(path: &str) -> bool {
+    !path.is_empty()
+        && Path::new(path)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+}
 
 /// The manifest file [`MANIFEST_ENV`] names, if any. `Err` when it names a
 /// file outside the project: an absolute path, one under `~`, or one with
@@ -497,6 +523,28 @@ pub fn valid_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(lower_or_digit)
         && chars.all(|c| lower_or_digit(c) || matches!(c, '.' | '_' | '-'))
+}
+
+/// TOML error `message` at `span` of `text`, on one line with the line and
+/// column it starts at, so it reads as one warning wherever it shows.
+pub(crate) fn toml_error(
+    text: &str,
+    message: &str,
+    span: Option<std::ops::Range<usize>>,
+) -> ChestError {
+    let before = span.and_then(|span| text.get(..span.start));
+    let at = before.map_or_else(String::new, |before| {
+        let line = before.matches('\n').count() + 1;
+        let column = before
+            .rsplit('\n')
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .count()
+            + 1;
+        format!(" at line {line}, column {column}")
+    });
+    invalid(format!("TOML parse error{at}: {message}"))
 }
 
 /// `item` read as `T`, every field of which is optional. Errors start with
@@ -540,7 +588,9 @@ impl ManifestDocument {
     /// The manifest in `text`, ready to edit, refused as [`Manifest::parse`]
     /// refuses it for `scope`.
     pub fn parse(text: &str, scope: Scope) -> Result<ManifestDocument, ChestError> {
-        let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
+        let document: DocumentMut = text
+            .parse()
+            .map_err(|err: toml_edit::TomlError| toml_error(text, err.message(), err.span()))?;
         let manifest = Manifest::from_document(&document, scope)?;
         Ok(ManifestDocument {
             document,
@@ -585,15 +635,18 @@ impl ManifestDocument {
         })
     }
 
-    /// Removes entry `name` from `section`. Returns whether it was there.
+    /// Removes entry `name` from `section`, with its `[patch]`, which must
+    /// name an entry. Returns whether it was there.
     pub fn remove_entry(&mut self, section: Section, name: &str) -> Result<bool, ChestError> {
         let mut removed = false;
         self.edit(|document| {
-            if let Some(table) = document
-                .get_mut(section.key())
-                .and_then(Item::as_table_like_mut)
-            {
-                removed = table.remove(name).is_some();
+            let mut remove = |key: &str| {
+                let table = document.get_mut(key).and_then(Item::as_table_like_mut);
+                table.is_some_and(|table| table.remove(name).is_some())
+            };
+            removed = remove(section.key());
+            if removed {
+                remove(Section::Patch.key());
             }
             Ok(())
         })?;
@@ -910,6 +963,11 @@ extensions = ["extensions/index.ts"]
         assert_eq!(package.agents, some(&["agents/*.md"]));
 
         let rejected = [
+            // A syntax error reads on one line, with where it starts.
+            (
+                "[skills]\nx = { path = \"x }",
+                "TOML parse error at line 2, column 18: unclosed inline table, expected `}`",
+            ),
             (
                 "[skills]\nPdf = { path = \"x\" }",
                 "skills.Pdf: names use lowercase letters, digits, `.`, `_` and `-`, and start with a letter or digit",
@@ -938,6 +996,10 @@ extensions = ["extensions/index.ts"]
             (
                 "[skills]\nx = { git = \"a b\" }",
                 "skills.x: `git`: not a git repository: a b",
+            ),
+            (
+                "[skills]\nx = { git = \"me@localhost:/x/repo\" }",
+                "skills.x: `git`: not a git repository: me@localhost:/x/repo: in `user@host:path`, the path is relative to the remote home. For an absolute path, use ssh://me@localhost/x/repo",
             ),
             (
                 "[skills]\nx = { path = 1 }",
@@ -974,6 +1036,10 @@ extensions = ["extensions/index.ts"]
             (
                 "[patch]\nx = { git = \"https://github.com/a/b\" }",
                 "patch.x: a patch takes `path` only",
+            ),
+            (
+                "[skills]\nx = { path = \"a\" }\n[patch]\nghost = { path = \"b\" }",
+                "patch.ghost: no entry is named ghost",
             ),
             (
                 "capabilities-defaults = [\"exec\"]",
@@ -1114,6 +1180,10 @@ capabilities = ["fs"]
 
 [extensions]
 shout = { path = "ext/shout.wasm" }
+
+[patch]
+pdf = { path = "../dev/pdf" }
+notes = { path = "../dev/notes" }
 "#;
         let mut document = ManifestDocument::parse(text, Scope::Project).unwrap();
         let pdf = Entry {
@@ -1174,6 +1244,9 @@ capabilities = ["fs", "net"]
 
 [extensions]
 shout = { path = "ext/shout.wasm" }
+
+[patch]
+pdf = { path = "../dev/pdf" }
 
 [agents]
 reviewer = { git = "github.com/acme/agents", path = "reviewer.md" }

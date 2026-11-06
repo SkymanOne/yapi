@@ -30,6 +30,18 @@ chest warns that entries aren't locked, or that their lock is stale, when `chest
 
 `chest install --frozen`, the default under CI, fails instead, so update the lock before you push. [Lock, verify and update packages](chest-lock.md) covers the lock.
 
+## Global skills or extensions are missing
+
+When your global skills, extensions, prompt templates, themes or MCP servers don't load, the run may be [project-only](project-only.md). `echo $YAPI_PROJECT_ONLY` shows whether your shell turns the mode on, and `unset YAPI_PROJECT_ONLY` turns it off. To keep some global items in the mode, list them in the `projectOnly` setting, or press `ctrl+o` on them in `yapi config`.
+
+When a global extension registers a provider, project-only runs lose that provider's models. Keep the extension in `projectOnly`, or pick another model.
+
+In print, JSON and RPC modes, the warning `--project-only: the project isn't trusted, so none of its packages load` means the project has files that need trust. Interactive mode asks whether to trust the project instead, and shows Pi's notice that its resources are ignored if you don't. Either way, the run loads the built-in extensions, the paths you pass on the command line and the global items you keep. Trust the project, or pass `--approve` for one run.
+
+## yapi finds two settings files
+
+The error `Both settings.json and settings.toml are in <folder>. Keep one of them.` means that folder holds both forms of its settings file, and yapi won't guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to `settings.toml` can write `settings.json` again, so switch with yapi closed. [Write settings in TOML](configuration.md#write-settings-in-toml) covers the format.
+
 ## An extension's call is refused
 
 An error such as "Network access is not permitted for this extension" means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through `node:fs` gets an `EACCES` error saying that file access needs the `fs` grant.
@@ -38,7 +50,12 @@ Packages from `yapi install` have every grant. For an extension from a [chest](c
 
 ## An extension misses events
 
-A warning in the extension output that starts with `add "<channel>" to events.send of` or `add "<channel>" to events.receive of` means routing kept a `pi.events` event from an extension that listens on its channel. Add the channel to the lists the warning names, in the `events` of those chest entries.
+A warning in the extension output that says an event `did not reach` an extension means routing kept a `pi.events` event from an extension that listens on its channel. It starts with what to change in the `events` of each chest entry it names, such as `extensions.listener in chest.toml`:
+
+- `add "<channel>" to events.receive of <entry>`, or `events.send`: add the channel to that list.
+- `set events of <entry> to { receive = ["<channel>"] }`: the entry is `"isolated"`, so replace `"isolated"` with that table.
+
+The warning names an extension that doesn't come from chest by its file, and an entry of `~/.chest/chest.toml` as `extensions.<name> in ~/.chest/chest.toml`.
 
 ## Report a problem
 

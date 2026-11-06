@@ -64,6 +64,9 @@ pub struct Imported {
     /// `mcp-auth.json` (MCP servers). Servers may rotate refresh tokens, so
     /// copies in pi and yapi would sign each other out.
     pub signed_out: Vec<String>,
+    /// Whether pi's `settings.json` stayed out because yapi's folder holds
+    /// `settings.toml`, which a second settings file would conflict with.
+    pub beside_toml: bool,
 }
 
 /// pi's agent directory: `PI_CODING_AGENT_DIR`, or `~/.pi/agent`.
@@ -208,7 +211,8 @@ fn drop_sign_ins(path: &Path, file: ConfigFile) -> std::io::Result<Vec<String>> 
 /// holds only the version yapi recorded on its first start is replaced, and
 /// pi's `lastChangelogVersion`, a pi version, is not copied. Nor are the
 /// sign-ins of a copied `auth.json` or `mcp-auth.json` (see
-/// [`Imported::signed_out`]).
+/// [`Imported::signed_out`]). pi's `settings.json` stays out of a folder
+/// that holds `settings.toml`.
 pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<Imported>> {
     let mut out = Vec::new();
     for entry in entries {
@@ -222,6 +226,11 @@ pub fn import(from: &Path, to: &Path, entries: &[&str]) -> std::io::Result<Vec<I
         };
         let target = to.join(entry);
         let is_settings = *entry == ConfigFile::Settings.file_name();
+        if is_settings && to.join(crate::settings::TOML_FILE).exists() {
+            imported.beside_toml = true;
+            out.push(imported);
+            continue;
+        }
         if is_settings
             && settings(&target).is_some_and(|document| {
                 document.len() == 1 && document.contains_key(CHANGELOG_VERSION)
@@ -405,6 +414,13 @@ mod tests {
             std::fs::read_to_string(kept.join("settings.json")).unwrap(),
             "{\"lastChangelogVersion\":\"0.1.0\",\"theme\":\"dark\"}"
         );
+
+        // Beside a settings.toml, pi's settings.json stays out.
+        let toml = dir.join("toml");
+        write(&toml, "settings.toml", "theme = \"dark\"\n");
+        let imported = import(&pi, &toml, &["settings.json"]).unwrap();
+        assert!(imported[0].beside_toml && imported[0].copied == 0);
+        assert!(!toml.join("settings.json").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -6,7 +6,7 @@
 )]
 
 use std::ffi::OsString;
-use std::io::Write as _;
+use std::io::{BufRead as _, BufReader, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -16,6 +16,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use indexmap::IndexMap;
 use serde_json::json;
+use yapi_ai::auth::lock::FileLock;
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
 
 /// A scratch folder with a home folder and a project inside.
@@ -40,14 +41,17 @@ fn scratch(name: &str) -> Scratch {
 }
 
 /// What the child gets: the scratch home, no CI or CHEST_MANIFEST from the
-/// host, and `localhost/<path>` git sources mapped to local repositories.
+/// host, and `localhost/<path>` and `git://localhost/<path>` git sources
+/// mapped to local repositories.
 fn environment(scratch: &Scratch) -> Vec<(String, OsString)> {
     vec![
         ("HOME".into(), scratch.home.clone().into_os_string()),
         ("PATH".into(), std::env::var_os("PATH").unwrap_or_default()),
-        ("GIT_CONFIG_COUNT".into(), "1".into()),
+        ("GIT_CONFIG_COUNT".into(), "2".into()),
         ("GIT_CONFIG_KEY_0".into(), "url.file:///.insteadOf".into()),
         ("GIT_CONFIG_VALUE_0".into(), "https://localhost/".into()),
+        ("GIT_CONFIG_KEY_1".into(), "url.file:///.insteadOf".into()),
+        ("GIT_CONFIG_VALUE_1".into(), "git://localhost/".into()),
     ]
 }
 
@@ -194,6 +198,9 @@ fn init_detects_agents() {
         &[("CHEST_MANIFEST", "chest.dev.toml")],
     );
     assert!(dev.status.success(), "{}", text(&dev));
+    // Its header names the command for that manifest.
+    let install = "`chest --manifest chest.dev.toml install`";
+    let expected = expected.replace("`chest install`", install);
     assert_eq!(read(&scratch.project.join("chest.dev.toml")), expected);
     // One outside the folder is an error, as yapi loads no manifest for it.
     let outside = scratch.dir.join("chest.out.toml");
@@ -300,6 +307,38 @@ async fn add_writes_entry() {
         read(&scratch.project.join(".gitignore"))
             .contains(".agents/skills/pdf\n.claude/skills/pdf\n")
     );
+    // A git URL is a git source without `git:`. pdf goes first, since a
+    // second entry for its package and path is refused.
+    ok(&scratch, &["remove", "pdf"]);
+    let url = remote.source.replace("git:localhost", "git://localhost");
+    let args = ["add", &url, "--path", "skills/pdf", "--name", "url"];
+    ok(&scratch, &args);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    let entry = format!(
+        "url = {{ git = \"{}\", path = ",
+        url.trim_end_matches(".git")
+    );
+    assert!(manifest.contains(&entry), "{manifest}");
+    // A local folder that provides several skills installs each of them.
+    for skill in ["one", "two"] {
+        let folder = scratch.dir.join("pack/skills").join(skill);
+        write(&folder.join("SKILL.md"), &format!("# {skill}\n"));
+    }
+    let said = text(&ok(&scratch, &["add", "../pack"]));
+    assert!(said.contains("installed  skills.pack"), "{said}");
+    // So does the folder again, or a folder inside it.
+    for source in ["../pack/", "../pack/skills/one"] {
+        let again = chest(&scratch, &["add", source, "--name", "pack2"], &[]);
+        assert!(
+            text(&again).contains("skills.pack already installs path ../pack:"),
+            "{source}: {}",
+            text(&again)
+        );
+    }
+    for skill in ["one", "two"] {
+        let placed = scratch.project.join(".agents/skills").join(skill);
+        assert_eq!(read(&placed.join("SKILL.md")), format!("# {skill}\n"));
+    }
 
     // An npm extension, granted only what --grant lists.
     let package = json!({"name": "ext", "version": "1.0.0", "description": "To\u{1b}[2J\u{1b}[Hdo\u{9b}2J", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
@@ -366,7 +405,11 @@ fn add_existing_entry() {
         ],
         "v1",
     );
-    remote.commit(&[("index.ts", "export default () => { /* 2 */ };\n")], "v2");
+    let v2 = [
+        ("index.ts", "export default () => { /* 2 */ };\n"),
+        ("ext-a/index.ts", "export default () => {};\n"),
+    ];
+    remote.commit(&v2, "v2");
     init(&scratch);
     ok(
         &scratch,
@@ -400,6 +443,28 @@ fn add_existing_entry() {
         read(&scratch.project.join(".yapi/chest/todo/index.ts")),
         "export default () => { /* 2 */ };\n"
     );
+    // `--grant` must parse, and may only repeat the grants it keeps.
+    let again = |grant: &str| {
+        let args = ["add", &remote.source, "--name", "todo", "--grant", grant];
+        chest(&scratch, &[&args[..], &["--yes"]].concat(), &[])
+    };
+    for (grant, error) in [
+        (
+            "net",
+            "extensions.todo keeps its grants, so --grant can't change them: edit its `capabilities` in chest.toml",
+        ),
+        ("bogus", "--grant: unknown capability \"bogus\""),
+        (
+            "none,fs",
+            "--grant: \"none\" cannot be combined with other capabilities",
+        ),
+    ] {
+        let output = again(grant);
+        assert_eq!(output.status.code(), Some(2), "{grant}: {}", text(&output));
+        assert!(text(&output).contains(error), "{grant}: {}", text(&output));
+        assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    }
+    assert!(again("fs").status.success());
     // Another source under the same name is refused, and nothing changes.
     let clash = chest(
         &scratch,
@@ -413,7 +478,37 @@ fn add_existing_entry() {
         text(&clash)
     );
     assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // So is the same package under another name, whatever its rev.
+    let twice = chest(
+        &scratch,
+        &[
+            "add",
+            &format!("{}@v1", remote.source),
+            "--name",
+            "todo2",
+            "--yes",
+        ],
+        &[],
+    );
+    assert_eq!(twice.status.code(), Some(1));
+    let installs = format!(
+        "extensions.todo already installs git {} v2: change that entry instead",
+        remote
+            .source
+            .replace("git:", "https://")
+            .trim_end_matches(".git")
+    );
+    assert!(text(&twice).contains(&installs), "{}", text(&twice));
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // And one folder of it, which would load beside the whole package.
+    let v2 = format!("{}@v2", remote.source);
+    let args = ["add", &v2, "--path", "ext-a", "--name", "part", "--yes"];
+    let part = chest(&scratch, &args, &[]);
+    assert_eq!(part.status.code(), Some(1), "{}", text(&part));
+    assert!(text(&part).contains(&installs), "{}", text(&part));
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
     // Granting `all` says what it means, asked or not.
+    ok(&scratch, &["remove", "todo"]);
     let all = ok(
         &scratch,
         &[
@@ -430,6 +525,170 @@ fn add_existing_entry() {
         text(&all).contains("`all` is full access"),
         "{}",
         text(&all)
+    );
+}
+
+#[test]
+fn add_rejects_misuse() {
+    let scratch = scratch("misuse");
+    let remote = skill_remote(&scratch);
+    remote.commit(&[("skills/single.md", "# single\n")], "v2");
+    write(&scratch.dir.join("loose/skills/single.md"), "# single\n");
+    init(&scratch);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    let git = format!("{}@v2", remote.source);
+    let single =
+        "is a single-file skill, and chest installs only skill folders that hold a SKILL.md";
+    let not_extension = "is not an extension: extension files end in `.ts`, `.js` or `.wasm`";
+    let cases: Vec<(Vec<&str>, i32, String)> = vec![
+        (
+            vec!["add", &git, "--path", "skills/single.md"],
+            1,
+            format!("skills/single.md {single}"),
+        ),
+        (
+            vec!["add", &git, "--path", "skills", "--skill"],
+            1,
+            "skills.skills: skills is not a skill folder with a SKILL.md".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills"],
+            1,
+            "Cannot tell what skills provides: pass --skill, --agent or --extension".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "/etc"],
+            2,
+            "--path: \"/etc\" must be a folder inside the package".into(),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md"],
+            1,
+            format!("../loose/skills/single.md {single}"),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md", "--skill"],
+            1,
+            format!("../loose/skills/single.md {single}"),
+        ),
+        (
+            vec!["add", "git://localhost/repo"],
+            1,
+            "git://localhost/repo is not a git repository chest can read".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf", "--extension"],
+            1,
+            "skills/pdf holds no extension. An extension folder needs an `index.ts` or `index.js`, an `extensions` folder, or a `package.json` or `chest.toml` that lists extension files it holds.".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf/SKILL.md", "--extension"],
+            1,
+            format!("skills/pdf/SKILL.md {not_extension}"),
+        ),
+        (
+            vec!["add", "../loose/skills/single.md", "--extension"],
+            1,
+            format!("../loose/skills/single.md {not_extension}"),
+        ),
+        // Flags that conflict with the source are usage errors.
+        (
+            vec!["add", &git, "--rev", "v1"],
+            2,
+            "--rev conflicts with the revision `v2` in the source: give one of them".into(),
+        ),
+        (
+            vec!["add", &remote.source, "--version", "1"],
+            2,
+            "--version conflicts with a git source: use --rev".into(),
+        ),
+        (
+            vec!["add", "npm:pdf", "--rev", "v1"],
+            2,
+            "--rev conflicts with an npm source: use --version".into(),
+        ),
+        (
+            vec!["add", "npm:pdf@1", "--version", "2"],
+            2,
+            "--version conflicts with the version `1` in the source: give one of them".into(),
+        ),
+        (
+            vec!["add", "../loose", "--version", "1"],
+            2,
+            "--version conflicts with a path source".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf", "--grant", "fs"],
+            2,
+            "--grant is for extensions only".into(),
+        ),
+        (
+            vec!["-g", "--manifest", "chest.toml", "list"],
+            2,
+            "the argument '--global' cannot be used with '--manifest <PATH>'".into(),
+        ),
+        (
+            vec!["--manifest", "chest.dev.toml", "list"],
+            1,
+            "chest.dev.toml does not exist: run `chest --manifest chest.dev.toml init` first".into(),
+        ),
+        // Errors name what is wrong as the person wrote it.
+        (vec!["add", "./nope"], 1, "./nope does not exist".into()),
+        (
+            vec!["add", "foo:bar"],
+            1,
+            "`foo:` is not a source type chest knows".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/nope"],
+            1,
+            format!("{git} has no skills/nope"),
+        ),
+        (
+            vec!["add", "npm:"],
+            2,
+            "`npm:` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:@1.0.0"],
+            2,
+            "`npm:@1.0.0` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:@acme/", "--name", "acme"],
+            2,
+            "`npm:@acme/` needs a package name: `npm:<name>[@<range>]`".into(),
+        ),
+        (
+            vec!["add", "npm:x@"],
+            2,
+            "`npm:x@` has an empty version: `npm:<name>[@<range>]`".into(),
+        ),
+    ];
+    for (args, code, message) in &cases {
+        let output = chest(&scratch, args, &[]);
+        let said = text(&output);
+        assert_eq!(output.status.code(), Some(*code), "{args:?}: {said}");
+        assert!(said.contains(message.as_str()), "{args:?}: {said}");
+        assert!(!said.contains(".chest/cache"), "{args:?}: {said}");
+        assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    }
+    // `--agent` still adds such a file as a subagent.
+    ok(&scratch, &["add", "../loose/skills/single.md", "--agent"]);
+    assert!(scratch.project.join(".yapi/agents/single.md").exists());
+    // An entry written by hand for one fails, named inside its source.
+    let repo = remote.source.trim_start_matches("git:");
+    let solo = format!(
+        "\n[skills]\nsolo = {{ git = \"{repo}\", rev = \"v2\", path = \"skills/single.md\" }}\n"
+    );
+    let manifest = read(&scratch.project.join("chest.toml")) + &solo;
+    write(&scratch.project.join("chest.toml"), &manifest);
+    let output = chest(&scratch, &["install"], &[]);
+    let said = text(&output);
+    assert_eq!(output.status.code(), Some(1), "{said}");
+    assert!(
+        said.contains("skills.solo: skills/single.md is not a skill folder with a SKILL.md"),
+        "{said}"
     );
 }
 
@@ -480,6 +739,64 @@ fn verify_detects_tamper() {
         ],
     );
     ok(&scratch, &["verify"]);
+    // `list` shows the frontmatter description of a skill or a subagent.
+    let skill = "---\nname: hello\ndescription: Says hello\n---\nHi.\n";
+    write(&scratch.dir.join("hello/SKILL.md"), skill);
+    let agent = "---\nname: helper\ndescription: Helps out\n---\nHelp.\n";
+    write(&scratch.dir.join("helper.md"), agent);
+    ok(&scratch, &["add", "../hello"]);
+    ok(&scratch, &["add", "../helper.md"]);
+    let listed = text(&ok(&scratch, &["list"]));
+    for (id, description) in [
+        ("skills.hello", "Says hello"),
+        ("agents.helper", "Helps out"),
+    ] {
+        let row = listed.lines().position(|line| line.starts_with(id));
+        let next = row.and_then(|row| listed.lines().nth(row + 1));
+        assert_eq!(next, Some(&*format!("    {description}")), "{listed}");
+    }
+    // A path entry has no hash, but verify checks where its links point.
+    #[cfg(unix)]
+    {
+        let link = scratch.project.join(".claude/skills/hello");
+        let target = std::fs::read_link(&link).unwrap();
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(target.with_file_name("pdf"), &link).unwrap();
+        let output = chest(&scratch, &["verify"], &[]);
+        assert_eq!(output.status.code(), Some(1));
+        let wrong = ".claude/skills/hello does not link to";
+        assert!(text(&output).contains(wrong), "{}", text(&output));
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(target, &link).unwrap();
+        ok(&scratch, &["verify"]);
+        // A link in the first folder, where chest places the copy.
+        let copy = scratch.project.join(".agents/skills/pdf");
+        let moved = scratch.dir.join("pdf");
+        std::fs::rename(&copy, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &copy).unwrap();
+        let output = chest(&scratch, &["verify"], &[]);
+        assert_eq!(output.status.code(), Some(1));
+        let linked = ".agents/skills/pdf is a link where chest places the copy";
+        assert!(text(&output).contains(linked), "{}", text(&output));
+        std::fs::remove_file(&copy).unwrap();
+        std::fs::rename(&moved, &copy).unwrap();
+    }
+    // `list` shows the state yapi acts on at startup.
+    let state_of = |scratch: &Scratch, id: &str| {
+        let listed = text(&ok(scratch, &["list"]));
+        let row = listed
+            .lines()
+            .find(|line| line.starts_with(&format!("{id}  ")))
+            .unwrap_or_default();
+        row.split("  ").nth(2).unwrap_or_default().to_owned()
+    };
+    let state = |scratch: &Scratch| state_of(scratch, "skills.pdf");
+    assert_eq!(state(&scratch), "installed");
+    let manifest = scratch.project.join("chest.toml");
+    let pinned = read(&manifest);
+    write(&manifest, &pinned.replace("skills/pdf", "skills/other"));
+    assert_eq!(state(&scratch), "stale");
+    write(&manifest, &pinned);
     write(
         &scratch.project.join(".agents/skills/pdf/SKILL.md"),
         "# tampered\n",
@@ -491,6 +808,64 @@ fn verify_detects_tamper() {
         "{}",
         text(&output)
     );
+    // Install keeps the edited copy and says so, and how to put back the
+    // locked one, which list shows too.
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("edited     skills.pdf"), "{said}");
+    let how = ".agents/skills/pdf does not match the lock, so chest left it as it is: delete it and run `chest install` to put back the locked copy";
+    assert!(said.contains(how), "{said}");
+    let skill = scratch.project.join(".agents/skills/pdf");
+    assert_eq!(read(&skill.join("SKILL.md")), "# tampered\n");
+    assert_eq!(state(&scratch), "edited");
+    std::fs::remove_dir_all(&skill).unwrap();
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("replayed   skills.pdf"), "{said}");
+    assert_eq!(state(&scratch), "installed");
+
+    // An edited copy of a path entry stays too, while a new entry installs,
+    // and list and verify say so.
+    write(&scratch.dir.join("hello/SKILL.md"), "# hello\n");
+    write(&scratch.dir.join("new/SKILL.md"), "# new\n");
+    ok(&scratch, &["add", "../hello"]);
+    let hello = scratch.project.join(".agents/skills/hello/SKILL.md");
+    write(&hello, "# mine\n");
+    let added = read(&manifest).replace("[skills]\n", "[skills]\nnew = { path = \"../new\" }\n");
+    write(&manifest, &added);
+    let said = text(&ok(&scratch, &["install"]));
+    assert!(said.contains("edited     skills.hello"), "{said}");
+    assert!(said.contains("installed  skills.new"), "{said}");
+    let how = ".agents/skills/hello was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy";
+    assert!(said.contains(how), "{said}");
+    assert_eq!(read(&hello), "# mine\n");
+    assert_eq!(
+        read(&scratch.project.join(".agents/skills/new/SKILL.md")),
+        "# new\n"
+    );
+    assert_eq!(state_of(&scratch, "skills.hello"), "edited");
+    // A deleted copy of a path entry is missing.
+    std::fs::remove_dir_all(scratch.project.join(".agents/skills/new")).unwrap();
+    let said = text(&chest(&scratch, &["verify"], &[]));
+    assert!(said.contains(".agents/skills/new is missing"), "{said}");
+    let output = chest(&scratch, &["verify"], &[]);
+    assert_eq!(output.status.code(), Some(1));
+    let edited = ".agents/skills/hello was modified since chest installed it";
+    assert!(text(&output).contains(edited), "{}", text(&output));
+
+    // Install and update leave path entries whose source didn't change as
+    // they are.
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
+    let added = read(&manifest) + "\n[extensions]\next = { path = \"../ext\" }\n";
+    write(&manifest, &added);
+    ok(&scratch, &["install"]);
+    for command in ["install", "update"] {
+        let said = text(&ok(&scratch, &[command]));
+        for id in ["skills.new", "extensions.ext"] {
+            assert!(said.contains(&format!("unchanged  {id}")), "{said}");
+        }
+    }
 }
 
 #[test]
@@ -545,10 +920,42 @@ fn ci_implies_frozen() {
 fn global_scope_home() {
     let scratch = scratch("global");
     let remote = skill_remote(&scratch);
+    // Messages name the commands that work on the global manifest.
+    let output = chest(&scratch, &["-g", "list"], &[]);
+    let missing = ".chest/chest.toml does not exist: run `chest -g init` first";
+    assert!(text(&output).contains(missing), "{}", text(&output));
+    // With no agent found, subagents go to yapi's agent folder, wherever
+    // `YAPI_CODING_AGENT_DIR` puts it.
+    let moved = scratch.home.join("moved").display().to_string();
+    let args = ["-g", "init", "--yes"];
+    let output = chest(&scratch, &args, &[("YAPI_CODING_AGENT_DIR", &moved)]);
+    assert!(output.status.success(), "{}", text(&output));
+    let manifest = read(&scratch.home.join(".chest/chest.toml"));
+    assert!(
+        manifest.contains("agents = [\"~/moved/agents\"]"),
+        "{manifest}"
+    );
+    std::fs::remove_file(scratch.home.join(".chest/chest.toml")).unwrap();
+    // An agent folder outside the home folder, where the global manifest
+    // never installs, is left out with the reason.
+    let outside = scratch.project.join("agent");
+    let outside = &outside.display().to_string();
+    let output = chest(&scratch, &args, &[("YAPI_CODING_AGENT_DIR", outside)]);
+    assert!(output.status.success(), "{}", text(&output));
+    let said = text(&output);
+    let reason = format!(
+        "Left out yapi's subagent folder {outside}/agents: the global manifest installs only inside your home folder"
+    );
+    assert!(said.contains(&reason), "{said}");
+    let manifest = read(&scratch.home.join(".chest/chest.toml"));
+    assert!(!manifest.contains("agents ="), "{manifest}");
+    std::fs::remove_file(scratch.home.join(".chest/chest.toml")).unwrap();
     std::fs::create_dir_all(scratch.home.join(".claude")).unwrap();
     ok(&scratch, &["-g", "init", "--yes"]);
     let manifest = read(&scratch.home.join(".chest/chest.toml"));
     assert!(manifest.contains("skills = [\"~/.claude/skills\"]\nagents = [\"~/.claude/agents\"]\nextensions = \"~/.chest/store\"\n"), "{manifest}");
+    let header = "# Installed with `chest -g install`, pinned in the lock beside this file.";
+    assert!(manifest.starts_with(header), "{manifest}");
     ok(
         &scratch,
         &[
@@ -563,8 +970,36 @@ fn global_scope_home() {
         read(&scratch.home.join(".claude/skills/pdf/SKILL.md")),
         "# pdf\n"
     );
-    assert!(scratch.home.join(".chest/chest.lock").exists());
     assert!(scratch.home.join(".chest/state/global.toml").exists());
+    // A lock whose hash no longer matches what it pins says how to take it.
+    let lock_path = scratch.home.join(".chest/chest.lock");
+    let lock = read(&lock_path);
+    write(&lock_path, &lock.replace("hash = \"", "hash = \"0"));
+    std::fs::remove_dir_all(scratch.home.join(".claude/skills/pdf")).unwrap();
+    let output = chest(&scratch, &["-g", "install"], &[]);
+    let take = "what was fetched does not match the lock: run `chest -g update` to take it";
+    assert!(text(&output).contains(take), "{}", text(&output));
+    write(&lock_path, &lock);
+    ok(&scratch, &["-g", "install"]);
+    // Messages name the global manifest by its path.
+    let ext = scratch.home.join("gext");
+    write(&ext.join("index.ts"), "export default () => {};\n");
+    write(
+        &ext.join("chest.toml"),
+        "[skills]\ninner = { path = \"inner\" }\n",
+    );
+    let ext = ext.display().to_string();
+    let output = ok(&scratch, &["-g", "add", &ext, "--grant", "fs", "--yes"]);
+    let nested = "Add the ones you want with `chest -g add`.";
+    assert!(text(&output).contains(nested), "{}", text(&output));
+    let output = chest(&scratch, &["-g", "add", &ext, "--grant", "env"], &[]);
+    assert_eq!(output.status.code(), Some(2), "{}", text(&output));
+    let refused = "edit its `capabilities` in ~/.chest/chest.toml";
+    assert!(text(&output).contains(refused), "{}", text(&output));
+    // `-g` ignores CHEST_MANIFEST, which names a project's manifest.
+    let dev = [("CHEST_MANIFEST", "chest.dev.toml")];
+    let listed = text(&chest(&scratch, &["-g", "list"], &dev));
+    assert!(listed.starts_with("skills.pdf  "), "{listed}");
     assert!(!scratch.home.join(".gitignore").exists());
     assert!(
         !scratch.project.join("chest.toml").exists()
@@ -595,7 +1030,15 @@ fn import_settings_packages() {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     let said = text(&output);
-    assert!(said.contains("yapi remove -l npm:@acme/ext@^1"), "{said}");
+    // The project isn't trusted yet, so `yapi remove -l` needs `--approve`,
+    // and a path names the package from any folder.
+    let local = scratch.project.join("local-ext");
+    for remove in [
+        "with `yapi remove -l --approve npm:@acme/ext@^1`".to_owned(),
+        format!("with `yapi remove -l --approve {}`", local.display()),
+    ] {
+        assert!(said.contains(&remove), "{remove}\n{said}");
+    }
     // A filter chest cannot express leaves the package in settings.json.
     for spec in ["npm:@acme/picky", "npm:@acme/quiet"] {
         let skipped = format!(
@@ -608,17 +1051,71 @@ fn import_settings_packages() {
         "{manifest}"
     );
     assert_eq!(read(&path), settings.to_string());
-    // A path names another file for either flag, and one flag is required.
+    // Messages name the file read, such as a `settings.toml` a path names.
+    // Once the project is trusted, the command needs no `--approve`.
+    let trust = json!({ scratch.project.to_str().unwrap(): true });
     write(
-        &scratch.dir.join("other.json"),
-        r#"{"packages": ["npm:other"]}"#,
+        &scratch.home.join(".yapi/agent/trust.json"),
+        &trust.to_string(),
     );
+    let toml =
+        "packages = [\"npm:tomled\", { source = \"npm:@acme/picky\", extensions = [\"x.ts\"] }]\n";
+    write(&scratch.dir.join("toml/settings.toml"), toml);
+    let said = text(&ok(
+        &scratch,
+        &["import", "--settings", "../toml/settings.toml"],
+    ));
+    for message in [
+        "remove it from settings.toml with `yapi remove -l npm:tomled`",
+        "so it keeps loading from settings.toml",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
+    // A path names another file for either flag, and one flag is required.
+    // Its local sources resolve against its own folder, as yapi resolves
+    // them, also when the path is relative or a `file://` URL.
+    let file_url = format!("file://{}", scratch.dir.join("filed").display());
+    let other = json!({"packages": ["npm:other", "./tools/pkg", file_url]});
+    write(&scratch.dir.join("other.json"), &other.to_string());
     ok(&scratch, &["import", "--settings", "../other.json"]);
     let manifest = read(&scratch.project.join("chest.toml"));
-    assert!(
-        manifest.contains("other = { npm = \"other\", capabilities = [\"all\"] }"),
-        "{manifest}"
+    for line in [
+        "other = { npm = \"other\", capabilities = [\"all\"] }",
+        "pkg = { path = \"../tools/pkg\", capabilities = [\"all\"] }",
+        "filed = { path = \"../filed\", capabilities = [\"all\"] }",
+    ] {
+        assert!(manifest.contains(line), "{line}\n{manifest}");
+    }
+    // So does a bare file name in the current folder.
+    write(
+        &scratch.project.join("bare.json"),
+        r#"{"packages": ["npm:bare"]}"#,
     );
+    let said = text(&ok(&scratch, &["import", "--settings", "bare.json"]));
+    let added = "Added 1 entry to chest.toml. Run `chest install` to install it.";
+    assert!(said.contains(added), "{said}");
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(manifest.contains("bare = { npm = \"bare\""), "{manifest}");
+    // With `-g`, the message names the global manifest and its command.
+    write(
+        &scratch.home.join(".yapi/agent/settings.json"),
+        r#"{"packages": ["npm:mine"]}"#,
+    );
+    let said = text(&ok(&scratch, &["-g", "import", "--settings"]));
+    let added = "Added 1 entry to ~/.chest/chest.toml. Run `chest -g install` to install it.";
+    assert!(said.contains(added), "{said}");
+    // A package the manifest has is skipped, also at another version, and
+    // so is another package whose name it has.
+    let clash = r#"{"packages": ["npm:@acme/ext@^2", "npm:@other/ext"]}"#;
+    write(&scratch.project.join("clash.json"), clash);
+    let said = text(&ok(&scratch, &["import", "--settings", "clash.json"]));
+    for message in [
+        "warning: skipped npm:@acme/ext@^2: the manifest already has it as extensions.ext",
+        "warning: skipped npm:@other/ext: the manifest's extensions.ext is another package",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
     let flagless = chest(&scratch, &["import", "../other.json"], &[]);
     assert_eq!(flagless.status.code(), Some(2), "{}", text(&flagless));
 
@@ -675,19 +1172,43 @@ fn import_skills_lock() {
         "pdf": {"source": "anthropics/skills", "sourceType": "github", "ref": "v1", "skillPath": "skills/pdf/SKILL.md", "computedHash": "abc"},
         "docx": {"source": "acme/docs", "sourceUrl": "https://gitlab.com/acme/docs.git", "sourceType": "git", "skillPath": "docx/SKILL.md", "computedHash": "def"},
         "notes": {"source": "tools/notes", "sourceType": "local", "computedHash": "ghi"},
+        "sheets": {"source": "acme/sheets", "sourceType": "gitlab", "computedHash": "jkl"},
+        "weird": {"source": "a/b", "sourceType": "npm", "computedHash": "mno"},
     }});
     write(&scratch.project.join("skills-lock.json"), &lock.to_string());
     init(&scratch);
-    ok(&scratch, &["import", "--skills-lock"]);
+    let said = text(&ok(&scratch, &["import", "--skills-lock"]));
     let manifest = read(&scratch.project.join("chest.toml"));
     for line in [
         "pdf = { git = \"github.com/anthropics/skills\", rev = \"v1\", path = \"skills/pdf\" }",
         "docx = { git = \"https://gitlab.com/acme/docs.git\", path = \"docx\" }",
         "notes = { path = \"tools/notes\" }",
+        "sheets = { git = \"gitlab.com/acme/sheets\" }",
     ] {
         assert!(manifest.contains(line), "{line}\n{manifest}");
     }
     assert!(!manifest.contains("abc"));
+    // A source type chest doesn't know is skipped, not taken for git.
+    let unknown = "warning: skipped weird: chest can't install its sourceType \"npm\"";
+    assert!(said.contains(unknown), "{said}");
+    assert!(!manifest.contains("weird"), "{manifest}");
+    // Skills match by package and folder: another folder of a package the
+    // manifest has is added, and another package by a taken name isn't.
+    let again = json!({"version": 1, "skills": {
+        "xlsx": {"source": "anthropics/skills", "sourceType": "github", "skillPath": "skills/xlsx/SKILL.md"},
+        "word": {"source": "acme/docs", "sourceUrl": "https://gitlab.com/acme/docs.git", "sourceType": "git", "skillPath": "docx/SKILL.md"},
+        "pdf": {"source": "other/skills", "sourceType": "github", "skillPath": "skills/pdf/SKILL.md"},
+    }});
+    write(&scratch.project.join("again.json"), &again.to_string());
+    let said = text(&ok(&scratch, &["import", "--skills-lock", "again.json"]));
+    for message in [
+        "skills.xlsx  from anthropics/skills",
+        "warning: skipped word: the manifest already has it as skills.docx",
+        "warning: skipped pdf: the manifest's skills.pdf is another package",
+    ] {
+        assert!(said.contains(message), "{said}");
+    }
+    assert!(!read(&scratch.project.join("chest.toml")).contains("other/skills"));
 }
 
 #[test]
@@ -773,6 +1294,30 @@ fn remove_keeps_handwritten() {
         "{manifest}"
     );
     assert!(!scratch.project.join(".chest.toml.lock").exists());
+
+    // An install that waits for the manifest's lock reads the manifest once
+    // it holds the lock, so it keeps what `chest add` added meanwhile, which
+    // the lock already pins.
+    ok(&scratch, &["add", "../s1"]);
+    ok(&scratch, &["add", "../s2"]);
+    let path = scratch.project.join("chest.toml");
+    let added = read(&path);
+    write(&path, &added.replace("s2 = { path = \"../s2\" }\n", ""));
+    let held = FileLock::acquire_blocking(&scratch.project.join(".chest.toml")).unwrap();
+    let mut install = command(&scratch, &["install"], &[]).spawn().unwrap();
+    let mut stderr = BufReader::new(install.stderr.take().unwrap());
+    let mut line = String::new();
+    // Until install says it waits, or ends without waiting.
+    while stderr.read_line(&mut line).unwrap() > 0 && !line.contains("Waiting") {
+        line.clear();
+    }
+    write(&path, &added);
+    drop(held);
+    let output = install.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(!text(&output).contains("removed"), "{}", text(&output));
+    assert!(read(&scratch.project.join("chest.lock")).contains("name = \"s2\""));
+    assert!(scratch.project.join(".agents/skills/s2/SKILL.md").exists());
 }
 
 #[test]
@@ -935,6 +1480,13 @@ fn http_component(extra: u8) -> Vec<u8> {
 #[test]
 fn chest_check_mismatch() {
     let scratch = scratch("check");
+    let empty = chest(&scratch, &["check"], &[]);
+    assert_eq!(empty.status.code(), Some(1), "{}", text(&empty));
+    let none = format!(
+        "{} has no chest.toml or package.json, and no extensions to check",
+        scratch.project.display()
+    );
+    assert!(text(&empty).contains(&none), "{}", text(&empty));
     let package = scratch.project.join("chest.toml");
     write(
         &package,
@@ -1006,6 +1558,22 @@ fn chest_check_mismatch() {
         report,
         "extensions/hello.wasm uses `session` (SDK feature `session`)\n"
     );
+    // Its manifests stand for it.
+    for manifest in ["package.json", "chest.toml"] {
+        let path = created.join(manifest);
+        let output = ok(&scratch, &["check", path.to_str().unwrap()]);
+        assert_eq!(text(&output), report, "{manifest}");
+    }
+    // Another file is not an extension.
+    write(&created.join("stray.json"), "{}\n");
+    let stray = created.join("stray.json");
+    let output = chest(&scratch, &["check", stray.to_str().unwrap()], &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", text(&output));
+    let expected = format!(
+        "{} is not an extension: extension files end in `.ts`, `.js` or `.wasm`",
+        stray.display()
+    );
+    assert!(text(&output).contains(&expected), "{}", text(&output));
 
     // A component built without the SDK shows only its WASI imports.
     let bare = scratch.dir.join("bare.wasm");

@@ -13,7 +13,7 @@ chest picks one manifest per command:
 - chest uses `chest.toml` in the current folder, and only there.
 - `--manifest <path>` names another, and `CHEST_MANIFEST` sets the default for it.
 - An environment's manifest is a complete manifest of its own, such as `chest.dev.toml`. Its lock is the same name with `.lock` for `.toml`, here `chest.dev.lock`.
-- `-g` uses the global manifest, `~/.chest/chest.toml`.
+- `-g` uses the global manifest, `~/.chest/chest.toml`. It can't be combined with `--manifest`.
 - chest refuses a `chest.toml` or `chest.lock` that's a symbolic link, so a cloned project can't point chest at a file outside it.
 
 Paths in a manifest are relative to the manifest's folder. A project manifest keeps every folder inside the project. The global manifest may use `~` and absolute paths, and installs only inside your home folder.
@@ -81,9 +81,10 @@ path = "reviewer.md"
 
 These rules apply to every source:
 
-- A `git` value is a repository that `yapi install` accepts after `git:`, without a revision: put that in `rev`. `rev` must not start with `-`.
+- A `git` value is a repository that `yapi install` accepts after `git:`, without a revision: put that in `rev`. `rev` must not start with `-`. In `user@host:path`, the path is relative to the remote home, so an absolute path takes `ssh://`, as in `ssh://user@host/srv/repo`.
 - `path` inside a git or npm package stays inside it, without `..`. A path source may use `..` to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with `~`.
 - With `path`, a skills or agents entry installs one item under the entry's name. A subagent is a `.md` file, placed as `<name>.md`. Without `path`, it installs every skill or subagent the package provides, each under its own name.
+- A path source installs one item when it's a skill folder with a `SKILL.md` or a subagent file. A folder that isn't one is a package, and the entry installs every skill or subagent it provides, each under its own name.
 
 ### Extension keys
 
@@ -122,7 +123,7 @@ An extension from a path loads where it is. Others install into the store. A git
 
 > **Any agent.**
 
-A patch installs an entry from a local path instead of its source. It takes `path` only, and the lock keeps what it recorded for the entry.
+A patch installs an entry from a local path instead of its source. It takes `path` only, and the lock keeps what it recorded for the entry. Each patch must name an entry of `[skills]`, `[agents]` or `[extensions]`.
 
 ```toml
 [patch]

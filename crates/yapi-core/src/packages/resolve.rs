@@ -57,8 +57,9 @@ impl ResourceType {
     }
 }
 
-/// pi's extension files, and yapi's native extensions.
-fn is_extension_file(name: &str) -> bool {
+/// Whether file `name` is an extension yapi loads: pi's extension files,
+/// and yapi's native extensions.
+pub fn is_extension_file(name: &str) -> bool {
     name.ends_with(".ts") || name.ends_with(".js") || name.ends_with(".wasm")
 }
 
@@ -89,6 +90,20 @@ pub struct ResolvedPaths {
     /// Packages whose `chest.toml` does not parse, each by its folder with
     /// why. Their resources resolve as if it were absent.
     pub problems: Vec<(String, String)>,
+    /// What a project-only run keeps of the user's resources, while
+    /// [`resolve`] collects them.
+    pub(crate) keep: Option<Keep>,
+    /// The canonical paths of chest's resources so far, by kind, with
+    /// their place in the list, while [`resolve`] collects them.
+    pub(crate) chest_files: Vec<(ResourceType, PathBuf, usize)>,
+}
+
+/// [`ProjectOnly`] with the folders its patterns resolve against.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Keep {
+    only: ProjectOnly,
+    agent_dir: PathBuf,
+    home: PathBuf,
 }
 
 impl ResolvedPaths {
@@ -121,15 +136,44 @@ impl ResolvedPaths {
             path,
             ..metadata.clone()
         };
+        // Before anything else, so a user's copy left out never shadows a
+        // project's copy of the same file.
+        if let Some(keep) = &self.keep
+            && info.scope == "user"
+            && info.source != "builtin"
+            && !keep.only.keeps(&info, kind, &keep.agent_dir, &keep.home)
+        {
+            return;
+        }
+        // A chest entry's file also takes the other spellings of its path,
+        // such as discovery's through a linked folder. One lookup a resource.
+        let chest = info.source.starts_with("chest:");
+        let canonical = (chest || self.chest_files.iter().any(|(other, ..)| *other == kind))
+            .then(|| std::fs::canonicalize(&info.path).ok())
+            .flatten();
+        let same_file = canonical.as_ref().and_then(|file| {
+            let mut files = self.chest_files.iter();
+            let found = files.find(|(other, path, _)| *other == kind && path == file);
+            found.map(|(_, _, index)| *index)
+        });
         let list = self.of_mut(kind);
-        if let Some(listed) = list.iter().find(|resource| resource.info.path == info.path) {
-            let other = (&listed.info.source, &listed.info.scope) != (&info.source, &info.scope);
+        let listed = list
+            .iter()
+            .position(|resource| resource.info.path == info.path)
+            .or(same_file);
+        if let Some(index) = listed {
+            let listed = &list[index].info;
+            let other = (&listed.source, &listed.scope) != (&info.source, &info.scope);
             if kind == ResourceType::Extensions && other {
                 self.shadowed.push(info);
             }
             return;
         }
+        let index = list.len();
         list.push(Resolved { info, enabled });
+        if let (true, Some(file)) = (chest, canonical) {
+            self.chest_files.push((kind, file, index));
+        }
     }
 
     /// The enabled resources of `kind`, in order.
@@ -179,6 +223,9 @@ pub struct ResolveInput<'a> {
     pub project: [&'a [String]; 4],
     /// Built-in extension names.
     pub builtins: &'a [&'a str],
+    /// In a project-only run, what it keeps of the user's resources. The
+    /// user's others are left out.
+    pub project_only: Option<ProjectOnly>,
 }
 
 /// The path prefix naming a built-in extension.
@@ -931,12 +978,14 @@ fn auto_discovered(input: &ResolveInput<'_>, acc: &mut ResolvedPaths) {
     }
 }
 
-/// pi's `resourcePrecedenceRank`.
+/// pi's `resourcePrecedenceRank`, with chest's entries ranked as their
+/// scope's discovered folders, which hold their placed skills: collected
+/// first, they win the names they share there.
 fn precedence(info: &SourceInfo) -> u8 {
     if info.source == "builtin" {
         return 5;
     }
-    if info.origin == "package" {
+    if info.origin == "package" && !info.source.starts_with("chest:") {
         return 4;
     }
     let scope = if info.scope == "project" { 0 } else { 2 };
@@ -991,19 +1040,34 @@ pub fn package_resources(
 /// pi's `resolve`: packages, then settings entries, then discovered files,
 /// then built-in extensions, ordered by precedence without repeats.
 pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
-    let mut acc = ResolvedPaths::default();
-    for package in &input.packages {
-        collect_package(
-            &mut acc,
-            &package.root,
-            package.filter.as_ref(),
-            super::source::is_local(&package.source),
-            metadata(&package.source, &package.scope, "package", None),
-        );
-    }
-    for skill in &input.skills {
-        let meta = metadata(&skill.source, &skill.scope, "package", None);
-        acc.add(ResourceType::Skills, &skill.root, &meta, true);
+    let mut acc = ResolvedPaths {
+        keep: input.project_only.clone().map(|only| Keep {
+            only,
+            agent_dir: input.agent_dir.clone(),
+            home: input.home.clone(),
+        }),
+        ..ResolvedPaths::default()
+    };
+    // The project's packages and skills come before the user's, whichever
+    // manager installed them. Settings list the project's first already.
+    for project in [true, false] {
+        let ours = |input: &&PackageInput| (input.scope == "project") == project;
+        for package in input.packages.iter().filter(ours) {
+            collect_package(
+                &mut acc,
+                &package.root,
+                package.filter.as_ref(),
+                super::source::is_local(&package.source),
+                metadata(&package.source, &package.scope, "package", None),
+            );
+        }
+        for skill in input.skills.iter().filter(ours) {
+            let meta = metadata(&skill.source, &skill.scope, "package", None);
+            // By its file, as discovery names a skill folder.
+            let file = skill.root.join("SKILL.md");
+            let path = if file.is_file() { &file } else { &skill.root };
+            acc.add(ResourceType::Skills, path, &meta, true);
+        }
     }
     for (index, kind) in ResourceType::ALL.into_iter().enumerate() {
         let project_meta = metadata("local", "project", "top-level", None);
@@ -1067,7 +1131,121 @@ pub fn resolve(input: &ResolveInput<'_>) -> ResolvedPaths {
         });
     }
     acc.shadowed.extend(shadowed);
+    acc.keep = None;
+    acc.chest_files.clear();
     acc
+}
+
+/// The global items a run under `--project-only` still loads: the
+/// `projectOnly` setting of the user's settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProjectOnly {
+    /// Global packages kept whole, by source, `chest:<name>` or `*`.
+    pub packages: Vec<String>,
+    /// Patterns of global resources kept, by kind, in [`ResourceType::ALL`]
+    /// order.
+    pub kinds: [Vec<String>; 4],
+    /// Global MCP servers kept, by name pattern.
+    pub mcp_servers: Vec<String>,
+}
+
+impl ProjectOnly {
+    /// The `projectOnly` object of the user's settings `document`.
+    pub fn from_settings(document: &serde_json::Map<String, serde_json::Value>) -> ProjectOnly {
+        let empty = serde_json::Map::new();
+        let object = document
+            .get("projectOnly")
+            .and_then(serde_json::Value::as_object)
+            .unwrap_or(&empty);
+        let list = |key: &str| string_list(object, key);
+        // A folder written with a trailing `/` names the folder.
+        let patterns = |kind: ResourceType| {
+            let list = list(kind.key()).into_iter();
+            list.map(|pattern| pattern.trim_end_matches('/').to_owned())
+                .collect()
+        };
+        ProjectOnly {
+            packages: list("packages"),
+            kinds: ResourceType::ALL.map(patterns),
+            mcp_servers: list("mcpServers"),
+        }
+    }
+
+    /// Whether a run keeps the global resource `info` of `kind`: its package
+    /// is kept, or its kind's patterns match its path, with `~` as `home`
+    /// and other paths relative to `agent_dir`.
+    pub fn keeps(
+        &self,
+        info: &SourceInfo,
+        kind: ResourceType,
+        agent_dir: &Path,
+        home: &Path,
+    ) -> bool {
+        let package = info.origin == "package" && self.keeps_package(&info.source, agent_dir);
+        package || self.keeps_path(Path::new(&info.path), kind, agent_dir, home)
+    }
+
+    /// Whether `kind`'s patterns match the global file `path`, as for
+    /// [`keeps`](Self::keeps).
+    fn keeps_path(&self, path: &Path, kind: ResourceType, agent_dir: &Path, home: &Path) -> bool {
+        let patterns: Vec<String> = self.kinds[kind as usize]
+            .iter()
+            .map(|pattern| match pattern.strip_prefix("~/") {
+                Some(rest) => home.join(rest).to_string_lossy().into_owned(),
+                None if pattern == "~" => home.to_string_lossy().into_owned(),
+                None => pattern.clone(),
+            })
+            .collect();
+        matches_any_pattern(path, &patterns, agent_dir)
+    }
+
+    /// Whether a kind list keeps a resource that the user's package `input`
+    /// loads, as [`resolve`] lists them, with paths as for
+    /// [`keeps`](Self::keeps).
+    pub fn keeps_part(&self, input: &PackageInput, agent_dir: &Path, home: &Path) -> bool {
+        let local = super::source::is_local(&input.source);
+        let resources = package_resources(&input.root, input.filter.as_ref(), local);
+        ResourceType::ALL.into_iter().any(|kind| {
+            let mut files = resources.enabled(kind);
+            files.any(|info| self.keeps_path(Path::new(&info.path), kind, agent_dir, home))
+        })
+    }
+
+    /// Whether a project-only run needs the user's package `source` on
+    /// disk: `packages` keeps it, or a kind list could match a file inside
+    /// it. chest's entries are `chest:<name>`.
+    pub fn needs_package(&self, source: &str, agent_dir: &Path) -> bool {
+        self.kinds.iter().any(|list| !list.is_empty()) || self.keeps_package(source, agent_dir)
+    }
+
+    /// Whether `packages` keeps the user's package `source` whole.
+    pub fn keeps_package(&self, source: &str, agent_dir: &Path) -> bool {
+        self.packages
+            .iter()
+            .any(|entry| entry == "*" || same_package(entry, source, agent_dir))
+    }
+
+    /// Whether a project-only run needs the user's chest manifest: a kind
+    /// list could match a file of its entries, or `packages` names one.
+    pub fn needs_chest(&self) -> bool {
+        self.kinds.iter().any(|list| !list.is_empty())
+            || self
+                .packages
+                .iter()
+                .any(|entry| entry == "*" || entry.starts_with("chest:"))
+    }
+}
+
+/// Whether `entry` of `projectOnly.packages` names the package of `source`,
+/// as a project entry overrides a user's: by identity, so versions and refs
+/// don't count. chest's sources compare by name.
+fn same_package(entry: &str, source: &str, agent_dir: &Path) -> bool {
+    use super::source::parse;
+    match (entry.strip_prefix("chest:"), source.strip_prefix("chest:")) {
+        (Some(entry), Some(source)) => entry == source,
+        (None, None) => parse(entry).identity(agent_dir) == parse(source).identity(agent_dir),
+        _ => false,
+    }
 }
 
 /// The `extensions`, `skills`, `prompts` and `themes` lists of a settings

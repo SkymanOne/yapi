@@ -69,16 +69,16 @@ pub fn install_location(source: &Source, base: &Path) -> PathBuf {
 /// pi's `DefaultPackageManager.resolve` for the settings of the project in
 /// `project_root` and of `agent_dir`: every resource of installed packages,
 /// settings entries and the discovered directories, each enabled or not,
-/// with `builtins` as the built-in extensions. Packages that are not
-/// installed are left out. `extra` packages, such as chest's, follow the
-/// settings' packages, and `skills` are skill folders placed for them.
+/// with `builtins` as the built-in extensions, and the packages and placed
+/// skills that `chest` installed. Packages that are not installed are left
+/// out, and so is each copy of a package that another source installs too,
+/// as [`LeftOut`](crate::chest::startup::LeftOut) decides.
 pub fn resolve_resources(
     project_root: &Path,
     agent_dir: &Path,
     settings: &SettingsManager,
     builtins: &[&str],
-    extra: &[resolve::PackageInput],
-    skills: &[resolve::PackageInput],
+    chest: &crate::chest::startup::Installed,
 ) -> resolve::ResolvedPaths {
     let project_dir = project_root.join(PROJECT_DIR);
     let base = |scope: &str| {
@@ -88,13 +88,30 @@ pub fn resolve_resources(
             agent_dir.to_path_buf()
         }
     };
+    let project_only = crate::config::project_only()
+        .then(|| resolve::ProjectOnly::from_settings(settings.document(Scope::Global)));
+    let left_out =
+        crate::chest::startup::LeftOut::new(chest, settings, project_only.as_ref(), agent_dir);
+    let kept = |scope: Scope| {
+        let mut packages = settings_packages(settings, scope);
+        packages.retain(|entry| {
+            entry_source(entry).is_none_or(|source| !left_out.settings(scope, source))
+        });
+        packages
+    };
     let mut packages = resolve::package_inputs(
-        &settings_packages(settings, Scope::Project),
-        &settings_packages(settings, Scope::Global),
+        &kept(Scope::Project),
+        &kept(Scope::Global),
         base,
         |source, scope| install_location(source, &base(scope)),
     );
-    packages.extend(extra.iter().cloned());
+    packages.extend(
+        chest
+            .packages
+            .iter()
+            .filter(|input| !left_out.chest(input))
+            .cloned(),
+    );
     let user = resolve::settings_lists(settings.document(Scope::Global));
     let project = resolve::settings_lists(settings.document(Scope::Project));
     resolve::resolve(&resolve::ResolveInput {
@@ -104,10 +121,11 @@ pub fn resolve_resources(
         home: crate::tools::path::home_dir(),
         project_trusted: settings.project_trusted(),
         packages,
-        skills: skills.to_vec(),
+        skills: chest.skills.clone(),
         user: [&user[0], &user[1], &user[2], &user[3]],
         project: [&project[0], &project[1], &project[2], &project[3]],
         builtins,
+        project_only,
     })
 }
 
@@ -142,6 +160,8 @@ pub struct PackageManager {
     settings: SettingsManager,
     npm: npm::Npm,
     progress: Box<dyn Fn(&str) + Send + Sync>,
+    /// In a project-only run, what it keeps of the user's packages.
+    project_only: Option<resolve::ProjectOnly>,
 }
 
 impl std::fmt::Debug for PackageManager {
@@ -323,7 +343,14 @@ impl PackageManager {
             settings,
             npm: npm::Npm::new(npm_config),
             progress: Box::new(|_| {}),
+            project_only: None,
         }
+    }
+
+    /// Makes [`PackageManager::install_missing`] install only the user's
+    /// packages that `keep`, a project-only run's keep list, could need.
+    pub fn project_only(&mut self, keep: resolve::ProjectOnly) {
+        self.project_only = Some(keep);
     }
 
     /// Reports the start of each install, removal and update.
@@ -452,6 +479,9 @@ impl PackageManager {
     /// its dependencies, removing the clone when any step fails. A new clone
     /// first gets a `.gitignore` in `git_root`, the scope's `git` folder. An
     /// existing checkout is updated in place instead and kept when that fails.
+    /// Unlike pi, one install of `dir` runs at a time across processes, and
+    /// a clone whose install never finished, as when yapi was stopped, is
+    /// cloned again.
     async fn install_git(
         &mut self,
         repo: &str,
@@ -459,27 +489,42 @@ impl PackageManager {
         dir: &Path,
         git_root: Option<&Path>,
     ) -> Result<(), PackageError> {
-        if dir.exists() {
-            return self.update_git(dir, reference).await;
-        }
-        if let Some(git_root) = git_root {
-            npm::ensure_git_ignore(git_root)?;
-        }
         if let Some(parent) = dir.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|err| PackageError::Message(err.to_string()))?;
         }
+        // The lock is a folder beside the checkout, so it never enters it.
+        let lock = npm::lock(dir).await?;
+        let incomplete = clone_marker(dir);
+        if dir.exists() && !incomplete.exists() {
+            return self.update_git(dir, reference).await;
+        }
+        if dir.exists() {
+            std::fs::remove_dir_all(dir).map_err(|err| PackageError::Message(err.to_string()))?;
+        }
+        if let Some(git_root) = git_root {
+            npm::ensure_git_ignore(git_root)?;
+        }
         let target = dir.to_string_lossy().into_owned();
+        // Before the clone starts, so a clone cut off or still running never
+        // counts as installed.
+        std::fs::write(&incomplete, "").map_err(|err| PackageError::Message(err.to_string()))?;
         let installed: Result<(), PackageError> = async {
             run_git(&["clone", "--", repo, &target], None).await?;
             if let Some(reference) = reference {
                 run_git(&["checkout", reference], Some(dir)).await?;
             }
             npm::install_dependencies(&mut self.npm, dir).await?;
+            std::fs::remove_file(&incomplete)
+                .map_err(|err| PackageError::Message(err.to_string()))?;
             Ok(())
         }
         .await;
         if installed.is_err() {
+            let _ = std::fs::remove_dir_all(dir);
+            let _ = std::fs::remove_file(&incomplete);
+            // Without the lock's folder, the empty folders above go too.
+            drop(lock);
             self.remove_dir(dir);
         }
         installed
@@ -909,7 +954,16 @@ impl PackageManager {
             |source, in_scope| parse(source).identity(&self.base(named_scope(in_scope))),
         );
         let mut attempted = Vec::new();
-        for (_, _, source, in_scope) in packages {
+        for (_, scope, source, in_scope) in packages {
+            // A project-only run installs only the user's packages it could
+            // keep. A project's `autoload: false` entry still finds the
+            // user's copy.
+            let keep = self.project_only.as_ref();
+            if scope == "user"
+                && keep.is_some_and(|keep| !keep.needs_package(&source, &self.agent_dir))
+            {
+                continue;
+            }
             // An `autoload: false` entry and the user's entry it adjusts
             // install the same package.
             if attempted.contains(&(source.clone(), in_scope)) {
@@ -928,7 +982,7 @@ impl PackageManager {
                         Ok(())
                     }
                 }
-                _ if root.exists() => Ok(()),
+                _ if root.exists() && !clone_marker(&root).exists() => Ok(()),
                 Source::Git {
                     repo, reference, ..
                 } => {
@@ -944,6 +998,14 @@ impl PackageManager {
         }
         ControlFlow::Continue(())
     }
+}
+
+/// The file beside git checkout `dir` while its install has not finished:
+/// from before the clone starts until its dependencies are installed.
+fn clone_marker(dir: &Path) -> PathBuf {
+    let mut name = dir.file_name().unwrap_or_default().to_os_string();
+    name.push(npm::INCOMPLETE);
+    dir.with_file_name(name)
 }
 
 /// Whether the npm package at `dir` must be installed: it is missing or its
@@ -1048,6 +1110,17 @@ mod tests {
             .install_git(repo, None, &checkout, None)
             .await
             .unwrap();
+        // A clone whose install never finished, as when yapi was stopped,
+        // is cloned again rather than kept.
+        let incomplete = clone_marker(&checkout);
+        assert!(!incomplete.exists());
+        std::fs::write(&incomplete, "").unwrap();
+        std::fs::write(checkout.join("stray"), "").unwrap();
+        manager
+            .install_git(repo, None, &checkout, None)
+            .await
+            .unwrap();
+        assert!(!incomplete.exists() && !checkout.join("stray").exists());
         commit(&origin, "v2").await;
 
         manager

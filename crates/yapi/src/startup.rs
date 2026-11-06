@@ -297,6 +297,9 @@ pub fn load_settings(
 ) -> anyhow::Result<(SettingsManager, bool)> {
     use std::io::IsTerminal;
     let global = SettingsManager::load(agent_dir, project, false);
+    if let Some(conflict) = global.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     let view = global.settings();
     let store = TrustStore::new(agent_dir);
     let default = view.default_project_trust;
@@ -315,6 +318,9 @@ pub fn load_settings(
     } else {
         global
     };
+    if let Some(conflict) = settings.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     Ok((settings, trusted))
 }
 
@@ -475,9 +481,6 @@ pub fn factory(
             let preloaded = Some((run.settings, run.trusted));
             let (session, _) = build(&args, session, false, &extensions, preloaded)?;
             sync_runtime_key(&args, &session).await;
-            for (path, error) in extensions.failures() {
-                session.add_extension_load_error(path, error);
-            }
             Ok(session)
         })
     })
@@ -697,14 +700,14 @@ fn build(
         &extensions.resolved
     } else {
         // What chest installed, as the run's extensions saw it.
-        let chest = yapi_core::chest::startup::installed(&project, trusted);
+        let global = yapi_core::chest::startup::reads_global(&settings);
+        let chest = yapi_core::chest::startup::installed(&project, trusted, global);
         fresh = yapi_core::packages::resolve_resources(
             &project,
             &agent_dir,
             &settings,
             &BUILTINS,
-            &chest.installed.packages,
-            &chest.installed.skills,
+            &chest.installed,
         );
         &fresh
     };
@@ -830,6 +833,9 @@ fn build(
     for (path, warning) in &extensions.warnings {
         session.add_extension_warning(path.clone(), warning.clone());
     }
+    for (path, error) in extensions.failures() {
+        session.add_extension_load_error(path, error);
+    }
     Ok((session, fallback))
 }
 
@@ -928,7 +934,9 @@ pub struct ExtensionErrors {
 /// `--no-extensions`, those installed in a trusted project and in the agent
 /// directory. Applies extension flags from the command line, which must name
 /// registered flags. Extensions read `terminal_size` as they load, in a mode
-/// that draws on the terminal.
+/// that draws on the terminal. Warnings go to stderr, or in such a mode to
+/// the extensions' issues, which the startup header shows, unless the run
+/// stops.
 pub async fn load_extensions(
     args: &Args,
     terminal_size: Option<(usize, usize)>,
@@ -939,13 +947,28 @@ pub async fn load_extensions(
         loaded: None,
     };
     let run = run_settings(args).map_err(|err| fail(err.to_string()))?;
-    let warn = |_: &str, message: String| {
-        eprintln!("Warning: {message}");
+    // The interface clears the screen as it starts, so it shows them instead.
+    let mut warnings = Vec::new();
+    let warn = |path: &str, message: String| {
+        match terminal_size {
+            Some(_) => warnings.push((path.to_owned(), message)),
+            None => eprintln!("Warning: {message}"),
+        }
         ControlFlow::Continue(())
     };
-    let (extensions, flag_errors) = start_extensions(args, &run, terminal_size, warn, None)
-        .await
-        .map_err(fail)?;
+    let started = start_extensions(args, &run, terminal_size, warn, None).await;
+    let print = |warnings: Vec<(String, String)>| {
+        for (_, message) in warnings {
+            eprintln!("Warning: {message}");
+        }
+    };
+    let (mut extensions, flag_errors) = match started {
+        Ok(started) => started,
+        Err(err) => {
+            print(warnings);
+            return Err(fail(err));
+        }
+    };
     let mut messages: Vec<String> = extensions
         .failures()
         .into_iter()
@@ -954,12 +977,16 @@ pub async fn load_extensions(
     let load_failed = !messages.is_empty();
     messages.extend(flag_errors);
     if !messages.is_empty() {
+        print(warnings);
         return Err(ExtensionErrors {
             messages,
             load_failed,
             loaded: Some(Box::new((extensions, run))),
         });
     }
+    extensions
+        .issues
+        .splice(0..0, warnings.into_iter().map(under_path));
     Ok((extensions, run))
 }
 
@@ -996,8 +1023,30 @@ async fn session_extensions(
     let (mut extensions, _) = start_extensions(args, &run, terminal_size, install_failed, previous)
         .await
         .map_err(anyhow::Error::msg)?;
-    extensions.issues.splice(0..0, uninstalled);
+    extensions
+        .issues
+        .splice(0..0, uninstalled.into_iter().map(under_path));
     Ok((extensions, run))
+}
+
+/// Warning `message` about `path` as `[Extension issues]` shows it, under
+/// its path: without the name of the path it starts with for stderr, such
+/// as `chest.toml: ` before a manifest's warning.
+fn under_path((path, message): (String, String)) -> (String, String) {
+    let file = Path::new(&path)
+        .file_name()
+        .map(|name| name.to_string_lossy());
+    // The global manifest's warnings name it from `~`.
+    let names = |name: &str| {
+        name == path
+            || file.as_deref() == Some(name)
+            || name
+                .strip_prefix('~')
+                .is_some_and(|tail| tail.starts_with('/') && path.ends_with(tail))
+    };
+    let rest = message.split_once(": ").filter(|(name, _)| names(name));
+    let rest = rest.map(|(_, rest)| rest.to_owned());
+    (path, rest.unwrap_or(message))
 }
 
 /// `path` as one file, whichever way it is named, or itself when it is not a
@@ -1152,6 +1201,13 @@ async fn start_extensions(
         run.settings.clone(),
         yapi_core::packages::npm::config(),
     );
+    let keep = yapi_core::config::project_only().then(|| {
+        let global = run.settings.document(yapi_core::settings::Scope::Global);
+        yapi_core::packages::resolve::ProjectOnly::from_settings(global)
+    });
+    if let Some(keep) = &keep {
+        packages.project_only(keep.clone());
+    }
     let offline = yapi_core::tools::external::offline();
     // Installs missing packages. What they provide comes from pi's resolver.
     // Unlike pi, a failure does not stop the others (docs/compat.md).
@@ -1159,10 +1215,30 @@ async fn start_extensions(
         let _ = packages.install_missing(&mut install_failed).await;
     }
     // A reload reads the manifests again, so what they grant applies.
-    let chest =
-        yapi_core::chest::startup::load(run.settings.project_dir(), run.trusted, offline).await;
+    let global = yapi_core::chest::startup::reads_global(&run.settings);
+    let project_dir = run.settings.project_dir();
+    let chest = yapi_core::chest::startup::load(project_dir, run.trusted, offline, global).await;
     for (path, message) in &chest.problems {
         let _ = install_failed(path, message.clone());
+    }
+    // Each session and reload starts extensions again, so the warning goes
+    // out once.
+    static UNTRUSTED: std::sync::Once = std::sync::Once::new();
+    if yapi_core::config::project_only()
+        && !run.trusted
+        && yapi_core::trust::requires_trust(project_dir)
+    {
+        UNTRUSTED.call_once(|| {
+            let message = "--project-only: the project isn't trusted, so none of its packages load"
+                .to_owned();
+            let _ = install_failed(&project_dir.display().to_string(), message);
+        });
+    }
+    let settings = packages.settings();
+    for (path, message) in
+        yapi_core::chest::startup::duplicates(&chest.installed, settings, keep.as_ref(), &agent_dir)
+    {
+        let _ = install_failed(&path, message);
     }
     let mut issues = Vec::new();
     let mut missing = Vec::new();
@@ -1218,16 +1294,19 @@ async fn start_extensions(
         &agent_dir,
         packages.settings(),
         &BUILTINS,
-        &chest.installed.packages,
-        &chest.installed.skills,
+        &chest.installed,
     );
     for (folder, message) in &resolved.problems {
         let _ = install_failed(folder, message.clone());
     }
     // chest's grants follow the files the resolver gave its packages.
     let mut problems = Vec::new();
-    let chest_policies =
-        yapi_core::chest::startup::file_policies(&resolved, &chest.installed, &mut problems);
+    let chest_policies = yapi_core::chest::startup::file_policies(
+        &resolved,
+        &chest.installed,
+        project_dir,
+        &mut problems,
+    );
     for (source, message) in problems {
         let _ = install_failed(&source, message);
     }
@@ -1481,7 +1560,8 @@ pub struct Extensions {
     /// Warnings about extensions that were not loaded, by path.
     pub warnings: Vec<(String, String)>,
     /// Why the extensions without a host did not load and the conflicts
-    /// between those that did, by path, with pi's messages.
+    /// between those that did, by path, with pi's messages, and the startup
+    /// warnings that were not printed.
     issues: Vec<(String, String)>,
     /// Package skills with their packages as sources.
     pub skills: Vec<SourceInfo>,
@@ -1613,6 +1693,7 @@ mod tests {
 
     /// The session directory, the tools, the appended system prompt and
     /// piped input read from settings, flags and stdin as pi reads them.
+    /// `[Extension issues]` names a warning's path once.
     #[test]
     fn startup_inputs() {
         let dir = std::env::temp_dir().join(format!("yapi-startup-inputs-{}", std::process::id()));
@@ -1638,6 +1719,14 @@ mod tests {
         // JavaScript's `trim` strips a byte order mark.
         assert_eq!(piped_text(b"\xef\xbb\xbfa\n").as_deref(), Some("a"));
         assert_eq!(piped_text(b"\xef\xbb\xbf"), None);
+        let listed = |path: &str, message: &str| under_path((path.into(), message.into())).1;
+        assert_eq!(listed("/p/chest.toml", "chest.toml: a: b"), "a: b");
+        assert_eq!(listed("/p/chest.toml", "/p/chest.toml: a"), "a");
+        assert_eq!(
+            listed("/h/.chest/chest.toml", "~/.chest/chest.toml: a"),
+            "a"
+        );
+        assert_eq!(listed("/p/chest.toml", "dev.toml: a"), "dev.toml: a");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

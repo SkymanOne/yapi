@@ -24,6 +24,7 @@ chest is a separate binary. Its skill and subagent features work with any agent,
 | [Putting back missing entries](chest-extensions.md#how-yapi-loads-a-manifest) | yapi only |
 | [Skills from other agents' folders](chest-extensions.md#how-yapi-loads-a-manifest) | yapi only |
 | [`CHEST_MANIFEST` in yapi](chest-environments.md#how-yapi-reads-chest_manifest) | yapi only |
+| [Project-only runs](project-only.md) | yapi only |
 | [`chest check`](chest-publish.md#check-a-native-extension) | yapi only |
 | [Import from `settings.json`](chest-extensions.md#import-packages-from-settingsjson) | yapi only |
 

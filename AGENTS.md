@@ -27,7 +27,7 @@ yapi covers what pi's coding agent does, through the pi packages in the architec
 
 | Surface | Rule |
 |---|---|
-| `settings.json`, `auth.json`, `models.json`, `keybindings.json`, `mcp.json`, session files | Same formats as pi. Round-trip is byte-identical. |
+| `settings.json`, `auth.json`, `models.json`, `keybindings.json`, `mcp.json`, session files | Same formats as pi. Round-trip is byte-identical. yapi also reads the same settings from `settings.toml` (decision 18). |
 | Locations | `~/.yapi/agent` (override: `YAPI_CODING_AGENT_DIR`) and project `.yapi/`. `yapi import pi` copies pi state. |
 | CLI flags, slash commands, JSON and RPC protocols | Same names and payloads as pi. |
 | Extension API | `ExtensionAPI` as exported by the pinned `@earendil-works/pi-coding-agent`. |
@@ -189,6 +189,7 @@ Module loading runs on the host, in `yapi-ext`:
 | 15 | The docs the model reads, yapi's book and pi's README, docs and examples, ship as the `yapi-docs.tar.gz` release asset, not in the repository or the binary. Installs unpack or download it into `~/.yapi/agent/docs`. Without a local copy, the prompt points to the published docs. | pi's prompt, header and sign-in help point to the docs installed with pi. Packing pi's files at release time keeps them out of the repository and the binary. |
 | 16 | chest is a separate binary with its own manifest and lock, beside `yapi install`. It replaces or removes only what its local record says it placed, or what is exactly what it would install. | Projects need reproducible installs, grants per extension and skills shared with other agents. Leaving `yapi install` as in Pi keeps pi packages compatible, and a committed lock never makes a user's files chest's. |
 | 17 | Grants narrower than pi's come only from chest entries. Packages from `yapi install` keep every grant, and nothing a package declares grants anything. | Narrow defaults would break pi packages. A grant is a decision of the person who adds the package, so a package cannot widen its own. |
+| 18 | Settings can be `settings.toml` instead of `settings.json`, one of the two per folder, with the same document. Writes edit the TOML in place. A folder with both stops yapi. | TOML allows comments and is easier to edit by hand. pi keeps reading JSON, and refusing two files keeps yapi from guessing which one wins. |
 
 ## Development guidelines
 

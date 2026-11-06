@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 use yapi_core::packages::resolve::{
-    PackageInput, ResolveInput, ResolvedPaths, ResourceType, package_inputs, package_resources,
-    resolve, settings_lists,
+    PackageInput, ProjectOnly, ResolveInput, ResolvedPaths, ResourceType, package_inputs,
+    package_resources, resolve, settings_lists,
 };
 use yapi_core::packages::source::{Source, local_path};
 
@@ -121,6 +121,7 @@ fn resolves_resources_as_pi() {
                 &project_lists[3][..],
             ],
             builtins: &["mcp"],
+            project_only: None,
         };
         let actual = as_json(&resolve(&input), &root);
         for kind in ResourceType::ALL {
@@ -359,5 +360,286 @@ fn package_resource_discovery() {
             ResourceType::Extensions
         )
         .is_empty()
+    );
+}
+
+/// A project-only run loads the project's resources and the built-ins, and
+/// of the user's only what `projectOnly` keeps: whole packages by identity
+/// or `chest:<name>`, and single resources by pattern, wherever they come
+/// from.
+#[test]
+fn project_only_keeps() {
+    let tmp = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = tmp.join("project-only");
+    let package_json =
+        r#"{"name": "x", "pi": {"extensions": ["./ext.ts"], "themes": ["./t.json"]}}"#;
+    write(
+        &root,
+        &[
+            ("agent/extensions/global.ts", ""),
+            ("agent/themes/dark.json", "{}"),
+            ("home/.agents/skills/pdf/SKILL.md", "# pdf\n"),
+            ("loose.ts", ""),
+            ("pkg/package.json", package_json),
+            ("pkg/ext.ts", ""),
+            ("pkg/t.json", "{}"),
+            (
+                "notes/package.json",
+                r#"{"name": "notes", "pi": {"extensions": ["./n.ts"]}}"#,
+            ),
+            ("notes/n.ts", ""),
+            ("project/.git/HEAD", ""),
+            ("project/.yapi/extensions/p.ts", ""),
+            ("project/.agents/skills/ps/SKILL.md", "# ps\n"),
+        ],
+    );
+    let root = std::fs::canonicalize(&root).unwrap();
+    let user_lists = [
+        vec!["-builtin:mcp".to_owned(), "../loose.ts".to_owned()],
+        vec![],
+        vec![],
+        vec![],
+    ];
+    let none: [Vec<String>; 4] = Default::default();
+    let package = |source: &str, folder: &str| PackageInput {
+        source: source.into(),
+        scope: "user".into(),
+        root: root.join(folder),
+        filter: None,
+    };
+    let names = |project_only: Option<ProjectOnly>| {
+        let input = ResolveInput {
+            cwd: root.join("project"),
+            agent_dir: root.join("agent"),
+            project_dir: root.join("project/.yapi"),
+            home: root.join("home"),
+            project_trusted: true,
+            packages: vec![package("npm:x@1.2", "pkg"), package("chest:notes", "notes")],
+            skills: Vec::new(),
+            user: [
+                &user_lists[0][..],
+                &user_lists[1][..],
+                &user_lists[2][..],
+                &user_lists[3][..],
+            ],
+            project: [&none[0][..], &none[1][..], &none[2][..], &none[3][..]],
+            builtins: &["mcp", "codemode"],
+            project_only,
+        };
+        let resolved = resolve(&input);
+        let mut names: Vec<String> = ResourceType::ALL
+            .into_iter()
+            .flat_map(|kind| {
+                resolved.enabled(kind).map(|info| {
+                    let path = Path::new(&info.path);
+                    match path.file_name().and_then(|name| name.to_str()) {
+                        Some("SKILL.md") => path
+                            .parent()
+                            .unwrap()
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned(),
+                        _ => path.file_name().map_or(info.path.clone(), |name| {
+                            name.to_string_lossy().into_owned()
+                        }),
+                    }
+                })
+            })
+            .collect();
+        names.sort();
+        names
+    };
+    let only = |packages: &[&str], kinds: [&[&str]; 4]| {
+        Some(ProjectOnly {
+            packages: packages.iter().map(|entry| (*entry).to_owned()).collect(),
+            kinds: kinds.map(|list| list.iter().map(|entry| (*entry).to_owned()).collect()),
+            mcp_servers: Vec::new(),
+        })
+    };
+    let project = ["builtin:codemode", "p.ts", "ps"];
+    let with = |extra: &[&str]| {
+        let mut all: Vec<String> = project
+            .iter()
+            .chain(extra)
+            .map(|name| (*name).to_owned())
+            .collect();
+        all.sort();
+        all
+    };
+    // Without the mode, everything loads, and the user's `-builtin:mcp` holds.
+    assert_eq!(
+        names(None),
+        with(&[
+            "dark.json",
+            "ext.ts",
+            "global.ts",
+            "loose.ts",
+            "n.ts",
+            "pdf",
+            "t.json"
+        ])
+    );
+    for (keep, extra) in [
+        (only(&[], [&[], &[], &[], &[]]), &[][..]),
+        (
+            only(&[], [&[], &[], &[], &["*"]]),
+            &["dark.json", "t.json"][..],
+        ),
+        (
+            only(&["npm:x"], [&[], &[], &[], &[]]),
+            &["ext.ts", "t.json"][..],
+        ),
+        (only(&["chest:notes"], [&[], &[], &[], &[]]), &["n.ts"][..]),
+        (
+            only(&["*"], [&[], &[], &[], &[]]),
+            &["ext.ts", "n.ts", "t.json"][..],
+        ),
+        (
+            only(&[], [&[], &["~/.agents/skills/pdf"], &[], &[]]),
+            &["pdf"][..],
+        ),
+        (
+            only(&[], [&["extensions/global.ts", "loose.ts"], &[], &[], &[]]),
+            &["global.ts", "loose.ts"][..],
+        ),
+    ] {
+        assert_eq!(names(keep.clone()), with(extra), "{keep:?}");
+    }
+    // A user's copy left out never shadows the project's copy of one file.
+    let shared = PackageInput {
+        source: "../project/.yapi/extensions".into(),
+        ..package("../project/.yapi/extensions", "project/.yapi/extensions")
+    };
+    let input = ResolveInput {
+        cwd: root.join("project"),
+        agent_dir: root.join("agent"),
+        project_dir: root.join("project/.yapi"),
+        home: root.join("home"),
+        project_trusted: true,
+        packages: vec![shared],
+        user: [&none[0][..], &none[1][..], &none[2][..], &none[3][..]],
+        project: [&none[0][..], &none[1][..], &none[2][..], &none[3][..]],
+        project_only: only(&[], [&[], &[], &[], &[]]),
+        ..ResolveInput::default()
+    };
+    let resolved = resolve(&input);
+    let sources: Vec<(&str, &str)> = resolved
+        .enabled(ResourceType::Extensions)
+        .map(|info| (info.scope.as_str(), info.source.as_str()))
+        .collect();
+    assert_eq!(sources, [("project", "auto")]);
+    assert!(resolved.shadowed.is_empty(), "{:?}", resolved.shadowed);
+
+    // Without the mode, a project chest skill, placed in a folder yapi
+    // reads, and a project chest extension come before the user's folders,
+    // which can hold a skill or a tool of the same name.
+    let input = ResolveInput {
+        cwd: root.join("project"),
+        agent_dir: root.join("agent"),
+        project_dir: root.join("project/.yapi"),
+        home: root.join("home"),
+        project_trusted: true,
+        packages: vec![PackageInput {
+            scope: "project".into(),
+            ..package("chest:notes", "notes")
+        }],
+        skills: vec![PackageInput {
+            scope: "project".into(),
+            ..package("chest:ps", "project/.agents/skills/ps")
+        }],
+        ..ResolveInput::default()
+    };
+    let resolved = resolve(&input);
+    let order = |kind| -> Vec<(String, String)> {
+        let infos = resolved
+            .enabled(kind)
+            .filter(|info| info.source != "builtin");
+        let relative = |info: &yapi_types::rpc::SourceInfo| {
+            let path = Path::new(&info.path).strip_prefix(&root).unwrap();
+            (path.display().to_string(), info.source.clone())
+        };
+        infos.map(relative).collect()
+    };
+    let pair = |path: &str, source: &str| (path.to_owned(), source.to_owned());
+    assert_eq!(
+        order(ResourceType::Skills),
+        [
+            pair("project/.agents/skills/ps/SKILL.md", "chest:ps"),
+            pair("home/.agents/skills/pdf/SKILL.md", "auto"),
+        ]
+    );
+    assert_eq!(
+        order(ResourceType::Extensions),
+        [
+            pair("notes/n.ts", "chest:notes"),
+            pair("project/.yapi/extensions/p.ts", "auto"),
+            pair("agent/extensions/global.ts", "auto"),
+        ]
+    );
+}
+
+/// The `projectOnly` setting, and how it matches one resource.
+#[test]
+fn project_only_setting() {
+    let document = json!({"projectOnly": {"packages": ["npm:x"], "skills": ["~/s/"], "themes": ["*"], "mcpServers": ["git*"]}});
+    let keep = ProjectOnly::from_settings(document.as_object().unwrap());
+    assert_eq!(keep.packages, ["npm:x"]);
+    // A trailing `/` names the folder all the same.
+    assert_eq!(keep.kinds[ResourceType::Skills as usize], ["~/s"]);
+    assert!(keep.kinds[ResourceType::Extensions as usize].is_empty());
+    assert_eq!(keep.mcp_servers, ["git*"]);
+    let info = |path: &str, source: &str, origin: &str| yapi_types::rpc::SourceInfo {
+        path: path.into(),
+        source: source.into(),
+        scope: "user".into(),
+        origin: origin.into(),
+        base_dir: None,
+    };
+    let (agent, home) = (Path::new("/a"), Path::new("/h"));
+    let skills = ResourceType::Skills;
+    assert!(keep.keeps(
+        &info("/h/s/SKILL.md", "auto", "top-level"),
+        skills,
+        agent,
+        home
+    ));
+    assert!(!keep.keeps(
+        &info("/h/t/SKILL.md", "auto", "top-level"),
+        skills,
+        agent,
+        home
+    ));
+    assert!(keep.keeps(
+        &info("/a/npm/x/e.ts", "npm:x@^2", "package"),
+        ResourceType::Extensions,
+        agent,
+        home
+    ));
+    assert!(!keep.keeps(
+        &info("/a/npm/y/e.ts", "npm:y", "package"),
+        ResourceType::Extensions,
+        agent,
+        home
+    ));
+    assert!(
+        keep.needs_package("npm:y", agent),
+        "a kind list could match inside it"
+    );
+    let packages_only = ProjectOnly {
+        packages: vec!["npm:x".into()],
+        ..ProjectOnly::default()
+    };
+    assert!(
+        packages_only.needs_package("npm:x@1", agent)
+            && !packages_only.needs_package("npm:y", agent)
+    );
+    assert!(
+        !packages_only.needs_chest()
+            && ProjectOnly {
+                packages: vec!["chest:a".into()],
+                ..ProjectOnly::default()
+            }
+            .needs_chest()
     );
 }

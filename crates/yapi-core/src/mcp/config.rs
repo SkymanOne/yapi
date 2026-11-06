@@ -508,7 +508,7 @@ pub fn validate_server(name: &str, raw: &Value) -> Result<ServerConfig, String> 
     ))
 }
 
-fn read_file(path: &Path, scope: Scope, loaded: &mut LoadedConfig) {
+fn read_file(path: &Path, scope: Scope, keep: Option<&[String]>, loaded: &mut LoadedConfig) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
@@ -541,7 +541,15 @@ fn read_file(path: &Path, scope: Scope, loaded: &mut LoadedConfig) {
         .get("mcpServers")
         .and_then(Value::as_object)
         .unwrap_or(&empty);
-    for (name, raw) in servers {
+    // A server a project-only run leaves out is never looked at, so it can
+    // neither clash with a kept one nor report problems.
+    let kept = |name: &str| {
+        keep.is_none_or(|keep| {
+            keep.iter()
+                .any(|pattern| crate::glob::matches(pattern, name))
+        })
+    };
+    for (name, raw) in servers.iter().filter(|(name, _)| kept(name)) {
         let config = match validate_server(name, raw) {
             Ok(config) => config,
             Err(problem) => {
@@ -591,15 +599,23 @@ fn read_file(path: &Path, scope: Scope, loaded: &mut LoadedConfig) {
 }
 
 /// Loads the global and, when trusted, the `mcp.json` of the project in
-/// `project_dir`. Disabled servers are included.
-pub fn load(agent_dir: &Path, project_dir: &Path, project_trusted: bool) -> LoadedConfig {
+/// `project_dir`. Disabled servers are included. With `keep`, as in a
+/// project-only run, the global file gives only the servers whose names
+/// match its patterns.
+pub fn load(
+    agent_dir: &Path,
+    project_dir: &Path,
+    project_trusted: bool,
+    keep: Option<&[String]>,
+) -> LoadedConfig {
     let mut loaded = LoadedConfig::default();
     let name = ConfigFile::Mcp.file_name();
-    read_file(&agent_dir.join(name), Scope::Global, &mut loaded);
+    read_file(&agent_dir.join(name), Scope::Global, keep, &mut loaded);
     if project_trusted {
         read_file(
             &project_dir.join(PROJECT_DIR).join(name),
             Scope::Project,
+            None,
             &mut loaded,
         );
     }
@@ -843,7 +859,7 @@ mod tests {
         )
         .unwrap();
         let agent_dir = dir.join("agent");
-        let loaded = load(&agent_dir, &dir, true);
+        let loaded = load(&agent_dir, &dir, true, None);
         assert_eq!(
             loaded.errors,
             [format!(
@@ -854,8 +870,24 @@ mod tests {
         let names: Vec<&str> = loaded.servers.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["y"]);
         // An untrusted project's file is not read at all.
-        let untrusted = load(&agent_dir, &dir, false);
+        let untrusted = load(&agent_dir, &dir, false, None);
         assert!(untrusted.servers.is_empty() && untrusted.errors.is_empty());
+
+        // A project-only run keeps the global servers its patterns name,
+        // auth included, and never looks at the others, so a left-out
+        // server neither clashes with a project's nor reports a problem.
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(
+            agent_dir.join("mcp.json"),
+            r#"{"mcpServers":{"github":{"url":"https://example.invalid/mcp","auth":{"provider":"github"}},"slack":{"command":"a"},"my-y":{"command":"a"},"broken":{}}}"#,
+        )
+        .unwrap();
+        std::fs::write(&path, r#"{"mcpServers":{"my_y":{"command":"b"}}}"#).unwrap();
+        let keep = ["git*".to_owned()];
+        let kept = load(&agent_dir, &dir, true, Some(&keep));
+        assert!(kept.errors.is_empty(), "{:?}", kept.errors);
+        let names: Vec<&str> = kept.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["github", "my_y"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

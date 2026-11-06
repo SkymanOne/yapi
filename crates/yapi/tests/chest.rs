@@ -152,8 +152,9 @@ impl Drop for Rpc {
 /// by another name. Only the files such an entry would load run with no
 /// grant when something else loads them, and a settings extension in its
 /// folder keeps its grants. Every file of an entry left out for its lock
-/// runs with no grant. Both load no module but themselves. A file two
-/// manifests give runs with what both allow.
+/// runs with no grant, with a warning when a loaded entry gives it too.
+/// Both load no module but themselves. A file two manifests give runs with
+/// what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
@@ -218,13 +219,13 @@ async fn chest_extensions_load() {
     // The global install cleans the test's store, not the developer's.
     let leftover = home.join(".chest/store/.left-staging");
     std::fs::create_dir_all(&leftover).unwrap();
+    std::fs::create_dir_all(home.join("proj")).unwrap();
     install(&home, &files, ".chest/chest.toml", &manifest).await;
     assert!(!leftover.exists());
     // chest refuses to install these, so they are not locked.
     let global = home.join(".chest/chest.toml");
     let all = format!("{manifest}all = {{ path = \"~\" }}\n");
     std::fs::write(global, all).unwrap();
-    std::fs::create_dir_all(home.join("proj")).unwrap();
     let up = "[extensions]\nup = { path = \"agent/../../..\" }\n";
     std::fs::write(home.join("proj/chest.toml"), up).unwrap();
     let args = ["--approve", "-e", "closed.js", "-e", "agent/wide.js"];
@@ -252,6 +253,7 @@ async fn chest_extensions_load() {
         "agent holds more than the extension",
         "late.js is also loaded from auto, but its chest entry does not load, so it runs with no capabilities",
         "agent/wide.js is also loaded from cli, but its chest entry does not load",
+        "vault/probe.js is in extensions.probe in chest.toml, but extensions.vault in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, or `chest remove vault`",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));
@@ -286,15 +288,22 @@ async fn untrusted_chest_ignored() {
 }
 
 /// An entry whose lock is stale is left out with a warning that names
-/// `chest install`, and the rest of the run goes on. What a lock says
-/// reaches the terminal escaped.
+/// `chest install`, and the rest of the run goes on. The interactive
+/// header shows it, also when `quietStartup` hides the rest, and so does
+/// `/reload`, each under the manifest's path, which it names once, also
+/// above a second warning. What a lock says reaches the terminal escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_lock_warns() {
     let home = common::scratch("chest-stale");
-    let manifest = "[extensions]\nopen = { path = \"open.js\" }\n";
+    let manifest = "[extensions]\nopen = { path = \"open.js\" }\ngone = { path = \"gone.js\" }\n";
     let open = reader("open", &home.join("missing.txt"));
-    let files = [("open.js", open.as_str()), ("moved.js", open.as_str())];
+    let files = [
+        ("open.js", open.as_str()),
+        ("moved.js", open.as_str()),
+        ("gone.js", open.as_str()),
+    ];
     install(&home, &files, "chest.toml", manifest).await;
+    std::fs::remove_file(home.join("gone.js")).unwrap();
     std::fs::write(
         home.join("chest.toml"),
         manifest.replace("open.js", "moved.js"),
@@ -307,10 +316,54 @@ async fn stale_lock_warns() {
     assert!(output.status.success(), "{output:?}");
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("whose lock is stale, were skipped: run `chest install`"),
+        stderr.contains(
+            "chest.toml: extensions.open is not locked, or its lock is stale, so it was skipped: run `chest install`"
+        ),
         "{stderr}"
     );
     assert!(!commands(&home, &["--approve"], &[]).contains_key("open"));
+    std::fs::create_dir_all(home.join("agent")).unwrap();
+    std::fs::write(home.join("agent/settings.json"), r#"{"quietStartup":true}"#).unwrap();
+    let env = [
+        ("HOME", home.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", home.join("agent").into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
+    ];
+    let args = [
+        "--approve",
+        "--no-session",
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+    ];
+    let yapi = Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let args = args.map(str::to_owned);
+    let mut pty = yapi_mock::pty::Pty::spawn(yapi, &args, &home, &env, (100, 30), true).unwrap();
+    let header = |rows: &[String]| {
+        let issues = rows
+            .iter()
+            .position(|row| row.contains("[Extension issues]"));
+        let stale = rows.iter().position(|row| {
+            row.trim_start()
+                .starts_with("extensions.open is not locked")
+        });
+        let headings = rows
+            .iter()
+            .filter(|row| row.trim().ends_with("/chest.toml"));
+        let gone = rows.iter().any(|row| row.contains("extensions.gone:"));
+        matches!((issues, stale), (Some(issues), Some(stale)) if issues < stale)
+            && gone
+            && headings.count() == 1
+    };
+    let shown = pty.wait_for(Duration::from_secs(20), header);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.write("/reload\r").unwrap();
+    let reloaded = |rows: &[String]| {
+        rows.iter().any(|row| row.contains("Reloaded keybindings")) && header(rows)
+    };
+    let shown = pty.wait_for(Duration::from_secs(20), reloaded);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
     let lock =
         "version = 1\n\n[[extension]]\nname = \"x\"\nnpm = \"x\"\nversion = \"\\u001b[2J\"\n";
     std::fs::write(home.join("chest.lock"), lock).unwrap();
@@ -321,6 +374,33 @@ async fn stale_lock_warns() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     let escaped = stderr.contains("invalid version `\\u{1b}[2J`");
     assert!(escaped && !stderr.contains('\x1b'), "{stderr:?}");
+    // The lock is named as other messages name the manifest.
+    assert!(stderr.contains("Warning: chest.lock: "), "{stderr}");
+
+    // A stale global manifest is named by its path and its own command.
+    std::fs::remove_file(home.join("chest.toml")).unwrap();
+    // Its paths start from `.chest`.
+    let files = [
+        (".chest/open.js", open.as_str()),
+        (".chest/gone.js", open.as_str()),
+    ];
+    install(&home, &files, ".chest/chest.toml", manifest).await;
+    let global = manifest.replace("open.js", "moved.js");
+    std::fs::write(home.join(".chest/chest.toml"), global).unwrap();
+    let named = "~/.chest/chest.toml: extensions.open is not locked, or its lock is stale, so it was skipped: run `chest -g install`";
+    // `yapi config` names it once too, before it finds no terminal.
+    for args in [&["--help"][..], &["config"]] {
+        let output = common::yapi(&home).args(args).output().unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains(&format!("Warning: {named}")), "{stderr}");
+    }
+    std::fs::write(home.join(".chest/chest.lock"), lock).unwrap();
+    let output = common::yapi(&home).arg("--help").output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("Warning: ~/.chest/chest.lock: "),
+        "{stderr}"
+    );
 }
 
 /// A project whose manifest only describes it as a package needs no trust,
@@ -353,8 +433,9 @@ async fn package_only_untrusted() {
 }
 
 /// `pi.events` from a chest extension reach a `yapi install` package with
-/// every grant by default. With `events = { send = [] }` they do not, and the
-/// listening package's miss is warned of.
+/// every grant by default. With `events = { send = [] }` or a `send` list
+/// without the channel they do not, and the listening package's miss is
+/// warned of, naming the entry and what to change in it.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_events_linked() {
     const EMITTER: &str = "export default function (pi) { pi.registerCommand(\"emit\", { description: \"\", handler: async (_args, ctx) => { pi.events.emit(\"chest:ping\", {}); ctx.ui.notify(\"emitted\"); } }); }\n";
@@ -368,8 +449,21 @@ export default function (pi) {
 	} });
 }
 "#;
-    for (events, expected) in [("", "heard"), (", events = { send = [] }", "missed")] {
-        let home = common::scratch(&format!("chest-events-{expected}"));
+    let cases = [
+        ("", "heard", None),
+        (
+            ", events = { send = [] }",
+            "missed",
+            Some("set events of extensions.emitter in chest.toml to { send = [\"chest:ping\"] }"),
+        ),
+        (
+            ", events = { send = [\"other\"] }",
+            "missed",
+            Some("add \"chest:ping\" to events.send of extensions.emitter in chest.toml"),
+        ),
+    ];
+    for (index, (events, expected, advice)) in cases.into_iter().enumerate() {
+        let home = common::scratch(&format!("chest-events-{index}"));
         let manifest = format!(
             "[extensions]\nemitter = {{ path = \"emitter.js\", capabilities = [\"fs\"]{events} }}\n"
         );
@@ -382,11 +476,18 @@ export default function (pi) {
         let mut rpc = Rpc::start(common::yapi(&home).arg("--approve"));
         assert_eq!(rpc.notice("/emit"), "emitted");
         assert_eq!(rpc.notice("/check"), expected);
+        let warned = |advice: &str| {
+            let warning = format!(
+                "{advice}: pi.events \"chest:ping\" from extensions.emitter in chest.toml (fs) did not reach"
+            );
+            rpc.stderr().iter().any(|line| line.contains(&warning))
+        };
         let missed = rpc
             .stderr()
             .iter()
-            .any(|line| line.contains("add \"chest:ping\" to events.send of"));
-        assert_eq!(missed, expected == "missed", "{:?}", rpc.stderr());
+            .any(|line| line.contains("did not reach"));
+        assert_eq!(missed, advice.is_some(), "{:?}", rpc.stderr());
+        assert!(advice.is_none_or(warned), "{:?}", rpc.stderr());
     }
 }
 
@@ -409,6 +510,22 @@ async fn chest_skills_loaded() {
     for name in ["skill:demo", "skill:patched"] {
         assert!(loaded.contains_key(name), "{name}: {loaded:?}");
     }
+
+    // `yapi config` puts back a missing copy, as a run does, and lists it.
+    std::fs::remove_dir_all(home.join(".claude/skills/demo")).unwrap();
+    let env = [
+        ("HOME", home.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", home.join("agent").into_os_string()),
+    ];
+    let args = ["config", "-l", "-a"].map(str::to_owned);
+    let yapi = Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let mut pty = yapi_mock::pty::Pty::spawn(yapi, &args, &home, &env, (100, 30), true).unwrap();
+    let listed = |rows: &[String]| rows.iter().any(|row| row.contains("chest:demo"));
+    let shown = pty.wait_for(Duration::from_secs(20), listed);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.write("\x1b").unwrap();
+    pty.finish().unwrap();
+    assert!(home.join(".claude/skills/demo/SKILL.md").exists());
 }
 
 /// `CHEST_MANIFEST` names the project manifest yapi reads, inside the

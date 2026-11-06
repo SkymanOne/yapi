@@ -120,6 +120,9 @@ pub struct Context {
     pub project_dir: PathBuf,
     /// Whether the project's resources are trusted.
     pub project_trusted: bool,
+    /// In a project-only run, the patterns of the user's MCP servers it
+    /// keeps, from the `projectOnly` setting. The user's others stay out.
+    pub project_only_mcp: Option<Vec<String>>,
     /// The mode.
     pub mode: Mode,
     /// Dialogs and notifications.

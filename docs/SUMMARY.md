@@ -29,6 +29,7 @@
 - [Run yapi Extensions](chest-extensions.md)
 - [Lock, Verify and Update Packages](chest-lock.md)
 - [Environments, Global Packages and Patches](chest-environments.md)
+- [Run yapi with Only the Project's Packages](project-only.md)
 - [Publish a Package](chest-publish.md)
 - [chest Commands](chest-commands.md)
 - [chest.toml Reference](chest-manifest.md)

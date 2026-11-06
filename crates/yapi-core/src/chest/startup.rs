@@ -5,17 +5,22 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use yapi_types::settings::FilteredPackage;
+use serde::Deserialize as _;
+use yapi_types::rpc::SourceInfo;
+use yapi_types::settings::{DefaultProjectTrust, FilteredPackage};
 
 use super::fetch::placed_name;
 use super::lock::fresh;
 use super::manifest::{Entry, MANIFEST_ENV, Manifest, Section, from_env};
-use super::{Mode, Project, locked_items};
+use super::{Mode, Project};
 use crate::extensions::{EventPolicy, Grants};
 use crate::packages::npm::{Npm, escaped};
-use crate::packages::resolve::{PackageInput, ResolvedPaths, ResourceType, package_resources};
-use crate::settings::Scope;
+use crate::packages::resolve::{
+    PackageInput, ProjectOnly, ResolvedPaths, ResourceType, package_resources,
+};
+use crate::settings::{Scope, SettingsManager};
 use crate::tools::path::home_dir;
+use crate::trust::{TrustStore, resolve_trusted};
 
 /// The project manifest of `project_root`: the file [`MANIFEST_ENV`] names
 /// relative to it, else `chest.toml`. `None` when the variable names a file
@@ -24,6 +29,22 @@ use crate::tools::path::home_dir;
 pub fn project_manifest(project_root: &Path) -> Option<PathBuf> {
     let name = from_env().ok()?;
     Some(project_root.join(name.as_deref().unwrap_or("chest.toml")))
+}
+
+/// How messages name the chest entry that gives an extension file the
+/// resolver reports with `source` and `scope`: `extensions.<name> in
+/// <manifest>`, the manifest named as chest's own messages name it. `None`
+/// for a file chest doesn't give.
+pub fn entry_label(source: &str, scope: &str, project_root: &Path) -> Option<String> {
+    let name = source.strip_prefix("chest:")?;
+    let manifest = match scope {
+        "user" => "~/.chest/chest.toml".to_owned(),
+        _ => {
+            let manifest = project_manifest(project_root)?;
+            manifest.file_name()?.to_string_lossy().into_owned()
+        }
+    };
+    Some(format!("extensions.{name} in {manifest}"))
 }
 
 /// Whether `manifest` installs anything, beyond describing its folder as a
@@ -169,20 +190,32 @@ impl FilePolicies {
 /// The policy of each extension file the resolver gave a `chest:` source in
 /// `resolved`, loaded or shadowed, from its package's entry in
 /// `installed`, with the entries `installed` left out. A file that several
-/// entries give gets what all of them allow. A chest file whose package has
-/// no entry runs with no grant and the isolated event policy, and adds a
-/// line to `problems` under its source.
+/// entries give gets what all of them allow, and when that is less than one
+/// of them allows, adds a line to `problems` that names the entries, as
+/// found for the project in `project_root`. So does a file that an entry
+/// left out holds too, which runs with no grant. A chest file whose package
+/// has no entry runs with no grant and the isolated event policy, and adds
+/// a line to `problems` under its source.
 pub fn file_policies(
     resolved: &ResolvedPaths,
     installed: &Installed,
+    project_root: &Path,
     problems: &mut Vec<(String, String)>,
 ) -> FilePolicies {
     let files = resolved.of(ResourceType::Extensions).iter();
     let files = files.map(|file| &file.info).chain(&resolved.shadowed);
     let mut found = FilePolicies {
         files: HashMap::new(),
-        closed: installed.closed.clone(),
+        closed: installed
+            .closed
+            .iter()
+            .map(|closed| closed.root.clone())
+            .collect(),
     };
+    // Each file as its first source names it, with the entries that give
+    // it, and whether one of them allows fewer grants, or fewer channels,
+    // than another.
+    let mut givers: Vec<(PathBuf, &SourceInfo, Vec<String>, [bool; 2])> = Vec::new();
     for info in files.filter(|info| info.source.starts_with("chest:")) {
         let key = (info.scope.clone(), info.source.clone());
         let file = Path::new(&info.path);
@@ -195,11 +228,91 @@ pub fn file_policies(
             problems.push((escaped(&info.source), escaped(&message)));
             Policy::closed(&file)
         });
+        let label = entry_label(&info.source, &info.scope, project_root);
+        let label = label.unwrap_or_else(|| info.source.clone());
         let policy = match found.files.get(&file) {
-            Some(other) => other.intersection(&policy),
-            None => policy,
+            Some(other) => {
+                if let Some((.., labels, [grants, events])) =
+                    givers.iter_mut().find(|giver| giver.0 == file)
+                {
+                    if !labels.contains(&label) {
+                        labels.push(label);
+                    }
+                    *grants |= other.grants != policy.grants;
+                    *events |= other.events != policy.events;
+                }
+                other.intersection(&policy)
+            }
+            None => {
+                givers.push((file.clone(), info, vec![label], [false; 2]));
+                policy
+            }
         };
         found.files.insert(file, policy);
+    }
+    // What a file that `count` entries give, with `policy`, gets less of
+    // than one of them allows, by whether that is grants and event channels.
+    let only = |narrowed: [bool; 2], policy: &Policy, count: usize| {
+        let all = if count == 2 { "both" } else { "all" };
+        match narrowed {
+            [false, false] => None,
+            [true, false] => Some(format!("grants {all} give: {}", policy.grants)),
+            [false, true] => Some(format!("event channels {all} give")),
+            [true, true] => Some(format!(
+                "event channels and the grants {all} give: {}",
+                policy.grants
+            )),
+        }
+    };
+    for (file, info, labels, narrowed) in givers {
+        let (path, source) = (&info.path, &info.source);
+        let Some(policy) = found.files.get(&file) else {
+            continue;
+        };
+        let closer = installed
+            .closed
+            .iter()
+            .find(|closed| file.starts_with(&closed.root));
+        if let Some(Closed {
+            entry: closer,
+            remove,
+            install,
+            ..
+        }) = closer
+        {
+            // Once installed, the entry left out gives the file too.
+            let fix = match install {
+                Some((command, once)) => {
+                    let [grants, events] = narrowed;
+                    let narrowed = [
+                        grants || policy.grants != once.grants,
+                        events || policy.events != once.events,
+                    ];
+                    let after = policy.intersection(once);
+                    let gives = only(narrowed, &after, labels.len() + 1);
+                    let gives = gives.map(|gives| format!(", which gives it only the {gives}"));
+                    format!(
+                        "run `{command}`{}, or `{remove}`",
+                        gives.unwrap_or_default()
+                    )
+                }
+                None => format!("run `{remove}`"),
+            };
+            let message = format!(
+                "{path} is in {}, but {closer} holds it too and does not load, so it runs with no capabilities: {fix}",
+                labels.join(" and ")
+            );
+            problems.push((escaped(source), escaped(&message)));
+            continue;
+        }
+        let Some(narrowed) = only(narrowed, policy, labels.len()) else {
+            continue;
+        };
+        let message = format!(
+            "{path} is in {}, so it gets only the {narrowed}",
+            labels.join(" and ")
+        );
+        problems.push((escaped(source), escaped(&message)));
     }
     found
 }
@@ -214,11 +327,29 @@ pub struct Installed {
     pub skills: Vec<PackageInput>,
     /// The packages' policies.
     pub policies: Policies,
-    /// The canonical folders and files of extension entries left out
-    /// because their lock is stale or missing, and the extension files of
-    /// those whose folder holds too much, which run with no grant if
-    /// something else loads them.
-    pub closed: Vec<PathBuf>,
+    /// The folders and files of extension entries left out because their
+    /// lock is stale or missing, and the extension files of those whose
+    /// folder holds too much.
+    pub closed: Vec<Closed>,
+    /// The [`package_identity`] of each loaded npm or git extension entry,
+    /// such as `npm:@acme/todo`, with the entry's name, its manifest's path,
+    /// and whether that is the user's global manifest.
+    pub identities: Vec<(String, String, String, bool)>,
+}
+
+/// A canonical folder or file of an extension entry chest leaves out,
+/// which runs with no grant if something else loads it.
+#[derive(Clone, Debug)]
+pub struct Closed {
+    /// The folder or file.
+    pub root: PathBuf,
+    /// Its entry, as `extensions.<name> in <manifest>`.
+    pub entry: String,
+    /// The command that removes the entry.
+    pub remove: String,
+    /// For an entry that `chest install` would load, that command and the
+    /// policy the entry would then give.
+    pub install: Option<(String, Policy)>,
 }
 
 impl Installed {
@@ -227,7 +358,243 @@ impl Installed {
         self.skills.extend(other.skills);
         self.policies.extend(other.policies);
         self.closed.extend(other.closed);
+        self.identities.extend(other.identities);
     }
+}
+
+/// Whether a run reads the user's global manifest: always, except in a
+/// project-only run whose `projectOnly` setting in `settings` can keep none
+/// of its entries, so nothing global is put back for nothing.
+pub fn reads_global(settings: &SettingsManager) -> bool {
+    !crate::config::project_only()
+        || crate::packages::resolve::ProjectOnly::from_settings(settings.document(Scope::Global))
+            .needs_chest()
+}
+
+/// One install of an npm or git package, as [`LeftOut`] compares them.
+#[derive(Clone, Debug, PartialEq)]
+enum Install {
+    /// A chest extension entry: its name, its manifest's path, and whether
+    /// that is the user's global manifest.
+    Chest {
+        name: String,
+        path: String,
+        global: bool,
+    },
+    /// A `packages` entry of a scope's settings, by its source.
+    Settings { scope: Scope, source: String },
+}
+
+/// The copies a run leaves out of each npm or git package that several
+/// sources install, so it loads once, from the first of: the project's
+/// manifest, the project's settings `packages`, the global manifest and the
+/// global settings `packages`. Of two entries of one manifest, the first
+/// loads. pi's own rules decide between two settings copies.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LeftOut(Vec<(Install, Install)>);
+
+impl LeftOut {
+    /// The copies left out of `installed` and the packages of `settings`,
+    /// each with the copy that loads instead. With `keep`, a project-only
+    /// run's keep list, a global copy that only a kind list keeps comes
+    /// after the copies the run keeps whole, and one it keeps no file of
+    /// doesn't count. Global paths are relative to `agent_dir`.
+    pub fn new(
+        installed: &Installed,
+        settings: &SettingsManager,
+        keep: Option<&ProjectOnly>,
+        agent_dir: &Path,
+    ) -> LeftOut {
+        let rank = |source: &str, global: bool| match keep {
+            Some(keep) if global && !keep.keeps_package(source, agent_dir) => {
+                keep.needs_package(source, agent_dir).then_some(1)
+            }
+            _ => Some(0),
+        };
+        let chest = |global: bool| {
+            let identities = installed.identities.iter();
+            identities
+                .filter(move |(_, _, _, other)| *other == global)
+                .filter_map(move |(id, name, path, global)| {
+                    let rank = rank(&format!("chest:{name}"), *global)?;
+                    let (name, path, global) = (name.clone(), path.clone(), *global);
+                    Some((rank, id.clone(), Install::Chest { name, path, global }))
+                })
+        };
+        let from_settings = |scope: Scope| {
+            let packages = crate::packages::settings_packages(settings, scope);
+            let sources = packages
+                .iter()
+                .filter_map(crate::packages::entry_source)
+                .filter_map(|source| {
+                    let rank = rank(source, scope == Scope::Global)?;
+                    let id = crate::packages::source::parse(source).identity(Path::new(""));
+                    let source = source.to_owned();
+                    Some((rank, id, Install::Settings { scope, source }))
+                });
+            sources.collect::<Vec<_>>()
+        };
+        let mut copies: Vec<(u8, String, Install)> = chest(false)
+            .chain(from_settings(Scope::Project))
+            .chain(chest(true))
+            .chain(from_settings(Scope::Global))
+            .collect();
+        // Two settings copies are pi's to decide.
+        let pair = |a: &Install, b: &Install| {
+            !matches!((a, b), (Install::Settings { .. }, Install::Settings { .. }))
+        };
+        if let Some(keep) = keep {
+            // A global copy's files are read only when it collides.
+            let home = home_dir();
+            let input = |copy: &Install| match copy {
+                Install::Chest { name, .. } => {
+                    let source = format!("chest:{name}");
+                    let mut inputs = installed.packages.iter();
+                    let found =
+                        inputs.find(|input| input.scope == "user" && input.source == source);
+                    found.cloned()
+                }
+                Install::Settings { source, .. } => {
+                    let global = crate::packages::settings_packages(settings, Scope::Global);
+                    let inputs = crate::packages::resolve::package_inputs(
+                        &[],
+                        &global,
+                        |_| agent_dir.to_path_buf(),
+                        |source, _| crate::packages::install_location(source, agent_dir),
+                    );
+                    inputs.into_iter().find(|input| input.source == *source)
+                }
+            };
+            let counts: Vec<bool> = copies
+                .iter()
+                .enumerate()
+                .map(|(index, (rank, id, copy))| {
+                    let mut others = copies.iter().enumerate();
+                    *rank == 0
+                        || !others.any(|(other_index, (_, other, install))| {
+                            other_index != index && same_package(id, other) && pair(copy, install)
+                        })
+                        || input(copy)
+                            .is_some_and(|input| keep.keeps_part(&input, agent_dir, &home))
+                })
+                .collect();
+            let copies_counts = copies.into_iter().zip(counts);
+            copies = copies_counts
+                .filter_map(|(copy, counts)| counts.then_some(copy))
+                .collect();
+        }
+        // Stable, so each rank keeps the order above.
+        copies.sort_by_key(|(rank, ..)| *rank);
+        let mut left_out = Vec::new();
+        // Only copies that load count, as a whole package overlaps two of
+        // its folders that don't overlap each other.
+        let mut loaded: Vec<(&str, &Install)> = Vec::new();
+        for (_, id, copy) in &copies {
+            let kept = loaded.iter().find(|(other, _)| same_package(other, id));
+            match kept {
+                Some((_, kept)) if pair(kept, copy) => {
+                    left_out.push((copy.clone(), (*kept).clone()));
+                }
+                _ => loaded.push((id, copy)),
+            }
+        }
+        LeftOut(left_out)
+    }
+
+    /// Whether chest's package `input` is left out.
+    pub fn chest(&self, input: &PackageInput) -> bool {
+        self.0.iter().any(|(copy, _)| match copy {
+            Install::Chest { name, global, .. } => {
+                input.source == format!("chest:{name}") && (input.scope == "user") == *global
+            }
+            Install::Settings { .. } => false,
+        })
+    }
+
+    /// Whether the `packages` entry of `scope`'s settings with `source` is
+    /// left out.
+    pub fn settings(&self, scope: Scope, source: &str) -> bool {
+        let copy = Install::Settings {
+            scope,
+            source: source.to_owned(),
+        };
+        self.0.iter().any(|(left_out, _)| *left_out == copy)
+    }
+
+    /// A warning for each copy left out, by the path of the chest manifest
+    /// involved, that says which copy loads and how to remove the other.
+    /// With `approve`, the command for a project's settings trusts the
+    /// project for that command.
+    pub fn problems(&self, approve: bool) -> Vec<(String, String)> {
+        let scope = |global: bool| {
+            if global {
+                Scope::Global
+            } else {
+                Scope::Project
+            }
+        };
+        let home = home_dir();
+        let home = home.canonicalize().unwrap_or(home);
+        let place = |copy: &Install| match copy {
+            Install::Chest { name, path, global } => {
+                let label = super::manifest_label(Path::new(path), scope(*global), &home);
+                format!("extensions.{name} in {label}")
+            }
+            Install::Settings { scope, source } => match scope {
+                Scope::Project => format!("{source} in the project's settings"),
+                Scope::Global => format!("{source} in the global settings"),
+            },
+        };
+        let local = match approve {
+            true => "yapi remove -l --approve",
+            false => "yapi remove -l",
+        };
+        let problems = self.0.iter().map(|(copy, kept)| {
+            let remove = match copy {
+                Install::Chest { name, path, global } => {
+                    let command = super::command(Path::new(path), scope(*global));
+                    format!("{command} remove {name}")
+                }
+                Install::Settings { scope, source } => match scope {
+                    Scope::Project => format!("{local} {source}"),
+                    Scope::Global => format!("yapi remove {source}"),
+                },
+            };
+            let message = format!(
+                "{} is left out, because {} installs the same package: remove it with `{remove}`",
+                place(copy),
+                place(kept),
+            );
+            // Two settings copies are pi's to decide, so one is chest's.
+            let path = match (copy, kept) {
+                (Install::Chest { path, .. }, _) | (_, Install::Chest { path, .. }) => path.clone(),
+                _ => String::new(),
+            };
+            (escaped(&path), escaped(&message))
+        });
+        problems.collect()
+    }
+}
+
+/// The warnings, by manifest path, for each copy of a package that a run
+/// leaves out because another source installs it too, as [`LeftOut`]
+/// decides. Their `yapi remove -l` commands take `--approve` unless the
+/// project of `settings` is trusted without it, by the decisions in
+/// `agent_dir` or the global `defaultProjectTrust`.
+pub fn duplicates(
+    installed: &Installed,
+    settings: &SettingsManager,
+    keep: Option<&ProjectOnly>,
+    agent_dir: &Path,
+) -> Vec<(String, String)> {
+    // As `yapi remove -l` decides it, without this run's `--approve`.
+    let default = settings
+        .document(Scope::Global)
+        .get("defaultProjectTrust")
+        .and_then(|value| DefaultProjectTrust::deserialize(value).ok());
+    let store = TrustStore::new(agent_dir);
+    let trusted = resolve_trusted(settings.project_dir(), &store, None, default);
+    LeftOut::new(installed, settings, keep, agent_dir).problems(!trusted.unwrap_or(false))
 }
 
 /// What chest gives one run of yapi, with the problems to show by manifest
@@ -250,6 +617,40 @@ impl Loaded {
     }
 }
 
+/// The package that npm or git extension entry `entry` installs, as
+/// [`LeftOut`] compares copies: `npm:<name>` or `git:<host>/<path>`, as
+/// settings packages are matched. An entry with `path` takes one folder of
+/// it, which `#<path>` names, without `.` or empty segments.
+pub fn package_identity(entry: &Entry) -> Option<String> {
+    let package = match (&entry.npm, &entry.git) {
+        (Some(npm), _) => format!("npm:{npm}"),
+        (None, Some(git)) => {
+            crate::packages::source::parse(&format!("git:{git}")).identity(Path::new(""))
+        }
+        (None, None) => return None,
+    };
+    let path = entry.path.iter().flat_map(|path| path.split('/'));
+    let path: Vec<&str> = path
+        .filter(|segment| !matches!(*segment, "" | "."))
+        .collect();
+    Some(match path.is_empty() {
+        true => package,
+        false => format!("{package}#{}", path.join("/")),
+    })
+}
+
+/// Whether two [`package_identity`] values, or settings identities, name
+/// copies of one package: the same package and `path`, or the whole package
+/// and one folder of it. Two `path`s of one package are two packages.
+pub fn same_package(a: &str, b: &str) -> bool {
+    let folder_of = |whole: &str, folder: &str| {
+        folder
+            .strip_prefix(whole)
+            .is_some_and(|rest| rest.starts_with('#'))
+    };
+    a == b || folder_of(a, b) || folder_of(b, a)
+}
+
 /// The extensions and skills `project` has installed, locked and up to
 /// date, or patched, for a run in `project_root`: a stale or unlocked entry
 /// gives nothing until `chest install`. Entries left out for a reason the
@@ -265,17 +666,21 @@ pub fn installed_inputs(
     };
     let mut installed = Installed::default();
     let lock = project.lock.clone().unwrap_or_default();
+    let record = project.record();
+    // A copy an older lock pinned stays out until it is put back.
     let current = |section: Section, name: &str, entry: &Entry| {
         lock.section(section)
             .iter()
             .find(|locked| locked.name == name)
             .filter(|locked| fresh(entry, locked))
             .filter(|locked| project.present(section, locked))
+            .filter(|locked| project.holds_locked(section, entry, locked, &record))
             .cloned()
     };
     for (name, entry) in &project.manifest.extensions {
         let patched = project.manifest.patch.contains_key(name);
         let roots = project.extension_roots(name);
+        let label = format!("extensions.{name} in {}", project.label());
         // Locked or not, it never loads. Only the files it would load run
         // closed, as other files there belong to other sources.
         if let Some((root, module_root)) = &roots
@@ -288,15 +693,32 @@ pub fn installed_inputs(
             let local = crate::packages::source::is_local(&format!("chest:{name}"));
             let files = package_resources(root, None, local).extensions;
             let files = files.iter().map(|file| Path::new(&file.info.path));
-            installed
-                .closed
-                .extend(files.filter_map(|file| file.canonicalize().ok()));
+            let remove = format!("{} remove {name}", project.command());
+            let closed = files.filter_map(|file| file.canonicalize().ok());
+            let closed = closed.map(|root| Closed {
+                root,
+                entry: label.clone(),
+                remove: remove.clone(),
+                install: None,
+            });
+            installed.closed.extend(closed);
             continue;
         }
+        let policy = |root: PathBuf| Policy {
+            grants: project.manifest.grants(entry),
+            events: entry.events.clone().unwrap_or_default(),
+            root: Some(root),
+        };
         if !patched && current(Section::Extensions, name, entry).is_none() {
             // Its files may still load through pi's discovery or settings.
             if let Some(root) = roots.and_then(|(_, root)| root.canonicalize().ok()) {
-                installed.closed.push(root);
+                let install = Some((project.install_command(), policy(root.clone())));
+                installed.closed.push(Closed {
+                    root,
+                    entry: label,
+                    remove: format!("{} remove {name}", project.command()),
+                    install,
+                });
             }
             continue;
         }
@@ -326,13 +748,17 @@ pub fn installed_inputs(
                 prompts: entry.prompts.clone(),
                 themes: entry.themes.clone(),
             });
-        let policy = Policy {
-            grants: project.manifest.grants(entry),
-            events: entry.events.clone().unwrap_or_default(),
-            root: Some(module_root),
-        };
         let key = (scope.to_owned(), source.clone());
-        installed.policies.insert(key, policy);
+        installed.policies.insert(key, policy(module_root));
+        // A patched entry still installs its package, so its patch loads in
+        // place of other copies.
+        if let Some(identity) = package_identity(entry) {
+            let path = project.path.display().to_string();
+            let global = project.scope == Scope::Global;
+            installed
+                .identities
+                .push((identity, name.clone(), path, global));
+        }
         installed.packages.push(PackageInput {
             source,
             scope: scope.to_owned(),
@@ -346,26 +772,41 @@ pub fn installed_inputs(
     };
     for (name, entry) in &project.manifest.skills {
         let patch = project.manifest.patch.get(name);
-        let roots = match (
+        let roots: Vec<PathBuf> = match (
             patch.and_then(|patch| patch.path.as_deref()),
             current(Section::Skills, name, entry),
         ) {
             // A patched skill loads where `chest install` placed it, else
-            // from its patch.
+            // from its patch. A patch of a whole package, as `chest install`
+            // reads it, places each of its skills under its own name.
             (Some(path), _) => {
-                let placed = home.join(placed_name(Section::Skills, name));
-                let root = if placed.exists() {
-                    placed
-                } else {
-                    project.resolve(path)
-                };
-                if !root.exists() {
-                    problems.push(format!("skills.{name}: {} does not exist", root.display()));
+                let patch = project.resolve(path);
+                if !patch.exists() {
+                    problems.push(format!("skills.{name}: {} does not exist", patch.display()));
                     continue;
                 }
-                vec![root]
+                let package = entry.path.is_none() && (entry.git.is_some() || entry.npm.is_some());
+                let items = if package {
+                    match super::fetch::items(&patch, Section::Skills, None, name) {
+                        Ok((items, _)) => items,
+                        Err(err) => {
+                            problems.push(format!("skills.{name}: {err}"));
+                            continue;
+                        }
+                    }
+                } else {
+                    vec![(placed_name(Section::Skills, name), patch)]
+                };
+                items
+                    .into_iter()
+                    .map(|(item, from)| {
+                        let placed = home.join(item);
+                        if placed.exists() { placed } else { from }
+                    })
+                    .collect()
             }
-            (None, Some(locked)) => locked_items(Section::Skills, &locked)
+            (None, Some(locked)) => project
+                .locked_items(Section::Skills, &locked)
                 .into_iter()
                 .map(|(item, _)| home.join(item))
                 .collect(),
@@ -384,9 +825,13 @@ pub fn installed_inputs(
 }
 
 /// The manifests yapi reads for `project_root` that install anything: the
-/// project's, only when `trusted`, then the user's global one, or why each
-/// cannot be read.
-fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String, String)>> {
+/// project's, only when `trusted`, then the user's global one, only when
+/// `global`, or why each cannot be read.
+fn manifests(
+    project_root: &Path,
+    trusted: bool,
+    global: bool,
+) -> Vec<Result<Project, (String, String)>> {
     let mut found = Vec::new();
     if trusted && let Err(problem) = from_env() {
         let problem = format!("{problem}, so no project manifest loads");
@@ -394,7 +839,7 @@ fn manifests(project_root: &Path, trusted: bool) -> Vec<Result<Project, (String,
     }
     let project = trusted.then(|| project_manifest(project_root)).flatten();
     let project = project.map(|path| (path, Scope::Project));
-    let global = Some((home_dir().join(".chest/chest.toml"), Scope::Global));
+    let global = global.then(|| (home_dir().join(".chest/chest.toml"), Scope::Global));
     for (path, scope) in [project, global].into_iter().flatten() {
         if !path.exists() {
             continue;
@@ -416,16 +861,17 @@ fn add(loaded: &mut Loaded, project: &Project, project_root: &Path) {
         .installed
         .extend(installed_inputs(project, project_root, &mut problems));
     let path = project.path.display().to_string();
+    // Print mode shows only the message, so it names its manifest.
     for problem in problems {
-        loaded.warn((path.clone(), problem));
+        loaded.warn((path.clone(), format!("{}: {problem}", project.label())));
     }
 }
 
 /// What chest gives a run in `project_root`, as [`load`] would, without
 /// installing anything: for `yapi config`, which shows what a run loads.
-pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
+pub fn installed(project_root: &Path, trusted: bool, global: bool) -> Loaded {
     let mut loaded = Loaded::default();
-    for project in manifests(project_root, trusted) {
+    for project in manifests(project_root, trusted, global) {
         match project {
             Ok(project) => add(&mut loaded, &project, project_root),
             Err(problem) => loaded.warn(problem),
@@ -435,14 +881,14 @@ pub fn installed(project_root: &Path, trusted: bool) -> Loaded {
 }
 
 /// What chest gives a run of yapi in `project_root`: the project manifest,
-/// only when `trusted`, and the user's global one, each when it installs
-/// anything. Each puts back what its lock pins and is missing, unless
-/// `offline`, and skips stale or unlocked entries with a warning. It never
-/// writes a lock or `.gitignore`.
-pub async fn load(project_root: &Path, trusted: bool, offline: bool) -> Loaded {
+/// only when `trusted`, and the user's global one, only when `global`, each
+/// when it installs anything. Each puts back what its lock pins and is
+/// missing, unless `offline`, and skips stale or unlocked entries with a
+/// warning. It never writes a lock or `.gitignore`.
+pub async fn load(project_root: &Path, trusted: bool, offline: bool, global: bool) -> Loaded {
     let mut loaded = Loaded::default();
     let mut npm = None;
-    for project in manifests(project_root, trusted) {
+    for project in manifests(project_root, trusted, global) {
         let mut project = match project {
             Ok(project) => project,
             Err(problem) => {
@@ -478,14 +924,15 @@ mod tests {
     #[test]
     fn startup_load_send() {
         fn send<T: Send>(_: T) {}
-        send(load(Path::new("."), false, true));
+        send(load(Path::new("."), false, true, true));
     }
 
     /// A chest file whose package has no policy runs with none, with a
     /// warning, while other sources' files get no policy at all. Warnings
     /// escape a file name's control characters. A file
     /// that two entries give loads modules from the narrower root, and one
-    /// in an entry chest left out from itself alone.
+    /// in an entry chest left out from itself alone, with a warning that
+    /// names that entry too.
     #[test]
     fn chest_files_fail_closed() {
         let file = |path: &str, source: &str, scope: &str| SourceInfo {
@@ -510,7 +957,12 @@ mod tests {
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
-        let policies = file_policies(&resolved, &Installed::default(), &mut problems);
+        let policies = file_policies(
+            &resolved,
+            &Installed::default(),
+            Path::new("/p"),
+            &mut problems,
+        );
         let (file_a, file_spoof) = (PathBuf::from("/p/a.js"), PathBuf::from(spoof));
         let files = HashMap::from([
             (file_a.clone(), Policy::closed(&file_a)),
@@ -535,31 +987,108 @@ mod tests {
             root: Some(root.into()),
             ..Policy::unrestricted()
         };
-        let key = |scope: &str| (scope.to_owned(), "chest:s".to_owned());
+        let key = |scope: &str, name: &str| (scope.to_owned(), format!("chest:{name}"));
+        let filesystem = Grants {
+            filesystem: true,
+            ..Grants::none()
+        };
+        let network = Grants {
+            network: true,
+            ..Grants::none()
+        };
+        let narrow = |grants, events| Policy {
+            grants,
+            events,
+            ..rooted("/p/sub")
+        };
         let installed = Installed {
             policies: HashMap::from([
-                (key("project"), rooted("/p")),
-                (key("user"), rooted("/p/sub")),
+                (key("project", "s"), rooted("/p")),
+                (key("user", "s"), narrow(filesystem, EventPolicy::shared())),
+                // `e` narrows only the event channels, and `g` the grants too.
+                (
+                    key("project", "e"),
+                    narrow(filesystem, EventPolicy::shared()),
+                ),
+                (
+                    key("user", "e"),
+                    narrow(filesystem, EventPolicy::isolated()),
+                ),
+                (key("project", "g"), rooted("/p")),
+                (
+                    key("user", "g"),
+                    narrow(filesystem, EventPolicy::isolated()),
+                ),
             ]),
-            closed: vec!["/q".into()],
+            // `chest install` would load `x` with its own grants.
+            closed: [("/q", None), ("/p/sub/c.js", Some(network))]
+                .map(|(root, grants)| Closed {
+                    root: root.into(),
+                    entry: "extensions.x in chest.toml".into(),
+                    remove: "chest remove x".into(),
+                    install: grants.map(|grants| {
+                        let policy = narrow(grants, EventPolicy::shared());
+                        ("chest install".to_owned(), policy)
+                    }),
+                })
+                .into(),
             ..Installed::default()
         };
         let resolved = ResolvedPaths {
             extensions: vec![
                 enabled(file("/p/sub/a.js", "chest:s", "project")),
                 enabled(file("/p/sub/b.js", "chest:s", "user")),
+                enabled(file("/p/sub/c.js", "chest:s", "project")),
+                enabled(file("/p/sub/e.js", "chest:e", "project")),
+                enabled(file("/p/sub/g.js", "chest:g", "project")),
             ],
             shadowed: vec![
                 file("/p/sub/a.js", "chest:s", "user"),
                 file("/p/sub/b.js", "chest:s", "project"),
+                file("/p/sub/c.js", "chest:s", "user"),
+                file("/p/sub/e.js", "chest:e", "user"),
+                file("/p/sub/g.js", "chest:g", "user"),
             ],
             ..ResolvedPaths::default()
         };
-        let policies = file_policies(&resolved, &installed, &mut problems);
+        problems.clear();
+        let policies = file_policies(&resolved, &installed, Path::new("/p"), &mut problems);
         let root = |path: &str| policies.of(Path::new(path)).root;
         for file in ["/p/sub/a.js", "/p/sub/b.js"] {
             assert_eq!(root(file), Some("/p/sub".into()), "{file}");
         }
+        // A file two entries give warns once, naming both, as it gets
+        // only what both allow, or nothing when an entry left out holds it,
+        // and then what installing that entry would leave it. The warning
+        // says whether that narrows grants, event channels or both.
+        let (project, user) = (
+            "extensions.s in chest.toml",
+            "extensions.s in ~/.chest/chest.toml",
+        );
+        let shared = |file: &str, first: &str, second: &str| {
+            let message = format!(
+                "{file} is in {first} and {second}, so it gets only the grants both give: fs"
+            );
+            ("chest:s".to_owned(), message)
+        };
+        let closed = format!(
+            "/p/sub/c.js is in {project} and {user}, but extensions.x in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, which gives it only the grants all give: none, or `chest remove x`"
+        );
+        let narrowed = |name: &str, what: &str| {
+            let message = format!(
+                "/p/sub/{name}.js is in extensions.{name} in chest.toml and extensions.{name} in ~/.chest/chest.toml, so it gets only the {what}"
+            );
+            (format!("chest:{name}"), message)
+        };
+        let both = [
+            shared("/p/sub/a.js", project, user),
+            shared("/p/sub/b.js", user, project),
+            ("chest:s".to_owned(), closed),
+            narrowed("e", "event channels both give"),
+            narrowed("g", "event channels and the grants both give: fs"),
+        ];
+        assert_eq!(problems, both);
         assert_eq!(root("/q/a.js"), Some("/q/a.js".into()));
+        assert_eq!(root("/p/sub/c.js"), Some("/p/sub/c.js".into()));
     }
 }

@@ -44,14 +44,18 @@ Before you publish a native extension, run `chest check` in the package folder. 
 chest check
 ```
 
-It reads the [capability features](native-extensions.md#declare-capabilities) the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports, where `wasi:filesystem` means `fs`. These are errors, and make chest exit with 1:
+It reads the [capability features](native-extensions.md#declare-capabilities) the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports. An import of `wasi:filesystem`, for example, counts as using `fs`.
+
+`chest check` reports an error and exits with 1 when it finds either of these:
 
 - a capability the extension uses that the package doesn't request
 - an import of `wasi:sockets` or `wasi:http`, which yapi doesn't support, because extensions reach the network through the SDK's `fetch`
 
-`chest add` warns about such an import. These are warnings:
+It warns about these and still exits with 0:
 
 - a capability the package requests that no extension uses
 - a capability the build records that this version of chest doesn't know, such as one a newer SDK adds, which chest doesn't check
+
+`chest add` also warns when an extension imports `wasi:sockets` or `wasi:http`.
 
 An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JavaScript and TypeScript extensions have nothing to read before they run, so yapi checks them only at runtime.

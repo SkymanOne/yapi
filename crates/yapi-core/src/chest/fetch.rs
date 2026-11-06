@@ -228,7 +228,7 @@ pub(super) fn items(
     if let Some(subpath) = subpath {
         let item = package.join(subpath);
         inside(package, &item)?;
-        check_item(section, &item)?;
+        check_item(section, &item, Path::new(subpath))?;
         return Ok((vec![(placed_name(section, name), item)], Vec::new()));
     }
     let key = section.key();
@@ -243,13 +243,18 @@ pub(super) fn items(
         };
         selected_files(package, listed.map(Vec::as_slice), key, kind)
     };
+    // yapi loads a lone `.md` file as a skill too, but chest installs folders.
+    let mut single = Vec::new();
     let mut items: Vec<(String, PathBuf)> = files
         .into_iter()
         .filter_map(|file| match section {
             Section::Skills if file.file_name()? == "SKILL.md" => {
                 file.parent().map(Path::to_path_buf)
             }
-            Section::Skills => None,
+            Section::Skills => {
+                single.push(file);
+                None
+            }
             _ => Some(file),
         })
         .filter_map(|item| Some((item.file_name()?.to_string_lossy().into_owned(), item)))
@@ -259,14 +264,24 @@ pub(super) fn items(
     for (_, item) in &items {
         inside(package, item)?;
     }
-    let mut warnings = Vec::new();
+    let shown = |path: &Path| {
+        path.strip_prefix(package)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    };
+    let mut warnings: Vec<String> = single
+        .iter()
+        .map(|file| {
+            format!(
+                "{} was skipped: it is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+                shown(file)
+            )
+        })
+        .collect();
     let mut kept: Vec<Item> = Vec::new();
     for (item, path) in items {
-        let shown = path
-            .strip_prefix(package)
-            .unwrap_or(&path)
-            .display()
-            .to_string();
+        let shown = shown(&path);
         if !valid_name(&item) {
             warnings.push(format!("{shown} was skipped: `{item}` is not a valid name"));
         } else if kept.iter().any(|(other, _)| *other == item) {
@@ -277,6 +292,12 @@ pub(super) fn items(
             kept.push((item, path));
         }
     }
+    if let (true, Some(file)) = (kept.is_empty(), single.first()) {
+        return Err(invalid(format!(
+            "the package provides no {key} that chest installs: {} is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+            shown(file)
+        )));
+    }
     if kept.is_empty() {
         return Err(invalid(format!("the package provides no {key}")));
     }
@@ -285,27 +306,34 @@ pub(super) fn items(
 
 /// Fails unless `path` resolves inside the package at `package`, links
 /// followed, so that no list entry or committed link reads beyond it.
+/// Errors name `path` inside the package, not where it was fetched to.
 pub(super) fn inside(package: &Path, path: &Path) -> Result<(), ChestError> {
     let root = package.canonicalize().map_err(io(package))?;
+    let shown = path.strip_prefix(package).unwrap_or(path).display();
     let real = path
         .canonicalize()
-        .map_err(|_| invalid(format!("{} does not exist", path.display())))?;
+        .map_err(|_| invalid(format!("{shown} does not exist")))?;
     if real.starts_with(&root) {
         Ok(())
     } else {
-        Err(invalid(format!(
-            "{} is outside the package",
-            path.display()
-        )))
+        Err(invalid(format!("{shown} is outside the package")))
     }
 }
 
+/// Whether a path source of `section` at `source` is a package, whose
+/// every item its entry installs, rather than one item: a folder that is
+/// not itself a skill.
+pub(super) fn is_package(section: Section, source: &Path) -> bool {
+    let skill = section == Section::Skills && source.join("SKILL.md").is_file();
+    section != Section::Extensions && source.is_dir() && !skill
+}
+
 /// Fails unless `item` is a skill folder with a `SKILL.md`, or a subagent
-/// `.md` file.
-pub(super) fn check_item(section: Section, item: &Path) -> Result<(), ChestError> {
+/// `.md` file. Errors name it `shown`.
+pub(super) fn check_item(section: Section, item: &Path, shown: &Path) -> Result<(), ChestError> {
     let metadata = item
         .symlink_metadata()
-        .map_err(|_| invalid(format!("{} does not exist", item.display())))?;
+        .map_err(|_| invalid(format!("{} does not exist", shown.display())))?;
     let fits = match section {
         Section::Skills => metadata.is_dir() && item.join("SKILL.md").is_file(),
         Section::Agents => metadata.is_file() && item.extension().is_some_and(|ext| ext == "md"),
@@ -318,6 +346,6 @@ pub(super) fn check_item(section: Section, item: &Path) -> Result<(), ChestError
             Section::Skills => "a skill folder with a SKILL.md",
             _ => "a subagent .md file",
         };
-        Err(invalid(format!("{} is not {what}", item.display())))
+        Err(invalid(format!("{} is not {what}", shown.display())))
     }
 }

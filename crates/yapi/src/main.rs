@@ -48,19 +48,6 @@ pub(crate) fn parse_command<T: clap::Parser>(name: &str, args: &[String]) -> Res
     )
 }
 
-/// pi's `applyHttpProxySettings`: the global `httpProxy` setting stands in for
-/// unset proxy variables.
-fn apply_http_proxy() {
-    let path = yapi_core::config::agent_dir().join("settings.json");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
-    };
-    let proxy = serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .and_then(|settings| settings.get("httpProxy")?.as_str().map(str::to_owned));
-    yapi_ai::http::set_settings_proxy(proxy.as_deref());
-}
-
 /// Runs `future` to completion on a current-thread runtime and returns its
 /// exit code.
 fn block_on(future: impl std::future::Future<Output = u8>) -> ExitCode {
@@ -94,16 +81,16 @@ fn main() -> ExitCode {
         Some("import") => return ExitCode::from(import::run(&raw[1..])),
         Some("new") => return ExitCode::from(new_command::run(&raw[1..])),
         Some("config") => {
-            apply_http_proxy();
+            yapi_core::settings::apply_http_proxy();
             return block_on(config_command::run(&raw[1..]));
         }
         Some("mcp") => {
-            apply_http_proxy();
+            yapi_core::settings::apply_http_proxy();
             return block_on(mcp_command::run(&raw[1..]));
         }
         Some("auth") => return block_on(auth_command::run(&raw)),
         Some("install" | "remove" | "uninstall" | "update" | "list") => {
-            apply_http_proxy();
+            yapi_core::settings::apply_http_proxy();
             return block_on(packages::run(&raw));
         }
         _ => {}
@@ -113,7 +100,11 @@ fn main() -> ExitCode {
         let _ = writeln!(std::io::stdout(), "{}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    apply_http_proxy();
+    yapi_core::settings::apply_http_proxy();
+    // A shell can turn the mode on as it activates a virtual environment.
+    if parsed.project_only || yapi_core::config::env_flag(yapi_core::config::PROJECT_ONLY_ENV) {
+        yapi_core::config::set_project_only();
+    }
     let mut failed = false;
     for diagnostic in &parsed.diagnostics {
         if diagnostic.error {
@@ -460,6 +451,9 @@ fn ask_project_trust(parsed: &mut args::Args) -> anyhow::Result<()> {
     let agent_dir = yapi_core::config::agent_dir();
     let project = startup::project_dir(parsed, &std::env::current_dir()?);
     let settings = yapi_core::settings::SettingsManager::load(&agent_dir, &project, false);
+    if let Some(conflict) = settings.conflict() {
+        anyhow::bail!("{conflict}");
+    }
     let view = settings.settings();
     let store = yapi_core::trust::TrustStore::new(&agent_dir);
     if !yapi_core::trust::needs_prompt(

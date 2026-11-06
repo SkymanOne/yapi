@@ -19,9 +19,11 @@ use serde_json::{Value, json};
 use yapi_ai::auth::lock::FileLock;
 use yapi_core::chest::hash::tree_hash;
 use yapi_core::chest::lock::Lock;
+use yapi_core::chest::manifest::{Entry, Section};
 use yapi_core::chest::startup::{file_policies, installed_inputs};
 use yapi_core::chest::{Mode, Outcome, Project, Report};
 use yapi_core::packages::npm::{Npm, Pinned};
+use yapi_core::packages::resolve::ResourceType;
 use yapi_core::packages::resolve_resources;
 use yapi_core::settings::{Scope, SettingsManager};
 use yapi_mock::{Cassette, Interaction, MockServer, RequestMatch, Response};
@@ -246,7 +248,36 @@ async fn git_skill_locked_commit() {
     std::fs::create_dir_all(root.join("local/pdf")).unwrap();
     std::fs::write(root.join("local/pdf/SKILL.md"), "# local\n").unwrap();
     let patched = skill_manifest(&remote, "v1") + "\n[patch]\npdf = { path = \"local/pdf\" }\n";
-    sync(&mut open(&dir, &patched), Mode::Resolve).await;
+    let mut patch = open(&dir, &patched);
+    sync(&mut patch, Mode::Resolve).await;
+    assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
+    // An edited copy of a patched entry stays, except in a frozen install,
+    // and list and verify report it.
+    std::fs::write(canonical.join("SKILL.md"), "# local edit\n").unwrap();
+    let edit = format!(
+        "skills.pdf: {} was modified since chest installed it",
+        canonical.display()
+    );
+    let how = "delete it and run `chest install` to put back the locked copy";
+    assert_eq!(frozen(&mut patch).await.unwrap_err(), edit);
+    let entry = patch.manifest.skills["pdf"].clone();
+    assert_eq!(patch.state(Section::Skills, "pdf", &entry), "edited");
+    assert_eq!(patch.verify().unwrap(), std::slice::from_ref(&edit));
+    let report = sync(&mut patch, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
+    assert_eq!(
+        report.warnings,
+        [format!("{edit}, so chest left it as it is: {how}")]
+    );
+    std::fs::write(canonical.join("SKILL.md"), "# local\n").unwrap();
+    sync(&mut patch, Mode::Resolve).await;
+    // A deleted copy of a patched entry is missing, and a frozen install
+    // puts it back from the patch.
+    std::fs::remove_dir_all(&canonical).unwrap();
+    assert_eq!(patch.state(Section::Skills, "pdf", &entry), "missing");
+    let gone = format!("skills.pdf: {} is missing", canonical.display());
+    assert_eq!(patch.verify().unwrap(), [gone]);
+    frozen(&mut patch).await.unwrap();
     assert_eq!(read(&canonical.join("SKILL.md")), "# local\n");
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
@@ -269,30 +300,60 @@ async fn git_skill_locked_commit() {
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
 
-    // An installed copy the user edited is not replaced.
+    // An installed copy the user edited is not replaced, also once the lock
+    // moves, as an update or a teammate's lock moves it, nor at startup.
     std::fs::write(canonical.join("SKILL.md"), "# edited\n").unwrap();
-    let error = failed(&mut project, Mode::Update(Vec::new())).await;
-    assert!(
-        error.contains("was modified since chest installed it"),
-        "{error}"
-    );
-    assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
-    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    let report = sync(&mut project, Mode::Resolve).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
     let before = read(&project.lock_path());
+    let left = format!(
+        "skills.pdf: {} was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy",
+        canonical.display()
+    );
+    let entry = project.manifest.skills["pdf"].clone();
+    for mode in [
+        Mode::Update(Vec::new()),
+        Mode::Resolve,
+        Mode::Startup { offline: false },
+    ] {
+        let report = sync(&mut project, mode).await;
+        assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Edited)]);
+        assert_eq!(report.warnings, [left.as_str()]);
+        assert_eq!(read(&canonical.join("SKILL.md")), "# edited\n");
+        let locked = &project.lock.as_ref().unwrap().skills[0];
+        assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+        assert_eq!(project.state(Section::Skills, "pdf", &entry), "edited");
+    }
+    let error = frozen(&mut project).await.unwrap_err();
+    assert!(error.ends_with(".agents/skills/pdf does not match the lock"));
+    std::fs::write(canonical.join("SKILL.md"), "# pdf 1\n").unwrap();
+    std::fs::write(project.lock_path(), &before).unwrap();
     let report = sync(&mut project, Mode::Update(Vec::new())).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
     let locked = &project.lock.as_ref().unwrap().skills[0];
     assert_eq!(locked.commit.as_deref(), Some(second.as_str()));
+    // An update that finds nothing newer says so.
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Unchanged)]);
     // An update stopped before it wrote the lock leaves the new copy, and
     // install puts back what the lock pins.
     let updated = read(&project.lock_path());
     std::fs::write(project.lock_path(), &before).unwrap();
+    // Startup never loads a copy that the lock no longer pins, as after a
+    // pull brings a teammate's lock.
+    let report = sync(&mut project, Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
+    let inputs = yapi_core::chest::startup::installed_inputs(&project, &root, &mut Vec::new());
+    assert!(inputs.skills.is_empty(), "{:?}", inputs.skills);
+    let entry = project.manifest.skills["pdf"].clone();
+    assert_eq!(project.state(Section::Skills, "pdf", &entry), "outdated");
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 1\n");
     std::fs::write(project.lock_path(), updated).unwrap();
-    sync(&mut project, Mode::Resolve).await;
+    let report = sync(&mut project, Mode::Startup { offline: false }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
     assert_eq!(read(&canonical.join("SKILL.md")), "# pdf 2\n");
 
     // A lock moved to another commit, or to no commit, is refused on replay.
@@ -312,6 +373,35 @@ async fn git_skill_locked_commit() {
         assert!(error.starts_with(expected), "{error}");
         assert!(!canonical.exists());
     }
+
+    // An edited extension stays too. yapi loads it while the lock pins what
+    // chest placed, and says it leaves it out once the lock moves on.
+    remote.commit(&[("tool/index.ts", "export default () => {};\n")], "tool");
+    let tool = format!(
+        "[extensions]\ntool = {{ git = \"{}\", rev = \"tool\", path = \"tool\" }}\n",
+        remote.source
+    );
+    let mut project = open(&dir, &tool);
+    sync(&mut project, Mode::Resolve).await;
+    let store = root.join(".yapi/chest/tool");
+    std::fs::write(store.join("index.ts"), "// mine\n").unwrap();
+    let left = format!(
+        "extensions.tool: {} was modified since chest installed it, so chest left it as it is: delete it and run `chest install` to put back the locked copy",
+        store.display()
+    );
+    let loads = |project: &Project| {
+        let inputs = installed_inputs(project, &root, &mut Vec::new());
+        !inputs.packages.is_empty()
+    };
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(report.warnings, [left.as_str()]);
+    assert!(loads(&project));
+    remote.commit(&[("tool/index.ts", "export default () => 2;\n")], "tool");
+    let report = sync(&mut project, Mode::Update(Vec::new())).await;
+    assert_eq!(outcomes(&report), [("extensions.tool", Outcome::Edited)]);
+    let moved = format!("{left}, and until then yapi does not load it");
+    assert_eq!(report.warnings, [moved]);
+    assert!(!loads(&project));
 
     // Without `rev`, an entry follows the remote's default branch, also
     // once it is renamed.
@@ -336,6 +426,7 @@ async fn skills_without_path() {
             ("skills/pdf/SKILL.md", "# pdf\n"),
             ("skills/xlsx/SKILL.md", "# xlsx\n"),
             ("skills/xlsx/data/table.csv", "a,b\n"),
+            ("skills/review.md", "# review\n"),
             ("agents/reviewer.md", "# reviewer\n"),
             ("agents/README.md", "# about\n"),
             ("README.md", "# skills\n"),
@@ -348,10 +439,14 @@ async fn skills_without_path() {
     );
     let mut project = open(&dir, &manifest);
     let report = sync(&mut project, Mode::Resolve).await;
-    // An item whose name is not an entry name is skipped, not the package.
+    // An item whose name is not an entry name is skipped, not the package,
+    // and so is a single-file skill, which chest doesn't install.
     assert_eq!(
         report.warnings,
-        ["agents.team: agents/README.md was skipped: `README.md` is not a valid name"]
+        [
+            "skills.anthropic: skills/review.md was skipped: it is a single-file skill, and chest installs only skill folders that hold a SKILL.md",
+            "agents.team: agents/README.md was skipped: `README.md` is not a valid name",
+        ]
     );
     let root = dir.join("project");
     let lock = project.lock.clone().unwrap();
@@ -503,6 +598,21 @@ async fn frozen_rejects_drift() {
     );
     assert_eq!(read(&skill), "# tampered\n");
     assert_eq!(read(&lock_path), locked);
+    // A copy chest placed for another lock, unchanged since, goes back as
+    // the lock pins it, as after a pull brings an older lock.
+    std::fs::write(&skill, "# pdf\n").unwrap();
+    sync(
+        &mut open(&dir, &skill_manifest(&remote, "v2")),
+        Mode::Resolve,
+    )
+    .await;
+    assert_eq!(read(&skill), "# pdf 2\n");
+    std::fs::write(&lock_path, &locked).unwrap();
+    let mut project = open(&dir, &skill_manifest(&remote, "v1"));
+    let report = sync(&mut project, Mode::Frozen).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Replayed)]);
+    assert_eq!(read(&skill), "# pdf\n");
+    assert_eq!(read(&lock_path), locked);
 
     std::fs::remove_file(&lock_path).unwrap();
     let mut project = open(&dir, &skill_manifest(&remote, "v1"));
@@ -641,6 +751,19 @@ async fn gitignore_block_managed() {
             read(&root.join(".gitignore")),
             "target/\n# BEGIN chest (chest.toml)\n.agents/skills/.*-old\n.agents/skills/.*-staging\n.agents/skills/pdf\n# END chest\n"
         );
+
+        // A `\` in a folder name is part of the name, not a separator: its
+        // line escapes it, and the record keeps the copy chest's, so a new
+        // commit replaces it.
+        let folders = "[\".agents/skills\", \".claude/skills\"]";
+        let manifest = skill_manifest(&remote, "v1").replace(folders, "[\"a\\\\b\"]");
+        sync(&mut open(&dir, &manifest), Mode::Resolve).await;
+        assert!(read(&root.join(".gitignore")).contains("\na\\\\b/pdf\n"));
+        remote.commit(&[("skills/pdf/SKILL.md", "# pdf 2\n")], "v2");
+        let manifest = manifest.replace("\"v1\"", "\"v2\"");
+        let report = sync(&mut open(&dir, &manifest), Mode::Resolve).await;
+        assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Installed)]);
+        assert_eq!(read(&root.join("a\\b/pdf/SKILL.md")), "# pdf 2\n");
     }
 }
 
@@ -778,17 +901,364 @@ async fn npm_extension_locked() {
     // Its index file, which no manifest lists, runs with the entry's
     // grants and loads modules from the whole store folder.
     let (root, agent) = (dir.join("project"), dir.join("agent"));
+    // The same package from the user's settings is left out, so only the
+    // project's entry loads, with a warning that says how to remove it.
+    let user_copy = agent.join("npm/node_modules/ext");
+    std::fs::create_dir_all(&user_copy).unwrap();
+    std::fs::write(user_copy.join("index.js"), "").unwrap();
+    let package_json = r#"{"name": "ext", "pi": {"extensions": ["./index.js"]}}"#;
+    std::fs::write(user_copy.join("package.json"), package_json).unwrap();
+    std::fs::write(
+        agent.join("settings.json"),
+        r#"{"packages": ["npm:ext@^1"]}"#,
+    )
+    .unwrap();
     let inputs = installed_inputs(&project, &root, &mut Vec::new());
-    let settings = SettingsManager::load(&agent, &root, false);
-    let packages = (&inputs.packages, &inputs.skills);
-    let resolved = resolve_resources(&root, &agent, &settings, &[], packages.0, packages.1);
-    let policies = file_policies(&resolved, &inputs, &mut Vec::new());
+    let settings = SettingsManager::load(&agent, &root, true);
+    let resolved = resolve_resources(&root, &agent, &settings, &[], &inputs);
+    let policies = file_policies(&resolved, &inputs, &root, &mut Vec::new());
     let policy = &policies.files[&store.join("node_modules/ext/index.js")];
     assert!(
         policy.grants.filesystem && !policy.grants.network,
         "{policy:?}"
     );
     assert_eq!(policy.root.as_ref(), Some(&store));
+    let sources: Vec<&str> = resolved
+        .enabled(ResourceType::Extensions)
+        .map(|info| info.source.as_str())
+        .collect();
+    assert_eq!(sources, ["chest:ext"]);
+    let duplicates = yapi_core::chest::startup::duplicates(&inputs, &settings, None, &agent);
+    let [(path, message)] = &duplicates[..] else {
+        panic!("{duplicates:?}");
+    };
+    assert!(path.ends_with("chest.toml"), "{path}");
+    assert_eq!(
+        message,
+        "npm:ext@^1 in the global settings is left out, because extensions.ext in chest.toml installs the same package: remove it with `yapi remove npm:ext@^1`"
+    );
+    // A project-only run leaves the user's copy out unless it keeps it, so
+    // there is nothing to warn of.
+    let keep = yapi_core::packages::resolve::ProjectOnly::default();
+    let left_out = yapi_core::chest::startup::duplicates(&inputs, &settings, Some(&keep), &agent);
+    assert!(left_out.is_empty(), "{left_out:?}");
+    // A placed skill in a folder yapi reads on its own resolves once, as
+    // chest's.
+    let skills: Vec<(&str, &str)> = resolved
+        .enabled(ResourceType::Skills)
+        .filter(|info| Path::new(&info.path).starts_with(&root))
+        .map(|info| (info.path.as_str(), info.source.as_str()))
+        .collect();
+    let guide_file = guide.join("SKILL.md").display().to_string();
+    assert_eq!(skills, [(guide_file.as_str(), "chest:guide")]);
+    // The project's settings come before a global entry of the package,
+    // which is left out, and pi's rules leave out the user's settings copy.
+    let global_manifest = agent.join("chest.toml").display().to_string();
+    let global = yapi_core::chest::startup::Installed {
+        packages: vec![yapi_core::packages::resolve::PackageInput {
+            source: "chest:gext".into(),
+            scope: "user".into(),
+            root: user_copy.clone(),
+            filter: None,
+        }],
+        identities: vec![(
+            "npm:ext".into(),
+            "gext".into(),
+            global_manifest.clone(),
+            true,
+        )],
+        ..Default::default()
+    };
+    std::fs::write(
+        root.join(".yapi/settings.json"),
+        r#"{"packages": ["npm:ext"]}"#,
+    )
+    .unwrap();
+    let settings = SettingsManager::load(&agent, &root, true);
+    let resolved = resolve_resources(&root, &agent, &settings, &[], &global);
+    assert_eq!(resolved.enabled(ResourceType::Extensions).count(), 0);
+    let duplicates = yapi_core::chest::startup::duplicates(&global, &settings, None, &agent);
+    let message = format!(
+        "extensions.gext in {global_manifest} is left out, because npm:ext in the project's settings installs the same package: remove it with `chest -g remove gext`"
+    );
+    assert_eq!(duplicates, [(global_manifest.clone(), message)]);
+
+    // Which copy loads and what the warning says, for chest entries by
+    // name, scope and source, the packages of the project's and the global
+    // settings, a project-only run's keep list, and whether the project's
+    // trust is saved.
+    let project_manifest = root.join("chest.toml").display().to_string();
+    let (p, g) = (project_manifest.as_str(), global_manifest.as_str());
+    let npm = |name: &str| Entry {
+        npm: Some(name.into()),
+        ..Entry::default()
+    };
+    let git = |path: Option<&str>| Entry {
+        git: Some("https://example.test/acme/mono".into()),
+        path: path.map(str::to_owned),
+        ..Entry::default()
+    };
+    let left = |manifest: &str, copy: &str, kept: &str, remove: &str| {
+        let message = format!(
+            "{copy} is left out, because {kept} installs the same package: remove it with `{remove}`"
+        );
+        (manifest.to_owned(), message)
+    };
+    // Each entry's copy holds an extension and a theme.
+    let copy = dir.join("chest-copy");
+    for file in ["extensions/gext.ts", "themes/dark.json"] {
+        std::fs::create_dir_all(copy.join(file).parent().unwrap()).unwrap();
+        std::fs::write(copy.join(file), "{}").unwrap();
+    }
+    let installs = |entries: &[(&str, bool, Entry)]| {
+        let mut installed = yapi_core::chest::startup::Installed::default();
+        for (name, global, entry) in entries {
+            let manifest = if *global { g } else { p };
+            let id = yapi_core::chest::startup::package_identity(entry).unwrap();
+            let name = (*name).to_owned();
+            installed
+                .packages
+                .push(yapi_core::packages::resolve::PackageInput {
+                    source: format!("chest:{name}"),
+                    scope: if *global { "user" } else { "project" }.into(),
+                    root: copy.clone(),
+                    filter: None,
+                });
+            installed
+                .identities
+                .push((id, name, manifest.to_owned(), *global));
+        }
+        installed
+    };
+    // The project's entries, as from a manifest with another name.
+    let dev = root.join("chest.dev.toml").display().to_string();
+    let in_dev = |mut installed: yapi_core::chest::startup::Installed| {
+        for (.., path, global) in &mut installed.identities {
+            if !*global {
+                path.clone_from(&dev);
+            }
+        }
+        installed
+    };
+    // A patched entry loads its patch, with no lock.
+    std::fs::create_dir_all(root.join("patches/gx")).unwrap();
+    let patched = open(
+        &dir,
+        "[extensions]\ngx = { git = \"https://example.test/acme/mono\", rev = \"v1\" }\n\n[patch]\ngx = { path = \"patches/gx\" }\n",
+    );
+    let patched = installed_inputs(&patched, &root, &mut Vec::new());
+    let all = json!({"extensions": ["*"]});
+    let (in_g, in_p) = (
+        format!("extensions.gext in {g}"),
+        "extensions.pext in chest.toml".to_owned(),
+    );
+    let rows = [
+        // A kind list keeps a global copy's files, so it counts, after
+        // the project's copies and those the run keeps whole.
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            all.clone(),
+            false,
+            vec![left(
+                g,
+                "npm:ext in the global settings",
+                &in_g,
+                "yapi remove npm:ext",
+            )],
+        ),
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            all,
+            false,
+            vec![left(
+                p,
+                "npm:ext in the global settings",
+                &in_p,
+                "yapi remove npm:ext",
+            )],
+        ),
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"packages": ["npm:ext"], "themes": ["*"]}),
+            false,
+            vec![left(
+                g,
+                &in_g,
+                "npm:ext in the global settings",
+                "chest -g remove gext",
+            )],
+        ),
+        // A copy that a kind list keeps no file of doesn't count, so the
+        // settings copy keeps the file the pattern names.
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"extensions": ["npm/node_modules/ext/index.js"]}),
+            false,
+            vec![],
+        ),
+        (
+            installs(&[("gext", true, npm("ext"))]),
+            json!([]),
+            json!(["npm:ext"]),
+            json!({"skills": ["pdf"]}),
+            false,
+            vec![],
+        ),
+        // Entries with a `path` take different folders of one repository,
+        // and both load. The whole repository holds each, as an entry or in
+        // settings, so it's left out after one loads.
+        (
+            installs(&[
+                ("ma", false, git(Some("ext-a"))),
+                ("mono", true, git(None)),
+                ("mb", true, git(Some("ext-b"))),
+            ]),
+            json!([]),
+            json!(["git:example.test/acme/mono"]),
+            Value::Null,
+            false,
+            vec![
+                left(
+                    g,
+                    &format!("extensions.mono in {g}"),
+                    "extensions.ma in chest.toml",
+                    "chest -g remove mono",
+                ),
+                left(
+                    p,
+                    "git:example.test/acme/mono in the global settings",
+                    "extensions.ma in chest.toml",
+                    "yapi remove git:example.test/acme/mono",
+                ),
+            ],
+        ),
+        // Of one manifest's entries, the whole repository after one folder
+        // of it, and other spellings of that folder, are left out.
+        (
+            installs(&[
+                ("ma", false, git(Some("ext-a"))),
+                ("mono", false, git(None)),
+                ("dot", false, git(Some("./ext-a/"))),
+                ("root", false, git(Some("."))),
+            ]),
+            json!([]),
+            json!([]),
+            Value::Null,
+            false,
+            ["mono", "dot", "root"]
+                .map(|name| {
+                    left(
+                        p,
+                        &format!("extensions.{name} in chest.toml"),
+                        "extensions.ma in chest.toml",
+                        &format!("chest remove {name}"),
+                    )
+                })
+                .into(),
+        ),
+        // A patched entry is its package, so its patch loads.
+        (
+            patched,
+            json!(["git:example.test/acme/mono"]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![left(
+                p,
+                "git:example.test/acme/mono in the project's settings",
+                "extensions.gx in chest.toml",
+                "yapi remove -l --approve git:example.test/acme/mono",
+            )],
+        ),
+        // Of two entries of one manifest, the first loads. The warning
+        // names the command for that manifest.
+        (
+            in_dev(installs(&[
+                ("x1", false, npm("x")),
+                ("x2", false, npm("x")),
+                ("y1", true, npm("y")),
+                ("y2", true, npm("y")),
+            ])),
+            json!([]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![
+                left(
+                    &dev,
+                    "extensions.x2 in chest.dev.toml",
+                    "extensions.x1 in chest.dev.toml",
+                    "chest --manifest chest.dev.toml remove x2",
+                ),
+                left(
+                    g,
+                    &format!("extensions.y2 in {g}"),
+                    &format!("extensions.y1 in {g}"),
+                    "chest -g remove y2",
+                ),
+            ],
+        ),
+        // `yapi remove -l` needs `--approve` until the trust is saved.
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!(["npm:ext"]),
+            json!([]),
+            Value::Null,
+            false,
+            vec![left(
+                p,
+                "npm:ext in the project's settings",
+                &in_p,
+                "yapi remove -l --approve npm:ext",
+            )],
+        ),
+        (
+            installs(&[("pext", false, npm("ext"))]),
+            json!(["npm:ext"]),
+            json!([]),
+            Value::Null,
+            true,
+            vec![left(
+                p,
+                "npm:ext in the project's settings",
+                &in_p,
+                "yapi remove -l npm:ext",
+            )],
+        ),
+    ];
+    let trust = yapi_core::trust::TrustStore::new(&agent);
+    for (installed, project, global, keep, saved, expected) in rows {
+        std::fs::write(
+            root.join(".yapi/settings.json"),
+            json!({"packages": project}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            agent.join("settings.json"),
+            json!({"packages": global}).to_string(),
+        )
+        .unwrap();
+        trust.set(&root, Some(saved)).unwrap();
+        let settings = SettingsManager::load(&agent, &root, true);
+        let keep = (!keep.is_null()).then(|| {
+            let document = json!({"projectOnly": keep});
+            yapi_core::packages::resolve::ProjectOnly::from_settings(document.as_object().unwrap())
+        });
+        let warned =
+            yapi_core::chest::startup::duplicates(&installed, &settings, keep.as_ref(), &agent);
+        assert_eq!(warned, expected, "{:?}", installed.identities);
+    }
+    trust.set(&root, None).unwrap();
+    std::fs::remove_file(root.join(".yapi/settings.json")).unwrap();
+    std::fs::remove_file(agent.join("settings.json")).unwrap();
 
     // A mirror that serves only the tarballs rebuilds the same store. The
     // replay downloads them at once, so they may come in either order.
@@ -967,12 +1437,23 @@ async fn startup_skips_stale() {
     let manifest = skill_manifest(&remote, "v1");
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Unchanged)]);
+    // Offline, a skill missing a link keeps loading from its copy in a
+    // folder yapi reads on its own, and one without that copy is left out.
+    std::fs::remove_file(root.join(".claude/skills/pdf")).unwrap();
+    let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
+    assert_eq!(
+        report.warnings,
+        [
+            "chest.toml: skills.pdf could not be put back offline, so its copy in a folder yapi reads on its own keeps loading"
+        ]
+    );
     std::fs::remove_dir_all(root.join(".agents/skills/pdf")).unwrap();
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: true }).await;
     assert_eq!(outcomes(&report), [("skills.pdf", Outcome::Skipped)]);
     assert_eq!(
         report.warnings,
-        ["chest.toml: skills.pdf could not be put back offline, so they were skipped"]
+        ["chest.toml: skills.pdf could not be put back offline, so it was left out"]
     );
     std::fs::remove_dir(&held).unwrap();
     let report = sync(&mut open(&dir, &manifest), Mode::Startup { offline: false }).await;
@@ -989,10 +1470,11 @@ async fn startup_skips_stale() {
             ("skills.notes", Outcome::Skipped)
         ]
     );
-    assert_eq!(report.warnings.len(), 1);
-    assert!(
-        report.warnings[0].ends_with("run `chest install`"),
-        "{report:?}"
+    assert_eq!(
+        report.warnings,
+        [
+            "chest.toml: skills.pdf, skills.notes are not locked, or their lock is stale, so they were skipped: run `chest install`"
+        ]
     );
     assert!(!root.join(".agents/skills/notes").exists());
     assert_eq!(
@@ -1045,13 +1527,14 @@ async fn removed_entry_unplaced() {
         assert_eq!(read(&root.join(".claude/skills/pdf/SKILL.md")), "# pdf\n");
     }
 
+    // A path entry whose source didn't change stays as it is.
     let manifest = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n\n[skills]\nnotes = { path = \"notes\" }\n";
     let mut project = open(&dir, manifest);
     let report = sync(&mut project, Mode::Resolve).await;
     assert_eq!(
         outcomes(&report),
         [
-            ("skills.notes", Outcome::Installed),
+            ("skills.notes", Outcome::Unchanged),
             ("skills.pdf", Outcome::Removed)
         ]
     );
@@ -1161,22 +1644,52 @@ async fn removed_entry_unplaced() {
     assert_eq!(read(&root.join(".agents/skills/mine/SKILL.md")), "# mine\n");
 
     // A link the user points at their own skill is theirs: not replaced,
-    // and not removed, with a warning.
+    // while other entries install, and not removed, with a warning.
     #[cfg(unix)]
     {
         let link = root.join(".claude/skills/notes");
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink("../../.agents/skills/mine", &link).unwrap();
-        let error = failed(&mut open(&dir, manifest), Mode::Resolve).await;
-        assert!(
-            error.contains(".claude/skills/notes was modified since chest installed it"),
-            "{error}"
+        std::fs::create_dir_all(root.join("extra")).unwrap();
+        std::fs::write(root.join("extra/SKILL.md"), "# extra\n").unwrap();
+        let mut project = open(&dir, &format!("{manifest}extra = {{ path = \"extra\" }}\n"));
+        let report = sync(&mut project, Mode::Resolve).await;
+        assert_eq!(
+            outcomes(&report),
+            [
+                ("skills.notes", Outcome::Edited),
+                ("skills.extra", Outcome::Installed)
+            ]
         );
+        let edited = format!(
+            "skills.notes: {} was modified since chest installed it",
+            link.display()
+        );
+        assert_eq!(
+            report.warnings,
+            [format!(
+                "{edited}, so chest left it as it is: delete it and run `chest install` to put back the locked copy"
+            )]
+        );
+        assert_eq!(
+            read(&root.join(".claude/skills/extra/SKILL.md")),
+            "# extra\n"
+        );
+        let entry = project.manifest.skills["notes"].clone();
+        assert_eq!(project.state(Section::Skills, "notes", &entry), "edited");
+        // verify names what is wrong with the link, once.
+        let canonical = root.join(".agents/skills/notes");
+        let wrong = format!(
+            "skills.notes: {} does not link to {}",
+            link.display(),
+            canonical.display()
+        );
+        assert_eq!(project.verify().unwrap(), [wrong]);
         let empty = "[folders]\nskills = [\".agents/skills\", \".claude/skills\"]\n";
         let report = sync(&mut open(&dir, empty), Mode::Resolve).await;
         assert!(
-            report.warnings.iter().any(|warning| warning.contains(
-                ".claude/skills/notes was modified since chest installed it, so it stays"
+            report.warnings.iter().any(|warning| warning.ends_with(
+                ".claude/skills/notes was modified since chest installed it, so chest left it as it is: delete it, or undo the edit and run `chest install` to remove it"
             )),
             "{report:?}"
         );
@@ -1221,6 +1734,9 @@ async fn path_source_notice() {
             dir.join("outside/notes").display()
         )]
     );
+    // yapi's startup doesn't note it again on every run.
+    let report = sync(&mut project, Mode::Startup { offline: true }).await;
+    assert!(report.notices.is_empty(), "{:?}", report.notices);
     assert_eq!(
         read(&dir.join("project/.agents/skills/notes/SKILL.md")),
         "# notes\n"
@@ -1332,10 +1848,118 @@ async fn path_source_notice() {
     let package = format!(
         "{folders}team = {{ git = \"localhost/nowhere/repo\", rev = \"v1\" }}\n\n[patch]\nteam = {{ path = \"local/pack\" }}\n"
     );
-    sync(&mut open(&dir, &package), Mode::Resolve).await;
+    let mut team = open(&dir, &package);
+    sync(&mut team, Mode::Resolve).await;
     for skill in ["one", "two"] {
         let placed = dir.join(format!("project/.agents/skills/{skill}/SKILL.md"));
         assert_eq!(read(&placed), format!("# {skill}\n"));
+    }
+    // yapi loads those placed items, not the patch's whole folder.
+    let inputs = installed_inputs(&team, &dir.join("project"), &mut Vec::new());
+    let roots: Vec<PathBuf> = inputs
+        .skills
+        .iter()
+        .map(|skill| skill.root.clone())
+        .collect();
+    let skills = dir.join("project/.agents/skills");
+    assert_eq!(roots, [skills.join("one"), skills.join("two")]);
+    // So does a path entry naming that folder, and startup finds its items
+    // in place and loads them.
+    let mut team = open(
+        &dir,
+        &format!("{folders}team = {{ path = \"local/pack\" }}\n"),
+    );
+    sync(&mut team, Mode::Resolve).await;
+    let report = sync(&mut team, Mode::Startup { offline: true }).await;
+    assert_eq!(outcomes(&report), [("skills.team", Outcome::Unchanged)]);
+    let inputs = installed_inputs(&team, &dir.join("project"), &mut Vec::new());
+    let roots: Vec<PathBuf> = inputs
+        .skills
+        .iter()
+        .map(|skill| skill.root.clone())
+        .collect();
+    assert_eq!(roots, [skills.join("one"), skills.join("two")]);
+    // Without its source, `list` and `verify` say so, rather than name a
+    // copy it never had.
+    let pack = dir.join("project/local/pack");
+    let moved = dir.join("project/local/moved");
+    std::fs::rename(&pack, &moved).unwrap();
+    let entry = team.manifest.skills["team"].clone();
+    assert_eq!(team.state(Section::Skills, "team", &entry), "no source");
+    let gone = format!("skills.team: its source {} is missing", pack.display());
+    assert_eq!(team.verify().unwrap(), [gone]);
+    std::fs::rename(&moved, &pack).unwrap();
+    // `install` skips it with a warning, for a package, a skill folder and an
+    // extension alike, keeps what it installed and the entry's lock, and
+    // `--frozen` fails on it. A dropped entry's copy is still removed, unless
+    // the missing folder held several items, whose copies chest can't name:
+    // then every copy in that section stays, and the warning lists them.
+    std::fs::write(
+        dir.join("project/local/ext.ts"),
+        "export default () => {};\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(dir.join("project/local/extra")).unwrap();
+    std::fs::write(dir.join("project/local/extra/SKILL.md"), "# extra\n").unwrap();
+    let extra = "extra = { path = \"local/extra\" }\n";
+    for (manifest, id, path, copies, holds) in [
+        (
+            format!("{folders}team = {{ path = \"local/pack\" }}\n"),
+            "skills.team",
+            "local/pack",
+            &["one", "two"][..],
+            true,
+        ),
+        (
+            format!("{folders}one = {{ path = \"local/pack/skills/one\" }}\n"),
+            "skills.one",
+            "local/pack/skills/one",
+            &["one"][..],
+            false,
+        ),
+        (
+            format!("{folders}\n[extensions]\next = {{ path = \"local/ext.ts\" }}\n"),
+            "extensions.ext",
+            "local/ext.ts",
+            &[][..],
+            false,
+        ),
+    ] {
+        let with_extra = manifest.replacen("[skills]\n", &format!("[skills]\n{extra}"), 1);
+        sync(&mut open(&dir, &with_extra), Mode::Resolve).await;
+        let extra_copy = dir.join("project/.agents/skills/extra");
+        assert!(extra_copy.exists());
+        let mut project = open(&dir, &manifest);
+        let source = dir.join("project").join(path);
+        std::fs::rename(&source, &moved).unwrap();
+        let report = sync(&mut project, Mode::Resolve).await;
+        assert_eq!(outcomes(&report)[0], (id, Outcome::Skipped));
+        let skipped = format!(
+            "{id}: {} does not exist, so chest skipped it: restore it or remove the entry",
+            source.display()
+        );
+        assert!(report.warnings.contains(&skipped), "{:?}", report.warnings);
+        for copy in copies {
+            assert!(
+                dir.join("project/.agents/skills").join(copy).exists(),
+                "{copy}"
+            );
+        }
+        let held = format!("{id}'s folder is missing and held several items, so chest keeps ");
+        let warned = report.warnings.iter().find(|w| w.starts_with(&held));
+        assert_eq!(warned.is_some(), holds, "{:?}", report.warnings);
+        assert!(warned.is_none_or(|warned| warned.contains(&extra_copy.display().to_string())));
+        assert_eq!(extra_copy.exists(), holds, "{id}");
+        let name = id.split_once('.').unwrap().1;
+        let lock = read(&dir.join("project/chest.lock"));
+        assert!(lock.contains(&format!("name = \"{name}\"")), "{lock}");
+        let error = failed(&mut project, Mode::Frozen).await;
+        assert_eq!(error, format!("{id}: {} does not exist", source.display()));
+        assert_eq!(read(&dir.join("project/chest.lock")), lock);
+        std::fs::rename(&moved, &source).unwrap();
+        // With the folder back, the held copy goes.
+        sync(&mut project, Mode::Resolve).await;
+        assert!(!extra_copy.exists(), "{id}");
     }
 
     // A git extension loads modules from its store folder, whatever its

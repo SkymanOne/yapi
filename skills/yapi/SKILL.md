@@ -18,7 +18,7 @@ yapi keeps global state in its agent folder and project state in `.yapi/`:
 |---|---|
 | Global state | `~/.yapi/agent` (move it with `YAPI_CODING_AGENT_DIR`) |
 | Project state | `.yapi/` in the project, read only after you trust the project |
-| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json` |
+| Settings | `~/.yapi/agent/settings.json`, overridden by `.yapi/settings.json`. Either can be `settings.toml` instead, with the same settings, but not both in one folder. |
 | Credentials | `~/.yapi/agent/auth.json` |
 | Custom providers and models | `~/.yapi/agent/models.json` |
 | Sessions | `~/.yapi/agent/sessions/`, one JSON Lines file per session, grouped by project (move them with `YAPI_CODING_AGENT_SESSION_DIR` or `--session-dir`) |
@@ -139,12 +139,14 @@ Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so cod
 
 Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it's full access. See [Get started with chest](https://skymanone.github.io/yapi/chest.html) and [Grant capabilities](https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities).
 
+`yapi --project-only`, or `YAPI_PROJECT_ONLY=1` in the environment, loads only the project's packages, skills and MCP servers. Global ones are skipped unless the `projectOnly` setting in `~/.yapi/agent/settings.json` keeps them. See [Run yapi with only the project's packages](https://skymanone.github.io/yapi/project-only.html).
+
 ## Find why yapi misbehaves
 
 Work through these checks in order:
 
 1. Reproduce with a clean state: `YAPI_CODING_AGENT_DIR=$(mktemp -d) yapi -p --no-session "hi"` rules out settings and packages. `-ne` rules out extensions.
 2. `yapi auth check --provider <id>` and `yapi --list-models` confirm the model and credentials.
-3. Startup warnings name settings, skills, themes or extensions that failed to load. The interactive header lists the loaded resources, and `--verbose` shows it even when `quietStartup` is set.
+3. A global skill, extension or MCP server that doesn't load may be left out by `YAPI_PROJECT_ONLY`. Startup warnings name settings, skills, themes or extensions that failed to load. The interactive header lists the loaded resources, and `--verbose` shows it even when `quietStartup` is set.
 4. In the interface, `/debug` writes what yapi rendered and sent to `~/.yapi/agent/yapi-debug.log`.
 5. When behavior differs from Pi, check [Differences from Pi](https://skymanone.github.io/yapi/compat.html) before treating it as a bug. Report bugs in the [issue tracker](https://github.com/SkymanOne/yapi/issues).
