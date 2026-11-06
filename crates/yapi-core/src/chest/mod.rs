@@ -708,11 +708,12 @@ impl Project {
         progress: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Report, ChestError> {
         let mut report = Report::default();
-        // yapi's startup skips such an entry on its own, with a warning.
+        // yapi's startup skips such an entry on its own, with a warning, and
+        // leaves the notes to installs.
         if !matches!(mode, Mode::Startup { .. }) {
             self.refuse_wide()?;
+            self.path_notices(&mut report);
         }
-        self.path_notices(&mut report);
         let frozen = mode == Mode::Frozen;
         // Frozen with everything in place writes nothing, not even the
         // lock's lock.

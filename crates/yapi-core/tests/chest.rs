@@ -1725,6 +1725,9 @@ async fn path_source_notice() {
             dir.join("outside/notes").display()
         )]
     );
+    // yapi's startup doesn't note it again on every run.
+    let report = sync(&mut project, Mode::Startup { offline: true }).await;
+    assert!(report.notices.is_empty(), "{:?}", report.notices);
     assert_eq!(
         read(&dir.join("project/.agents/skills/notes/SKILL.md")),
         "# notes\n"
