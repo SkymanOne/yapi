@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -195,7 +195,7 @@
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
-<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
+<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>. Messages about a manifest name the commands for it, such as <code>chest --manifest chest.dev.toml install</code>.</p>
 <h2 id="how-yapi-reads-chest_manifest"><a class="header" href="#how-yapi-reads-chest_manifest">How yapi reads <code>CHEST_MANIFEST</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> Other agents read only the folders chest fills, so the variable means nothing to them.</p>
@@ -204,7 +204,7 @@ chest install
 <p>chest refuses the same values, so chest and yapi always agree on the manifest. <a href="configuration.html#project-packages-from-chest">Project packages from chest</a> lists the files yapi reads.</p>
 <h2 id="install-global-packages"><a class="header" href="#install-global-packages">Install global packages</a></h2>
 <blockquote>
-<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project.</p>
+<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project, unless a <a href="project-only.html#global-packages-yapi-still-installs">project-only run</a> can keep none of its entries.</p>
 </blockquote>
 <p><code>-g</code> uses <code>~/.chest/chest.toml</code> instead of the project’s manifest. Its folders can be anywhere under your home folder, such as <code>~/.claude/skills</code>. Its extensions go to <code>~/.chest/store</code>, and it writes no <code>.gitignore</code>. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.</p>
 <p>With <code>-g</code>, <code>chest init</code> looks for each agent’s folder in your home folder:</p>
@@ -224,7 +224,7 @@ chest install
 </tbody>
 </table>
 </div>
-<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>.</p>
+<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, <code>chest init</code> leaves it out and says why, because the global manifest installs only inside your home folder.</p>
 <p>For both the project and the global manifest, chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
 <h2 id="develop-a-package-locally"><a class="header" href="#develop-a-package-locally">Develop a package locally</a></h2>
 <blockquote>
@@ -236,6 +236,7 @@ todo = { path = "../pi-todo" }
 </code></pre>
 <p>A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself.</p>
 <p>chest also refuses an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
+<p><code>chest list</code> shows a patched entry as <code>patched</code>, as <code>edited</code> when someone changed a copy that chest installed from the patch, and as <code>missing</code> when that copy is gone. <code>chest verify</code> reports both. <code>chest install</code> puts a missing copy back from the patch, also with <code>--frozen</code>, which fails on an edited copy instead.</p>
 <p>yapi loads a patched entry without a lock entry, as <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes.</p>
 
                     </main>
@@ -246,7 +247,7 @@ todo = { path = "../pi-todo" }
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="chest-publish.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="project-only.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -260,7 +261,7 @@ todo = { path = "../pi-todo" }
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="chest-publish.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="project-only.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

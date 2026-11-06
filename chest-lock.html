@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,20 +191,24 @@
 <p><code>chest install</code> has two modes:</p>
 <ul>
 <li><strong><code>chest install</code></strong>: keeps what’s locked and present, installs what’s locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
-<li><strong><code>chest install --frozen</code></strong>: installs exactly what the lock pins, including what’s missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
+<li><strong><code>chest install --frozen</code></strong>: installs exactly what the lock pins, as <code>npm ci</code> does. It puts back what’s missing, and replaces copies that chest installed for an older lock when nobody changed them since. It fails when the lock is missing or out of date, when someone edited a copy, or when a copy doesn’t match its hash because chest didn’t install it. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
 </ul>
 <h2 id="run-chest-in-ci"><a class="header" href="#run-chest-in-ci">Run chest in CI</a></h2>
 <p><code>chest install</code> runs frozen by default when <code>CI</code> holds anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
 <h2 id="verify-installed-copies"><a class="header" href="#verify-installed-copies">Verify installed copies</a></h2>
-<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn’t match.</p>
+<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed, checks a path entry’s links against its canonical copy, and reports a path entry whose source is gone. <code>verify</code> exits with 1 when one is missing or doesn’t match.</p>
 <h2 id="update-entries"><a class="header" href="#update-entries">Update entries</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the warning about extension requests, which matters only in yapi.</p>
 </blockquote>
-<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code>. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock.</p>
+<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code> when that’s newer than what the range allows. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
+<p>An npm entry already at the newest version in its range is listed only when <code>latest</code> is newer, with no update:</p>
+<pre><code class="language-text">skills.review  1.2.0  (latest 2.0.0 is outside its range)
+</code></pre>
+<p>To move to it, change the entry’s <code>version</code> and run <code>chest install</code>.</p>
 <p>When an updated extension now requests capabilities or event channels beyond its grants, <code>chest update</code> warns and grants nothing more.</p>
 <h2 id="one-command-at-a-time"><a class="header" href="#one-command-at-a-time">One command at a time</a></h2>
-<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A command that stopped without letting go of its lock holds it for 30s at most.</p>
+<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.</p>
 
                     </main>
 

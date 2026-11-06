@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -277,7 +277,7 @@
 <li>A <code>user_bash</code> handler that runs a <code>!</code> command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.</li>
 <li>The skill, prompt and theme paths that a <code>resources_discover</code> handler names need the session and file grants.</li>
 </ul>
-<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each ignored result, once for each extension and event.</p>
+<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension. The warning says what it ignored, such as the input change of a <code>tool_call</code> result or the reason of a block, and names an extension from chest by its entry, such as <code>extensions.guard in chest.toml</code>.</p>
 <p>The <code>before_provider_request</code> and <code>before_provider_headers</code> events carry a request’s body and headers, which can hold your credentials, so they reach only extensions with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
@@ -289,7 +289,7 @@
 <h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
 <p>Some files in a project can change how yapi behaves and can run code. Until you trust the project, yapi loads none of them, and no project extension runs:</p>
 <ul>
-<li><code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> in the project’s <code>.yapi</code> folder</li>
+<li><code>settings.json</code> or <code>settings.toml</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> in the project’s <code>.yapi</code> folder</li>
 <li>an <code>.agents/skills</code> folder in the project or a parent folder</li>
 <li>a <a href="chest-extensions.html#how-yapi-loads-a-manifest">chest</a> manifest that installs anything</li>
 </ul>

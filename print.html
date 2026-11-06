@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -405,7 +405,7 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 <li>the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code></li>
 <li>sessions, prompt templates, skills, themes, extensions and packages</li>
 </ul>
-<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version.</p>
+<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version. When yapi keeps its settings in <a href="#write-settings-in-toml"><code>settings.toml</code></a>, the import skips Pi’s <code>settings.json</code> and says so, since one folder can’t hold both. Copy the settings you want into <code>settings.toml</code> by hand.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="sign-in-again-after-the-import"><a class="header" href="#sign-in-again-after-the-import">Sign in again after the import</a></h2>
 <p>The import doesn’t copy subscription sign-ins or MCP server sign-ins. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out.</p>
@@ -731,7 +731,7 @@ yapi --no-session            # don't save this run
 <li>A <code>user_bash</code> handler that runs a <code>!</code> command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.</li>
 <li>The skill, prompt and theme paths that a <code>resources_discover</code> handler names need the session and file grants.</li>
 </ul>
-<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each ignored result, once for each extension and event.</p>
+<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension. The warning says what it ignored, such as the input change of a <code>tool_call</code> result or the reason of a block, and names an extension from chest by its entry, such as <code>extensions.guard in chest.toml</code>.</p>
 <p>The <code>before_provider_request</code> and <code>before_provider_headers</code> events carry a request’s body and headers, which can hold your credentials, so they reach only extensions with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
@@ -743,7 +743,7 @@ yapi --no-session            # don't save this run
 <h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
 <p>Some files in a project can change how yapi behaves and can run code. Until you trust the project, yapi loads none of them, and no project extension runs:</p>
 <ul>
-<li><code>settings.json</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> in the project’s <code>.yapi</code> folder</li>
+<li><code>settings.json</code> or <code>settings.toml</code>, <code>mcp.json</code>, <code>extensions</code>, <code>skills</code>, <code>prompts</code>, <code>themes</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> in the project’s <code>.yapi</code> folder</li>
 <li>an <code>.agents/skills</code> folder in the project or a parent folder</li>
 <li>a <a href="#how-yapi-loads-a-manifest">chest</a> manifest that installs anything</li>
 </ul>
@@ -795,13 +795,14 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td><code>--offline</code></td><td>Skip startup network work</td></tr>
 <tr><td><code>--enable-logging</code></td><td>Append a log to <code>~/.yapi/agent/yapi.log</code>. See <a href="#read-yapis-log">Read yapi’s log</a>.</td></tr>
 <tr><td><code>--project-dir &lt;dir&gt;</code></td><td>Take the project from another folder. See <a href="#project-trust">Project trust</a>.</td></tr>
+<tr><td><code>--project-only</code></td><td>Load only the project’s packages, skills and MCP servers. <code>YAPI_PROJECT_ONLY=1</code> does the same. See <a href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a>.</td></tr>
 </tbody>
 </table>
 </div>
 <p><code>yapi --help</code> lists every flag.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configure-yapi"><a class="header" href="#configure-yapi">Configure yapi</a></h1>
-<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
+<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>. Settings can also be <a href="#write-settings-in-toml">written in TOML</a>, which only yapi reads.</p>
 <p>Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. The table lists where yapi reads each kind of configuration:</p>
 <div class="table-wrapper">
 <table>
@@ -809,7 +810,7 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><th>What</th><th>Where</th></tr>
 </thead>
 <tbody>
-<tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code></td></tr>
+<tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code>, or <code>settings.toml</code> in either folder</td></tr>
 <tr><td>Project instructions</td><td><code>AGENTS.override.md</code>, <code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
 <tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code>. <code>--append-system-prompt</code> extends it in place of <code>APPEND_SYSTEM.md</code>.</td></tr>
 <tr><td>Skills</td><td><code>~/.yapi/agent/skills</code>, <code>~/.agents/skills</code>, <code>.yapi/skills</code> and <code>.agents/skills</code></td></tr>
@@ -820,11 +821,75 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <tr><td>Credentials</td><td><code>~/.yapi/agent/auth.json</code></td></tr>
 <tr><td>Model Context Protocol (MCP) servers</td><td><code>~/.yapi/agent/mcp.json</code> and <code>.yapi/mcp.json</code></td></tr>
 <tr><td>Project packages</td><td><code>chest.toml</code> and <code>chest.lock</code> in the project, and <code>~/.chest/chest.toml</code>. See <a href="#project-packages-from-chest">Project packages from chest</a>.</td></tr>
+<tr><td>Global items for project-only runs</td><td><code>projectOnly</code> in <code>~/.yapi/agent/settings.json</code>. See <a href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a>.</td></tr>
 <tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>. See <a href="#documentation-for-the-model">Documentation for the model</a>.</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="#project-trust">trust the project</a>.</p>
+<p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="#project-trust">trust the project</a>. <a href="#run-yapi-with-only-the-projects-packages"><code>--project-only</code></a> runs yapi with the project’s packages and leaves out your global ones.</p>
+<h2 id="write-settings-in-toml"><a class="header" href="#write-settings-in-toml">Write settings in TOML</a></h2>
+<blockquote>
+<p><strong>yapi and chest only.</strong> Pi and other agents read only <code>settings.json</code>.</p>
+</blockquote>
+<p>yapi also reads its settings from <code>settings.toml</code>, in <code>~/.yapi/agent</code> or a project’s <code>.yapi</code> folder. It holds the same settings as <code>settings.json</code>, in the same structure, and TOML lets you add comments. Choose the format per folder: yapi reads and writes whichever file a folder has. Wherever these docs say <code>settings.json</code>, <code>settings.toml</code> works the same.</p>
+<p>When one folder holds both files, every yapi command that reads that folder stops with this error, and so does <code>chest import --settings</code>:</p>
+<pre><code class="language-text">Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
+</code></pre>
+<p>In a project, the check waits until you trust the project, because yapi doesn’t read its <code>.yapi</code> folder before then.</p>
+<h3 id="how-the-formats-map"><a class="header" href="#how-the-formats-map">How the formats map</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>JSON</th><th>TOML</th></tr>
+</thead>
+<tbody>
+<tr><td>object</td><td>table</td></tr>
+<tr><td>array</td><td>array</td></tr>
+<tr><td>string, boolean</td><td>string, boolean</td></tr>
+<tr><td>integer, float</td><td>integer, float</td></tr>
+<tr><td><code>null</code></td><td>none: leave the key out</td></tr>
+</tbody>
+</table>
+</div>
+<p>TOML has no <code>null</code>, so a setting yapi sets to <code>null</code> is removed from the file, and a <code>null</code> inside an array can’t be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can’t be written either.</p>
+<p>Here are the same settings in both formats. In <code>settings.json</code>:</p>
+<pre><code class="language-json">{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-5",
+  "compaction": { "enabled": true, "reserveTokens": 16384 },
+  "packages": [
+    "npm:@acme/pi-tools",
+    { "source": "git:github.com/acme/skills@v2", "skills": ["!legacy/**"] }
+  ],
+  "projectOnly": { "themes": ["*"] }
+}
+</code></pre>
+<p>In <code>settings.toml</code>:</p>
+<pre><code class="language-toml"># The model for new sessions.
+defaultProvider = "anthropic"
+defaultModel = "claude-sonnet-4-5"
+packages = [
+  "npm:@acme/pi-tools",
+  { source = "git:github.com/acme/skills@v2", skills = ["!legacy/**"] },
+]
+
+[compaction]
+enabled = true
+reserveTokens = 16384
+
+[projectOnly]
+themes = ["*"]
+</code></pre>
+<p>Keys outside a table, such as <code>packages</code>, go before the first <code>[table]</code> header, as TOML requires. When every <code>packages</code> entry is an object, the list can also be an array of tables. The example above can’t use one, because <code>npm:@acme/pi-tools</code> is a string:</p>
+<pre><code class="language-toml">[[packages]]
+source = "git:github.com/acme/skills@v2"
+skills = ["!legacy/**"]
+</code></pre>
+<h3 id="how-yapi-writes-the-file"><a class="header" href="#how-yapi-writes-the-file">How yapi writes the file</a></h3>
+<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as <code>packages</code>, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If <code>packages</code> is an array of tables, it stays one until an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>. yapi then writes it as a multi-line inline array. The comments above the first <code>[[packages]]</code> header go above <code>packages</code>, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a <code>[table]</code> at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.</p>
+<h3 id="switch-to-toml"><a class="header" href="#switch-to-toml">Switch to TOML</a></h3>
+<p>With yapi closed, write <code>settings.toml</code> with your settings, then delete <code>settings.json</code>. A yapi that’s still running keeps writing the file it loaded, which can bring <code>settings.json</code> back beside the new file.</p>
+<p><code>yapi import pi</code> copies Pi’s <code>settings.json</code>. When yapi’s folder already holds <code>settings.toml</code>, the import skips Pi’s settings and says so. Copy what you need into <code>settings.toml</code> by hand.</p>
 <h2 id="project-packages-from-chest"><a class="header" href="#project-packages-from-chest">Project packages from chest</a></h2>
 <p>yapi loads the <a href="#how-yapi-loads-a-manifest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>.</p>
 <p>For a <code>CHEST_MANIFEST</code> value that’s absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="#which-manifest-chest-uses">Which manifest chest uses</a> describes.</p>
@@ -887,7 +952,7 @@ yapi remove npm:@your_scope/your_package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that’s missing, and fails on a git package folder that isn’t a checkout of its own, so git never touches an enclosing repository.</p>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that’s missing, and fails on a git package folder that isn’t a checkout of its own, so git never touches an enclosing repository. A git package whose install was cut off, as when yapi was stopped, is cloned again the next time yapi installs it.</p>
 <p>The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package-for-one-run"><a class="header" href="#try-a-package-for-one-run">Try a package for one run</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
@@ -896,8 +961,9 @@ yapi -e git:github.com/your_user/your_repo
 </code></pre>
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. It installs an npm package again when its version no longer matches the source’s range, and updates a git source without a ref on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, yapi installs and updates nothing, and skips a source that isn’t installed yet.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
-<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project.</p>
+<p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>, or in <code>settings.toml</code> when that’s the folder’s file. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project. In the Global Resources view, <code>ctrl+o</code> keeps the selected item in <a href="#keep-items-from-yapi-config">project-only runs</a>.</p>
 <p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
+<p>To run with only a project’s packages and none of your global ones, start yapi with <code>--project-only</code>. <a href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a> covers the mode.</p>
 <h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
 <p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.</p>
 <p>Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="#get-started-with-chest">Get started with chest</a> shows how to use chest, and the <a href="#chesttoml-reference">chest.toml reference</a> lists every key.</p>
@@ -945,6 +1011,7 @@ yapi -e git:github.com/your_user/your_repo
 }
 </code></pre>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md">MCP documentation</a> describes every option.</p>
+<p>A <a href="#run-yapi-with-only-the-projects-packages">project-only run</a> connects the project’s servers. From <code>~/.yapi/agent/mcp.json</code>, it connects only the servers that <code>mcpServers</code> in your <code>projectOnly</code> setting names.</p>
 <h2 id="manage-servers"><a class="header" href="#manage-servers">Manage servers</a></h2>
 <p><code>yapi mcp</code> edits the file and checks servers without starting a session. These commands add the two servers above, list them and remove one:</p>
 <pre><code class="language-sh">yapi mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
@@ -1002,6 +1069,7 @@ yapi mcp remove docs
 <tr><td><a href="#how-yapi-loads-a-manifest">Putting back missing entries</a></td><td>yapi only</td></tr>
 <tr><td><a href="#how-yapi-loads-a-manifest">Skills from other agents’ folders</a></td><td>yapi only</td></tr>
 <tr><td><a href="#how-yapi-reads-chest_manifest"><code>CHEST_MANIFEST</code> in yapi</a></td><td>yapi only</td></tr>
+<tr><td><a href="#run-yapi-with-only-the-projects-packages">Project-only runs</a></td><td>yapi only</td></tr>
 <tr><td><a href="#check-a-native-extension"><code>chest check</code></a></td><td>yapi only</td></tr>
 <tr><td><a href="#import-packages-from-settingsjson">Import from <code>settings.json</code></a></td><td>yapi only</td></tr>
 </tbody>
@@ -1064,7 +1132,8 @@ git commit -m "Add project packages"
 <pre><code class="language-sh">chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 </code></pre>
-<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides.</p>
+<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
+<p>chest installs skills that are folders with a <code>SKILL.md</code>. yapi and Pi also load a skill that’s a single <code>.md</code> file, but chest doesn’t install one. An entry for a whole package skips such files with a warning. An entry that names one fails, and <code>chest add</code> refuses a <code>.md</code> file in a <code>skills</code> folder. A <code>.md</code> file anywhere else is a subagent, and <code>--agent</code> adds any <code>.md</code> file as one.</p>
 <h2 id="choose-folders-for-your-agents"><a class="header" href="#choose-folders-for-your-agents">Choose folders for your agents</a></h2>
 <p><code>chest init</code> looks for each agent’s folder in the project and offers its skill and subagent folders:</p>
 <div class="table-wrapper">
@@ -1097,14 +1166,20 @@ chest add git:github.com/acme/agents --path reviewer.md
 <p>The next install removes both.</p>
 <h2 id="keep-hand-written-skills-in-the-same-folders"><a class="header" href="#keep-hand-written-skills-in-the-same-folders">Keep hand-written skills in the same folders</a></h2>
 <p>Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it didn’t record when that copy already holds exactly what the lock pins. chest keeps its record in <code>~/.chest/state</code>, outside the project.</p>
-<p>When someone edits an item after chest installed it, chest leaves the item as it is and asks you to remove or restore it.</p>
+<p>When someone edits an item after chest installed it, chest leaves the item as it is, even when the lock now pins another version, and installs the other entries as usual. <code>chest install</code>, <code>chest update</code> and <code>chest list</code> show the entry as <code>edited</code>, and <code>chest verify</code> reports the item. To get the locked copy back, delete the item and run <code>chest install</code>. <code>chest install --frozen</code> fails on an edited item instead.</p>
 <h2 id="import-from-skillssh"><a class="header" href="#import-from-skillssh">Import from skills.sh</a></h2>
 <p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. chest computes its own hashes, so it drops the file’s. Run <code>chest install</code> after importing.</p>
+<p>Import takes skills from GitHub, GitLab, other git hosts, local folders and <code>node_modules</code>. It skips, with a warning:</p>
+<ul>
+<li>a skill of another <code>sourceType</code></li>
+<li>a skill the manifest already has, from the same package and folder</li>
+<li>a different skill whose name the manifest already uses</li>
+</ul>
 <h2 id="what-yapi-adds"><a class="header" href="#what-yapi-adds">What yapi adds</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
 </blockquote>
-<p>yapi does more with the same entries. In a trusted project, it puts back missing skills and subagents when it starts. It also loads skills from folders it doesn’t read on its own. <a href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes it.</p>
+<p>yapi does more with the same entries. When it starts, it puts back missing skills and subagents: those of <code>~/.chest/chest.toml</code> in every project, and those of the project’s manifest once you trust the project. It also loads skills from folders it doesn’t read on its own. <a href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="run-yapi-extensions"><a class="header" href="#run-yapi-extensions">Run yapi extensions</a></h1>
 <blockquote>
@@ -1115,7 +1190,7 @@ chest add git:github.com/acme/agents --path reviewer.md
 <pre><code class="language-sh">chest add npm:@acme/pi-subagent --grant all
 chest add git:github.com/acme/pi-todo --grant fs
 </code></pre>
-<p><code>chest add</code> treats a source as an extension when it’s a <code>.wasm</code>, <code>.ts</code> or <code>.js</code> file, or a package that provides extensions or has an <code>index.ts</code> or <code>index.js</code>. Pass <code>--extension</code> when chest can’t tell.</p>
+<p><code>chest add</code> treats a source as an extension when it’s a <code>.wasm</code>, <code>.ts</code> or <code>.js</code> file, or a package that provides extensions or has an <code>index.ts</code> or <code>index.js</code>. Pass <code>--extension</code> when chest can’t tell. chest refuses a source that holds no extension, even with <code>--extension</code>.</p>
 <h2 id="grant-capabilities"><a class="header" href="#grant-capabilities">Grant capabilities</a></h2>
 <p>An extension entry lists what it may reach:</p>
 <div class="table-wrapper">
@@ -1150,25 +1225,63 @@ capabilities = ["net"]
 events = "isolated"
 </code></pre>
 <p>Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.</p>
-<p><code>chest add</code> offers the shared default, the channels the package declares, or <code>isolated</code>. Without a terminal, or with <code>--yes</code>, it keeps the shared default. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
+<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, or with <code>--yes</code>, it keeps the shared default. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
 <h2 id="how-yapi-loads-a-manifest"><a class="header" href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a></h2>
 <p>At startup and on <code>/reload</code>, yapi reads two manifests:</p>
 <ul>
 <li>the project’s manifest, when the project is <a href="#project-trust">trusted</a></li>
-<li><code>~/.chest/chest.toml</code>, in every project</li>
+<li><code>~/.chest/chest.toml</code>, in every project, except for the entries a <a href="#run-yapi-with-only-the-projects-packages">project-only run</a> leaves out</li>
 </ul>
 <p>A project manifest that installs anything asks for trust, as <code>.yapi</code> files do. A manifest with only a <code>[package]</code> table describes the project as a package and needs no trust. <code>CHEST_MANIFEST</code> can name another project manifest, as <a href="#how-yapi-reads-chest_manifest">How yapi reads CHEST_MANIFEST</a> describes.</p>
-<p>yapi puts back every skill, subagent and extension that the lock pins and that’s missing. With <code>--offline</code> or <code>PI_OFFLINE</code> set, it warns about them instead.</p>
-<p>yapi leaves out an entry that isn’t locked, or whose lock no longer matches the manifest, and warns you to run <code>chest install</code>. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the <code>.gitignore</code> block.</p>
-<p>An entry under <code>[patch]</code> needs no lock entry. A patched extension loads from its patch. A patched skill loads from where <code>chest install</code> placed it, or else from its patch.</p>
+<p>yapi puts back every skill, subagent and extension that the lock pins and that’s missing. It also puts back an entry whose copy holds what an older lock pinned, as after you pull a lock that a teammate’s <code>chest update</code> wrote. chest’s record of what it placed tells yapi which copy it has, so startup reads no file contents. With <code>--offline</code> or <code>PI_OFFLINE</code> set, yapi warns about these entries and leaves them out instead. So an extension never loads from a copy the lock no longer pins, and neither does a skill in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>. A skill’s copy in a folder yapi reads on its own, such as <code>.agents/skills</code>, keeps loading, and the warning says so.</p>
+<p>yapi leaves out an entry that isn’t locked, or whose lock no longer matches the manifest, and warns you to run <code>chest install</code>, or <code>chest -g install</code> for <code>~/.chest/chest.toml</code>. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the <code>.gitignore</code> block.</p>
+<p>An entry under <code>[patch]</code> needs no lock entry. A patched extension loads from its patch. A patched skill loads from where <code>chest install</code> placed it, or else from its patch. For an entry without <code>path</code>, which takes every skill of a package, that holds for each skill the patch’s folder provides.</p>
 <p>yapi loads the installed extensions as packages named <code>chest:&lt;name&gt;</code>. Only chest names packages this way, so yapi ignores a <code>packages</code> entry in settings that starts with <code>chest:</code>. Each chest extension runs with the <a href="#what-each-capability-allows">capabilities</a> its entry grants and with its <a href="#event-bus-routing">event policy</a>. Packages from <code>yapi install</code> keep every grant.</p>
 <p>When a native extension uses a capability its entry doesn’t grant, yapi warns at startup, because it will deny those calls. <a href="#how-yapi-enforces-grants">How yapi enforces grants</a> covers the checks.</p>
-<p>yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>.</p>
-<p><code>yapi config</code> lists chest’s extensions and skills as a run loads them, marked as managed by chest. They’re read-only there, because the manifest decides what loads. <a href="#project-packages-from-chest">Project packages from chest</a> lists the files.</p>
+<p>yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>. A skill in a folder yapi also reads on its own, such as <code>.agents/skills</code>, loads once, as chest’s.</p>
+<p>When two skills share a name, the first one yapi loads keeps it, as in Pi. Load order also decides which extension a tool conflict names. yapi loads resources in this order:</p>
+<ol>
+<li>The paths that the project’s settings list under <code>skills</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code></li>
+<li>The project’s chest entries</li>
+<li>The project’s folders that yapi reads on its own, such as <code>.yapi/skills</code> and <code>.agents/skills</code></li>
+<li>The paths that your global settings list under those keys</li>
+<li>The entries of <code>~/.chest/chest.toml</code></li>
+<li>The global folders, such as <code>~/.agents/skills</code> and the agent folder’s <code>skills</code> and <code>extensions</code></li>
+<li>The packages from settings, in Pi’s order</li>
+</ol>
+<p>So a skill that the project’s settings list, such as with <code>"skills": ["../hand-skills"]</code>, keeps its name over a project chest skill.</p>
+<p>yapi never removes placed copies. After you remove an entry from the manifest, or while its lock is stale, its copies in folders yapi reads on its own, such as <code>.agents/skills</code>, keep loading until <code>chest install</code> removes them.</p>
+<p>Before it opens, <code>yapi config</code> puts back missing entries as a run does. It lists chest’s extensions and skills as a run loads them, marked as managed by chest. Space leaves them alone, because the manifest decides what loads. In the Global Resources view, <code>ctrl+o</code> can still keep a global chest item in <a href="#run-yapi-with-only-the-projects-packages">project-only runs</a>. <a href="#project-packages-from-chest">Project packages from chest</a> lists the files.</p>
+<h2 id="when-a-package-is-installed-both-ways"><a class="header" href="#when-a-package-is-installed-both-ways">When a package is installed both ways</a></h2>
+<p>A package can be a chest entry and also a <code>packages</code> entry in settings, such as after <code>chest import --settings</code> or a <code>yapi install</code> of a package the project’s manifest lists. Two copies would register the same tools, and a tool registered twice stops yapi, as in Pi. So yapi loads an npm or git package once, from the first of these that installs it:</p>
+<ol>
+<li>The project’s manifest</li>
+<li>The project’s settings</li>
+<li><code>~/.chest/chest.toml</code></li>
+<li>Your global settings</li>
+</ol>
+<p>Two entries of one manifest that install the same package count too, and the first one loads. An entry with <code>path</code> takes one folder of its package. It’s the same package as a copy of the whole package, and as an entry with the same source and <code>path</code>, however the <code>path</code> is spelled, such as <code>ext-a</code>, <code>./ext-a</code> or <code>ext-a/</code>. Two entries that take different folders of one repository both load. An entry with a <a href="#patch"><code>[patch]</code></a> counts as the package it names, so when it loads, its patch loads in place of the other copies.</p>
+<p>In a <a href="#run-yapi-with-only-the-projects-packages">project-only run</a>, a global copy counts only when the run keeps something of it: <code>projectOnly.packages</code> keeps it, or a pattern under <code>extensions</code>, <code>skills</code>, <code>prompts</code> or <code>themes</code> matches one of its files. The project’s copies and the global copies that <code>packages</code> keeps come first, in the order above. A global copy that only a pattern keeps comes after them. So a package that <code>packages</code> keeps loads whole, and a pattern that names one copy’s file keeps that copy.</p>
+<p>yapi leaves out the other copies and warns about each one at startup, with the command that removes it:</p>
+<ul>
+<li><code>yapi remove -l &lt;source&gt;</code> for a copy in the project’s settings, with <code>--approve</code> while your trust in the project isn’t saved</li>
+<li><code>yapi remove &lt;source&gt;</code> for a copy in your global settings</li>
+<li><code>chest remove &lt;name&gt;</code> for an entry of the project’s manifest, or <code>chest --manifest &lt;file&gt; remove &lt;name&gt;</code> for one that <code>CHEST_MANIFEST</code> names</li>
+<li><code>chest -g remove &lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code></li>
+</ul>
+<p>Between the project’s settings and yours, Pi’s rule applies, and the project’s entry wins. A path package installed both ways names the same files, so they load once, with the chest entry’s capabilities.</p>
+<p>An extension file that two chest entries give, such as one path in both manifests, loads once too. It gets only the capabilities and event channels that both entries grant, and yapi warns at startup with both entries and what that narrows: the capabilities, with those left, the event channels, or both. To give it what one entry grants, remove the other entry or grant the same in both.</p>
+<p>A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same <code>path</code> that isn’t locked yet. yapi warns at startup with both entries. To give the file its capabilities back, remove the entry that doesn’t load. <code>chest install</code> loads that entry too, so the file then gets only what both entries grant, as above. When that’s less than one of them grants, the warning says what’s left.</p>
 <h2 id="import-packages-from-settingsjson"><a class="header" href="#import-packages-from-settingsjson">Import packages from settings.json</a></h2>
-<p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code> into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them. It keeps their <code>skills</code>, <code>prompts</code> and <code>themes</code> filters. chest has no <code>extensions</code> filter and no <code>autoload: false</code>. chest leaves out a package that sets either, with a warning, and the package keeps loading from <code>settings.json</code>.</p>
-<p>Import leaves <code>settings.json</code> alone. For each package it imports, it prints the <code>yapi remove -l</code> command to run once chest installs it. With <code>-g</code>, it imports the agent folder’s <code>settings.json</code> and prints <code>yapi remove</code> without <code>-l</code>.</p>
-<p>After importing, narrow each entry’s capabilities and run <code>chest install</code>. Then run the <code>yapi remove</code> commands that import printed.</p>
+<p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code>, or the <code>settings.toml</code> that replaces it, into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them. It keeps their <code>skills</code>, <code>prompts</code> and <code>themes</code> filters. chest has no <code>extensions</code> filter and no <code>autoload: false</code>. chest leaves out a package that sets either, with a warning, and the package keeps loading from <code>settings.json</code>.</p>
+<p>Each entry is named after the last part of its source. Import skips a package the manifest already has, at any version, and a different package whose name the manifest already uses. To import that one, add it under another name with <code>chest add &lt;source&gt; --name &lt;name&gt;</code>.</p>
+<p>Import leaves <code>settings.json</code> alone. For each package it imports, it prints the <code>yapi remove -l</code> command to run once chest installs it. Run it from the project folder, since <code>-l</code> edits the <code>.yapi/settings.json</code> of the folder you run it in. <code>yapi remove -l</code> changes only a trusted project’s settings, so until you trust the project, the command adds <code>--approve</code>. With <code>-g</code>, it imports the agent folder’s <code>settings.json</code> into <code>~/.chest/chest.toml</code>, which <code>chest -g install</code> installs, and prints <code>yapi remove</code> without <code>-l</code>, which works from any folder.</p>
+<p>After importing, narrow each entry’s capabilities and run <code>chest install</code> right away. Then run the <code>yapi remove</code> commands that import printed. Until <code>chest install</code> locks an entry, yapi leaves it out:</p>
+<ul>
+<li>An npm or git package loads from the copy in settings, with every capability.</li>
+<li>A path package’s files belong to the chest entry, which doesn’t load yet, so they run with no capabilities. That’s on purpose: a file that chest manages never runs with more than its entry grants.</li>
+</ul>
+<p>Once chest installs an entry, yapi loads chest’s copy and leaves out the one in settings, with a warning, until you remove it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="lock-verify-and-update-packages"><a class="header" href="#lock-verify-and-update-packages">Lock, verify and update packages</a></h1>
 <blockquote>
@@ -1182,20 +1295,24 @@ events = "isolated"
 <p><code>chest install</code> has two modes:</p>
 <ul>
 <li><strong><code>chest install</code></strong>: keeps what’s locked and present, installs what’s locked but missing exactly as locked, and resolves entries that changed in the manifest. Then it writes the lock.</li>
-<li><strong><code>chest install --frozen</code></strong>: installs exactly what the lock pins, including what’s missing, as <code>npm ci</code> does. It fails when the lock is missing or out of date, or when an installed copy no longer matches its hash. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
+<li><strong><code>chest install --frozen</code></strong>: installs exactly what the lock pins, as <code>npm ci</code> does. It puts back what’s missing, and replaces copies that chest installed for an older lock when nobody changed them since. It fails when the lock is missing or out of date, when someone edited a copy, or when a copy doesn’t match its hash because chest didn’t install it. It never writes <code>chest.toml</code> or <code>chest.lock</code>.</li>
 </ul>
 <h2 id="run-chest-in-ci"><a class="header" href="#run-chest-in-ci">Run chest in CI</a></h2>
 <p><code>chest install</code> runs frozen by default when <code>CI</code> holds anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
 <h2 id="verify-installed-copies"><a class="header" href="#verify-installed-copies">Verify installed copies</a></h2>
-<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. It exits with 1 when one doesn’t match.</p>
+<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed, checks a path entry’s links against its canonical copy, and reports a path entry whose source is gone. <code>verify</code> exits with 1 when one is missing or doesn’t match.</p>
 <h2 id="update-entries"><a class="header" href="#update-entries">Update entries</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the warning about extension requests, which matters only in yapi.</p>
 </blockquote>
-<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code>. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock.</p>
+<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code> when that’s newer than what the range allows. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
+<p>An npm entry already at the newest version in its range is listed only when <code>latest</code> is newer, with no update:</p>
+<pre><code class="language-text">skills.review  1.2.0  (latest 2.0.0 is outside its range)
+</code></pre>
+<p>To move to it, change the entry’s <code>version</code> and run <code>chest install</code>.</p>
 <p>When an updated extension now requests capabilities or event channels beyond its grants, <code>chest update</code> warns and grants nothing more.</p>
 <h2 id="one-command-at-a-time"><a class="header" href="#one-command-at-a-time">One command at a time</a></h2>
-<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A command that stopped without letting go of its lock holds it for 30s at most.</p>
+<p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="environments-global-packages-and-patches"><a class="header" href="#environments-global-packages-and-patches">Environments, global packages and patches</a></h1>
 <blockquote>
@@ -1213,7 +1330,7 @@ events = "isolated"
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
-<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
+<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>. Messages about a manifest name the commands for it, such as <code>chest --manifest chest.dev.toml install</code>.</p>
 <h2 id="how-yapi-reads-chest_manifest"><a class="header" href="#how-yapi-reads-chest_manifest">How yapi reads <code>CHEST_MANIFEST</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> Other agents read only the folders chest fills, so the variable means nothing to them.</p>
@@ -1222,7 +1339,7 @@ chest install
 <p>chest refuses the same values, so chest and yapi always agree on the manifest. <a href="#project-packages-from-chest">Project packages from chest</a> lists the files yapi reads.</p>
 <h2 id="install-global-packages"><a class="header" href="#install-global-packages">Install global packages</a></h2>
 <blockquote>
-<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project.</p>
+<p><strong>Any agent.</strong> Only yapi loads global extensions, and it reads the global manifest in every project, unless a <a href="#global-packages-yapi-still-installs">project-only run</a> can keep none of its entries.</p>
 </blockquote>
 <p><code>-g</code> uses <code>~/.chest/chest.toml</code> instead of the project’s manifest. Its folders can be anywhere under your home folder, such as <code>~/.claude/skills</code>. Its extensions go to <code>~/.chest/store</code>, and it writes no <code>.gitignore</code>. Skills and subagents installed this way reach every project, for yapi and for the other agents that read those folders.</p>
 <p>With <code>-g</code>, <code>chest init</code> looks for each agent’s folder in your home folder:</p>
@@ -1242,7 +1359,7 @@ chest install
 </tbody>
 </table>
 </div>
-<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>.</p>
+<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, <code>chest init</code> leaves it out and says why, because the global manifest installs only inside your home folder.</p>
 <p>For both the project and the global manifest, chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
 <h2 id="develop-a-package-locally"><a class="header" href="#develop-a-package-locally">Develop a package locally</a></h2>
 <blockquote>
@@ -1254,7 +1371,113 @@ todo = { path = "../pi-todo" }
 </code></pre>
 <p>A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself.</p>
 <p>chest also refuses an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
+<p><code>chest list</code> shows a patched entry as <code>patched</code>, as <code>edited</code> when someone changed a copy that chest installed from the patch, and as <code>missing</code> when that copy is gone. <code>chest verify</code> reports both. <code>chest install</code> puts a missing copy back from the patch, also with <code>--frozen</code>, which fails on an edited copy instead.</p>
 <p>yapi loads a patched entry without a lock entry, as <a href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="run-yapi-with-only-the-projects-packages"><a class="header" href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a></h1>
+<blockquote>
+<p><strong>yapi only.</strong></p>
+</blockquote>
+<p><code>yapi --project-only</code> loads the project’s extensions, skills and Model Context Protocol (MCP) servers, and leaves out the ones you installed globally. Use it to check that a project’s <code>chest.toml</code> covers what the project needs, or to keep your personal extensions out of a CI run. It works in projects without a <code>chest.toml</code> too.</p>
+<p>Only what you installed stays out. Your settings, sign-ins and instruction files such as <code>~/.yapi/agent/AGENTS.md</code> still apply, so your project-only run can still differ from a teammate’s.</p>
+<p>This page covers turning the mode on, what loads, keeping global items such as a theme, and checking what loaded.</p>
+<h2 id="turn-on-project-only-mode"><a class="header" href="#turn-on-project-only-mode">Turn on project-only mode</a></h2>
+<p>Pass the flag for one run, or set <code>YAPI_PROJECT_ONLY</code> for every run in a shell:</p>
+<pre><code class="language-sh">yapi --project-only
+export YAPI_PROJECT_ONLY=1
+</code></pre>
+<p><code>YAPI_PROJECT_ONLY</code> accepts <code>1</code>, <code>true</code> or <code>yes</code>, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. <code>/reload</code> keeps the mode on.</p>
+<p>Programs that yapi starts inherit the variable: bash commands, extension processes, stdio MCP servers and subagents that start another yapi. An extension can give a process an environment of its own. If that environment leaves the variable out, the process runs normally.</p>
+<p>Only yapi runs follow the mode. <code>yapi install</code> without <code>-l</code> still adds a package to your global settings, and a project-only run then leaves it out. To add a package to the project, use <code>chest add</code> or <code>yapi install -l</code>.</p>
+<h2 id="what-a-project-only-run-loads"><a class="header" href="#what-a-project-only-run-loads">What a project-only run loads</a></h2>
+<p>From a trusted project, yapi loads:</p>
+<ul>
+<li>the project’s chest entries</li>
+<li>the <code>packages</code> and resource paths in <code>.yapi/settings.json</code></li>
+<li><code>.yapi/extensions</code>, <code>.yapi/skills</code>, <code>.yapi/prompts</code> and <code>.yapi/themes</code></li>
+<li>the servers in <code>.yapi/mcp.json</code></li>
+<li><code>.agents/skills</code> in the project and each parent folder up to the repository root, or up to <code>/</code> outside a repository</li>
+</ul>
+<p>In every project, it also loads the built-in extensions, following your <code>+builtin:</code> and <code>-builtin:</code> choices. So do the paths you pass with <code>-e</code>, <code>--skill</code>, <code>--prompt-template</code> and <code>--theme</code>.</p>
+<p>It leaves out the rest of what you installed globally, unless you <a href="#keep-some-global-items">keep some of it</a>:</p>
+<ul>
+<li>the <code>packages</code> and resource paths in <code>~/.yapi/agent/settings.json</code></li>
+<li><code>~/.yapi/agent/extensions</code>, <code>~/.yapi/agent/skills</code>, <code>~/.yapi/agent/prompts</code> and <code>~/.yapi/agent/themes</code></li>
+<li><code>~/.agents/skills</code></li>
+<li>the entries of <code>~/.chest/chest.toml</code></li>
+<li>the servers in <code>~/.yapi/agent/mcp.json</code></li>
+</ul>
+<p>Everything else works as usual. Your settings, sign-ins, models, key bindings and trust decisions don’t change. <code>AGENTS.md</code> and <code>CLAUDE.md</code> still load from the project, its parent folders and <code>~/.yapi/agent</code>, and <code>--no-context-files</code> turns them off. <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> load from the project, or else from <code>~/.yapi/agent</code>.</p>
+<p>A trusted project can still load one of your global files on purpose. It can name the file’s path in its own settings, or add an <code>autoload: false</code> entry for a package you installed. You approved those files when you trusted the project.</p>
+<h2 id="keep-some-global-items"><a class="header" href="#keep-some-global-items">Keep some global items</a></h2>
+<p>To keep a global theme, skill or MCP server in project-only runs, list it under <code>projectOnly</code> in your global settings:</p>
+<pre><code class="language-json">{
+  "projectOnly": {
+    "packages": ["npm:@acme/pi-themes", "chest:notes"],
+    "extensions": ["extensions/notify.ts"],
+    "skills": ["~/.agents/skills/pdf"],
+    "themes": ["*"],
+    "mcpServers": ["github", "linear*"]
+  }
+}
+</code></pre>
+<p>In a <code>settings.toml</code>, the same list is a table:</p>
+<pre><code class="language-toml">[projectOnly]
+packages = ["npm:@acme/pi-themes", "chest:notes"]
+extensions = ["extensions/notify.ts"]
+skills = ["~/.agents/skills/pdf"]
+themes = ["*"]
+mcpServers = ["github", "linear*"]
+</code></pre>
+<p>yapi reads <code>projectOnly</code> only from <code>~/.yapi/agent</code>, never from a project’s settings, so a repository you clone can’t turn your global extensions back on. Every key is optional, and <code>prompts</code> works like <code>extensions</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>To keep</th><th>Add</th></tr>
+</thead>
+<tbody>
+<tr><td>Every global theme</td><td><code>"themes": ["*"]</code></td></tr>
+<tr><td>One package, with everything it provides</td><td><code>"packages": ["npm:@acme/pi-themes"]</code></td></tr>
+<tr><td>One skill from <code>~/.agents/skills</code></td><td><code>"skills": ["~/.agents/skills/pdf"]</code></td></tr>
+<tr><td>One entry of <code>~/.chest/chest.toml</code></td><td><code>"packages": ["chest:notes"]</code></td></tr>
+<tr><td>The GitHub MCP server</td><td><code>"mcpServers": ["github"]</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="keep-whole-packages"><a class="header" href="#keep-whole-packages">Keep whole packages</a></h3>
+<p><code>packages</code> keeps every extension, skill, prompt template and theme a global package provides. Write each source the way your global <code>packages</code> list writes it, such as <code>npm:@acme/pi-themes</code> or <code>git:github.com/acme/tools</code>. Versions don’t count, so <code>npm:@acme/pi-themes</code> also keeps a package installed as <code>npm:@acme/pi-themes@^2</code>.</p>
+<p>Write <code>chest:&lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code>, and <code>*</code> to keep every global package and chest entry. <code>*</code> doesn’t cover loose files in your global folders, such as <code>~/.yapi/agent/extensions</code>, which the lists below do.</p>
+<h3 id="keep-single-extensions-skills-prompts-or-themes"><a class="header" href="#keep-single-extensions-skills-prompts-or-themes">Keep single extensions, skills, prompts or themes</a></h3>
+<p><code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code> each keep the resources of their kind that a pattern matches. They work wherever the resource comes from: a global folder, a path in your settings, a global package or a chest entry. Patterns use Pi’s glob syntax, and each one is matched against:</p>
+<ul>
+<li>the path inside <code>~/.yapi/agent</code>, such as <code>extensions/notify.ts</code> or <code>themes/dark.json</code></li>
+<li>the file name, such as <code>notify.ts</code></li>
+<li>the whole path, with <code>~</code> for your home folder, such as <code>~/.agents/skills/pdf</code></li>
+</ul>
+<p>A skill’s folder matches too, so <code>~/.agents/skills/pdf</code> keeps <code>~/.agents/skills/pdf/SKILL.md</code>. <code>"themes": ["*"]</code> keeps every global theme, including the ones inside packages, without loading those packages’ extensions.</p>
+<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi uses the system theme. Interactive mode shows Pi’s error, <code>Failed to load theme "&lt;name&gt;": Theme not found: &lt;name&gt;</code>. When <code>~/.yapi/agent/themes</code> holds a theme by that name, a second line points to <code>projectOnly.themes</code>.</p>
+<h3 id="keep-mcp-servers"><a class="header" href="#keep-mcp-servers">Keep MCP servers</a></h3>
+<p><code>mcpServers</code> keeps servers from <code>~/.yapi/agent/mcp.json</code> by name, and accepts patterns such as <code>linear*</code>. A kept server keeps its <code>auth</code>, so a server that sends a token from <code>/login</code> still works. The project’s own servers in <code>.yapi/mcp.json</code> always connect.</p>
+<h3 id="global-packages-yapi-still-installs"><a class="header" href="#global-packages-yapi-still-installs">Global packages yapi still installs</a></h3>
+<p>A project-only run installs or restores a global package only when <code>projectOnly</code> could keep part of it:</p>
+<ul>
+<li>a package that <code>packages</code> names</li>
+<li>every global package, when <code>packages</code> holds <code>*</code> or another list has an entry, because a pattern can match a file inside any package</li>
+<li>the missing entries of <code>~/.chest/chest.toml</code>, in either of those cases or when <code>packages</code> names a <code>chest:</code> entry</li>
+</ul>
+<p>With no <code>projectOnly</code> list, a project-only run downloads nothing for your global packages.</p>
+<h2 id="keep-items-from-yapi-config"><a class="header" href="#keep-items-from-yapi-config">Keep items from yapi config</a></h2>
+<p>You can also build the list in <code>yapi config</code>, which opens on the Global Resources view. Select an extension, skill, prompt template or theme and press <code>ctrl+o</code> to keep it. Kept items show <code>project-only</code>, and <code>ctrl+o</code> again stops keeping the item.</p>
+<p>yapi saves the item’s path inside <code>~/.yapi/agent</code>, or from <code>~</code> for anything else in your home folder. It saves a skill in a folder as that folder, and a single-file skill as the file.</p>
+<p><code>ctrl+o</code> works on chest items, which Space leaves alone. It skips built-in extensions, which load anyway, and items that a pattern or a <code>packages</code> entry already keeps. It does nothing in the project view that Tab opens, because yapi ignores a project’s <code>projectOnly</code>. <code>yapi config</code> doesn’t list packages or MCP servers, so edit <code>packages</code> and <code>mcpServers</code> in the settings file.</p>
+<h2 id="check-what-loaded"><a class="header" href="#check-what-loaded">Check what loaded</a></h2>
+<p>The header at startup lists the loaded skills, prompt templates and extensions with their scope, and <code>/mcp</code> lists the MCP servers. If the <code>quietStartup</code> setting hides the header, start yapi with <code>--verbose</code>.</p>
+<h2 id="untrusted-projects"><a class="header" href="#untrusted-projects">Untrusted projects</a></h2>
+<p>yapi never loads an untrusted project’s files, in project-only runs or otherwise. When an untrusted project has files that need trust, print, JSON and RPC modes warn once:</p>
+<pre><code class="language-text">--project-only: the project isn't trusted, so none of its packages load
+</code></pre>
+<p>Interactive mode asks whether to trust the project before it starts instead. If you choose not to trust it, yapi shows Pi’s notice that the project’s resources and packages are ignored.</p>
+<p>Either way, the run then has only the built-in extensions, the paths you passed on the command line and the global items you keep. Trust the project, or pass <code>--approve</code> for one run. <a href="#project-trust">Project trust</a> covers the details.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="publish-a-package"><a class="header" href="#publish-a-package">Publish a package</a></h1>
 <blockquote>
@@ -1291,23 +1514,25 @@ extensions = ["extensions/index.ts"]
 <p>Before you publish a native extension, run <code>chest check</code> in the package folder. It compares the capabilities each <code>.wasm</code> extension uses with the ones the package requests:</p>
 <pre><code class="language-sh">chest check
 </code></pre>
-<p>It reads the <a href="#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. These are errors, and make chest exit with 1:</p>
+<p>It reads the <a href="#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports. An import of <code>wasi:filesystem</code>, for example, counts as using <code>fs</code>.</p>
+<p><code>chest check</code> reports an error and exits with 1 when it finds either of these:</p>
 <ul>
 <li>a capability the extension uses that the package doesn’t request</li>
 <li>an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi doesn’t support, because extensions reach the network through the SDK’s <code>fetch</code></li>
 </ul>
-<p><code>chest add</code> warns about such an import. These are warnings:</p>
+<p>It warns about these and still exits with 0:</p>
 <ul>
 <li>a capability the package requests that no extension uses</li>
 <li>a capability the build records that this version of chest doesn’t know, such as one a newer SDK adds, which chest doesn’t check</li>
 </ul>
+<p><code>chest add</code> also warns when an extension imports <code>wasi:sockets</code> or <code>wasi:http</code>.</p>
 <p>An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JavaScript and TypeScript extensions have nothing to read before they run, so yapi checks them only at runtime.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="chest-commands"><a class="header" href="#chest-commands">chest commands</a></h1>
 <blockquote>
 <p><strong>Any agent</strong>, except the parts that only matter in yapi: <code>chest check</code>, <code>chest import --settings</code>, and the extension options <code>--extension</code> and <code>--grant</code> of <code>chest add</code> and <code>--store</code> of <code>chest init</code>.</p>
 </blockquote>
-<p>This page lists every chest command with its flags, then chest’s exit codes. Every command takes <code>-g</code>, for the global manifest, and <code>--manifest &lt;path&gt;</code>. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
+<p>This page lists every chest command with its flags, then how chest uses a proxy, and its exit codes. Every command takes <code>-g</code>, for the global manifest, or <code>--manifest &lt;path&gt;</code>, but not both. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1315,18 +1540,20 @@ extensions = ["extensions/index.ts"]
 </thead>
 <tbody>
 <tr><td><code>chest init</code></td><td><code>--skills a,b</code>, <code>--agents a,b</code>, <code>--store &lt;dir&gt;</code>, <code>--package</code>, <code>--yes</code></td><td>Writes a manifest with folders for the agents found. Refuses an existing manifest unless <code>--package</code>, which adds <code>[package]</code>.</td></tr>
-<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. Without a section flag, chest infers the section from the package. The same name with the same source updates its version or rev and keeps its grants. The same name with another source, or in another section, is an error.</td></tr>
-<tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it.</td></tr>
+<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. A git URL starts with <code>https://</code>, <code>http://</code>, <code>ssh://</code> or <code>git://</code>, or takes the form <code>user@host:path</code>, where the path is relative to the remote home. An absolute path takes <code>ssh://</code>, as in <code>ssh://user@host/srv/repo</code>. Without a section flag, chest infers the section from the package. <code>--rev</code> is for git sources and <code>--version</code> for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so <code>--grant</code> then fails unless it lists the grants the entry has. The same name with another source, or in another section, is an error. So is another name for a source and <code>path</code> that an entry of the same section installs, at any version or rev. A whole package and one <code>path</code> of it count as the same source, since both would load. So do a path source and a folder inside it.</td></tr>
+<tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it. It also removes the entry’s <code>[patch]</code>, but not the patch’s folder, which isn’t chest’s.</td></tr>
 <tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
-<tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows.</td></tr>
-<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, whether it’s installed, its capabilities and description.</td></tr>
+<tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows. Shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source.</td></tr>
+<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, its state, its capabilities and description. The description is an extension package’s, or the <code>description</code> in the frontmatter of a skill or subagent. <code>installed</code>: in place as the lock pins it. <code>edited</code>: a copy changed since chest installed it, whatever the lock pins now. <code>outdated</code>: in place as an older lock pinned it. <code>stale</code>: not locked, or the lock no longer matches the manifest. <code>patched</code>: under <code>[patch]</code>. <code>missing</code>: locked but not in place. <code>no source</code>: a path entry whose source is gone. <code>chest install</code> then skips it with a warning and installs the other entries. When the folder held several items, chest can’t tell their copies from dropped ones, so it keeps every copy in that section, and lists them, until the folder is back. <code>chest install --frozen</code> fails on it. Restore the folder or remove the entry. yapi acts on the same states at startup. It doesn’t hash copies, so it treats an <code>edited</code> entry as <code>installed</code>, or as <code>outdated</code> when the lock pins another version.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
-<tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock.</td></tr>
-<tr><td><code>chest import</code></td><td><code>--settings</code> or <code>--skills-lock</code>, <code>[path]</code></td><td>Turns settings.json packages or a skills-lock.json into entries.</td></tr>
-<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> doesn’t parse.</td></tr>
+<tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock, and copies of path and <code>[patch]</code> entries against what chest installed. Reports a path entry whose source is gone.</td></tr>
+<tr><td><code>chest import</code></td><td><code>--settings</code> or <code>--skills-lock</code>, <code>[path]</code></td><td>Turns the packages of settings.json or settings.toml, or a skills-lock.json, into entries.</td></tr>
+<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default, and a <code>chest.toml</code> or <code>package.json</code> stands for its folder. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> doesn’t parse, and on a file that isn’t a manifest or a <code>.ts</code>, <code>.js</code> or <code>.wasm</code> extension.</td></tr>
 </tbody>
 </table>
 </div>
+<h2 id="proxy"><a class="header" href="#proxy">Proxy</a></h2>
+<p>chest reads proxy variables such as <code>HTTPS_PROXY</code>, as yapi does. Without them, it uses the <code>httpProxy</code> setting in yapi’s global <code>settings.json</code>, like yapi.</p>
 <h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
 <p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error. Questions go to stderr, and chest asks them only at a terminal.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1344,7 +1571,7 @@ extensions = ["extensions/index.ts"]
 <li>chest uses <code>chest.toml</code> in the current folder, and only there.</li>
 <li><code>--manifest &lt;path&gt;</code> names another, and <code>CHEST_MANIFEST</code> sets the default for it.</li>
 <li>An environment’s manifest is a complete manifest of its own, such as <code>chest.dev.toml</code>. Its lock is the same name with <code>.lock</code> for <code>.toml</code>, here <code>chest.dev.lock</code>.</li>
-<li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>.</li>
+<li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>. It can’t be combined with <code>--manifest</code>.</li>
 <li>chest refuses a <code>chest.toml</code> or <code>chest.lock</code> that’s a symbolic link, so a cloned project can’t point chest at a file outside it.</li>
 </ul>
 <p>Paths in a manifest are relative to the manifest’s folder. A project manifest keeps every folder inside the project. The global manifest may use <code>~</code> and absolute paths, and installs only inside your home folder.</p>
@@ -1412,9 +1639,10 @@ path = "reviewer.md"
 </code></pre>
 <p>These rules apply to every source:</p>
 <ul>
-<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>.</li>
+<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>. In <code>user@host:path</code>, the path is relative to the remote home, so an absolute path takes <code>ssh://</code>, as in <code>ssh://user@host/srv/repo</code>.</li>
 <li><code>path</code> inside a git or npm package stays inside it, without <code>..</code>. A path source may use <code>..</code> to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with <code>~</code>.</li>
 <li>With <code>path</code>, a skills or agents entry installs one item under the entry’s name. A subagent is a <code>.md</code> file, placed as <code>&lt;name&gt;.md</code>. Without <code>path</code>, it installs every skill or subagent the package provides, each under its own name.</li>
+<li>A path source installs one item when it’s a skill folder with a <code>SKILL.md</code> or a subagent file. A folder that isn’t one is a package, and the entry installs every skill or subagent it provides, each under its own name.</li>
 </ul>
 <h3 id="extension-keys"><a class="header" href="#extension-keys">Extension keys</a></h3>
 <blockquote>
@@ -1454,7 +1682,7 @@ skills = ["!legacy/**"]
 <blockquote>
 <p><strong>Any agent.</strong></p>
 </blockquote>
-<p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry.</p>
+<p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry. Each patch must name an entry of <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code>.</p>
 <pre><code class="language-toml">[patch]
 todo = { path = "../pi-todo" }
 </code></pre>
@@ -2656,13 +2884,15 @@ api.on("session_start", |_event, ctx| async move {
 </thead>
 <tbody>
 <tr><td>Folders</td><td><code>~/.pi/agent</code>, project <code>.pi/</code>, <code>PI_CODING_AGENT_DIR</code></td><td><code>~/.yapi/agent</code>, project <code>.yapi/</code>, <code>YAPI_CODING_AGENT_DIR</code>, and <code>YAPI_</code> in place of <code>PI_</code> for the session directory variable. Same formats, and <code>yapi import pi</code> copies Pi’s state.</td></tr>
+<tr><td>Settings format</td><td><code>settings.json</code></td><td><code>settings.json</code>, or the same settings in <code>settings.toml</code>, one of them per folder. yapi keeps a TOML file’s comments when it writes. See <a href="#write-settings-in-toml">Write settings in TOML</a>.</td></tr>
 <tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output.</td></tr>
 <tr><td>Git sources</td><td>A host or ref may start with <code>-</code></td><td>yapi refuses a host or ref that starts with <code>-</code>, because git would read it as an option. Clones run as <code>git clone -- &lt;repo&gt;</code>.</td></tr>
 <tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
-<tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup and lists the package under <code>[Extension issues]</code> after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source doesn’t stop the others.</td></tr>
+<tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup, under <code>[Extension issues]</code> in interactive mode, and lists the package there after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source doesn’t stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries, credentials and <code>fetch-timeout</code> from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. yapi ignores other settings, such as <code>cafile</code>.</td></tr>
 <tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="#read-yapis-log">Read yapi’s log</a>.</td></tr>
 <tr><td>Project folder</td><td>The working folder</td><td><code>--project-dir &lt;dir&gt;</code>, a yapi-only flag, takes the project’s files, trust and <code>AGENTS.md</code> from another folder while tools run in the working folder. Subagents need it to work in one folder with their parent’s project. See <a href="#project-trust">Project trust</a>.</td></tr>
+<tr><td>Global resources</td><td>Always load</td><td><code>--project-only</code>, a yapi-only flag, or <code>YAPI_PROJECT_ONLY</code> loads only the project’s packages, skills and MCP servers. The yapi-only <code>projectOnly</code> setting keeps chosen global ones, and Pi ignores it. <code>yapi config</code> adds items to it with <code>ctrl+o</code>. See <a href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a>.</td></tr>
 <tr><td>Project packages</td><td>No counterpart</td><td>yapi also ships <code>chest</code>, a separate binary with a manifest and lock for skills, subagents and extensions, and capabilities granted per extension. <code>yapi install</code> and the <code>packages</code> of <code>settings.json</code> work as in Pi. See <a href="#get-started-with-chest">Get started with chest</a>.</td></tr>
 <tr><td>Package manifests</td><td>The <code>pi</code> key</td><td>For each kind of resource, a list in the <code>[package]</code> table of the package’s <code>chest.toml</code> wins, then a list in a <code>yapi</code> key of the same shape, then the <code>pi</code> key. One package can ship a native build for yapi, and a package without <code>package.json</code> loads from <code>chest.toml</code>. A <code>yapi</code> key or <code>[package]</code> table that lists no resources, such as one holding only <code>capabilities</code>, hides nothing. See <a href="#package-manifests">Package manifests</a>.</td></tr>
 <tr><td>Self-update</td><td><code>pi update</code> updates Pi</td><td><code>yapi update</code> prints how to upgrade instead. <code>--extensions</code> and <code>--models</code> update packages and model catalogs. The update notice takes the version from yapi’s latest GitHub release and links the releases page as the changelog. Pi’s release note has no counterpart. See <a href="#upgrade-yapi">Upgrade yapi</a>.</td></tr>
@@ -2826,11 +3056,22 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <h2 id="a-chest-lock-is-stale"><a class="header" href="#a-chest-lock-is-stale">A chest lock is stale</a></h2>
 <p>chest warns that entries aren’t locked, or that their lock is stale, when <code>chest.toml</code> lists entries that <code>chest.lock</code> doesn’t pin, or pins for another source, revision or version range. Run <code>chest install</code> to resolve them and update the lock, then commit <code>chest.lock</code>.</p>
 <p><code>chest install --frozen</code>, the default under CI, fails instead, so update the lock before you push. <a href="#lock-verify-and-update-packages">Lock, verify and update packages</a> covers the lock.</p>
+<h2 id="global-skills-or-extensions-are-missing"><a class="header" href="#global-skills-or-extensions-are-missing">Global skills or extensions are missing</a></h2>
+<p>When your global skills, extensions, prompt templates, themes or MCP servers don’t load, the run may be <a href="#run-yapi-with-only-the-projects-packages">project-only</a>. <code>echo $YAPI_PROJECT_ONLY</code> shows whether your shell turns the mode on, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. To keep some global items in the mode, list them in the <code>projectOnly</code> setting, or press <code>ctrl+o</code> on them in <code>yapi config</code>.</p>
+<p>When a global extension registers a provider, project-only runs lose that provider’s models. Keep the extension in <code>projectOnly</code>, or pick another model.</p>
+<p>In print, JSON and RPC modes, the warning <code>--project-only: the project isn't trusted, so none of its packages load</code> means the project has files that need trust. Interactive mode asks whether to trust the project instead, and shows Pi’s notice that its resources are ignored if you don’t. Either way, the run loads the built-in extensions, the paths you pass on the command line and the global items you keep. Trust the project, or pass <code>--approve</code> for one run.</p>
+<h2 id="yapi-finds-two-settings-files"><a class="header" href="#yapi-finds-two-settings-files">yapi finds two settings files</a></h2>
+<p>The error <code>Both settings.json and settings.toml are in &lt;folder&gt;. Keep one of them.</code> means that folder holds both forms of its settings file, and yapi won’t guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to <code>settings.toml</code> can write <code>settings.json</code> again, so switch with yapi closed. <a href="#write-settings-in-toml">Write settings in TOML</a> covers the format.</p>
 <h2 id="an-extensions-call-is-refused"><a class="header" href="#an-extensions-call-is-refused">An extension’s call is refused</a></h2>
 <p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant.</p>
 <p>Packages from <code>yapi install</code> have every grant. For an extension from a <a href="#grant-capabilities">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="#what-each-capability-allows">What each capability allows</a> lists each capability.</p>
 <h2 id="an-extension-misses-events"><a class="header" href="#an-extension-misses-events">An extension misses events</a></h2>
-<p>A warning in the extension output that starts with <code>add "&lt;channel&gt;" to events.send of</code> or <code>add "&lt;channel&gt;" to events.receive of</code> means routing kept a <code>pi.events</code> event from an extension that listens on its channel. Add the channel to the lists the warning names, in the <code>events</code> of those chest entries.</p>
+<p>A warning in the extension output that says an event <code>did not reach</code> an extension means routing kept a <code>pi.events</code> event from an extension that listens on its channel. It starts with what to change in the <code>events</code> of each chest entry it names, such as <code>extensions.listener in chest.toml</code>:</p>
+<ul>
+<li><code>add "&lt;channel&gt;" to events.receive of &lt;entry&gt;</code>, or <code>events.send</code>: add the channel to that list.</li>
+<li><code>set events of &lt;entry&gt; to { receive = ["&lt;channel&gt;"] }</code>: the entry is <code>"isolated"</code>, so replace <code>"isolated"</code> with that table.</li>
+</ul>
+<p>The warning names an extension that doesn’t come from chest by its file, and an entry of <code>~/.chest/chest.toml</code> as <code>extensions.&lt;name&gt; in ~/.chest/chest.toml</code>.</p>
 <h2 id="report-a-problem"><a class="header" href="#report-a-problem">Report a problem</a></h2>
 <p>Run <code>/bug</code>, or <code>/bug &lt;description&gt;</code>, to report a problem. It takes you through three steps:</p>
 <ol>

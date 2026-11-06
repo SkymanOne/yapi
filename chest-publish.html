@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,23 +214,25 @@ extensions = ["extensions/index.ts"]
 <p>Before you publish a native extension, run <code>chest check</code> in the package folder. It compares the capabilities each <code>.wasm</code> extension uses with the ones the package requests:</p>
 <pre><code class="language-sh">chest check
 </code></pre>
-<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports, where <code>wasi:filesystem</code> means <code>fs</code>. These are errors, and make chest exit with 1:</p>
+<p>It reads the <a href="native-extensions.html#declare-capabilities">capability features</a> the extension was built with, and the WebAssembly System Interface (WASI) interfaces it imports. An import of <code>wasi:filesystem</code>, for example, counts as using <code>fs</code>.</p>
+<p><code>chest check</code> reports an error and exits with 1 when it finds either of these:</p>
 <ul>
 <li>a capability the extension uses that the package doesn’t request</li>
 <li>an import of <code>wasi:sockets</code> or <code>wasi:http</code>, which yapi doesn’t support, because extensions reach the network through the SDK’s <code>fetch</code></li>
 </ul>
-<p><code>chest add</code> warns about such an import. These are warnings:</p>
+<p>It warns about these and still exits with 0:</p>
 <ul>
 <li>a capability the package requests that no extension uses</li>
 <li>a capability the build records that this version of chest doesn’t know, such as one a newer SDK adds, which chest doesn’t check</li>
 </ul>
+<p><code>chest add</code> also warns when an extension imports <code>wasi:sockets</code> or <code>wasi:http</code>.</p>
 <p>An extension built without yapi-extension-api has no record of its features, so chest checks only its imports. JavaScript and TypeScript extensions have nothing to read before they run, so yapi checks them only at runtime.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="chest-environments.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="project-only.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -244,7 +246,7 @@ extensions = ["extensions/index.ts"]
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="chest-environments.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="project-only.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +192,7 @@
 <li>the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code></li>
 <li>sessions, prompt templates, skills, themes, extensions and packages</li>
 </ul>
-<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version.</p>
+<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version. When yapi keeps its settings in <a href="configuration.html#write-settings-in-toml"><code>settings.toml</code></a>, the import skips Pi’s <code>settings.json</code> and says so, since one folder can’t hold both. Copy the settings you want into <code>settings.toml</code> by hand.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="sign-in-again-after-the-import"><a class="header" href="#sign-in-again-after-the-import">Sign in again after the import</a></h2>
 <p>The import doesn’t copy subscription sign-ins or MCP server sign-ins. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out.</p>

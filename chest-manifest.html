@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,7 +193,7 @@
 <li>chest uses <code>chest.toml</code> in the current folder, and only there.</li>
 <li><code>--manifest &lt;path&gt;</code> names another, and <code>CHEST_MANIFEST</code> sets the default for it.</li>
 <li>An environment’s manifest is a complete manifest of its own, such as <code>chest.dev.toml</code>. Its lock is the same name with <code>.lock</code> for <code>.toml</code>, here <code>chest.dev.lock</code>.</li>
-<li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>.</li>
+<li><code>-g</code> uses the global manifest, <code>~/.chest/chest.toml</code>. It can’t be combined with <code>--manifest</code>.</li>
 <li>chest refuses a <code>chest.toml</code> or <code>chest.lock</code> that’s a symbolic link, so a cloned project can’t point chest at a file outside it.</li>
 </ul>
 <p>Paths in a manifest are relative to the manifest’s folder. A project manifest keeps every folder inside the project. The global manifest may use <code>~</code> and absolute paths, and installs only inside your home folder.</p>
@@ -261,9 +261,10 @@ path = "reviewer.md"
 </code></pre>
 <p>These rules apply to every source:</p>
 <ul>
-<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>.</li>
+<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>. In <code>user@host:path</code>, the path is relative to the remote home, so an absolute path takes <code>ssh://</code>, as in <code>ssh://user@host/srv/repo</code>.</li>
 <li><code>path</code> inside a git or npm package stays inside it, without <code>..</code>. A path source may use <code>..</code> to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with <code>~</code>.</li>
 <li>With <code>path</code>, a skills or agents entry installs one item under the entry’s name. A subagent is a <code>.md</code> file, placed as <code>&lt;name&gt;.md</code>. Without <code>path</code>, it installs every skill or subagent the package provides, each under its own name.</li>
+<li>A path source installs one item when it’s a skill folder with a <code>SKILL.md</code> or a subagent file. A folder that isn’t one is a package, and the entry installs every skill or subagent it provides, each under its own name.</li>
 </ul>
 <h3 id="extension-keys"><a class="header" href="#extension-keys">Extension keys</a></h3>
 <blockquote>
@@ -303,7 +304,7 @@ skills = ["!legacy/**"]
 <blockquote>
 <p><strong>Any agent.</strong></p>
 </blockquote>
-<p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry.</p>
+<p>A patch installs an entry from a local path instead of its source. It takes <code>path</code> only, and the lock keeps what it recorded for the entry. Each patch must name an entry of <code>[skills]</code>, <code>[agents]</code> or <code>[extensions]</code>.</p>
 <pre><code class="language-toml">[patch]
 todo = { path = "../pi-todo" }
 </code></pre>

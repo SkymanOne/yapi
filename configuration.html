@@ -34,10 +34,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14a5a431.js";
+            window.path_to_searchindex_js = "searchindex-cf78e89d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ffe27126.js"></script>
+        <script src="toc-d65e4bdb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configure-yapi"><a class="header" href="#configure-yapi">Configure yapi</a></h1>
-<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>.</p>
+<p>yapi keeps global configuration in <code>~/.yapi/agent</code> and project configuration in a project’s <code>.yapi</code> folder. This page lists where each file lives, then covers chest manifests, project instructions, skills and prompt templates, themes, key bindings, and how yapi handles images, links and colors. Every file uses Pi’s format, described in Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/settings.md">settings documentation</a>. Settings can also be <a href="#write-settings-in-toml">written in TOML</a>, which only yapi reads.</p>
 <p>Set <code>YAPI_CODING_AGENT_DIR</code> to move the global folder. The table lists where yapi reads each kind of configuration:</p>
 <div class="table-wrapper">
 <table>
@@ -188,7 +188,7 @@
 <tr><th>What</th><th>Where</th></tr>
 </thead>
 <tbody>
-<tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code></td></tr>
+<tr><td>Settings</td><td><code>~/.yapi/agent/settings.json</code>, overridden by <code>.yapi/settings.json</code>, or <code>settings.toml</code> in either folder</td></tr>
 <tr><td>Project instructions</td><td><code>AGENTS.override.md</code>, <code>AGENTS.md</code> or <code>CLAUDE.md</code> in the project, its parent folders and <code>~/.yapi/agent</code></td></tr>
 <tr><td>System prompt</td><td><code>SYSTEM.md</code> replaces it and <code>APPEND_SYSTEM.md</code> extends it, in <code>.yapi/</code> or <code>~/.yapi/agent/</code>. <code>--append-system-prompt</code> extends it in place of <code>APPEND_SYSTEM.md</code>.</td></tr>
 <tr><td>Skills</td><td><code>~/.yapi/agent/skills</code>, <code>~/.agents/skills</code>, <code>.yapi/skills</code> and <code>.agents/skills</code></td></tr>
@@ -199,11 +199,75 @@
 <tr><td>Credentials</td><td><code>~/.yapi/agent/auth.json</code></td></tr>
 <tr><td>Model Context Protocol (MCP) servers</td><td><code>~/.yapi/agent/mcp.json</code> and <code>.yapi/mcp.json</code></td></tr>
 <tr><td>Project packages</td><td><code>chest.toml</code> and <code>chest.lock</code> in the project, and <code>~/.chest/chest.toml</code>. See <a href="#project-packages-from-chest">Project packages from chest</a>.</td></tr>
+<tr><td>Global items for project-only runs</td><td><code>projectOnly</code> in <code>~/.yapi/agent/settings.json</code>. See <a href="project-only.html">Run yapi with only the project’s packages</a>.</td></tr>
 <tr><td>Documentation for the model</td><td><code>~/.yapi/agent/docs</code>. See <a href="install.html#documentation-for-the-model">Documentation for the model</a>.</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>.</p>
+<p><code>/settings</code> edits common settings in place. Files in a project’s <code>.yapi</code> folder load only after you <a href="security.html#project-trust">trust the project</a>. <a href="project-only.html"><code>--project-only</code></a> runs yapi with the project’s packages and leaves out your global ones.</p>
+<h2 id="write-settings-in-toml"><a class="header" href="#write-settings-in-toml">Write settings in TOML</a></h2>
+<blockquote>
+<p><strong>yapi and chest only.</strong> Pi and other agents read only <code>settings.json</code>.</p>
+</blockquote>
+<p>yapi also reads its settings from <code>settings.toml</code>, in <code>~/.yapi/agent</code> or a project’s <code>.yapi</code> folder. It holds the same settings as <code>settings.json</code>, in the same structure, and TOML lets you add comments. Choose the format per folder: yapi reads and writes whichever file a folder has. Wherever these docs say <code>settings.json</code>, <code>settings.toml</code> works the same.</p>
+<p>When one folder holds both files, every yapi command that reads that folder stops with this error, and so does <code>chest import --settings</code>:</p>
+<pre><code class="language-text">Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
+</code></pre>
+<p>In a project, the check waits until you trust the project, because yapi doesn’t read its <code>.yapi</code> folder before then.</p>
+<h3 id="how-the-formats-map"><a class="header" href="#how-the-formats-map">How the formats map</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>JSON</th><th>TOML</th></tr>
+</thead>
+<tbody>
+<tr><td>object</td><td>table</td></tr>
+<tr><td>array</td><td>array</td></tr>
+<tr><td>string, boolean</td><td>string, boolean</td></tr>
+<tr><td>integer, float</td><td>integer, float</td></tr>
+<tr><td><code>null</code></td><td>none: leave the key out</td></tr>
+</tbody>
+</table>
+</div>
+<p>TOML has no <code>null</code>, so a setting yapi sets to <code>null</code> is removed from the file, and a <code>null</code> inside an array can’t be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can’t be written either.</p>
+<p>Here are the same settings in both formats. In <code>settings.json</code>:</p>
+<pre><code class="language-json">{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-5",
+  "compaction": { "enabled": true, "reserveTokens": 16384 },
+  "packages": [
+    "npm:@acme/pi-tools",
+    { "source": "git:github.com/acme/skills@v2", "skills": ["!legacy/**"] }
+  ],
+  "projectOnly": { "themes": ["*"] }
+}
+</code></pre>
+<p>In <code>settings.toml</code>:</p>
+<pre><code class="language-toml"># The model for new sessions.
+defaultProvider = "anthropic"
+defaultModel = "claude-sonnet-4-5"
+packages = [
+  "npm:@acme/pi-tools",
+  { source = "git:github.com/acme/skills@v2", skills = ["!legacy/**"] },
+]
+
+[compaction]
+enabled = true
+reserveTokens = 16384
+
+[projectOnly]
+themes = ["*"]
+</code></pre>
+<p>Keys outside a table, such as <code>packages</code>, go before the first <code>[table]</code> header, as TOML requires. When every <code>packages</code> entry is an object, the list can also be an array of tables. The example above can’t use one, because <code>npm:@acme/pi-tools</code> is a string:</p>
+<pre><code class="language-toml">[[packages]]
+source = "git:github.com/acme/skills@v2"
+skills = ["!legacy/**"]
+</code></pre>
+<h3 id="how-yapi-writes-the-file"><a class="header" href="#how-yapi-writes-the-file">How yapi writes the file</a></h3>
+<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as <code>packages</code>, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If <code>packages</code> is an array of tables, it stays one until an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>. yapi then writes it as a multi-line inline array. The comments above the first <code>[[packages]]</code> header go above <code>packages</code>, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a <code>[table]</code> at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.</p>
+<h3 id="switch-to-toml"><a class="header" href="#switch-to-toml">Switch to TOML</a></h3>
+<p>With yapi closed, write <code>settings.toml</code> with your settings, then delete <code>settings.json</code>. A yapi that’s still running keeps writing the file it loaded, which can bring <code>settings.json</code> back beside the new file.</p>
+<p><code>yapi import pi</code> copies Pi’s <code>settings.json</code>. When yapi’s folder already holds <code>settings.toml</code>, the import skips Pi’s settings and says so. Copy what you need into <code>settings.toml</code> by hand.</p>
 <h2 id="project-packages-from-chest"><a class="header" href="#project-packages-from-chest">Project packages from chest</a></h2>
 <p>yapi loads the <a href="chest-extensions.html#how-yapi-loads-a-manifest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>.</p>
 <p>For a <code>CHEST_MANIFEST</code> value that’s absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="chest-manifest.html#which-manifest-chest-uses">Which manifest chest uses</a> describes.</p>
