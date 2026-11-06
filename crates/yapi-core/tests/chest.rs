@@ -916,7 +916,7 @@ async fn npm_extension_locked() {
     let inputs = installed_inputs(&project, &root, &mut Vec::new());
     let settings = SettingsManager::load(&agent, &root, true);
     let resolved = resolve_resources(&root, &agent, &settings, &[], &inputs);
-    let policies = file_policies(&resolved, &inputs, &mut Vec::new());
+    let policies = file_policies(&resolved, &inputs, &root, &mut Vec::new());
     let policy = &policies.files[&store.join("node_modules/ext/index.js")];
     assert!(
         policy.grants.filesystem && !policy.grants.network,

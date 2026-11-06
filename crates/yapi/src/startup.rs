@@ -1301,8 +1301,12 @@ async fn start_extensions(
     }
     // chest's grants follow the files the resolver gave its packages.
     let mut problems = Vec::new();
-    let chest_policies =
-        yapi_core::chest::startup::file_policies(&resolved, &chest.installed, &mut problems);
+    let chest_policies = yapi_core::chest::startup::file_policies(
+        &resolved,
+        &chest.installed,
+        project_dir,
+        &mut problems,
+    );
     for (source, message) in problems {
         let _ = install_failed(&source, message);
     }

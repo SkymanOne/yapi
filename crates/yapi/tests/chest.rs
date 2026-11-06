@@ -152,8 +152,9 @@ impl Drop for Rpc {
 /// by another name. Only the files such an entry would load run with no
 /// grant when something else loads them, and a settings extension in its
 /// folder keeps its grants. Every file of an entry left out for its lock
-/// runs with no grant. Both load no module but themselves. A file two
-/// manifests give runs with what both allow.
+/// runs with no grant, with a warning when a loaded entry gives it too.
+/// Both load no module but themselves. A file two manifests give runs with
+/// what both allow.
 #[tokio::test(flavor = "multi_thread")]
 async fn chest_extensions_load() {
     let home = common::scratch("chest-load");
@@ -252,6 +253,7 @@ async fn chest_extensions_load() {
         "agent holds more than the extension",
         "late.js is also loaded from auto, but its chest entry does not load, so it runs with no capabilities",
         "agent/wide.js is also loaded from cli, but its chest entry does not load",
+        "vault/probe.js is in extensions.probe in chest.toml, but extensions.vault in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, or remove extensions.vault",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));

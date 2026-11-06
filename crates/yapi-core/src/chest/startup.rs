@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize as _;
+use yapi_types::rpc::SourceInfo;
 use yapi_types::settings::{DefaultProjectTrust, FilteredPackage};
 
 use super::fetch::placed_name;
@@ -189,20 +190,32 @@ impl FilePolicies {
 /// The policy of each extension file the resolver gave a `chest:` source in
 /// `resolved`, loaded or shadowed, from its package's entry in
 /// `installed`, with the entries `installed` left out. A file that several
-/// entries give gets what all of them allow. A chest file whose package has
-/// no entry runs with no grant and the isolated event policy, and adds a
-/// line to `problems` under its source.
+/// entries give gets what all of them allow, and when that is less than one
+/// of them allows, adds a line to `problems` that names the entries, as
+/// found for the project in `project_root`. So does a file that an entry
+/// left out holds too, which runs with no grant. A chest file whose package
+/// has no entry runs with no grant and the isolated event policy, and adds
+/// a line to `problems` under its source.
 pub fn file_policies(
     resolved: &ResolvedPaths,
     installed: &Installed,
+    project_root: &Path,
     problems: &mut Vec<(String, String)>,
 ) -> FilePolicies {
     let files = resolved.of(ResourceType::Extensions).iter();
     let files = files.map(|file| &file.info).chain(&resolved.shadowed);
     let mut found = FilePolicies {
         files: HashMap::new(),
-        closed: installed.closed.clone(),
+        closed: installed
+            .closed
+            .iter()
+            .map(|closed| closed.root.clone())
+            .collect(),
     };
+    // Each file as its first source names it, with the entries that give
+    // it, and whether one of them allows fewer grants, or fewer channels,
+    // than another.
+    let mut givers: Vec<(PathBuf, &SourceInfo, Vec<String>, [bool; 2])> = Vec::new();
     for info in files.filter(|info| info.source.starts_with("chest:")) {
         let key = (info.scope.clone(), info.source.clone());
         let file = Path::new(&info.path);
@@ -215,11 +228,88 @@ pub fn file_policies(
             problems.push((escaped(&info.source), escaped(&message)));
             Policy::closed(&file)
         });
+        let label = entry_label(&info.source, &info.scope, project_root);
+        let label = label.unwrap_or_else(|| info.source.clone());
         let policy = match found.files.get(&file) {
-            Some(other) => other.intersection(&policy),
-            None => policy,
+            Some(other) => {
+                if let Some((.., labels, [grants, events])) =
+                    givers.iter_mut().find(|giver| giver.0 == file)
+                {
+                    if !labels.contains(&label) {
+                        labels.push(label);
+                    }
+                    *grants |= other.grants != policy.grants;
+                    *events |= other.events != policy.events;
+                }
+                other.intersection(&policy)
+            }
+            None => {
+                givers.push((file.clone(), info, vec![label], [false; 2]));
+                policy
+            }
         };
         found.files.insert(file, policy);
+    }
+    // What a file that `count` entries give, with `policy`, gets less of
+    // than one of them allows, by whether that is grants and event channels.
+    let only = |narrowed: [bool; 2], policy: &Policy, count: usize| {
+        let all = if count == 2 { "both" } else { "all" };
+        match narrowed {
+            [false, false] => None,
+            [true, false] => Some(format!("grants {all} give: {}", policy.grants)),
+            [false, true] => Some(format!("event channels {all} give")),
+            [true, true] => Some(format!(
+                "event channels and the grants {all} give: {}",
+                policy.grants
+            )),
+        }
+    };
+    for (file, info, labels, narrowed) in givers {
+        let (path, source) = (&info.path, &info.source);
+        let Some(policy) = found.files.get(&file) else {
+            continue;
+        };
+        let closer = installed
+            .closed
+            .iter()
+            .find(|closed| file.starts_with(&closed.root));
+        if let Some(Closed {
+            entry: closer,
+            remove,
+            install,
+            ..
+        }) = closer
+        {
+            // Once installed, the entry left out gives the file too.
+            let fix = match install {
+                Some((command, once)) => {
+                    let [grants, events] = narrowed;
+                    let narrowed = [
+                        grants || policy.grants != once.grants,
+                        events || policy.events != once.events,
+                    ];
+                    let after = policy.intersection(once);
+                    let gives = only(narrowed, &after, labels.len() + 1);
+                    let gives = gives.map(|gives| format!(", which gives it only the {gives}"));
+                    format!("run `{command}`{}, or {remove}", gives.unwrap_or_default())
+                }
+                None => remove.clone(),
+            };
+            let message = format!(
+                "{path} is in {}, but {closer} holds it too and does not load, so it runs with no capabilities: {fix}",
+                labels.join(" and ")
+            );
+            problems.push((escaped(source), escaped(&message)));
+            continue;
+        }
+        let Some(narrowed) = only(narrowed, policy, labels.len()) else {
+            continue;
+        };
+        let message = format!(
+            "{path} is in {}, so it gets only the {narrowed}",
+            labels.join(" and ")
+        );
+        problems.push((escaped(source), escaped(&message)));
     }
     found
 }
@@ -234,15 +324,29 @@ pub struct Installed {
     pub skills: Vec<PackageInput>,
     /// The packages' policies.
     pub policies: Policies,
-    /// The canonical folders and files of extension entries left out
-    /// because their lock is stale or missing, and the extension files of
-    /// those whose folder holds too much, which run with no grant if
-    /// something else loads them.
-    pub closed: Vec<PathBuf>,
+    /// The folders and files of extension entries left out because their
+    /// lock is stale or missing, and the extension files of those whose
+    /// folder holds too much.
+    pub closed: Vec<Closed>,
     /// The [`package_identity`] of each loaded npm or git extension entry,
     /// such as `npm:@acme/todo`, with the entry's name, its manifest's path,
     /// and whether that is the user's global manifest.
     pub identities: Vec<(String, String, String, bool)>,
+}
+
+/// A canonical folder or file of an extension entry chest leaves out,
+/// which runs with no grant if something else loads it.
+#[derive(Clone, Debug)]
+pub struct Closed {
+    /// The folder or file.
+    pub root: PathBuf,
+    /// Its entry, as `extensions.<name> in <manifest>`.
+    pub entry: String,
+    /// How to remove the entry.
+    pub remove: String,
+    /// For an entry that `chest install` would load, that command and the
+    /// policy the entry would then give.
+    pub install: Option<(String, Policy)>,
 }
 
 impl Installed {
@@ -561,6 +665,7 @@ pub fn installed_inputs(
     for (name, entry) in &project.manifest.extensions {
         let patched = project.manifest.patch.contains_key(name);
         let roots = project.extension_roots(name);
+        let label = format!("extensions.{name} in {}", project.label());
         // Locked or not, it never loads. Only the files it would load run
         // closed, as other files there belong to other sources.
         if let Some((root, module_root)) = &roots
@@ -573,15 +678,32 @@ pub fn installed_inputs(
             let local = crate::packages::source::is_local(&format!("chest:{name}"));
             let files = package_resources(root, None, local).extensions;
             let files = files.iter().map(|file| Path::new(&file.info.path));
-            installed
-                .closed
-                .extend(files.filter_map(|file| file.canonicalize().ok()));
+            let remove = format!("remove extensions.{name}");
+            let closed = files.filter_map(|file| file.canonicalize().ok());
+            let closed = closed.map(|root| Closed {
+                root,
+                entry: label.clone(),
+                remove: remove.clone(),
+                install: None,
+            });
+            installed.closed.extend(closed);
             continue;
         }
+        let policy = |root: PathBuf| Policy {
+            grants: project.manifest.grants(entry),
+            events: entry.events.clone().unwrap_or_default(),
+            root: Some(root),
+        };
         if !patched && current(Section::Extensions, name, entry).is_none() {
             // Its files may still load through pi's discovery or settings.
             if let Some(root) = roots.and_then(|(_, root)| root.canonicalize().ok()) {
-                installed.closed.push(root);
+                let install = Some((project.install_command(), policy(root.clone())));
+                installed.closed.push(Closed {
+                    root,
+                    entry: label,
+                    remove: format!("remove extensions.{name}"),
+                    install,
+                });
             }
             continue;
         }
@@ -611,13 +733,8 @@ pub fn installed_inputs(
                 prompts: entry.prompts.clone(),
                 themes: entry.themes.clone(),
             });
-        let policy = Policy {
-            grants: project.manifest.grants(entry),
-            events: entry.events.clone().unwrap_or_default(),
-            root: Some(module_root),
-        };
         let key = (scope.to_owned(), source.clone());
-        installed.policies.insert(key, policy);
+        installed.policies.insert(key, policy(module_root));
         // A patched entry still installs its package, so its patch loads in
         // place of other copies.
         if let Some(identity) = package_identity(entry) {
@@ -799,7 +916,8 @@ mod tests {
     /// warning, while other sources' files get no policy at all. Warnings
     /// escape a file name's control characters. A file
     /// that two entries give loads modules from the narrower root, and one
-    /// in an entry chest left out from itself alone.
+    /// in an entry chest left out from itself alone, with a warning that
+    /// names that entry too.
     #[test]
     fn chest_files_fail_closed() {
         let file = |path: &str, source: &str, scope: &str| SourceInfo {
@@ -824,7 +942,12 @@ mod tests {
             ..ResolvedPaths::default()
         };
         let mut problems = Vec::new();
-        let policies = file_policies(&resolved, &Installed::default(), &mut problems);
+        let policies = file_policies(
+            &resolved,
+            &Installed::default(),
+            Path::new("/p"),
+            &mut problems,
+        );
         let (file_a, file_spoof) = (PathBuf::from("/p/a.js"), PathBuf::from(spoof));
         let files = HashMap::from([
             (file_a.clone(), Policy::closed(&file_a)),
@@ -849,31 +972,108 @@ mod tests {
             root: Some(root.into()),
             ..Policy::unrestricted()
         };
-        let key = |scope: &str| (scope.to_owned(), "chest:s".to_owned());
+        let key = |scope: &str, name: &str| (scope.to_owned(), format!("chest:{name}"));
+        let filesystem = Grants {
+            filesystem: true,
+            ..Grants::none()
+        };
+        let network = Grants {
+            network: true,
+            ..Grants::none()
+        };
+        let narrow = |grants, events| Policy {
+            grants,
+            events,
+            ..rooted("/p/sub")
+        };
         let installed = Installed {
             policies: HashMap::from([
-                (key("project"), rooted("/p")),
-                (key("user"), rooted("/p/sub")),
+                (key("project", "s"), rooted("/p")),
+                (key("user", "s"), narrow(filesystem, EventPolicy::shared())),
+                // `e` narrows only the event channels, and `g` the grants too.
+                (
+                    key("project", "e"),
+                    narrow(filesystem, EventPolicy::shared()),
+                ),
+                (
+                    key("user", "e"),
+                    narrow(filesystem, EventPolicy::isolated()),
+                ),
+                (key("project", "g"), rooted("/p")),
+                (
+                    key("user", "g"),
+                    narrow(filesystem, EventPolicy::isolated()),
+                ),
             ]),
-            closed: vec!["/q".into()],
+            // `chest install` would load `x` with its own grants.
+            closed: [("/q", None), ("/p/sub/c.js", Some(network))]
+                .map(|(root, grants)| Closed {
+                    root: root.into(),
+                    entry: "extensions.x in chest.toml".into(),
+                    remove: "remove extensions.x".into(),
+                    install: grants.map(|grants| {
+                        let policy = narrow(grants, EventPolicy::shared());
+                        ("chest install".to_owned(), policy)
+                    }),
+                })
+                .into(),
             ..Installed::default()
         };
         let resolved = ResolvedPaths {
             extensions: vec![
                 enabled(file("/p/sub/a.js", "chest:s", "project")),
                 enabled(file("/p/sub/b.js", "chest:s", "user")),
+                enabled(file("/p/sub/c.js", "chest:s", "project")),
+                enabled(file("/p/sub/e.js", "chest:e", "project")),
+                enabled(file("/p/sub/g.js", "chest:g", "project")),
             ],
             shadowed: vec![
                 file("/p/sub/a.js", "chest:s", "user"),
                 file("/p/sub/b.js", "chest:s", "project"),
+                file("/p/sub/c.js", "chest:s", "user"),
+                file("/p/sub/e.js", "chest:e", "user"),
+                file("/p/sub/g.js", "chest:g", "user"),
             ],
             ..ResolvedPaths::default()
         };
-        let policies = file_policies(&resolved, &installed, &mut problems);
+        problems.clear();
+        let policies = file_policies(&resolved, &installed, Path::new("/p"), &mut problems);
         let root = |path: &str| policies.of(Path::new(path)).root;
         for file in ["/p/sub/a.js", "/p/sub/b.js"] {
             assert_eq!(root(file), Some("/p/sub".into()), "{file}");
         }
+        // A file two entries give warns once, naming both, as it gets
+        // only what both allow, or nothing when an entry left out holds it,
+        // and then what installing that entry would leave it. The warning
+        // says whether that narrows grants, event channels or both.
+        let (project, user) = (
+            "extensions.s in chest.toml",
+            "extensions.s in ~/.chest/chest.toml",
+        );
+        let shared = |file: &str, first: &str, second: &str| {
+            let message = format!(
+                "{file} is in {first} and {second}, so it gets only the grants both give: fs"
+            );
+            ("chest:s".to_owned(), message)
+        };
+        let closed = format!(
+            "/p/sub/c.js is in {project} and {user}, but extensions.x in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, which gives it only the grants all give: none, or remove extensions.x"
+        );
+        let narrowed = |name: &str, what: &str| {
+            let message = format!(
+                "/p/sub/{name}.js is in extensions.{name} in chest.toml and extensions.{name} in ~/.chest/chest.toml, so it gets only the {what}"
+            );
+            (format!("chest:{name}"), message)
+        };
+        let both = [
+            shared("/p/sub/a.js", project, user),
+            shared("/p/sub/b.js", user, project),
+            ("chest:s".to_owned(), closed),
+            narrowed("e", "event channels both give"),
+            narrowed("g", "event channels and the grants both give: fs"),
+        ];
+        assert_eq!(problems, both);
         assert_eq!(root("/q/a.js"), Some("/q/a.js".into()));
+        assert_eq!(root("/p/sub/c.js"), Some("/p/sub/c.js".into()));
     }
 }

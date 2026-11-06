@@ -113,6 +113,10 @@ yapi leaves out the other copies and warns about each one at startup, with the c
 
 Between the project's settings and yours, Pi's rule applies, and the project's entry wins. A path package installed both ways names the same files, so they load once, with the chest entry's capabilities.
 
+An extension file that two chest entries give, such as one path in both manifests, loads once too. It gets only the capabilities and event channels that both entries grant, and yapi warns at startup with both entries and what that narrows: the capabilities, with those left, the event channels, or both. To give it what one entry grants, remove the other entry or grant the same in both.
+
+A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same `path` that isn't locked yet. yapi warns at startup with both entries. To give the file its capabilities back, remove the entry that doesn't load. `chest install` loads that entry too, so the file then gets only what both entries grant, as above. When that's less than one of them grants, the warning says what's left.
+
 ## Import packages from settings.json
 
 `chest import --settings` turns the packages of `.yapi/settings.json`, or the `settings.toml` that replaces it, into extension entries with `capabilities = ["all"]`, which is what `yapi install` gives them. It keeps their `skills`, `prompts` and `themes` filters. chest has no `extensions` filter and no `autoload: false`. chest leaves out a package that sets either, with a warning, and the package keeps loading from `settings.json`.
