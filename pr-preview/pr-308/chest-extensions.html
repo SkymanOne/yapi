@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6679adef.js";
+            window.path_to_searchindex_js = "searchindex-7cded6f3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -264,12 +264,12 @@ events = "isolated"
 <ul>
 <li><code>yapi remove -l &lt;source&gt;</code> for a copy in the project’s settings, with <code>--approve</code> while your trust in the project isn’t saved</li>
 <li><code>yapi remove &lt;source&gt;</code> for a copy in your global settings</li>
-<li><code>chest remove &lt;name&gt;</code> for an entry of the project’s manifest</li>
+<li><code>chest remove &lt;name&gt;</code> for an entry of the project’s manifest, or <code>chest --manifest &lt;file&gt; remove &lt;name&gt;</code> for one that <code>CHEST_MANIFEST</code> names</li>
 <li><code>chest -g remove &lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code></li>
 </ul>
 <p>Between the project’s settings and yours, Pi’s rule applies, and the project’s entry wins. A path package installed both ways names the same files, so they load once, with the chest entry’s capabilities.</p>
 <p>An extension file that two chest entries give, such as one path in both manifests, loads once too. It gets only the capabilities and event channels that both entries grant, and yapi warns at startup with both entries and what that narrows: the capabilities, with those left, the event channels, or both. To give it what one entry grants, remove the other entry or grant the same in both.</p>
-<p>A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same <code>path</code> that isn’t locked yet. yapi warns at startup with both entries. To give the file its capabilities back, run <code>chest install</code>, or remove the entry that doesn’t load.</p>
+<p>A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same <code>path</code> that isn’t locked yet. yapi warns at startup with both entries. To give the file its capabilities back, remove the entry that doesn’t load. <code>chest install</code> loads that entry too, so the file then gets only what both entries grant, as above. When that’s less than one of them grants, the warning says what’s left.</p>
 <h2 id="import-packages-from-settingsjson"><a class="header" href="#import-packages-from-settingsjson">Import packages from settings.json</a></h2>
 <p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code>, or the <code>settings.toml</code> that replaces it, into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them. It keeps their <code>skills</code>, <code>prompts</code> and <code>themes</code> filters. chest has no <code>extensions</code> filter and no <code>autoload: false</code>. chest leaves out a package that sets either, with a warning, and the package keeps loading from <code>settings.json</code>.</p>
 <p>Each entry is named after the last part of its source. Import skips a package the manifest already has, at any version, and a different package whose name the manifest already uses. To import that one, add it under another name with <code>chest add &lt;source&gt; --name &lt;name&gt;</code>.</p>

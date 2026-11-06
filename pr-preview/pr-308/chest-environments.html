@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6679adef.js";
+            window.path_to_searchindex_js = "searchindex-7cded6f3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -195,7 +195,7 @@
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
-<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
+<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>. Messages about a manifest name the commands for it, such as <code>chest --manifest chest.dev.toml install</code>.</p>
 <h2 id="how-yapi-reads-chest_manifest"><a class="header" href="#how-yapi-reads-chest_manifest">How yapi reads <code>CHEST_MANIFEST</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> Other agents read only the folders chest fills, so the variable means nothing to them.</p>
@@ -236,6 +236,7 @@ todo = { path = "../pi-todo" }
 </code></pre>
 <p>A path that points outside the project gets a notice on each install. chest refuses a path source or patch whose folder holds one of its install folders or the store, because chest would copy it into itself.</p>
 <p>chest also refuses an extension’s path source or patch whose folder is or holds the home folder, the agent folder, the filesystem’s root or the project, because the extension could load any file there.</p>
+<p><code>chest list</code> shows a patched entry as <code>patched</code>, as <code>edited</code> when someone changed a copy that chest installed from the patch, and as <code>missing</code> when that copy is gone. <code>chest verify</code> reports both. <code>chest install</code> puts a missing copy back from the patch, also with <code>--frozen</code>, which fails on an edited copy instead.</p>
 <p>yapi loads a patched entry without a lock entry, as <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> describes.</p>
 
                     </main>

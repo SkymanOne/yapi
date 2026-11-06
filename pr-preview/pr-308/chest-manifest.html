@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6679adef.js";
+            window.path_to_searchindex_js = "searchindex-7cded6f3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -261,7 +261,7 @@ path = "reviewer.md"
 </code></pre>
 <p>These rules apply to every source:</p>
 <ul>
-<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>.</li>
+<li>A <code>git</code> value is a repository that <code>yapi install</code> accepts after <code>git:</code>, without a revision: put that in <code>rev</code>. <code>rev</code> must not start with <code>-</code>. In <code>user@host:path</code>, the path is relative to the remote home, so an absolute path takes <code>ssh://</code>, as in <code>ssh://user@host/srv/repo</code>.</li>
 <li><code>path</code> inside a git or npm package stays inside it, without <code>..</code>. A path source may use <code>..</code> to reach a sibling checkout, and chest notes it on install. In a project manifest it may not be absolute or start with <code>~</code>.</li>
 <li>With <code>path</code>, a skills or agents entry installs one item under the entry’s name. A subagent is a <code>.md</code> file, placed as <code>&lt;name&gt;.md</code>. Without <code>path</code>, it installs every skill or subagent the package provides, each under its own name.</li>
 <li>A path source installs one item when it’s a skill folder with a <code>SKILL.md</code> or a subagent file. A folder that isn’t one is a package, and the entry installs every skill or subagent it provides, each under its own name.</li>
