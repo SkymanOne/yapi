@@ -11,7 +11,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Fixes
 
-- Various bug fixes ([#305](https://github.com/SkymanOne/yapi/pull/305), [#306](https://github.com/SkymanOne/yapi/pull/306)).
+- Various bug fixes ([#305](https://github.com/SkymanOne/yapi/pull/305), [#306](https://github.com/SkymanOne/yapi/pull/306), [#307](https://github.com/SkymanOne/yapi/pull/307)).
 
 ## [0.4.0] - 2026-11-04
 
