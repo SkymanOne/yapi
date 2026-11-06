@@ -24,7 +24,7 @@ yapi new shout
 shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.4.0
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.4.1
 ├── README.md
 ├── chest.toml           the capabilities the extension asks for
 ├── extensions/          where the built extension goes
@@ -35,7 +35,7 @@ shout/
 The package takes the folder's name, or the one `--name` gives. Names use lowercase ASCII letters, digits, `-` and `_`, and start with a letter. The same template works with [cargo-generate](https://github.com/cargo-generate/cargo-generate):
 
 ```sh
-cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.0 \
+cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.1 \
   crates/yapi/templates/extension
 ```
 
@@ -43,7 +43,7 @@ To start without the template, create a library crate with `crate-type = ["cdyli
 
 ```toml
 [dependencies]
-yapi-extension-api = "0.4.0"
+yapi-extension-api = "0.4.1"
 ```
 
 An extension registers its features in an init function and exports it with `extension!`. Tools, commands and event handlers are `async` closures. This `src/lib.rs` registers a `shout` tool and a `/hello` command:
@@ -100,7 +100,7 @@ The template starts with `session`, which its `hello` code needs:
 
 ```toml
 [dependencies]
-yapi-extension-api = { version = "0.4.0", features = ["session"] }
+yapi-extension-api = { version = "0.4.1", features = ["session"] }
 ```
 
 Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature doesn't exist.
@@ -413,7 +413,7 @@ The `widgets` feature adds yapi's ports of pi-tui's widgets, which match pi-tui'
 
 ```toml
 [dependencies]
-yapi-extension-api = { version = "0.4.0", features = ["widgets"] }
+yapi-extension-api = { version = "0.4.1", features = ["widgets"] }
 ```
 
 `widgets::tui` holds the widgets:

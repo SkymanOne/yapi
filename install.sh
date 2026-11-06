@@ -9,7 +9,7 @@
 # downloading the archive.
 #
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.4.0 --to /usr/local/bin
+#   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --version v0.4.1 --to /usr/local/bin
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --only chest
 #   curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh | sh -s -- --from-source
 #
