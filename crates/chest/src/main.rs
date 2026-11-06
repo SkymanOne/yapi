@@ -119,6 +119,12 @@ impl Target {
         name.to_string_lossy().into_owned()
     }
 
+    /// `chest` with the flag that selects the manifest, for the commands
+    /// messages name, such as `chest -g`.
+    pub fn command(&self) -> String {
+        yapi_core::chest::command(&self.path, self.scope)
+    }
+
     /// The manifest as messages name it: its file name in a project, and
     /// `~/.chest/chest.toml` for the global one.
     pub fn label(&self) -> String {
@@ -268,8 +274,9 @@ pub fn read(target: &Target) -> anyhow::Result<String> {
     yapi_core::chest::refuse_link(&target.path)?;
     if !target.path.exists() {
         bail!(
-            "{} does not exist: run `chest init` first",
-            target.path.display()
+            "{} does not exist: run `{} init` first",
+            target.path.display(),
+            target.command()
         );
     }
     std::fs::read_to_string(&target.path)

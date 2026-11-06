@@ -108,7 +108,7 @@ yapi leaves out the other copies and warns about each one at startup, with the c
 
 - `yapi remove -l <source>` for a copy in the project's settings, with `--approve` while your trust in the project isn't saved
 - `yapi remove <source>` for a copy in your global settings
-- `chest remove <name>` for an entry of the project's manifest
+- `chest remove <name>` for an entry of the project's manifest, or `chest --manifest <file> remove <name>` for one that `CHEST_MANIFEST` names
 - `chest -g remove <name>` for an entry of `~/.chest/chest.toml`
 
 Between the project's settings and yours, Pi's rule applies, and the project's entry wins. A path package installed both ways names the same files, so they load once, with the chest entry's capabilities.

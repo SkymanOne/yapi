@@ -245,8 +245,9 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
             Scope::Project => ".yapi/chest".into(),
             Scope::Global => "~/.chest/store".into(),
         });
-        let mut text = String::from(
-            "# Installed with `chest install`, pinned in the lock beside this file.\n\n[folders]\n",
+        let install = yapi_core::chest::install_command(&target.path, target.scope);
+        let mut text = format!(
+            "# Installed with `{install}`, pinned in the lock beside this file.\n\n[folders]\n"
         );
         if !skills.is_empty() {
             text.push_str(&format!("skills = {}\n", list(&skills)));

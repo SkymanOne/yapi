@@ -1032,6 +1032,16 @@ async fn npm_extension_locked() {
         }
         installed
     };
+    // The project's entries, as from a manifest with another name.
+    let dev = root.join("chest.dev.toml").display().to_string();
+    let in_dev = |mut installed: yapi_core::chest::startup::Installed| {
+        for (.., path, global) in &mut installed.identities {
+            if !*global {
+                path.clone_from(&dev);
+            }
+        }
+        installed
+    };
     // A patched entry loads its patch, with no lock.
     std::fs::create_dir_all(root.join("patches/gx")).unwrap();
     let patched = open(
@@ -1170,24 +1180,25 @@ async fn npm_extension_locked() {
                 "yapi remove -l --approve git:example.test/acme/mono",
             )],
         ),
-        // Of two entries of one manifest, the first loads.
+        // Of two entries of one manifest, the first loads. The warning
+        // names the command for that manifest.
         (
-            installs(&[
+            in_dev(installs(&[
                 ("x1", false, npm("x")),
                 ("x2", false, npm("x")),
                 ("y1", true, npm("y")),
                 ("y2", true, npm("y")),
-            ]),
+            ])),
             json!([]),
             json!([]),
             Value::Null,
             false,
             vec![
                 left(
-                    p,
-                    &format!("extensions.x2 in {p}"),
-                    &format!("extensions.x1 in {p}"),
-                    "chest remove x2",
+                    &dev,
+                    &format!("extensions.x2 in {dev}"),
+                    &format!("extensions.x1 in {dev}"),
+                    "chest --manifest chest.dev.toml remove x2",
                 ),
                 left(
                     g,

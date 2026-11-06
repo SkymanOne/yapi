@@ -291,9 +291,12 @@ pub fn file_policies(
                     let after = policy.intersection(once);
                     let gives = only(narrowed, &after, labels.len() + 1);
                     let gives = gives.map(|gives| format!(", which gives it only the {gives}"));
-                    format!("run `{command}`{}, or {remove}", gives.unwrap_or_default())
+                    format!(
+                        "run `{command}`{}, or `{remove}`",
+                        gives.unwrap_or_default()
+                    )
                 }
-                None => remove.clone(),
+                None => format!("run `{remove}`"),
             };
             let message = format!(
                 "{path} is in {}, but {closer} holds it too and does not load, so it runs with no capabilities: {fix}",
@@ -342,7 +345,7 @@ pub struct Closed {
     pub root: PathBuf,
     /// Its entry, as `extensions.<name> in <manifest>`.
     pub entry: String,
-    /// How to remove the entry.
+    /// The command that removes the entry.
     pub remove: String,
     /// For an entry that `chest install` would load, that command and the
     /// policy the entry would then give.
@@ -536,10 +539,14 @@ impl LeftOut {
         };
         let problems = self.0.iter().map(|(copy, kept)| {
             let remove = match copy {
-                Install::Chest { name, global, .. } => match global {
-                    true => format!("chest -g remove {name}"),
-                    false => format!("chest remove {name}"),
-                },
+                Install::Chest { name, path, global } => {
+                    let scope = if *global {
+                        Scope::Global
+                    } else {
+                        Scope::Project
+                    };
+                    format!("{} remove {name}", super::command(Path::new(path), scope))
+                }
                 Install::Settings { scope, source } => match scope {
                     Scope::Project => format!("{local} {source}"),
                     Scope::Global => format!("yapi remove {source}"),
@@ -678,7 +685,7 @@ pub fn installed_inputs(
             let local = crate::packages::source::is_local(&format!("chest:{name}"));
             let files = package_resources(root, None, local).extensions;
             let files = files.iter().map(|file| Path::new(&file.info.path));
-            let remove = format!("remove extensions.{name}");
+            let remove = format!("{} remove {name}", project.command());
             let closed = files.filter_map(|file| file.canonicalize().ok());
             let closed = closed.map(|root| Closed {
                 root,
@@ -701,7 +708,7 @@ pub fn installed_inputs(
                 installed.closed.push(Closed {
                     root,
                     entry: label,
-                    remove: format!("remove extensions.{name}"),
+                    remove: format!("{} remove {name}", project.command()),
                     install,
                 });
             }
@@ -1010,7 +1017,7 @@ mod tests {
                 .map(|(root, grants)| Closed {
                     root: root.into(),
                     entry: "extensions.x in chest.toml".into(),
-                    remove: "remove extensions.x".into(),
+                    remove: "chest remove x".into(),
                     install: grants.map(|grants| {
                         let policy = narrow(grants, EventPolicy::shared());
                         ("chest install".to_owned(), policy)
@@ -1057,7 +1064,7 @@ mod tests {
             ("chest:s".to_owned(), message)
         };
         let closed = format!(
-            "/p/sub/c.js is in {project} and {user}, but extensions.x in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, which gives it only the grants all give: none, or remove extensions.x"
+            "/p/sub/c.js is in {project} and {user}, but extensions.x in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, which gives it only the grants all give: none, or `chest remove x`"
         );
         let narrowed = |name: &str, what: &str| {
             let message = format!(

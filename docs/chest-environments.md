@@ -21,7 +21,7 @@ export CHEST_MANIFEST=chest.dev.toml
 chest install
 ```
 
-The manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`.
+The manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`. Messages about a manifest name the commands for it, such as `chest --manifest chest.dev.toml install`.
 
 ## How yapi reads `CHEST_MANIFEST`
 

@@ -198,6 +198,9 @@ fn init_detects_agents() {
         &[("CHEST_MANIFEST", "chest.dev.toml")],
     );
     assert!(dev.status.success(), "{}", text(&dev));
+    // Its header names the command for that manifest.
+    let install = "`chest --manifest chest.dev.toml install`";
+    let expected = expected.replace("`chest install`", install);
     assert_eq!(read(&scratch.project.join("chest.dev.toml")), expected);
     // One outside the folder is an error, as yapi loads no manifest for it.
     let outside = scratch.dir.join("chest.out.toml");
@@ -624,6 +627,11 @@ fn add_rejects_misuse() {
             2,
             "the argument '--global' cannot be used with '--manifest <PATH>'".into(),
         ),
+        (
+            vec!["--manifest", "chest.dev.toml", "list"],
+            1,
+            "chest.dev.toml does not exist: run `chest --manifest chest.dev.toml init` first".into(),
+        ),
         // Errors name what is wrong as the person wrote it.
         (vec!["add", "./nope"], 1, "./nope does not exist".into()),
         (
@@ -912,6 +920,10 @@ fn ci_implies_frozen() {
 fn global_scope_home() {
     let scratch = scratch("global");
     let remote = skill_remote(&scratch);
+    // Messages name the commands that work on the global manifest.
+    let output = chest(&scratch, &["-g", "list"], &[]);
+    let missing = ".chest/chest.toml does not exist: run `chest -g init` first";
+    assert!(text(&output).contains(missing), "{}", text(&output));
     // With no agent found, subagents go to yapi's agent folder, wherever
     // `YAPI_CODING_AGENT_DIR` puts it.
     let moved = scratch.home.join("moved").display().to_string();
@@ -942,6 +954,8 @@ fn global_scope_home() {
     ok(&scratch, &["-g", "init", "--yes"]);
     let manifest = read(&scratch.home.join(".chest/chest.toml"));
     assert!(manifest.contains("skills = [\"~/.claude/skills\"]\nagents = [\"~/.claude/agents\"]\nextensions = \"~/.chest/store\"\n"), "{manifest}");
+    let header = "# Installed with `chest -g install`, pinned in the lock beside this file.";
+    assert!(manifest.starts_with(header), "{manifest}");
     ok(
         &scratch,
         &[
@@ -956,13 +970,28 @@ fn global_scope_home() {
         read(&scratch.home.join(".claude/skills/pdf/SKILL.md")),
         "# pdf\n"
     );
-    assert!(scratch.home.join(".chest/chest.lock").exists());
     assert!(scratch.home.join(".chest/state/global.toml").exists());
+    // A lock whose hash no longer matches what it pins says how to take it.
+    let lock_path = scratch.home.join(".chest/chest.lock");
+    let lock = read(&lock_path);
+    write(&lock_path, &lock.replace("hash = \"", "hash = \"0"));
+    std::fs::remove_dir_all(scratch.home.join(".claude/skills/pdf")).unwrap();
+    let output = chest(&scratch, &["-g", "install"], &[]);
+    let take = "what was fetched does not match the lock: run `chest -g update` to take it";
+    assert!(text(&output).contains(take), "{}", text(&output));
+    write(&lock_path, &lock);
+    ok(&scratch, &["-g", "install"]);
     // Messages name the global manifest by its path.
     let ext = scratch.home.join("gext");
     write(&ext.join("index.ts"), "export default () => {};\n");
+    write(
+        &ext.join("chest.toml"),
+        "[skills]\ninner = { path = \"inner\" }\n",
+    );
     let ext = ext.display().to_string();
-    ok(&scratch, &["-g", "add", &ext, "--grant", "fs", "--yes"]);
+    let output = ok(&scratch, &["-g", "add", &ext, "--grant", "fs", "--yes"]);
+    let nested = "Add the ones you want with `chest -g add`.";
+    assert!(text(&output).contains(nested), "{}", text(&output));
     let output = chest(&scratch, &["-g", "add", &ext, "--grant", "env"], &[]);
     assert_eq!(output.status.code(), Some(2), "{}", text(&output));
     let refused = "edit its `capabilities` in ~/.chest/chest.toml";

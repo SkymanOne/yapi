@@ -253,7 +253,7 @@ async fn chest_extensions_load() {
         "agent holds more than the extension",
         "late.js is also loaded from auto, but its chest entry does not load, so it runs with no capabilities",
         "agent/wide.js is also loaded from cli, but its chest entry does not load",
-        "vault/probe.js is in extensions.probe in chest.toml, but extensions.vault in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, or remove extensions.vault",
+        "vault/probe.js is in extensions.probe in chest.toml, but extensions.vault in chest.toml holds it too and does not load, so it runs with no capabilities: run `chest install`, or `chest remove vault`",
     ];
     let linked = "extensions/linked/index.js is also loaded from auto; chest's grants apply";
     warnings.extend(cfg!(unix).then_some(linked));

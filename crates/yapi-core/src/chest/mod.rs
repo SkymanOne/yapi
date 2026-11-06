@@ -296,15 +296,22 @@ pub fn manifest_label(path: &Path, scope: Scope, home: &Path) -> String {
     }
 }
 
+/// `chest` with the flag that selects manifest `path` of `scope`, for the
+/// commands messages name: `chest -g`, `chest`, or `chest --manifest` with
+/// the manifest's file name, for a run in its folder.
+pub fn command(path: &Path, scope: Scope) -> String {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    match (scope, &*name) {
+        (Scope::Global, _) => "chest -g".to_owned(),
+        (Scope::Project, "chest.toml") => "chest".to_owned(),
+        (Scope::Project, name) => format!("chest --manifest {name}"),
+    }
+}
+
 /// The command that installs the entries of manifest `path` of `scope`, for
 /// messages.
 pub fn install_command(path: &Path, scope: Scope) -> String {
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    match (scope, &*name) {
-        (Scope::Global, _) => "chest -g install".to_owned(),
-        (Scope::Project, "chest.toml") => "chest install".to_owned(),
-        (Scope::Project, name) => format!("chest --manifest {name} install"),
-    }
+    format!("{} install", command(path, scope))
 }
 
 impl Project {
@@ -469,6 +476,12 @@ impl Project {
     /// How messages name the manifest, as [`manifest_label`] does.
     fn label(&self) -> String {
         manifest_label(&self.path, self.scope, &self.home)
+    }
+
+    /// `chest` with the flag that selects the manifest, as [`command`]
+    /// says.
+    fn command(&self) -> String {
+        command(&self.path, self.scope)
     }
 
     /// The command that installs the manifest's entries, for messages.
@@ -1180,9 +1193,10 @@ impl Project {
             if let Content::Store { staging, .. } = &content {
                 let _ = std::fs::remove_dir_all(staging);
             }
-            return Err(invalid(
-                "what was fetched does not match the lock: run `chest update` to take it",
-            ));
+            return Err(invalid(format!(
+                "what was fetched does not match the lock: run `{} update` to take it",
+                self.command()
+            )));
         }
         Ok(staged(
             Some(locked.clone()),

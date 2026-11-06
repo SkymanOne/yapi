@@ -437,8 +437,8 @@ fn events_text(declared: bool) -> String {
 }
 
 /// Warns about entries the package's own manifest lists, which chest does
-/// not install for it.
-fn nested(root: &Path, name: &str) {
+/// not install for it, with the command that adds them to `target`.
+fn nested(target: &Target, root: &Path, name: &str) {
     let Ok(text) = std::fs::read_to_string(root.join("chest.toml")) else {
         return;
     };
@@ -451,8 +451,9 @@ fn nested(root: &Path, name: &str) {
         .collect();
     if !listed.is_empty() {
         say(&format!(
-            "warning: {name} lists entries of its own, which chest does not install: {}. Add the ones you want with `chest add`.",
-            listed.join(", ")
+            "warning: {name} lists entries of its own, which chest does not install: {}. Add the ones you want with `{} add`.",
+            listed.join(", "),
+            target.command()
         ));
     }
 }
@@ -568,7 +569,7 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         }
         let meta = package_meta(&fetched.root)?;
         show(&meta);
-        nested(&fetched.root, &name);
+        nested(target, &fetched.root, &name);
         if section == Section::Extensions {
             let inspected = inspect(&item(&fetched.root, &entry));
             if inspected.components.is_empty() && inspected.scripts.is_empty() {
