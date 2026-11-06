@@ -935,9 +935,7 @@ async fn npm_extension_locked() {
     assert!(path.ends_with("chest.toml"), "{path}");
     assert_eq!(
         message,
-        &format!(
-            "npm:ext@^1 in the global settings is left out, because extensions.ext in {path} installs the same package: remove it with `yapi remove npm:ext@^1`"
-        )
+        "npm:ext@^1 in the global settings is left out, because extensions.ext in chest.toml installs the same package: remove it with `yapi remove npm:ext@^1`"
     );
     // A project-only run leaves the user's copy out unless it keeps it, so
     // there is nothing to warn of.
@@ -1052,7 +1050,7 @@ async fn npm_extension_locked() {
     let all = json!({"extensions": ["*"]});
     let (in_g, in_p) = (
         format!("extensions.gext in {g}"),
-        format!("extensions.pext in {p}"),
+        "extensions.pext in chest.toml".to_owned(),
     );
     let rows = [
         // A kind list keeps a global copy's files, so it counts, after
@@ -1131,13 +1129,13 @@ async fn npm_extension_locked() {
                 left(
                     g,
                     &format!("extensions.mono in {g}"),
-                    &format!("extensions.ma in {p}"),
+                    "extensions.ma in chest.toml",
                     "chest -g remove mono",
                 ),
                 left(
                     p,
                     "git:example.test/acme/mono in the global settings",
-                    &format!("extensions.ma in {p}"),
+                    "extensions.ma in chest.toml",
                     "yapi remove git:example.test/acme/mono",
                 ),
             ],
@@ -1159,8 +1157,8 @@ async fn npm_extension_locked() {
                 .map(|name| {
                     left(
                         p,
-                        &format!("extensions.{name} in {p}"),
-                        &format!("extensions.ma in {p}"),
+                        &format!("extensions.{name} in chest.toml"),
+                        "extensions.ma in chest.toml",
                         &format!("chest remove {name}"),
                     )
                 })
@@ -1176,7 +1174,7 @@ async fn npm_extension_locked() {
             vec![left(
                 p,
                 "git:example.test/acme/mono in the project's settings",
-                &format!("extensions.gx in {p}"),
+                "extensions.gx in chest.toml",
                 "yapi remove -l --approve git:example.test/acme/mono",
             )],
         ),
@@ -1196,8 +1194,8 @@ async fn npm_extension_locked() {
             vec![
                 left(
                     &dev,
-                    &format!("extensions.x2 in {dev}"),
-                    &format!("extensions.x1 in {dev}"),
+                    "extensions.x2 in chest.dev.toml",
+                    "extensions.x1 in chest.dev.toml",
                     "chest --manifest chest.dev.toml remove x2",
                 ),
                 left(

@@ -459,9 +459,10 @@ impl Project {
         let path = self.lock_path();
         refuse_link(&path)?;
         match std::fs::read_to_string(&path) {
-            Ok(text) => Lock::parse(&text)
-                .map(Some)
-                .map_err(|err| invalid(format!("{}: {err}", path.display()))),
+            Ok(text) => Lock::parse(&text).map(Some).map_err(|err| {
+                let label = manifest_label(&path, self.scope, &self.home);
+                invalid(format!("{label}: {err}"))
+            }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(err) => Err(io(&path)(err)),
         }

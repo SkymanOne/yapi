@@ -526,8 +526,20 @@ impl LeftOut {
     /// With `approve`, the command for a project's settings trusts the
     /// project for that command.
     pub fn problems(&self, approve: bool) -> Vec<(String, String)> {
+        let scope = |global: bool| {
+            if global {
+                Scope::Global
+            } else {
+                Scope::Project
+            }
+        };
+        let home = home_dir();
+        let home = home.canonicalize().unwrap_or(home);
         let place = |copy: &Install| match copy {
-            Install::Chest { name, path, .. } => format!("extensions.{name} in {path}"),
+            Install::Chest { name, path, global } => {
+                let label = super::manifest_label(Path::new(path), scope(*global), &home);
+                format!("extensions.{name} in {label}")
+            }
             Install::Settings { scope, source } => match scope {
                 Scope::Project => format!("{source} in the project's settings"),
                 Scope::Global => format!("{source} in the global settings"),
@@ -540,12 +552,8 @@ impl LeftOut {
         let problems = self.0.iter().map(|(copy, kept)| {
             let remove = match copy {
                 Install::Chest { name, path, global } => {
-                    let scope = if *global {
-                        Scope::Global
-                    } else {
-                        Scope::Project
-                    };
-                    format!("{} remove {name}", super::command(Path::new(path), scope))
+                    let command = super::command(Path::new(path), scope(*global));
+                    format!("{command} remove {name}")
                 }
                 Install::Settings { scope, source } => match scope {
                     Scope::Project => format!("{local} {source}"),

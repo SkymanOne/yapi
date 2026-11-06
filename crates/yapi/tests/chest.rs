@@ -363,6 +363,8 @@ async fn stale_lock_warns() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     let escaped = stderr.contains("invalid version `\\u{1b}[2J`");
     assert!(escaped && !stderr.contains('\x1b'), "{stderr:?}");
+    // The lock is named as other messages name the manifest.
+    assert!(stderr.contains("Warning: chest.lock: "), "{stderr}");
 
     // A stale global manifest is named by its path and its own command.
     std::fs::remove_file(home.join("chest.toml")).unwrap();
@@ -378,6 +380,13 @@ async fn stale_lock_warns() {
         let stderr = String::from_utf8(output.stderr).unwrap();
         assert!(stderr.contains(&format!("Warning: {named}")), "{stderr}");
     }
+    std::fs::write(home.join(".chest/chest.lock"), lock).unwrap();
+    let output = common::yapi(&home).arg("--help").output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("Warning: ~/.chest/chest.lock: "),
+        "{stderr}"
+    );
 }
 
 /// A project whose manifest only describes it as a package needs no trust,
