@@ -290,15 +290,20 @@ async fn untrusted_chest_ignored() {
 /// An entry whose lock is stale is left out with a warning that names
 /// `chest install`, and the rest of the run goes on. The interactive
 /// header shows it, also when `quietStartup` hides the rest, and so does
-/// `/reload`, each under the manifest's path, which it names once. What a
-/// lock says reaches the terminal escaped.
+/// `/reload`, each under the manifest's path, which it names once, also
+/// above a second warning. What a lock says reaches the terminal escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_lock_warns() {
     let home = common::scratch("chest-stale");
-    let manifest = "[extensions]\nopen = { path = \"open.js\" }\n";
+    let manifest = "[extensions]\nopen = { path = \"open.js\" }\ngone = { path = \"gone.js\" }\n";
     let open = reader("open", &home.join("missing.txt"));
-    let files = [("open.js", open.as_str()), ("moved.js", open.as_str())];
+    let files = [
+        ("open.js", open.as_str()),
+        ("moved.js", open.as_str()),
+        ("gone.js", open.as_str()),
+    ];
     install(&home, &files, "chest.toml", manifest).await;
+    std::fs::remove_file(home.join("gone.js")).unwrap();
     std::fs::write(
         home.join("chest.toml"),
         manifest.replace("open.js", "moved.js"),
@@ -342,7 +347,13 @@ async fn stale_lock_warns() {
             row.trim_start()
                 .starts_with("extensions.open is not locked")
         });
+        let headings = rows
+            .iter()
+            .filter(|row| row.trim().ends_with("/chest.toml"));
+        let gone = rows.iter().any(|row| row.contains("extensions.gone:"));
         matches!((issues, stale), (Some(issues), Some(stale)) if issues < stale)
+            && gone
+            && headings.count() == 1
     };
     let shown = pty.wait_for(Duration::from_secs(20), header);
     assert!(shown.is_some(), "{:#?}", pty.rows());
@@ -369,7 +380,10 @@ async fn stale_lock_warns() {
     // A stale global manifest is named by its path and its own command.
     std::fs::remove_file(home.join("chest.toml")).unwrap();
     // Its paths start from `.chest`.
-    let files = [(".chest/open.js", open.as_str())];
+    let files = [
+        (".chest/open.js", open.as_str()),
+        (".chest/gone.js", open.as_str()),
+    ];
     install(&home, &files, ".chest/chest.toml", manifest).await;
     let global = manifest.replace("open.js", "moved.js");
     std::fs::write(home.join(".chest/chest.toml"), global).unwrap();

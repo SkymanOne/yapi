@@ -543,8 +543,8 @@ fn path_with_source(source: &SourceInfo, home: Option<&Path>) -> String {
 
 /// pi's `[Extension issues]` section: the errors of extensions that failed
 /// to load and the warnings about extensions that were not loaded, under
-/// their paths, then each issue under the extension it concerns. Empty
-/// without any.
+/// their paths, which consecutive ones about one path share, then each
+/// issue under the extension it concerns. Empty without any.
 pub fn extension_issues(
     theme: &Theme,
     errors: &[(String, String)],
@@ -559,22 +559,30 @@ pub fn extension_issues(
     let warning = theme.fg("warning");
     let error = theme.fg("error");
     let mut content = vec![lines::styled("[Extension issues]", warning)];
-    for (path, message) in errors {
-        content.push(lines::styled(
-            format!("  {}", display_path(path, home)),
-            error,
-        ));
+    // pi names a path once among its errors and once among its warnings,
+    // while chest warns about one manifest several times.
+    let new_path =
+        |list: &[(String, String)], index: usize| index == 0 || list[index - 1].0 != list[index].0;
+    for (index, (path, message)) in errors.iter().enumerate() {
+        if new_path(errors, index) {
+            content.push(lines::styled(
+                format!("  {}", display_path(path, home)),
+                error,
+            ));
+        }
         // Only the first line of a message is indented, as in pi's text.
         for (index, line) in message.split('\n').enumerate() {
             let indent = if index == 0 { "    " } else { "" };
             content.push(lines::styled(format!("{indent}{line}"), error));
         }
     }
-    for (path, message) in warnings {
-        content.push(lines::styled(
-            format!("  {}", display_path(path, home)),
-            warning,
-        ));
+    for (index, (path, message)) in warnings.iter().enumerate() {
+        if new_path(warnings, index) {
+            content.push(lines::styled(
+                format!("  {}", display_path(path, home)),
+                warning,
+            ));
+        }
         content.push(lines::styled(format!("    {message}"), warning));
     }
     for (source, message) in issues {
