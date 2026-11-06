@@ -210,7 +210,9 @@ impl Manifest {
     /// user's global manifest may name any folder here, but installs only
     /// under the home folder.
     pub fn parse(text: &str, scope: Scope) -> Result<Manifest, ChestError> {
-        let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
+        let document: DocumentMut = text
+            .parse()
+            .map_err(|err: toml_edit::TomlError| toml_error(text, err.message(), err.span()))?;
         Manifest::from_document(&document, scope)
     }
 
@@ -523,6 +525,28 @@ pub fn valid_name(name: &str) -> bool {
         && chars.all(|c| lower_or_digit(c) || matches!(c, '.' | '_' | '-'))
 }
 
+/// TOML error `message` at `span` of `text`, on one line with the line and
+/// column it starts at, so it reads as one warning wherever it shows.
+pub(crate) fn toml_error(
+    text: &str,
+    message: &str,
+    span: Option<std::ops::Range<usize>>,
+) -> ChestError {
+    let before = span.and_then(|span| text.get(..span.start));
+    let at = before.map_or_else(String::new, |before| {
+        let line = before.matches('\n').count() + 1;
+        let column = before
+            .rsplit('\n')
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .count()
+            + 1;
+        format!(" at line {line}, column {column}")
+    });
+    invalid(format!("TOML parse error{at}: {message}"))
+}
+
 /// `item` read as `T`, every field of which is optional. Errors start with
 /// `context` and, unless the message names it, the key at fault.
 fn value<T: DeserializeOwned>(context: &str, item: &Item) -> Result<T, ChestError> {
@@ -564,7 +588,9 @@ impl ManifestDocument {
     /// The manifest in `text`, ready to edit, refused as [`Manifest::parse`]
     /// refuses it for `scope`.
     pub fn parse(text: &str, scope: Scope) -> Result<ManifestDocument, ChestError> {
-        let document: DocumentMut = text.parse().map_err(|err| invalid(format!("{err}")))?;
+        let document: DocumentMut = text
+            .parse()
+            .map_err(|err: toml_edit::TomlError| toml_error(text, err.message(), err.span()))?;
         let manifest = Manifest::from_document(&document, scope)?;
         Ok(ManifestDocument {
             document,
@@ -937,6 +963,11 @@ extensions = ["extensions/index.ts"]
         assert_eq!(package.agents, some(&["agents/*.md"]));
 
         let rejected = [
+            // A syntax error reads on one line, with where it starts.
+            (
+                "[skills]\nx = { path = \"x }",
+                "TOML parse error at line 2, column 18: unclosed inline table, expected `}`",
+            ),
             (
                 "[skills]\nPdf = { path = \"x\" }",
                 "skills.Pdf: names use lowercase letters, digits, `.`, `_` and `-`, and start with a letter or digit",

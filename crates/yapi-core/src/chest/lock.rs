@@ -105,7 +105,8 @@ impl Lock {
     /// package paths that replay would refuse, so that no name or path from
     /// the lock leaves the folder it is joined to.
     pub fn parse(text: &str) -> Result<Lock, ChestError> {
-        let lock: Lock = toml_edit::de::from_str(text).map_err(|err| invalid(format!("{err}")))?;
+        let lock: Lock = toml_edit::de::from_str(text)
+            .map_err(|err| super::manifest::toml_error(text, err.message(), err.span()))?;
         if lock.version != 1 {
             return Err(invalid(format!("unsupported version {}", lock.version)));
         }
@@ -386,6 +387,11 @@ integrity = "sha512-AAAA"
             (
                 "[[skill]]\nname = \"ok\"\nnpm = \"x\"\nversion = \"^1\"\n",
                 "skill `ok`: invalid version `^1`".into(),
+            ),
+            // A merge conflict's marker reads on one line, with where it is.
+            (
+                "<<<<<<< ours\n",
+                "TOML parse error at line 2, column 9: key with no value, expected `=`".into(),
             ),
         ] {
             let error = Lock::parse(&format!("version = 1\n{text}")).unwrap_err();
