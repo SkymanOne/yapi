@@ -286,8 +286,10 @@ async fn untrusted_chest_ignored() {
 }
 
 /// An entry whose lock is stale is left out with a warning that names
-/// `chest install`, and the rest of the run goes on. What a lock says
-/// reaches the terminal escaped.
+/// `chest install`, and the rest of the run goes on. The interactive
+/// header shows it, also when `quietStartup` hides the rest, and so does
+/// `/reload`, each under the manifest's path, which it names once. What a
+/// lock says reaches the terminal escaped.
 #[tokio::test(flavor = "multi_thread")]
 async fn stale_lock_warns() {
     let home = common::scratch("chest-stale");
@@ -313,6 +315,42 @@ async fn stale_lock_warns() {
         "{stderr}"
     );
     assert!(!commands(&home, &["--approve"], &[]).contains_key("open"));
+    std::fs::create_dir_all(home.join("agent")).unwrap();
+    std::fs::write(home.join("agent/settings.json"), r#"{"quietStartup":true}"#).unwrap();
+    let env = [
+        ("HOME", home.clone().into_os_string()),
+        ("YAPI_CODING_AGENT_DIR", home.join("agent").into_os_string()),
+        ("PI_OFFLINE", "1".into()),
+        ("ANTHROPIC_API_KEY", "mock".into()),
+    ];
+    let args = [
+        "--approve",
+        "--no-session",
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+    ];
+    let yapi = Path::new(env!("CARGO_BIN_EXE_yapi"));
+    let args = args.map(str::to_owned);
+    let mut pty = yapi_mock::pty::Pty::spawn(yapi, &args, &home, &env, (100, 30), true).unwrap();
+    let header = |rows: &[String]| {
+        let issues = rows
+            .iter()
+            .position(|row| row.contains("[Extension issues]"));
+        let stale = rows.iter().position(|row| {
+            row.trim_start()
+                .starts_with("extensions.open is not locked")
+        });
+        matches!((issues, stale), (Some(issues), Some(stale)) if issues < stale)
+    };
+    let shown = pty.wait_for(Duration::from_secs(20), header);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.write("/reload\r").unwrap();
+    let reloaded = |rows: &[String]| {
+        rows.iter().any(|row| row.contains("Reloaded keybindings")) && header(rows)
+    };
+    let shown = pty.wait_for(Duration::from_secs(20), reloaded);
+    assert!(shown.is_some(), "{:#?}", pty.rows());
+    pty.finish().unwrap();
     let lock =
         "version = 1\n\n[[extension]]\nname = \"x\"\nnpm = \"x\"\nversion = \"\\u001b[2J\"\n";
     std::fs::write(home.join("chest.lock"), lock).unwrap();
