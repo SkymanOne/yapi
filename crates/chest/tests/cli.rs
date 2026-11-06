@@ -958,6 +958,15 @@ fn global_scope_home() {
     );
     assert!(scratch.home.join(".chest/chest.lock").exists());
     assert!(scratch.home.join(".chest/state/global.toml").exists());
+    // Messages name the global manifest by its path.
+    let ext = scratch.home.join("gext");
+    write(&ext.join("index.ts"), "export default () => {};\n");
+    let ext = ext.display().to_string();
+    ok(&scratch, &["-g", "add", &ext, "--grant", "fs", "--yes"]);
+    let output = chest(&scratch, &["-g", "add", &ext, "--grant", "env"], &[]);
+    assert_eq!(output.status.code(), Some(2), "{}", text(&output));
+    let refused = "edit its `capabilities` in ~/.chest/chest.toml";
+    assert!(text(&output).contains(refused), "{}", text(&output));
     // `-g` ignores CHEST_MANIFEST, which names a project's manifest.
     let dev = [("CHEST_MANIFEST", "chest.dev.toml")];
     let listed = text(&chest(&scratch, &["-g", "list"], &dev));

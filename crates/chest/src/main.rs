@@ -113,10 +113,17 @@ impl Target {
             .map_or_else(PathBuf::new, Path::to_path_buf)
     }
 
-    /// The manifest's file name, as messages name it.
+    /// The manifest's file name.
     pub fn name(&self) -> String {
         let name = self.path.file_name().unwrap_or_default();
         name.to_string_lossy().into_owned()
+    }
+
+    /// The manifest as messages name it: its file name in a project, and
+    /// `~/.chest/chest.toml` for the global one.
+    pub fn label(&self) -> String {
+        let home = yapi_core::tools::path::home_dir();
+        yapi_core::chest::manifest_label(&self.path, self.scope, &home)
     }
 }
 

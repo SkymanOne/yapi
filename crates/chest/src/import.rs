@@ -59,9 +59,8 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
         1 => ("entry", "it"),
         _ => ("entries", "them"),
     };
-    let home = yapi_core::tools::path::home_dir();
     let (manifest, install) = (
-        yapi_core::chest::manifest_label(&target.path, target.scope, &home),
+        target.label(),
         yapi_core::chest::install_command(&target.path, target.scope),
     );
     say(&format!(

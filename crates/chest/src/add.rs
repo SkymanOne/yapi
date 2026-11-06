@@ -501,7 +501,7 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
             return Err(Usage(format!(
                 "{}.{name} keeps its grants, so --grant can't change them: edit its `capabilities` in {}",
                 section.key(),
-                target.name()
+                target.label()
             ))
             .into());
         }
