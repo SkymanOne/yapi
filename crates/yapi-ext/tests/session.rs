@@ -1177,15 +1177,18 @@ async fn hook_results_need_grants() {
     }
     let output = yapi_ext::extension_output();
     let session = "the session grant";
-    for (event, missing) in [
+    let bash = "the session grant and the grants to run the bash tool";
+    // A tool_call result's input change and block reason are warned of
+    // apart, since the block applies.
+    let parts = [
+        ("the input change of a tool_call result", bash),
+        ("the reason of a tool_call block", session),
+    ];
+    let whole = [
         ("input", session),
         ("before_agent_start", session),
         ("context", session),
         ("context_with_system", session),
-        (
-            "tool_call",
-            "the session grant and the grants to run the bash tool",
-        ),
         ("tool_result", session),
         ("message_end", session),
         ("prepareLoadout", session),
@@ -1196,9 +1199,12 @@ async fn hook_results_need_grants() {
         ("session_before_tree", session),
         ("session_before_switch", session),
         ("resources_discover", "the session and file grants"),
-    ] {
+    ];
+    let whole = whole.map(|(event, missing)| (format!("a {event} result"), missing));
+    let parts = parts.map(|(what, missing)| (what.to_owned(), missing));
+    for (what, missing) in whole.into_iter().chain(parts) {
         let warning = format!(
-            "Ignored a {event} result of extension {}: it needs {missing}",
+            "Ignored {what} of extension {}: it needs {missing}",
             paths[0]
         );
         let count = output
@@ -1226,26 +1232,22 @@ async fn hook_results_need_grants() {
             "{warnings:#?}"
         );
     }
+    // A chest extension is named by its entry.
     for only in session_only {
-        let path = &only.path;
         assert_eq!(
             *only.warnings.lock().unwrap(),
             [
-                format!(
-                    "Ignored a resources_discover result of extension {path}: it needs the session and file grants"
-                ),
-                format!(
-                    "Ignored a tool_call result of extension {path}: it needs the session grant and the grants to run the bash tool"
-                ),
+                "Ignored a resources_discover result of extension extensions.only in chest.toml: it needs the session and file grants",
+                "Ignored the input change of a tool_call result of extension extensions.only in chest.toml: it needs the session grant and the grants to run the bash tool",
             ]
         );
     }
 }
 
-/// An extension with only the session grant, which no JS file loads with,
-/// since loading one needs the file grant. It rewrites bash calls to
-/// `echo session`, names the prompt file `session.md`, and keeps the
-/// warnings it gets.
+/// An extension of chest entry `only` with only the session grant, which no
+/// JS file loads with, since loading one needs the file grant. It rewrites
+/// bash calls to `echo session`, names the prompt file `session.md`, and
+/// keeps the warnings it gets.
 struct SessionOnly {
     path: String,
     warnings: std::sync::Mutex<Vec<String>>,
@@ -1253,7 +1255,11 @@ struct SessionOnly {
 
 impl yapi_core::extensions::Extension for SessionOnly {
     fn source(&self) -> yapi_types::rpc::SourceInfo {
-        cli_source(Path::new(&self.path))
+        yapi_types::rpc::SourceInfo {
+            source: "chest:only".into(),
+            scope: "project".into(),
+            ..cli_source(Path::new(&self.path))
+        }
     }
 
     fn grants(&self) -> Grants {

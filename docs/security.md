@@ -117,7 +117,7 @@ yapi applies what an extension's event handlers return only within the extension
 - A `user_bash` handler that runs a `!` command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.
 - The skill, prompt and theme paths that a `resources_discover` handler names need the session and file grants.
 
-A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each ignored result, once for each extension and event.
+A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension. The warning says what it ignored, such as the input change of a `tool_call` result or the reason of a block, and names an extension from chest by its entry, such as `extensions.guard in chest.toml`.
 
 The `before_provider_request` and `before_provider_headers` events carry a request's body and headers, which can hold your credentials, so they reach only extensions with the network grant.
 
