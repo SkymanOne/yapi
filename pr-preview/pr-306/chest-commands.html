@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-07ea6e77.js";
+            window.path_to_searchindex_js = "searchindex-4b3cc324.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -194,7 +194,7 @@
 <tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. Without a section flag, chest infers the section from the package. The same name with the same source updates its version or rev and keeps its grants. The same name with another source, or in another section, is an error.</td></tr>
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it.</td></tr>
 <tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
-<tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows. Shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>.</td></tr>
+<tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows. Shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source.</td></tr>
 <tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, its state, its capabilities and description. <code>installed</code>: in place as the lock pins it. <code>edited</code>: a copy changed since chest installed it, whatever the lock pins now. <code>outdated</code>: in place as an older lock pinned it. <code>stale</code>: not locked, or the lock no longer matches the manifest. <code>patched</code>: under <code>[patch]</code>. <code>missing</code>: locked but not in place. yapi acts on the same states at startup. It doesn’t hash copies, so it treats an <code>edited</code> entry as <code>installed</code>, or as <code>outdated</code> when the lock pins another version.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
 <tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock, and copies of path and <code>[patch]</code> entries against what chest installed.</td></tr>

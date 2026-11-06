@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-07ea6e77.js";
+            window.path_to_searchindex_js = "searchindex-4b3cc324.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -196,12 +196,12 @@
 <h2 id="run-chest-in-ci"><a class="header" href="#run-chest-in-ci">Run chest in CI</a></h2>
 <p><code>chest install</code> runs frozen by default when <code>CI</code> holds anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
 <h2 id="verify-installed-copies"><a class="header" href="#verify-installed-copies">Verify installed copies</a></h2>
-<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed. <code>verify</code> exits with 1 when one doesn’t match.</p>
+<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed. <code>verify</code> exits with 1 when one is missing or doesn’t match.</p>
 <h2 id="update-entries"><a class="header" href="#update-entries">Update entries</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the warning about extension requests, which matters only in yapi.</p>
 </blockquote>
-<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code>. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
+<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code>. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
 <p>When an updated extension now requests capabilities or event channels beyond its grants, <code>chest update</code> warns and grants nothing more.</p>
 <h2 id="one-command-at-a-time"><a class="header" href="#one-command-at-a-time">One command at a time</a></h2>
 <p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.</p>
