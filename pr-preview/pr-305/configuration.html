@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
+            window.path_to_searchindex_js = "searchindex-d0844f68.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -264,7 +264,7 @@ source = "git:github.com/acme/skills@v2"
 skills = ["!legacy/**"]
 </code></pre>
 <h3 id="how-yapi-writes-the-file"><a class="header" href="#how-yapi-writes-the-file">How yapi writes the file</a></h3>
-<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. If <code>packages</code> is an array of tables, it stays one until an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>, and then yapi writes it as an inline array. yapi writes a new array inline, and a new object as a <code>[table]</code> at the top level or as an inline table inside another table.</p>
+<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as <code>packages</code>, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If <code>packages</code> is an array of tables, it stays one until an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>. yapi then writes it as a multi-line inline array. The comments above the first <code>[[packages]]</code> header go above <code>packages</code>, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a <code>[table]</code> at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.</p>
 <h3 id="switch-to-toml"><a class="header" href="#switch-to-toml">Switch to TOML</a></h3>
 <p>With yapi closed, write <code>settings.toml</code> with your settings, then delete <code>settings.json</code>. A yapi that’s still running keeps writing the file it loaded, which can bring <code>settings.json</code> back beside the new file.</p>
 <p><code>yapi import pi</code> copies Pi’s <code>settings.json</code>. When yapi’s folder already holds <code>settings.toml</code>, the import skips Pi’s settings and says so. Copy what you need into <code>settings.toml</code> by hand.</p>

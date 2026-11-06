@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
+            window.path_to_searchindex_js = "searchindex-d0844f68.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -260,7 +260,7 @@ mcpServers = ["github", "linear*"]
 <li>the whole path, with <code>~</code> for your home folder, such as <code>~/.agents/skills/pdf</code></li>
 </ul>
 <p>A skill’s folder matches too, so <code>~/.agents/skills/pdf</code> keeps <code>~/.agents/skills/pdf/SKILL.md</code>. <code>"themes": ["*"]</code> keeps every global theme, including the ones inside packages, without loading those packages’ extensions.</p>
-<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi warns and uses the system theme.</p>
+<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi uses the system theme. Interactive mode shows Pi’s error, <code>Failed to load theme "&lt;name&gt;": Theme not found: &lt;name&gt;</code>. When <code>~/.yapi/agent/themes</code> holds a theme by that name, a second line points to <code>projectOnly.themes</code>.</p>
 <h3 id="keep-mcp-servers"><a class="header" href="#keep-mcp-servers">Keep MCP servers</a></h3>
 <p><code>mcpServers</code> keeps servers from <code>~/.yapi/agent/mcp.json</code> by name, and accepts patterns such as <code>linear*</code>. A kept server keeps its <code>auth</code>, so a server that sends a token from <code>/login</code> still works. The project’s own servers in <code>.yapi/mcp.json</code> always connect.</p>
 <h3 id="global-packages-yapi-still-installs"><a class="header" href="#global-packages-yapi-still-installs">Global packages yapi still installs</a></h3>
@@ -278,10 +278,11 @@ mcpServers = ["github", "linear*"]
 <h2 id="check-what-loaded"><a class="header" href="#check-what-loaded">Check what loaded</a></h2>
 <p>The header at startup lists the loaded skills, prompt templates and extensions with their scope, and <code>/mcp</code> lists the MCP servers. If the <code>quietStartup</code> setting hides the header, start yapi with <code>--verbose</code>.</p>
 <h2 id="untrusted-projects"><a class="header" href="#untrusted-projects">Untrusted projects</a></h2>
-<p>yapi never loads an untrusted project’s files, in project-only runs or otherwise. When an untrusted project has files that need trust, yapi warns once:</p>
+<p>yapi never loads an untrusted project’s files, in project-only runs or otherwise. When an untrusted project has files that need trust, print, JSON and RPC modes warn once:</p>
 <pre><code class="language-text">--project-only: the project isn't trusted, so none of its packages load
 </code></pre>
-<p>The run then has only the built-in extensions, the paths you passed on the command line and the global items you keep. Interactive mode asks whether to trust the project before it starts. Trust it, or pass <code>--approve</code> for one run. <a href="security.html#project-trust">Project trust</a> covers the details.</p>
+<p>Interactive mode asks whether to trust the project before it starts instead. If you choose not to trust it, yapi shows Pi’s notice that the project’s resources and packages are ignored.</p>
+<p>Either way, the run then has only the built-in extensions, the paths you passed on the command line and the global items you keep. Trust the project, or pass <code>--approve</code> for one run. <a href="security.html#project-trust">Project trust</a> covers the details.</p>
 
                     </main>
 

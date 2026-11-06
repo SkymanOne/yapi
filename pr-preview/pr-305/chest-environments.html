@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4c2f7475.js";
+            window.path_to_searchindex_js = "searchindex-d0844f68.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -224,7 +224,7 @@ chest install
 </tbody>
 </table>
 </div>
-<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead, which is where yapi reads them.</p>
+<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, <code>chest init</code> leaves it out and says why, because the global manifest installs only inside your home folder.</p>
 <p>For both the project and the global manifest, chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
 <h2 id="develop-a-package-locally"><a class="header" href="#develop-a-package-locally">Develop a package locally</a></h2>
 <blockquote>
