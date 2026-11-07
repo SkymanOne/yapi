@@ -34,20 +34,6 @@ When one folder holds both files, every yapi command that reads that folder stop
 Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
 ```
 
-In a project, the check waits until you trust the project, because yapi doesn't read its `.yapi` folder before then.
-
-### How the formats map
-
-| JSON | TOML |
-|---|---|
-| object | table |
-| array | array |
-| string, boolean | string, boolean |
-| integer, float | integer, float |
-| `null` | none: leave the key out |
-
-TOML has no `null`, so a setting yapi sets to `null` is removed from the file, and a `null` inside an array can't be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can't be written either.
-
 Here are the same settings in both formats. In `settings.json`:
 
 ```json
@@ -82,37 +68,26 @@ reserveTokens = 16384
 themes = ["*"]
 ```
 
-Keys outside a table, such as `packages`, go before the first `[table]` header, as TOML requires. When every `packages` entry is an object, the list can also be an array of tables. The example above can't use one, because `npm:@acme/pi-tools` is a string:
-
-```toml
-[[packages]]
-source = "git:github.com/acme/skills@v2"
-skills = ["!legacy/**"]
-```
-
 ### How yapi writes the file
 
-`/settings`, `yapi config`, `yapi install` and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as `packages`, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If `packages` is an array of tables, it stays one until an entry is a plain source string, such as after `yapi install npm:@acme/pi-tools`. yapi then writes it as a multi-line inline array. The comments above the first `[[packages]]` header go above `packages`, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a `[table]` at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.
+`/settings`, `yapi config`, `yapi install` and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. Comments stay with their key or list entry, and a removed entry takes its comments along. A `[[packages]]` array of tables becomes an inline array once an entry is a plain source string, such as after `yapi install npm:@acme/pi-tools`.
 
 ### Switch to TOML
 
 With yapi closed, write `settings.toml` with your settings, then delete `settings.json`. A yapi that's still running keeps writing the file it loaded, which can bring `settings.json` back beside the new file.
 
-`yapi import pi` copies Pi's `settings.json`. When yapi's folder already holds `settings.toml`, the import skips Pi's settings and says so. Copy what you need into `settings.toml` by hand.
-
 ## Project packages from chest
 
-yapi loads the [project packages](chest-extensions.md#how-yapi-loads-a-manifest) that chest manifests list. It reads `chest.toml` in the project folder, or the file that `CHEST_MANIFEST` names relative to the project folder, such as `chest.dev.toml`. The lock is the file beside the manifest named with `.lock`, such as `chest.dev.lock`.
+yapi loads the [project packages](chest-extensions.md#how-yapi-loads-a-manifest) that two chest manifests list:
 
-For a `CHEST_MANIFEST` value that's absolute, starts with `~` or uses `..`, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads `CHEST_MANIFEST` too, as [Which manifest chest uses](chest-manifest.md#which-manifest-chest-uses) describes.
+- `chest.toml` in the project folder, or the manifest that [`CHEST_MANIFEST`](chest-environments.md#how-yapi-reads-chest_manifest) names, such as `chest.dev.toml`
+- `~/.chest/chest.toml`, which lists packages for every project
 
-`~/.chest/chest.toml` lists packages for every project. chest keeps its download cache and its record of what it placed in `~/.chest`.
-
-A project manifest that installs anything loads only in a trusted project, and asks for trust as `.yapi` files do. A manifest with only a `[package]` table describes the project as a package and needs no trust.
+A project manifest that installs anything loads only in a trusted project.
 
 ## Project instructions
 
-yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. In a git worktree inside its main checkout, such as `.worktrees/feature`, the worktree's own file replaces the main checkout's file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.
+yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of `AGENTS.override.md`, `AGENTS.md` and `CLAUDE.md` that exists. In a git worktree inside its main checkout, such as `.worktrees/feature`, the worktree's own file replaces the main checkout's file of the same name.
 
 ## Skills and prompt templates
 
@@ -145,7 +120,6 @@ yapi prepares images in prompts, `@path` arguments and tool results before they 
 - yapi converts BMP, TIFF, ICO, PNM, HDR, DDS and farbfeld images to PNG. This applies to images that arrive with a MIME type: remote procedure call (RPC) and SDK prompts, tool results and the clipboard. `@path` arguments and the `read` tool only recognize PNG, JPEG, GIF, WebP and BMP files, so they read other formats as text.
 - With `"images": {"autoResize": true}`, the default, yapi scales larger images down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model's own limits. It may send a scaled image as JPEG, with a note that gives the model its original size.
 - yapi leaves out a prompt or `read` image that it can't convert or make fit, with a note that says so. A tool result keeps its original image unchanged.
-- yapi converts a pasted clipboard image that isn't PNG, JPEG, WebP or GIF to PNG when you paste it, ignoring its EXIF orientation.
 - `"images": {"blockImages": true}` keeps all images from the model.
 
 Both settings are also in `/settings`.
