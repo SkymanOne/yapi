@@ -454,9 +454,9 @@ fn meaning(capability: &str) -> &'static str {
 }
 
 /// The capabilities to grant: `--grant`, which [`run`] checked, where
-/// `none` is the empty start. Asked, the person ticks them, starting from
-/// `--grant` and those the package requests or `used`, except `all`, which
-/// they tick themselves. Requests that are not capabilities, such as
+/// `none` is the empty start. Asked, without `--grant`, the person ticks
+/// them, starting from those the package requests or `used`, except `all`,
+/// which they tick themselves. Requests that are not capabilities, such as
 /// `process`, are skipped with a warning, so they are never offered or
 /// written.
 fn grants(
@@ -486,7 +486,8 @@ fn grants(
             names.join(", ")
         ));
     }
-    if !prompt.interactive() {
+    // `--grant` answers the question.
+    if !prompt.interactive() || !args.grant.is_empty() {
         return Ok(granted);
     }
     // `all` runs programs as the person, so a request never ticks it.
@@ -765,7 +766,10 @@ pub async fn run(
         }
         let granted = grants(prompt, &args, &meta, &inspected.used())?;
         entry.capabilities = (!granted.is_empty()).then_some(granted);
-        entry.events = events(prompt, &meta)?;
+        // `--grant` settles the extension's access, events included.
+        if args.grant.is_empty() {
+            entry.events = events(prompt, &meta)?;
+        }
         for warning in requests(&project.manifest, &entry, &meta) {
             prompt.info(&[format!("note: {name} {warning}")]);
         }
@@ -782,6 +786,9 @@ pub async fn run(
     }
     let whole = picking && picks.is_none();
     let several = picking || !single;
+    // Flags that answer every question install at once, as `--yes` does.
+    let asked =
+        picking || section == Section::Extensions && args.grant.is_empty() && prompt.interactive();
     let picks = picks.unwrap_or_else(|| vec![(name.clone(), entry.clone())]);
     let mut lines = Vec::new();
     for (name, entry) in &picks {
@@ -822,8 +829,10 @@ pub async fn run(
         });
         lines.push(format!("events: {events}"));
     }
-    prompt.summary(&format!("Add to {}", target.name()), &lines);
-    prompt.confirm("Install?")?;
+    if asked {
+        prompt.summary(&format!("Add to {}", target.name()), &lines);
+        prompt.confirm("Install?")?;
+    }
     write(target, &document.to_string())?;
     if let Err(err) = sync(target, Mode::Resolve, npm, prompt).await {
         // The manifest goes back to what it was, so a failed add leaves no entry.

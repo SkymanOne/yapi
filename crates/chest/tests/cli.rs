@@ -233,6 +233,19 @@ fn init_detects_agents() {
     let folders = "skills = [\".claude/skills\", \".agents/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\n";
     let written = read(&scratch.project.join("chest.pty.toml"));
     assert!(written.contains(folders), "{written}");
+    // Folder flags answer every question, so it writes at once.
+    let flags = ["--manifest", "chest.flags.toml", "init"];
+    let pty = self::pty(
+        &scratch,
+        &[&flags[..], &["--skills", "a", "--agents", "b"]].concat(),
+    );
+    expect(&pty, 30, "Wrote chest.flags.toml");
+    assert_eq!(exit(pty), 0);
+    let written = read(&scratch.project.join("chest.flags.toml"));
+    assert!(
+        written.contains("skills = [\"a\"]\nagents = [\"b\"]\n"),
+        "{written}"
+    );
 }
 
 #[test]
@@ -1456,12 +1469,8 @@ fn add_prompts_interactively() {
         "v1",
     );
     init(&scratch);
-    // `--grant none` is the empty start, so `none` is never written.
     let source = format!("{}@v1", remote.source);
-    let mut pty = pty(
-        &scratch,
-        &["add", &source, "--name", "risky", "--grant", "none"],
-    );
+    let mut pty = pty(&scratch, &["add", &source, "--name", "risky"]);
     expect(&pty, 30, "Which capabilities should it get?");
     // While the question waits, chest keeps the manifest's lock fresh, which
     // it refreshes every 15s.
@@ -1501,6 +1510,22 @@ fn add_prompts_interactively() {
     let manifest = read(&scratch.project.join("chest.toml"));
     assert!(
         manifest.contains("capabilities = [\"session\"], events = \"isolated\" }"),
+        "{manifest}"
+    );
+    // Flags that answer every question install at once, without a key.
+    // `--grant none` is the empty start, so `none` is never written.
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
+    let args = ["add", "../ext", "--extension", "--grant", "none"];
+    let pty = self::pty(&scratch, &args);
+    expect(&pty, 30, "+ installed  extensions.ext");
+    expect(&pty, 10, "Added extensions.ext");
+    assert_eq!(exit(pty), 0);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("\next = { path = \"../ext\" }\n"),
         "{manifest}"
     );
 

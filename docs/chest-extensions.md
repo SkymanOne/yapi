@@ -28,7 +28,7 @@ An extension entry lists what it may reach:
 
 `chest add` shows the capabilities a package requests, then lists every capability with what it allows. It ticks the ones the package requests and, for a native extension, the ones the build uses, read from the build's features and the WebAssembly System Interface (WASI) interfaces it imports. It never ticks `all`, so you tick that one yourself. A bare `.wasm` file requests nothing, so chest ticks what it uses. Before installing, chest shows the entry with its grants and asks you to confirm.
 
-A request never grants anything by itself. Without a terminal, or with `--yes`, chest grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
+A request never grants anything by itself. Without a terminal, with `--yes`, or with `--grant`, chest asks nothing and grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
 
 `all` is the only way to run programs. A program runs as you, outside the sandbox, with yapi's environment and API keys. So `all` is full access, and `chest add` says so before it grants it. [What each capability allows](chest-manifest.md#what-each-capability-allows) gives the exact list.
 
@@ -52,7 +52,7 @@ events = "isolated"
 
 Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.
 
-`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
+`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. Without a terminal, with `--yes`, or with `--grant`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
 
 ## How yapi loads a manifest
 

@@ -299,8 +299,11 @@ pub fn run(target: &Target, args: &InitArgs, prompt: &Prompt) -> anyhow::Result<
             .map(|(kind, folders)| format!("{kind}: {folders}"))
             .collect();
         lines.push(format!("extensions: {store}"));
-        prompt.summary(&target.name(), &lines);
-        prompt.confirm(&format!("Write {}?", target.name()))?;
+        // With both folder flags, chest asked nothing, so it writes at once.
+        if args.skills.is_none() || args.agents.is_none() {
+            prompt.summary(&target.name(), &lines);
+            prompt.confirm(&format!("Write {}?", target.name()))?;
+        }
         let store = yapi_types::json::to_string(&store).unwrap_or_default();
         text.push_str(&format!("extensions = {store}\n"));
         ManifestDocument::parse(&text, target.scope)?

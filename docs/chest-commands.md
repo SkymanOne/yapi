@@ -39,11 +39,11 @@ chest reads proxy variables such as `HTTPS_PROXY`, as yapi does. Without them, i
 
 chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error.
 
-At a terminal, `chest init` and `chest add` ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Each shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. `chest install`, `chest update`, `chest remove` and `chest import` show a spinner and a summary of each entry's outcome.
+At a terminal, `chest init` and `chest add` ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. `chest install`, `chest update`, `chest remove` and `chest import` show a spinner and a summary of each entry's outcome.
 
 To skip the questions:
 
-- Pass the flag that answers one, such as `--skills` for `chest init` or `--path` for `chest add`.
+- Pass the flags that answer them, such as `--skills` and `--agents` for `chest init`, or `--path`, `--skill <name>` and `--grant` for `chest add`. When flags answer every question, chest installs or writes at once, without the confirmation.
 - Pass `--yes` to take the defaults and skip the confirmation.
 - Run chest without a terminal, or with `CI` set. chest then asks nothing and prints plain lines, with each entry's outcome on stdout.
 
