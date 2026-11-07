@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-eb1ac5e0.js";
+            window.path_to_searchindex_js = "searchindex-d0218b26.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -1145,7 +1145,7 @@ chest add git:github.com/acme/agents --path reviewer.md
 </tbody>
 </table>
 </div>
-<p>At a terminal, <code>chest init</code> lists the folders of each kind with the agents that read them, and ticks the ones it found. It shows a summary and asks before it writes <code>chest.toml</code>. Without a terminal, or with <code>--yes</code>, it takes the ticked folders. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
+<p>At a terminal, <code>chest init</code> lists the folders of each kind with the agents that read them, and ticks the ones it found. When you tick two or more folders of a kind, it asks which one holds the copy and lists that one first. It shows a summary and asks before it writes <code>chest.toml</code>. Without a terminal, or with <code>--yes</code>, it takes the ticked folders. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
 <p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to.</p>
 <h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
 <p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
