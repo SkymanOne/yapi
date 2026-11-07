@@ -165,20 +165,41 @@ fn offered(
     (folders, detected)
 }
 
+/// The folders for `kind` the person ticks, `found` or else `fallback`
+/// unless asked, with the one that holds the copy first. Asked, they pick
+/// that one among two or more, from the found folder when only one was
+/// found, else the first.
 fn choose(
     prompt: &Prompt,
     kind: &str,
     folders: &[(String, Vec<&str>)],
-    defaults: Vec<usize>,
+    (found, fallback): (Vec<usize>, Vec<usize>),
 ) -> anyhow::Result<Vec<String>> {
     let options: Vec<Choice<usize>> = folders
         .iter()
         .enumerate()
         .map(|(index, (folder, agents))| (index, folder.clone(), agents.join(", ")))
         .collect();
-    let question =
-        format!("Where should {kind} go?\nThe first one holds the copy, the others link to it.");
-    let chosen = prompt.multiselect(&question, &options, defaults, false)?;
+    let question = format!("Where should {kind} go?\nOne holds the copy, the others link to it.");
+    let defaults = if found.is_empty() {
+        fallback
+    } else {
+        found.clone()
+    };
+    let mut chosen = prompt.multiselect(&question, &options, defaults, false)?;
+    if let [first, _, ..] = chosen[..] {
+        let default = match found[..] {
+            [only] if chosen.contains(&only) => only,
+            _ => first,
+        };
+        let options: Vec<Choice<usize>> = chosen
+            .iter()
+            .map(|&index| (index, folders[index].0.clone(), String::new()))
+            .collect();
+        let copy = prompt.select("Which folder holds the copy?", &options, default)?;
+        chosen.retain(|&index| index != copy);
+        chosen.insert(0, copy);
+    }
     Ok(chosen
         .into_iter()
         .map(|index| folders[index].0.clone())
@@ -225,8 +246,7 @@ pub fn run(target: &Target, args: &InitArgs, prompt: &Prompt) -> anyhow::Result<
                     Scope::Project => Some(agent.skills),
                     Scope::Global => Some(agent.home_skills),
                 });
-                let defaults = if found.is_empty() { vec![0] } else { found };
-                choose(prompt, "skills", &folders, defaults)?
+                choose(prompt, "skills", &folders, (found, vec![0]))?
             }
         };
         let agents = match args.agents.clone() {
@@ -247,15 +267,12 @@ pub fn run(target: &Target, args: &InitArgs, prompt: &Prompt) -> anyhow::Result<
                     folder.display()
                 )]);
                 }
-                let defaults = match found.is_empty() {
-                    true => folders
-                        .iter()
-                        .position(|(folder, _)| yapi.as_ref().is_ok_and(|yapi| folder == yapi))
-                        .into_iter()
-                        .collect(),
-                    false => found,
-                };
-                choose(prompt, "subagents", &folders, defaults)?
+                let fallback = folders
+                    .iter()
+                    .position(|(folder, _)| yapi.as_ref().is_ok_and(|yapi| folder == yapi))
+                    .into_iter()
+                    .collect();
+                choose(prompt, "subagents", &folders, (found, fallback))?
             }
         };
         let store = args.store.clone().unwrap_or_else(|| match target.scope {

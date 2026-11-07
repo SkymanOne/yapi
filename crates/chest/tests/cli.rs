@@ -213,6 +213,26 @@ fn init_detects_agents() {
         text(&refused)
     );
     assert!(!outside.exists());
+    // At a terminal, chest asks which of two or more ticked folders holds
+    // the copy, and lists that one first.
+    let mut pty = pty(&scratch, &["--manifest", "chest.pty.toml", "init"]);
+    expect(&pty, 30, "Where should skills go?");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "● .agents/skills");
+    pty.write(DOWN).unwrap();
+    expect(&pty, 10, "● .claude/skills");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "Where should subagents go?");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "● .claude/agents");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "Write chest.pty.toml?");
+    pty.write("y").unwrap();
+    expect(&pty, 10, "Wrote chest.pty.toml");
+    assert_eq!(exit(pty), 0);
+    let folders = "skills = [\".claude/skills\", \".agents/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\n";
+    let written = read(&scratch.project.join("chest.pty.toml"));
+    assert!(written.contains(folders), "{written}");
 }
 
 #[test]

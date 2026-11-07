@@ -48,7 +48,7 @@ chest installs only skills that are folders with a `SKILL.md`. It skips or refus
 | OpenCode | `.opencode` | `.agents/skills` | `.opencode/agent` |
 | yapi | `.yapi` | `.agents/skills` | `.yapi/agents` |
 
-At a terminal, `chest init` lists the folders of each kind with the agents that read them, and ticks the ones it found. It shows a summary and asks before it writes `chest.toml`. Without a terminal, or with `--yes`, it takes the ticked folders. When it finds no agent, skills go to `.agents/skills` and subagents to `.yapi/agents`. `--skills`, `--agents` and `--store` set the folders directly.
+At a terminal, `chest init` lists the folders of each kind with the agents that read them, and ticks the ones it found. When you tick two or more folders of a kind, it asks which one holds the copy and lists that one first. It shows a summary and asks before it writes `chest.toml`. Without a terminal, or with `--yes`, it takes the ticked folders. When it finds no agent, skills go to `.agents/skills` and subagents to `.yapi/agents`. `--skills`, `--agents` and `--store` set the folders directly.
 
 A folder can be a link to another one, such as `.claude/skills` linking to `../.agents/skills`. chest places each item once, in the folder the link resolves to.
 
