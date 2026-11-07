@@ -16,14 +16,18 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 The script downloads the latest release for your system and verifies its SHA-256 checksum. In a terminal, it asks what to install:
 
 ```text
-Install:
-  1) yapi and chest
-  2) yapi only
-  3) chest only
-Choose 1, 2 or 3 [1]:
+┌   yapi installer
+│
+◆  What to install?
+│  ● yapi and chest
+│  ○ yapi only
+│  ○ chest only
+└
 ```
 
-Press Enter to install both. The script puts the executables in `~/.local/bin`, and with `yapi` it also installs the [documentation for the model](#documentation-for-the-model). Without a terminal, such as in CI, it installs both without asking.
+Choose with the arrow keys and press Enter, or press Enter alone to install both. Ctrl+C cancels. In a terminal without single-key input, such as with `TERM=dumb`, the script asks for 1, 2 or 3 instead. `NO_COLOR` turns off its colors.
+
+The script puts the executables in `~/.local/bin`, and with `yapi` it also installs the [documentation for the model](#documentation-for-the-model). Without a terminal, such as in CI, it installs both without asking.
 
 | Option | Variable | Effect |
 |---|---|---|
@@ -40,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 ```
 
-This installs both from `v0.4.2` into `/usr/local/bin`, without the question:
+This installs both from `v0.4.2` into `/usr/local/bin`, without the menu:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
