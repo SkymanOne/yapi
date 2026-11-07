@@ -1,6 +1,6 @@
 # Install yapi
 
-yapi is one executable. Releases ship it with [chest](chest.md), the package manager for skills, subagents and extensions, as a second executable. chest also works with other agents and without yapi, so every method on this page installs both or either one alone. This page covers the install script, cargo-binstall, release archives and building from source, then the documentation yapi reads, upgrades and uninstalling.
+Releases ship two executables: `yapi` and [chest](chest.md), the package manager for skills, subagents and extensions. chest also works with other agents and without yapi, so every method on this page installs both or either one alone. This page covers the install script, cargo-binstall, release archives and building from source, then the documentation yapi reads, upgrades and uninstalling.
 
 Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build yapi from source. yapi fully supports Linux and macOS. Windows support is best effort.
 
@@ -23,7 +23,7 @@ Install:
 Choose 1, 2 or 3 [1]:
 ```
 
-Press Enter to install both. The script puts the executables in `~/.local/bin`, and with `yapi` it also installs the [documentation for the model](#documentation-for-the-model). Without a terminal, such as in CI, it installs both without asking. Releases before chest shipped hold `yapi` alone, so the script installs only `yapi` from them and stops with an error when you choose `chest` alone.
+Press Enter to install both. The script puts the executables in `~/.local/bin`, and with `yapi` it also installs the [documentation for the model](#documentation-for-the-model). Without a terminal, such as in CI, it installs both without asking.
 
 | Option | Variable | Effect |
 |---|---|---|
@@ -33,7 +33,7 @@ Press Enter to install both. The script puts the executables in `~/.local/bin`, 
 | `--from-source` | `YAPI_FROM_SOURCE=1` | Build the release with Cargo instead of downloading it, as [Build from source](#build-from-source) shows |
 | `--no-docs` | `YAPI_NO_DOCS=1` | Skip the documentation for the model |
 
-Pass options after `sh -s --`. This installs `chest` alone, such as for another agent, without the documentation for the model:
+Pass options after `sh -s --`. This installs `chest` alone, such as for another agent:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
@@ -49,14 +49,14 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
 
 ## Install with cargo-binstall
 
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the release executables into `~/.cargo/bin`, one per command. The first command installs `yapi`, and the second installs `chest` from its crate on crates.io, `chest-cli`. Run one or both:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) installs the release executables into `~/.cargo/bin`. The first command installs `yapi`, and the second installs `chest` from its crate on crates.io, `chest-cli`. Run one or both:
 
 ```sh
 cargo binstall --git https://github.com/SkymanOne/yapi yapi
 cargo binstall chest-cli
 ```
 
-Keep `--git` for yapi, because the `yapi` crate on crates.io is an unrelated project. cargo-binstall installs the yapi release that the manifest on `main` names, and the release that built the newest `chest-cli`. If it reports that the yapi release doesn't exist, use the install script. For chest, it builds `chest-cli` from source when the release has no archive for your system.
+Keep `--git` for yapi, because the `yapi` crate on crates.io is an unrelated project. cargo-binstall installs the yapi release that the manifest on `main` names. If it reports that this release doesn't exist, use the install script.
 
 ## Install from a release archive
 
@@ -80,13 +80,20 @@ sha256sum -c "yapi-$target.tar.gz.sha256"
 tar xzf "yapi-$target.tar.gz" -C ~/.local/bin yapi chest
 ```
 
-To install one executable, end the `tar` command with only `yapi` or only `chest`. On macOS, verify with `shasum -a 256 -c`. For a specific release, replace `latest/download` with `download/<tag>`. Systems with an older glibc, or with musl such as Alpine, need to [build from source](#build-from-source). If macOS refuses to open a binary downloaded in a browser, see [macOS blocks a downloaded binary](troubleshooting.md#macos-blocks-a-downloaded-binary).
+To adapt the commands:
+
+- To install one executable, end the `tar` command with only `yapi` or only `chest`.
+- On macOS, verify with `shasum -a 256 -c`.
+- For a specific release, replace `latest/download` with `download/<tag>`.
+- With an older glibc, or with musl such as Alpine, [build from source](#build-from-source) instead.
+
+If macOS refuses to open a binary downloaded in a browser, see [macOS blocks a downloaded binary](troubleshooting.md#macos-blocks-a-downloaded-binary).
 
 ## Build from source
 
 yapi builds with Rust 1.99 or newer, and chest with Rust 1.91 or newer. Install Rust with [rustup](https://rustup.rs), then build with the install script or with Cargo.
 
-With `--from-source`, the install script builds a release's tag with Cargo instead of downloading its archive. It builds the latest release, or the one `--version` names, and never the `main` branch. Then it installs the executables in `~/.local/bin`, and the documentation for the model with `yapi`. The first command builds both, the second `yapi` alone and the third `chest` alone. Run one:
+With `--from-source`, the install script builds the latest release's tag with Cargo, or the tag `--version` names, and never the `main` branch. Then it installs the executables in `~/.local/bin`, and the documentation for the model with `yapi`. The first command builds both, the second `yapi` alone and the third `chest` alone. Run one:
 
 ```sh
 script=https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh
@@ -94,8 +101,6 @@ curl -fsSL "$script" | sh -s -- --from-source --only both
 curl -fsSL "$script" | sh -s -- --from-source --only yapi
 curl -fsSL "$script" | sh -s -- --from-source --only chest
 ```
-
-Without `--only`, the script asks in a terminal what to build. It builds `yapi` alone from releases before chest shipped, and stops with an error when you choose `chest` alone from them.
 
 Cargo builds chest from its crate on crates.io:
 
@@ -117,7 +122,7 @@ To build from a clone, run `cargo install --locked --path crates/yapi` in it, or
 
 ## Check the installation
 
-Each executable prints its version. yapi's version matches the release's tag, such as `0.4.2` for `v0.4.2`. chest has its own version, which `chest --version` prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:
+Each executable prints its version. yapi's version matches the release tag, such as `0.4.2` for `v0.4.2`. chest has a version number of its own. Run the line for each one you installed:
 
 ```sh
 yapi --version

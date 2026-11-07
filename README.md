@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 ```
 
-Options go after `sh -s --`: `--only yapi` or `--only chest` installs one without the question, and `--from-source` builds the release with Cargo instead of downloading it. chest is also on crates.io as `chest-cli`. [Install yapi](https://skymanone.github.io/yapi/install.html) covers cargo-binstall, building from source, upgrading and uninstalling, for either executable or both.
+Pass options after `sh -s --`, such as `--only yapi` or `--only chest` to install one without the question. chest is also on crates.io as `chest-cli`. [Install yapi](https://skymanone.github.io/yapi/install.html) covers every option, cargo-binstall, building from source, upgrading and uninstalling.
 
 Start yapi in the folder where you want it to work:
 
@@ -75,7 +75,7 @@ chest splits its features by who reads them:
 - **Any agent**: chest places skills and subagents in the folders each agent reads, such as `.agents/skills` and `.claude/skills`. One manifest serves Claude Code, Codex, Cursor, GitHub Copilot, OpenCode and yapi. The lock, `chest install --frozen` in CI, `chest verify` and `chest update` work the same for all of them.
 - **yapi only**: extensions, both Pi packages and native WebAssembly extensions, load only in yapi. Each one runs with only the capabilities its entry grants. yapi also puts back missing locked entries when it starts in a trusted project.
 
-`chest init` writes `chest.toml` with folders for the agents it finds. The first `chest add` adds a skill for any agent, the second an extension for yapi with file access, and `chest install --frozen` installs exactly what the lock pins, in CI or after cloning:
+In this example, `chest init` writes `chest.toml` with folders for the agents it finds. The first `chest add` adds a skill for any agent, and the second adds an extension for yapi with file access. `chest install --frozen` installs exactly what the lock pins, such as in CI or after cloning:
 
 ```sh
 chest init
@@ -107,7 +107,7 @@ capabilities = ["fs"]
 
 yapi's built-in tools run with your permissions, and yapi doesn't ask before each tool call. For untrusted repositories or unattended work, run yapi in a container or virtual machine.
 
-Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network, environment and session access against grants. chest extensions run with the capabilities their manifest grants. Packages from `yapi install` keep Pi's grants, so they can do what they could do in Pi.
+Extensions run in WebAssembly instances with memory and compute limits, and the host checks their file, process, network, environment and session access against grants. chest extensions get the capabilities their manifest grants. Packages from `yapi install` get every grant, as in Pi.
 
 Codemode scripts, which the model writes to call tools, run with no file, process or network access. [Security model and sandboxing](https://skymanone.github.io/yapi/security.html) has the details.
 
