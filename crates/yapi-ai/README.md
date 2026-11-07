@@ -1,8 +1,8 @@
 # yapi-ai
 
-LLM wire APIs for [yapi](https://github.com/SkymanOne/yapi), a Rust coding agent that runs [Pi](https://pi.dev) packages: the provider APIs, the model catalog and registry, cost tracking, credentials and OAuth sign-in. It ports Pi's pi-ai.
+The model layer of [yapi](https://github.com/SkymanOne/yapi), a Rust coding agent that runs [Pi](https://pi.dev) packages. It streams replies over each provider's wire API, such as Anthropic Messages, OpenAI Responses and the Gemini API. It also keeps the model catalog and registry and works out what each request costs. It stores each provider's credentials, and signs in with OAuth for subscriptions such as GitHub Copilot. It ports Pi's pi-ai.
 
-yapi publishes this crate as a dependency of `yapi-agent`, `yapi-core` and [`chest-cli`](https://crates.io/crates/chest-cli). It's an internal library with no stable API. Any release can change it, and the crates that use it require its exact version. The crate needs Rust 1.91 or newer.
+`yapi-agent`, `yapi-core` and [`chest-cli`](https://crates.io/crates/chest-cli) build on this crate and require its exact version. It's an internal library with no stable API, so any release can change it. To write a yapi extension, use [`yapi-extension-api`](https://crates.io/crates/yapi-extension-api) instead. The crate needs Rust 1.91 or newer.
 
 ## License
 
