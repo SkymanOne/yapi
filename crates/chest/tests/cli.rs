@@ -1509,12 +1509,17 @@ fn add_prompts_interactively() {
         "hello.wasm uses: session (SDK feature `session`)",
         "warning: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`.",
         "warning: http.wasm declares the capability `exec:git`, which this version of chest does not know, so it is not checked",
-        // What the extension uses starts ticked, and `all` never does.
-        "◼ session (start turns and change the session)",
-        "◻ all",
+        // What the extension requests and uses is on offer, but a request
+        // for `all` makes choosing the default.
+        "○ Grant all requested capabilities: session, all (runs unrestricted)",
+        "● Choose capabilities",
     ] {
         expect(&pty, 1, shown);
     }
+    pty.write("\r").unwrap();
+    // What it uses starts ticked, and `all` never does.
+    expect(&pty, 10, "◼ session (start turns and change the session)");
+    expect(&pty, 1, "◻ all");
     pty.write("\r").unwrap();
     expect(&pty, 10, "How should it share events?");
     pty.write(DOWN).unwrap();
@@ -1550,6 +1555,39 @@ fn add_prompts_interactively() {
         manifest.contains("\next = { path = \"../ext\" }\n"),
         "{manifest}"
     );
+    // A package that requests capabilities is offered them all, which is the
+    // default without `all`, or a choice that starts from them.
+    let table = "[package]\nname = \"two\"\ncapabilities = [\"fs\", \"net\"]\nextensions = [\"index.ts\"]\n";
+    write(&scratch.dir.join("two/chest.toml"), table);
+    write(
+        &scratch.dir.join("two/index.ts"),
+        "export default () => {};\n",
+    );
+    for (keys, granted) in [("", "[\"fs\", \"net\"]"), (DOWN, "[\"fs\"]")] {
+        let mut pty = self::pty(&scratch, &["add", "../two", "--isolated"]);
+        expect(&pty, 30, "● Grant all requested capabilities: fs, net");
+        if !keys.is_empty() {
+            pty.write(keys).unwrap();
+            expect(&pty, 10, "● Choose capabilities");
+            pty.write("\r").unwrap();
+            expect(&pty, 10, "◼ net");
+            pty.write(DOWN).unwrap();
+            expect(&pty, 10, "◼ net (fetch");
+            pty.write(" ").unwrap();
+            expect(&pty, 10, "◻ net (fetch");
+        }
+        pty.write("\r").unwrap();
+        expect(&pty, 10, "Install?");
+        pty.write("y").unwrap();
+        expect(&pty, 30, "Added extensions.two");
+        assert_eq!(exit(pty), 0);
+        let manifest = read(&scratch.project.join("chest.toml"));
+        let entry = format!(
+            "two = {{ path = \"../two\", capabilities = {granted}, events = \"isolated\" }}"
+        );
+        assert!(manifest.contains(&entry), "{manifest}");
+        ok(&scratch, &["remove", "two"]);
+    }
 
     // A folder of several skills offers them all, ticked. Esc cancels
     // before anything is written.

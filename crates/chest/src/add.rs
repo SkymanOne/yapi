@@ -27,6 +27,18 @@ use crate::{Target, Usage, frontmatter, open, read, requests, source, sync, writ
 /// What `all` means, said before it is granted.
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
 
+/// What `all` means, said at a terminal before it is granted.
+const ALL_DRAWN: &str =
+    "`all` runs unrestricted: outside the sandbox, with yapi's environment and API keys.";
+
+/// The warning before `all` is granted, as `prompt` shows it.
+fn all_warning(prompt: &Prompt) -> &'static str {
+    match prompt.styled() {
+        true => ALL_DRAWN,
+        false => ALL_WARNING,
+    }
+}
+
 /// What sharing `pi.events` costs, said before the event choice.
 const EVENTS_TEXT: &str = "By default this extension shares `pi.events` with every other extension. Extensions with more access, including packages from `yapi install`, can act on its events, and it sees theirs.";
 
@@ -458,11 +470,11 @@ fn meaning(capability: &str) -> &'static str {
 }
 
 /// The capabilities to grant: `--grant`, which [`run`] checked, where
-/// `none` is the empty start. Asked, without `--grant`, the person ticks
-/// them, starting from those the package requests or `used`, except `all`,
-/// which they tick themselves. Requests that are not capabilities, such as
-/// `process`, are skipped with a warning, so they are never offered or
-/// written.
+/// `none` is the empty start. Asked, without `--grant`, the person grants
+/// those the package requests or `used`, or ticks them, starting from
+/// those, except `all`, which they tick themselves. Requests that are not
+/// capabilities, such as `process`, are skipped with a warning, so they are
+/// never offered or written.
 fn grants(
     prompt: &Prompt,
     args: &AddArgs,
@@ -477,7 +489,7 @@ fn grants(
         .collect();
     let all = |grants: &[String]| grants.iter().any(|grant| grant == "all");
     if all(&granted) {
-        prompt.warn(ALL_WARNING);
+        prompt.warn(all_warning(prompt));
     }
     let (valid, invalid): (Vec<&String>, Vec<&String>) = meta
         .capabilities
@@ -494,32 +506,56 @@ fn grants(
     if !prompt.interactive() || !args.grant.is_empty() {
         return Ok(granted);
     }
-    // `all` runs programs as the person, so a request never ticks it.
     let asked = valid
         .into_iter()
         .map(String::as_str)
         .chain(used.iter().copied());
-    let ticked: Vec<&str> = CAPABILITIES
+    let requested: Vec<&str> = CAPABILITIES
         .into_iter()
-        .filter(|capability| {
-            granted.iter().any(|grant| grant == capability)
-                || *capability != "all" && asked.clone().any(|asked| asked == *capability)
-        })
+        .filter(|capability| asked.clone().any(|asked| asked == *capability))
         .collect();
-    let options: Vec<Choice<&str>> = CAPABILITIES
-        .into_iter()
-        .map(|capability| (capability, capability.into(), meaning(capability).into()))
-        .collect();
-    let chosen =
-        prompt.multiselect("Which capabilities should it get?", &options, ticked, false)?;
-    let chosen: Vec<String> = chosen.into_iter().map(str::to_owned).collect();
+    // `all` runs unrestricted, so a request never makes it the default.
+    let risky = requested.contains(&"all");
+    let question = "Which capabilities should it get?";
+    let choose = requested.is_empty() || {
+        let mut grant = format!("Grant all requested capabilities: {}", requested.join(", "));
+        if risky {
+            grant.push_str(" (runs unrestricted)");
+        }
+        let options = [
+            (false, grant, String::new()),
+            (true, "Choose capabilities".to_owned(), String::new()),
+        ];
+        prompt.select(question, &options, risky)?
+    };
+    let chosen: Vec<String> = match choose {
+        false => requested
+            .iter()
+            .map(|capability| (*capability).to_owned())
+            .collect(),
+        true => {
+            let ticked: Vec<&str> = requested
+                .iter()
+                .copied()
+                .filter(|capability| *capability != "all")
+                .collect();
+            let options: Vec<Choice<&str>> = CAPABILITIES
+                .into_iter()
+                .map(|capability| (capability, capability.into(), meaning(capability).into()))
+                .collect();
+            let question = match requested.is_empty() {
+                true => question,
+                false => "Choose capabilities",
+            };
+            let chosen = prompt.multiselect(question, &options, ticked, false)?;
+            chosen.into_iter().map(str::to_owned).collect()
+        }
+    };
     if !all(&chosen) {
         return Ok(chosen);
     }
     // `all` covers the rest.
-    if !all(&granted) {
-        prompt.warn(ALL_WARNING);
-    }
+    prompt.warn(all_warning(prompt));
     Ok(vec!["all".into()])
 }
 
