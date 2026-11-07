@@ -2,22 +2,36 @@
 
 > **Any agent**, except the parts that only matter in yapi: `chest check`, `chest import --settings`, and the extension options `--extension` and `--grant` of `chest add` and `--store` of `chest init`.
 
-This page lists every chest command with its flags, then how chest uses a proxy, and its exit codes. Every command takes `-g`, for the global manifest, or `--manifest <path>`, but not both. Without either, `CHEST_MANIFEST` names the manifest, else `chest.toml` in the current folder.
+This page lists every chest command with its flags, the states of an entry, how chest uses a proxy, and its exit codes. Every command takes `-g`, for the global manifest, or `--manifest <path>`, but not both. Without either, `CHEST_MANIFEST` names the manifest, else `chest.toml` in the current folder.
 
 | Command | Flags | What it does |
 |---|---|---|
 | `chest init` | `--skills a,b`, `--agents a,b`, `--store <dir>`, `--package`, `--yes` | Writes a manifest with folders for the agents found. Refuses an existing manifest unless `--package`, which adds `[package]`. |
-| `chest add <source>` | `--skill`, `--agent`, `--extension`, `--name <name>`, `--path <path>`, `--rev <rev>`, `--version <range>`, `--grant a,b`, `--yes` | Adds an entry and installs it. The source is `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL or a path. A git URL starts with `https://`, `http://`, `ssh://` or `git://`, or takes the form `user@host:path`, where the path is relative to the remote home. An absolute path takes `ssh://`, as in `ssh://user@host/srv/repo`. Without a section flag, chest infers the section from the package. `--rev` is for git sources and `--version` for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so `--grant` then fails unless it lists the grants the entry has. The same name with another source, or in another section, is an error. So is another name for a source and `path` that an entry of the same section installs, at any version or rev. A whole package and one `path` of it count as the same source, since both would load. So do a path source and a folder inside it. |
+| `chest add <source>` | `--skill`, `--agent`, `--extension`, `--name <name>`, `--path <path>`, `--rev <rev>`, `--version <range>`, `--grant a,b`, `--yes` | Adds an entry and installs it. The source is `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL or a path. A git URL starts with `https://`, `http://`, `ssh://` or `git://`, or takes the form `user@host:path`. Without a section flag, chest infers the section from the package. `--rev` is for git sources and `--version` for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so `--grant` then fails unless it lists the grants the entry has. The same name with another source or section is an error. So is a second name for a source and `path` that an entry of the section already installs, at any version or rev. |
 | `chest remove <name>` | | Removes the entry and what chest installed for it. It also removes the entry's `[patch]`, but not the patch's folder, which isn't chest's. |
 | `chest install` | `--frozen` | Installs what the manifest lists, as the lock pins it, and writes the lock. With `--frozen`, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither. |
-| `chest update [names]` | | Moves the entries, or all, to the newest version or commit their source allows. Shows an entry whose version, commit or path source didn't change as `unchanged`. A path extension shows as `unchanged` even after its files change, since yapi loads it from its source. |
-| `chest list` | | Lists each entry with its locked version or commit, its state, its capabilities and description. The description is an extension package's, or the `description` in the frontmatter of a skill or subagent. `installed`: in place as the lock pins it. `edited`: a copy changed since chest installed it, whatever the lock pins now. `outdated`: in place as an older lock pinned it. `stale`: not locked, or the lock no longer matches the manifest. `patched`: under `[patch]`. `missing`: locked but not in place. `no source`: a path entry whose source is gone. `chest install` then skips it with a warning and installs the other entries. When the folder held several items, chest can't tell their copies from dropped ones, so it keeps every copy in that section, and lists them, until the folder is back. `chest install --frozen` fails on it. Restore the folder or remove the entry. yapi acts on the same states at startup. It doesn't hash copies, so it treats an `edited` entry as `installed`, or as `outdated` when the lock pins another version. |
+| `chest update [names]` | | Moves the named entries, or all of them, to the newest version or commit their source allows, and writes the lock. See [Update entries](chest-lock.md#update-entries). |
+| `chest list` | | Lists each entry with its locked version or commit, its [state](#entry-states), its capabilities and its description. The description is an extension package's, or the `description` in the frontmatter of a skill or subagent. |
 | `chest outdated` | | Lists entries whose source has something newer. |
 | `chest verify` | | Checks installed copies against the lock, and copies of path and `[patch]` entries against what chest installed. Reports a path entry whose source is gone. |
 | `chest import` | `--settings` or `--skills-lock`, `[path]` | Turns the packages of settings.json or settings.toml, or a skills-lock.json, into entries. |
-| `chest check [path]` | | Compares the capabilities that the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests in its `chest.toml` or `package.json`. `path` is the current folder by default, and a `chest.toml` or `package.json` stands for its folder. A `.wasm` file belongs to the nearest folder above it with either file. Fails when the package's `[package]` doesn't parse, and on a file that isn't a manifest or a `.ts`, `.js` or `.wasm` extension. |
+| `chest check [path]` | | Compares the capabilities that the native extensions of the package at `path`, or the `.wasm` file, use with the ones the package requests in its `chest.toml` or `package.json`. `path` is the current folder by default. See [Check a native extension](chest-publish.md#check-a-native-extension). |
 
-## Proxy
+## Entry states
+
+`chest list` shows each entry in one of these states:
+
+- **`installed`**: in place as the lock pins it
+- **`edited`**: a copy changed since chest installed it, whatever the lock pins now
+- **`outdated`**: in place as an older lock pinned it
+- **`stale`**: not locked, or the lock no longer matches the manifest
+- **`patched`**: under `[patch]`
+- **`missing`**: locked but not in place
+- **`no source`**: a path entry whose source is gone. `chest install` skips it with a warning and installs the other entries, and `chest install --frozen` fails on it. Restore the folder or remove the entry.
+
+yapi acts on the same states at startup. It doesn't hash copies, so it treats an `edited` entry as `installed`, or as `outdated` when the lock pins another version.
+
+## Use a proxy
 
 chest reads proxy variables such as `HTTPS_PROXY`, as yapi does. Without them, it uses the `httpProxy` setting in yapi's global `settings.json`, like yapi.
 
