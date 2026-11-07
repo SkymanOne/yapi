@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "chest-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "aws-lc-rs",
@@ -4298,7 +4298,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -4326,7 +4326,7 @@ dependencies = [
 
 [[package]]
 name = "yapi"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -4356,7 +4356,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-agent"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "futures-util",
  "serde_json",
@@ -4368,7 +4368,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-ai"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "aws-lc-rs",
  "base64",
@@ -4392,7 +4392,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "aws-lc-rs",
  "base64",
@@ -4425,7 +4425,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-ext"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "aws-lc-rs",
  "base64",
@@ -4455,7 +4455,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-mock"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "base64",
  "bytes",
@@ -4478,7 +4478,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-tui"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "indexmap",
  "pulldown-cmark",
@@ -4494,7 +4494,7 @@ dependencies = [
 
 [[package]]
 name = "yapi-types"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "getrandom 0.4.3",
  "indexmap",

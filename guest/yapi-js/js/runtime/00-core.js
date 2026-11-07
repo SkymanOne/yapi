@@ -977,7 +977,7 @@
 		pid: 1,
 		ppid: 0,
 		version: "v22.0.0",
-		versions: { node: "22.0.0", yapi: "0.4.1" },
+		versions: { node: "22.0.0", yapi: "0.4.2" },
 		release: { name: "node" },
 		// Node's diagnostic report, which probes such as detect-libc read: no
 		// C library to name, and no native libraries loaded.
