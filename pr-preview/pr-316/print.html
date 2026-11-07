@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d0218b26.js";
+            window.path_to_searchindex_js = "searchindex-5ea3469d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -1145,7 +1145,7 @@ chest add git:github.com/acme/agents --path reviewer.md
 </tbody>
 </table>
 </div>
-<p>At a terminal, <code>chest init</code> lists the folders of each kind with the agents that read them, and ticks the ones it found. When you tick two or more folders of a kind, it asks which one holds the copy and lists that one first. It shows a summary and asks before it writes <code>chest.toml</code>. Without a terminal, or with <code>--yes</code>, it takes the ticked folders. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
+<p>At a terminal, <code>chest init</code> lists the folders of each kind with the agents that read them, and ticks the ones it found. When you tick two or more folders of a kind, it asks which one holds the copy and lists that one first. Then it shows a summary and asks before it writes <code>chest.toml</code>. With both <code>--skills</code> and <code>--agents</code>, it asks nothing and writes the file at once. Without a terminal, or with <code>--yes</code>, it takes the ticked folders. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
 <p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to.</p>
 <h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
 <p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
@@ -1191,7 +1191,7 @@ chest add git:github.com/acme/pi-todo --grant fs
 </table>
 </div>
 <p><code>chest add</code> shows the capabilities a package requests, then lists every capability with what it allows. It ticks the ones the package requests and, for a native extension, the ones the build uses, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. It never ticks <code>all</code>, so you tick that one yourself. A bare <code>.wasm</code> file requests nothing, so chest ticks what it uses. Before installing, chest shows the entry with its grants and asks you to confirm.</p>
-<p>A request never grants anything by itself. Without a terminal, or with <code>--yes</code>, chest grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
+<p>A request never grants anything by itself. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, chest asks nothing and grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
 <p><code>all</code> is the only way to run programs. A program runs as you, outside the sandbox, with yapi’s environment and API keys. So <code>all</code> is full access, and <code>chest add</code> says so before it grants it. <a href="#what-each-capability-allows">What each capability allows</a> gives the exact list.</p>
 <h2 id="let-extensions-share-events"><a class="header" href="#let-extensions-share-events">Let extensions share events</a></h2>
 <p>Extensions share <code>pi.events</code> by default, as in Pi, so cooperating Pi extensions keep working whatever their grants. Sharing has a cost between extensions with different grants. One that acts on events lets the sender borrow its access, and one that listens learns what others send.</p>
@@ -1207,7 +1207,7 @@ capabilities = ["net"]
 events = "isolated"
 </code></pre>
 <p>Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.</p>
-<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, or with <code>--yes</code>, it keeps the shared default. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
+<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, it keeps the shared default. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
 <h2 id="how-yapi-loads-a-manifest"><a class="header" href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a></h2>
 <p>At startup and on <code>/reload</code>, yapi reads two manifests:</p>
 <ul>
@@ -1527,10 +1527,10 @@ extensions = ["extensions/index.ts"]
 <p>chest reads proxy variables such as <code>HTTPS_PROXY</code>, as yapi does. Without them, it uses the <code>httpProxy</code> setting in yapi’s global <code>settings.json</code>, like yapi.</p>
 <h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
 <p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error.</p>
-<p>At a terminal, <code>chest init</code> and <code>chest add</code> ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Each shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. <code>chest install</code>, <code>chest update</code>, <code>chest remove</code> and <code>chest import</code> show a spinner and a summary of each entry’s outcome.</p>
+<p>At a terminal, <code>chest init</code> and <code>chest add</code> ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. <code>chest install</code>, <code>chest update</code>, <code>chest remove</code> and <code>chest import</code> show a spinner and a summary of each entry’s outcome.</p>
 <p>To skip the questions:</p>
 <ul>
-<li>Pass the flag that answers one, such as <code>--skills</code> for <code>chest init</code> or <code>--path</code> for <code>chest add</code>.</li>
+<li>Pass the flags that answer them, such as <code>--skills</code> and <code>--agents</code> for <code>chest init</code>, or <code>--path</code>, <code>--skill &lt;name&gt;</code> and <code>--grant</code> for <code>chest add</code>. When flags answer every question, chest installs or writes at once, without the confirmation.</li>
 <li>Pass <code>--yes</code> to take the defaults and skip the confirmation.</li>
 <li>Run chest without a terminal, or with <code>CI</code> set. chest then asks nothing and prints plain lines, with each entry’s outcome on stdout.</li>
 </ul>

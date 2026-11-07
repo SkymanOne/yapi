@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d0218b26.js";
+            window.path_to_searchindex_js = "searchindex-5ea3469d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -207,7 +207,7 @@ chest add git:github.com/acme/pi-todo --grant fs
 </table>
 </div>
 <p><code>chest add</code> shows the capabilities a package requests, then lists every capability with what it allows. It ticks the ones the package requests and, for a native extension, the ones the build uses, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. It never ticks <code>all</code>, so you tick that one yourself. A bare <code>.wasm</code> file requests nothing, so chest ticks what it uses. Before installing, chest shows the entry with its grants and asks you to confirm.</p>
-<p>A request never grants anything by itself. Without a terminal, or with <code>--yes</code>, chest grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
+<p>A request never grants anything by itself. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, chest asks nothing and grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
 <p><code>all</code> is the only way to run programs. A program runs as you, outside the sandbox, with yapi’s environment and API keys. So <code>all</code> is full access, and <code>chest add</code> says so before it grants it. <a href="chest-manifest.html#what-each-capability-allows">What each capability allows</a> gives the exact list.</p>
 <h2 id="let-extensions-share-events"><a class="header" href="#let-extensions-share-events">Let extensions share events</a></h2>
 <p>Extensions share <code>pi.events</code> by default, as in Pi, so cooperating Pi extensions keep working whatever their grants. Sharing has a cost between extensions with different grants. One that acts on events lets the sender borrow its access, and one that listens learns what others send.</p>
@@ -223,7 +223,7 @@ capabilities = ["net"]
 events = "isolated"
 </code></pre>
 <p>Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.</p>
-<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, or with <code>--yes</code>, it keeps the shared default. <a href="chest-manifest.html#event-bus-routing">Event bus routing</a> has the rules.</p>
+<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, it keeps the shared default. <a href="chest-manifest.html#event-bus-routing">Event bus routing</a> has the rules.</p>
 <h2 id="how-yapi-loads-a-manifest"><a class="header" href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a></h2>
 <p>At startup and on <code>/reload</code>, yapi reads two manifests:</p>
 <ul>
