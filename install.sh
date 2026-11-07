@@ -4,7 +4,8 @@
 # release has it, into a directory on PATH. Then it installs the release's
 # docs for the model the same way into yapi's agent directory, replacing the
 # previous copy. It can install yapi or chest alone instead. Without that
-# choice, it asks when it runs in a terminal and installs both otherwise.
+# choice, it installs both, unless it runs in a terminal: then it asks with a
+# menu and shows its steps in the style of Clack prompts.
 # With --from-source, it builds the release's tag with cargo instead of
 # downloading the archive.
 #
@@ -39,8 +40,16 @@ case "${YAPI_FROM_SOURCE:-}" in
     *) build= ;;
 esac
 only="${YAPI_INSTALL_ONLY:-}"
+# Set when the script asks what to install, for the view in the style of
+# Clack prompts. Without it, the output is plain lines.
+ui=
 
 fail() {
+    if [ -n "$ui" ]; then
+        end_step "${red}■${off}"
+        printf '%s\n%s└  install.sh: %s%s\n\n' "$bar" "$red" "$*" "$off" >&2
+        exit 1
+    fi
     echo "install.sh: $*" >&2
     exit 1
 }
@@ -103,24 +112,226 @@ if [ -n "$build" ]; then
     command -v cargo >/dev/null 2>&1 || fail "needs cargo to build from source. Install Rust with rustup: https://rustup.rs"
 fi
 
+# The view in the style of Clack prompts: a rail of steps, ◆ for the active
+# one and ◇ for a finished one, with the terminal's escape sequences only
+# when $animate is set.
+animate= asking= step= spinner= termios= work=
+esc= cyan= green= yellow= red= dim= inverse= off= bar=
+
+# The name of choice $1 of what to install.
+label() {
+    case "$1" in
+        1) echo 'yapi and chest' ;;
+        2) echo 'yapi only' ;;
+        *) echo 'chest only' ;;
+    esac
+}
+
+# What choice $1 of what to install puts on the system.
+hint() {
+    case "$1" in
+        1) echo 'the coding agent and its package manager' ;;
+        2) echo 'the coding agent, without chest' ;;
+        *) echo 'the package manager, without yapi' ;;
+    esac
+}
+
+# The arrow-key menu of what to install, as $choice sets it, in the colors
+# of a Clack prompt that is asking: the focused choice has its hint.
+draw_menu() {
+    printf '%s◆%s  What to install?\n' "$cyan" "$off"
+    for n in 1 2 3; do
+        if [ "$n" = "$choice" ]; then
+            printf '%s│%s  %s●%s %s %s(%s)%s\n' "$cyan" "$off" "$green" "$off" "$(label "$n")" "$dim" "$(hint "$n")" "$off"
+        else
+            printf '%s│%s  %s○ %s%s\n' "$cyan" "$off" "$dim" "$(label "$n")" "$off"
+        fi
+    done
+    printf '%s└%s\n' "$cyan" "$off"
+}
+
+# Asks with the arrow-key menu, the terminal in raw mode, and sets $choice.
+# It leaves $choice empty when the terminal sends no keys.
+menu() {
+    choice=1 asking=menu
+    printf '%s[?25l' "$esc"
+    draw_menu
+    while :; do
+        key=$(dd bs=1 count=1 </dev/tty 2>/dev/null || :; echo .)
+        if [ "$key" = "$esc." ]; then
+            # The rest of an arrow key's escape sequence.
+            key=$esc$(dd bs=2 count=1 </dev/tty 2>/dev/null || :; echo .)
+        fi
+        case "$key" in
+            "$esc[A." | "${esc}OA.") choice=$(( (choice + 1) % 3 + 1 )) ;;
+            "$esc[B." | "${esc}OB.") choice=$((choice % 3 + 1)) ;;
+            "$nl." | "$cr.") break ;;
+            .)
+                choice=
+                break
+                ;;
+            *) continue ;;
+        esac
+        printf '%s[5A\r%s[J' "$esc" "$esc"
+        draw_menu
+    done
+    asking=
+    printf '%s[5A\r%s[J' "$esc" "$esc"
+    if [ -n "$choice" ]; then
+        printf '%s◇%s  What to install?\n%s  %s%s%s\n' "$green" "$off" "$bar" "$dim" "$(label "$choice")" "$off"
+    fi
+    printf '%s[?25h' "$esc"
+}
+
+# Starts step $1. Without the view, it prints $1. With it, a spinner turns
+# beside $1, and the step's errors wait in $work/errors until it ends.
+spin() {
+    if [ -z "$ui" ]; then
+        echo "$1"
+        return
+    fi
+    step=$1
+    printf '%s\n' "$bar"
+    if [ -n "$animate" ]; then
+        printf '%s[?25l' "$esc"
+        (
+            # $$ is the script, so the spinner stops even when it is killed.
+            while kill -0 $$ 2>/dev/null; do
+                for frame in ◒ ◐ ◓ ◑; do
+                    printf '\r%s%s%s  %s...' "$cyan" "$frame" "$off" "$step"
+                    sleep 0.1 2>/dev/null || sleep 1
+                done
+            done
+        ) &
+        spinner=$!
+    else
+        printf '%s◆%s  %s...\n' "$cyan" "$off" "$step"
+    fi
+    exec 3>&2 2>"$work/errors"
+}
+
+# Ends the current step. With mark $1, the step's line stays under that
+# mark, followed by the errors that its commands printed.
+end_step() {
+    [ -n "$step" ] || return 0
+    if [ -n "$spinner" ]; then
+        kill "$spinner" 2>/dev/null || :
+        wait "$spinner" 2>/dev/null || :
+        spinner=
+        printf '\r%s[K%s[?25h' "$esc" "$esc"
+        [ -z "$1" ] || printf '%s  %s\n' "$1" "$step"
+    fi
+    exec 2>&3 3>&-
+    [ -z "$1" ] || LC_ALL=C sed "s/^/$bar  /" "$work/errors" >&2
+    step=
+}
+
+# Reports $1, which ends the current step in the view.
+say() {
+    if [ -z "$ui" ]; then
+        echo "$1"
+        return
+    fi
+    [ -n "$spinner" ] || printf '%s\n' "$bar"
+    end_step ''
+    printf '%s◇%s  %s\n' "$green" "$off" "$1"
+}
+
+# Warns that $1, and goes on.
+warn() {
+    if [ -z "$ui" ]; then
+        echo "install.sh: $1" >&2
+        return
+    fi
+    end_step "${yellow}▲${off}"
+    printf '%s  install.sh: %s\n' "$bar" "$1" >&2
+}
+
+# Ctrl+C in the view.
+cancelled() {
+    case "$asking" in
+        menu) printf '%s[5A\r%s[J%s■%s  What to install?\n%s│%s  %s%s%s\n' "$esc" "$esc" "$red" "$off" "$red" "$off" "$dim" "$(label "$choice")" "$off" ;;
+        line) echo ;;
+    esac
+    end_step "${red}■${off}"
+    printf '%s\n%s└  Installation cancelled%s\n\n' "$bar" "$red" "$off"
+    exit 130
+}
+
+# On exit: ends a step that a failing command stopped, puts the terminal
+# back as it was and removes the downloads.
+cleanup() {
+    if [ -n "$step" ]; then
+        end_step "${red}■${off}"
+        printf '%s└%s\n\n' "$red" "$off" >&2
+    fi
+    if [ -n "$termios" ]; then
+        stty "$termios" </dev/tty 2>/dev/null || :
+    fi
+    if [ -n "$animate" ]; then
+        printf '%s[?25h' "$esc"
+    fi
+    if [ -n "$work" ]; then
+        rm -rf "$work"
+    fi
+}
+trap cleanup EXIT
+
 # Asks only when someone can answer: stdout is a terminal and /dev/tty opens.
 # With curl | sh, stdin holds the script, so the answer comes from /dev/tty.
 if [ -z "$only" ] && [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
-    printf 'Install:\n  1) yapi and chest\n  2) yapi only\n  3) chest only\n' >/dev/tty
-    tries=0
-    while [ -z "$only" ]; do
-        printf 'Choose 1, 2 or 3 [1]: ' >/dev/tty
-        read -r answer </dev/tty || fail "no answer. Run the script again, or pass --only yapi, chest or both."
-        case "$answer" in
-            '' | 1) only=both ;;
-            2) only=yapi ;;
-            3) only=chest ;;
-            *)
-                tries=$((tries + 1))
-                [ "$tries" -lt 3 ] || fail "no valid choice. Run the script again, or pass --only yapi, chest or both."
-                ;;
-        esac
-    done
+    ui=yes
+    esc=$(printf '\033')
+    cr=$(printf '\r')
+    nl='
+'
+    # A dumb terminal gets plain text, and the numbered question.
+    if [ "${TERM:-dumb}" != dumb ]; then
+        animate=yes
+        if [ -z "${NO_COLOR:-}" ]; then
+            cyan="$esc[36m" green="$esc[32m" yellow="$esc[33m" red="$esc[31m"
+            dim="$esc[2m" inverse="$esc[7m" off="$esc[0m"
+        fi
+    fi
+    bar="${dim}│${off}"
+    trap cancelled INT TERM
+    printf '%s┌%s  %s yapi installer %s\n%s\n' "$dim" "$off" "$inverse" "$off" "$bar"
+    choice=
+    if [ -n "$animate" ] && termios=$(stty -g </dev/tty 2>/dev/null) &&
+        stty -icanon -echo min 1 time 1 </dev/tty 2>/dev/null; then
+        menu
+    fi
+    if [ -n "$termios" ]; then
+        stty "$termios" </dev/tty 2>/dev/null || :
+        termios=
+    fi
+    if [ -z "$choice" ]; then
+        printf '%s◆%s  What to install?\n' "$cyan" "$off"
+        for n in 1 2 3; do
+            printf '%s  %s) %s %s(%s)%s\n' "$bar" "$n" "$(label "$n")" "$dim" "$(hint "$n")" "$off"
+        done
+        tries=0 asking=line
+        while [ -z "$choice" ]; do
+            printf '%s  Choose 1, 2 or 3 [1]: ' "$bar"
+            if ! read -r answer </dev/tty; then
+                echo
+                fail "no answer. Run the script again, or pass --only yapi, chest or both."
+            fi
+            case "$answer" in
+                '' | 1 | 2 | 3) choice=${answer:-1} ;;
+                *)
+                    tries=$((tries + 1))
+                    [ "$tries" -lt 3 ] || fail "no valid choice. Run the script again, or pass --only yapi, chest or both."
+                    ;;
+            esac
+        done
+        asking=
+    fi
+    case "$choice" in
+        1) only=both ;;
+        2) only=yapi ;;
+        *) only=chest ;;
+    esac
 fi
 case "$only" in
     yapi) binaries=yapi crates=yapi ;;
@@ -142,7 +353,6 @@ else
 fi
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
 
 # Downloads file $1 of the release into $work and checks it against its
 # published SHA-256. On failure, $problem says why.
@@ -180,7 +390,7 @@ if [ -n "$build" ]; then
             binaries=yapi crates=yapi
             ;;
     esac
-    echo "Building $crates from $release with cargo"
+    spin "Building $crates from $release with cargo"
     # shellcheck disable=SC2086 # $crates is a list of names without spaces.
     cargo install --locked --git https://github.com/SkymanOne/yapi --tag "$tag" --root "$work/build" $crates ||
         fail "cargo could not build $crates from $release"
@@ -227,7 +437,7 @@ else
         release="release v${version#v}"
     fi
     name="yapi-$target.tar.gz"
-    echo "Downloading $name from $release"
+    spin "Downloading $name from $release"
     fetch_checked "$name" || fail "$problem. $rebuild"
     mkdir "$work/unpacked"
     tar -xzf "$work/$name" -C "$work/unpacked"
@@ -255,13 +465,14 @@ for binary in $binaries; do
     chmod 755 "$dir/.$binary.$$"
     mv -f "$dir/.$binary.$$" "$dir/$binary"
 done
-[ "$binaries" = chest ] || echo "Installed yapi $installed to $dir/yapi"
-[ "$binaries" = yapi ] || echo "Installed $chest to $dir/chest"
+[ "$binaries" = chest ] || say "Installed yapi $installed to $dir/yapi"
+[ "$binaries" = yapi ] || say "Installed $chest to $dir/chest"
 
 # The docs the model reads about yapi and pi, unpacked next to the old copy,
 # which they then replace. yapi downloads them on its first run when this
 # step fails.
 if [ -n "$docs" ]; then
+    [ -z "$ui" ] || spin "Downloading the docs for the model"
     agent="${YAPI_CODING_AGENT_DIR:-}"
     # shellcheck disable=SC2088 # A leading ~/ the shell did not expand.
     case "$agent" in
@@ -280,15 +491,29 @@ if [ -n "$docs" ]; then
         problem="could not move the docs into $agent/docs"
     else
         problem=
-        echo "Installed the docs for the model to $agent/docs"
+        say "Installed the docs for the model to $agent/docs"
     fi
     if [ -n "$problem" ]; then
-        echo "install.sh: skipped the docs for the model: $problem. yapi downloads them when it first runs." >&2
+        warn "skipped the docs for the model: $problem. yapi downloads them when it first runs."
     fi
 fi
 
 [ "$binaries" != "yapi chest" ] || binaries="yapi and chest"
+run=${binaries%% *}
 case ":${PATH:-}:" in
     *":$dir:"*) ;;
-    *) echo "Add $dir to PATH to run $binaries, for example in your shell's profile: export PATH=\"$dir:\$PATH\"" ;;
+    *)
+        hint="Add $dir to PATH to run $binaries, for example in your shell's profile:"
+        line="export PATH=\"$dir:\$PATH\""
+        if [ -n "$ui" ]; then
+            printf '%s\n%s▲%s  %s\n%s  %s\n' "$bar" "$yellow" "$off" "$hint" "$bar" "$line"
+        else
+            echo "$hint $line"
+        fi
+        run="$dir/$run"
+        ;;
 esac
+if [ -n "$ui" ]; then
+    [ "$binaries" != chest ] || run="$run init in a project"
+    printf '%s\n%s└  Done.%s Run %s to start.\n\n' "$bar" "$green" "$off" "$run"
+fi

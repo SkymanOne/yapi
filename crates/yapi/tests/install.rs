@@ -378,10 +378,12 @@ fn installs_chest_too() {
     assert!(!to.exists());
 }
 
-/// In a terminal, the install script asks what to install. It reads the
-/// answer from the terminal, as `curl … | sh` feeds it the script on stdin,
-/// and asks again after an invalid answer, three times at most. With
-/// `--only`, or with its output going elsewhere, it doesn't ask.
+/// In a terminal, the install script asks what to install with an arrow-key
+/// menu, or with a numbered question in a dumb terminal. It reads the keys
+/// from the terminal, as `curl … | sh` feeds it the script on stdin, cancels
+/// on Ctrl+C, and asks the question again after an invalid answer, three
+/// times at most. With `--only`, or with its output going elsewhere, it
+/// doesn't ask.
 #[test]
 fn asks_in_terminal() {
     let dir = scratch("ask");
@@ -390,20 +392,27 @@ fn asks_in_terminal() {
     let releases = serve(site, Some("9.9.9"));
     let script = common::repo().join("install.sh");
     let limit = Duration::from_secs(30);
-    let prompts = |rows: &[String]| {
-        let prompt = "Choose 1, 2 or 3 [1]: ";
-        rows.iter().filter(|row| row.starts_with(prompt)).count()
-    };
+    let (menu, question) = ("  What to install?", "Choose 1, 2 or 3 [1]: ");
+    let prompts =
+        |rows: &[String], prompt: &str| rows.iter().filter(|row| row.contains(prompt)).count();
     let exit = |rows: &[String]| {
         rows.iter()
             .find_map(|row| row.trim_end().strip_prefix("exit ").map(str::to_owned))
     };
-    for (case, rest, answers, installed) in [
-        ("enter", "", &[""][..], &["chest", "yapi"][..]),
-        ("chest", "", &["4", "3"], &["chest"]),
-        ("invalid", "", &["x", "x", "x"], &[]),
-        ("flag", " -s -- --only both", &[], &["chest", "yapi"]),
-        ("redirected", " >out", &[], &["chest", "yapi"]),
+    for (case, sh, prompt, answers, installed) in [
+        ("enter", "sh", menu, &[""][..], &["chest", "yapi"][..]),
+        ("arrows", "sh", menu, &["\x1b[B\x1b[B\x1b[A"], &["yapi"]),
+        ("cancel", "sh", menu, &["\x03"], &[]),
+        ("chest", "TERM=dumb sh", question, &["4", "3"], &["chest"]),
+        ("invalid", "TERM=dumb sh", question, &["x", "x", "x"], &[]),
+        (
+            "flag",
+            "sh -s -- --only both",
+            question,
+            &[],
+            &["chest", "yapi"],
+        ),
+        ("redirected", "sh >out", question, &[], &["chest", "yapi"]),
     ] {
         let home = dir.join(case);
         std::fs::create_dir_all(&home).unwrap();
@@ -412,28 +421,33 @@ fn asks_in_terminal() {
             ("HOME", home.clone().into_os_string()),
             ("YAPI_RELEASES_URL", releases.clone().into()),
         ];
-        // sh reads the script from a pipe, as from curl.
+        // sh reads the script from a pipe, as from curl. The trap keeps the
+        // outer shell alive through Ctrl+C to print the exit code.
         let args = [
             "-c".to_owned(),
-            format!("cat \"$0\" | sh{rest}; echo \"exit $?\""),
+            format!("trap : INT; cat \"$0\" | {sh}; echo \"exit $?\""),
             script.display().to_string(),
         ];
         let shell = Path::new("/bin/sh");
         let mut pty =
             yapi_mock::pty::Pty::spawn(shell, &args, &home, &env, (120, 30), false).unwrap();
         for (asked, answer) in answers.iter().enumerate() {
-            let shown = pty.wait_for(limit, |rows| prompts(rows) > asked);
+            let shown = pty.wait_for(limit, |rows| prompts(rows, prompt) > asked);
             assert!(shown.is_some(), "{case}: {:#?}", pty.rows());
             pty.write(&format!("{answer}\r")).unwrap();
         }
         let done = pty.wait_for(limit, |rows| exit(rows).is_some());
         assert!(done.is_some(), "{case}: {:#?}", pty.rows());
         let rows = pty.rows();
-        assert_eq!(prompts(&rows), answers.len(), "{case}: {rows:#?}");
+        assert_eq!(prompts(&rows, prompt), answers.len(), "{case}: {rows:#?}");
         let bin = home.join(".local/bin");
         if installed.is_empty() {
-            assert_eq!(exit(&rows).as_deref(), Some("1"), "{rows:#?}");
-            let failed = rows.iter().any(|row| row.contains("no valid choice"));
+            let (code, message) = match case {
+                "cancel" => ("130", "Installation cancelled"),
+                _ => ("1", "no valid choice"),
+            };
+            assert_eq!(exit(&rows).as_deref(), Some(code), "{rows:#?}");
+            let failed = rows.iter().any(|row| row.contains(message));
             assert!(failed, "{rows:#?}");
             assert!(!bin.exists());
         } else {
