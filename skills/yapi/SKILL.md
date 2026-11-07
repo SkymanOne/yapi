@@ -139,7 +139,7 @@ Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so cod
 
 Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it's full access. See [Get started with chest](https://skymanone.github.io/yapi/chest.html) and [Grant capabilities](https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities).
 
-`yapi --project-only`, or `YAPI_PROJECT_ONLY=1` in the environment, loads only the project's packages, skills and MCP servers. Global ones are skipped unless the `projectOnly` setting in `~/.yapi/agent/settings.json` keeps them. See [Run yapi with only the project's packages](https://skymanone.github.io/yapi/project-only.html).
+`yapi --project-only` (or `-P`), or `YAPI_PROJECT_ONLY=1` in the environment, loads only the project's packages, skills and MCP servers. Global ones are skipped unless the `projectOnly` setting in `~/.yapi/agent/settings.json` keeps them. See [Run yapi with only the project's packages](https://skymanone.github.io/yapi/project-only.html).
 
 ## Find why yapi misbehaves
 

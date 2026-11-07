@@ -269,7 +269,7 @@ pub fn parse(args: &[String]) -> Args {
             // `main` reads it from the raw arguments, as pi does.
             "--offline" => {}
             "--enable-logging" => result.enable_logging = true,
-            "--project-only" => result.project_only = true,
+            "--project-only" | "-P" => result.project_only = true,
             _ if arg.starts_with('@') => result.file_args.push(arg[1..].to_owned()),
             _ if arg.starts_with("--") => {
                 let flag = &arg[2..];
@@ -357,8 +357,13 @@ mod tests {
         let parsed = args(&["--enable-logging", "hi"]);
         assert!(parsed.enable_logging && parsed.diagnostics.is_empty());
         assert_eq!(parsed.messages, ["hi"]);
-        let parsed = args(&["--project-only", "hi"]);
-        assert!(parsed.project_only && parsed.unknown_flags.is_empty());
-        assert_eq!(parsed.messages, ["hi"]);
+        for flag in ["--project-only", "-P"] {
+            let parsed = args(&[flag, "hi"]);
+            assert!(
+                parsed.project_only && parsed.unknown_flags.is_empty(),
+                "{flag}"
+            );
+            assert_eq!(parsed.messages, ["hi"]);
+        }
     }
 }

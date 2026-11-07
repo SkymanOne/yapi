@@ -4,6 +4,10 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Add `-P`, short for `--project-only` ([#314](https://github.com/SkymanOne/yapi/pull/314)).
+
 ## [0.4.2] - 2026-11-07
 
 ### Fixes
