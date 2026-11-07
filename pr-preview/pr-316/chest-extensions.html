@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5ea3469d.js";
+            window.path_to_searchindex_js = "searchindex-b4cf3b52.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -223,7 +223,7 @@ capabilities = ["net"]
 events = "isolated"
 </code></pre>
 <p>Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.</p>
-<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, it keeps the shared default. <a href="chest-manifest.html#event-bus-routing">Event bus routing</a> has the rules.</p>
+<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. <code>--isolated</code> picks <code>isolated</code> without the question. Otherwise, without a terminal, with <code>--yes</code>, or with <code>--grant</code>, chest keeps the shared default. To list channels, edit the entry’s <code>events</code> in <code>chest.toml</code>. <a href="chest-manifest.html#event-bus-routing">Event bus routing</a> has the rules.</p>
 <h2 id="how-yapi-loads-a-manifest"><a class="header" href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a></h2>
 <p>At startup and on <code>/reload</code>, yapi reads two manifests:</p>
 <ul>
