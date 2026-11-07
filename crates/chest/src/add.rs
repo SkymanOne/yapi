@@ -28,8 +28,7 @@ use crate::{Target, Usage, frontmatter, open, read, requests, source, sync, writ
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
 
 /// What `all` means, said at a terminal before it is granted.
-const ALL_DRAWN: &str =
-    "`all` runs unrestricted: outside the sandbox, with yapi's environment and API keys.";
+const ALL_DRAWN: &str = "`all` runs the extension unrestricted, outside the sandbox. It can read yapi's environment and API keys.";
 
 /// The warning before `all` is granted, as `prompt` shows it.
 fn all_warning(prompt: &Prompt) -> &'static str {
@@ -40,7 +39,7 @@ fn all_warning(prompt: &Prompt) -> &'static str {
 }
 
 /// What sharing `pi.events` costs, said before the event choice.
-const EVENTS_TEXT: &str = "By default this extension shares `pi.events` with every other extension. Extensions with more access, including packages from `yapi install`, can act on its events, and it sees theirs.";
+const EVENTS_TEXT: &str = "By default, this extension shares `pi.events` with every other extension, including ones with more access, such as packages from `yapi install`.";
 
 /// `chest add` options.
 #[derive(Args)]
@@ -178,7 +177,7 @@ fn pick(
         })
         .collect();
     let question = format!(
-        "Which {kind} should chest add?\nKeep all for one entry that gets new {kind} on update.\nClear some for one entry each."
+        "Which {kind} should chest add?\nKeep all for one entry that gets new {kind} on update.\nUntick some for one entry each."
     );
     let all = (0..items.len()).collect();
     let chosen = prompt.multiselect(&question, &options, all, true)?;
@@ -461,10 +460,10 @@ fn channels(patterns: &[String]) -> String {
 fn meaning(capability: &str) -> &'static str {
     match capability {
         "fs" => "read and write files",
-        "net" => "fetch, call models and read provider credentials",
+        "net" => "make web requests, call models and read provider credentials",
         "env" => "read environment variables",
         "session" => "start turns and change the session",
-        "all" => "everything, including running programs",
+        "all" => "runs unrestricted, outside the sandbox",
         _ => "an unknown capability",
     }
 }
@@ -579,7 +578,11 @@ fn events(prompt: &Prompt, meta: &PackageMeta) -> anyhow::Result<Option<EventPol
         );
         options.push((1, "declared channels".to_owned(), channels));
     }
-    options.push((2, "isolated".to_owned(), String::new()));
+    options.push((
+        2,
+        "isolated".to_owned(),
+        "only with extensions that have the same grants".to_owned(),
+    ));
     let choice = prompt.select("How should it share events?", &options, 0)?;
     Ok(match (choice, &declared) {
         (0, _) => None,

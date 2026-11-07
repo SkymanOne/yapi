@@ -39,7 +39,7 @@ chest reads proxy variables such as `HTTPS_PROXY`, as yapi does. Without them, i
 
 chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error.
 
-At a terminal, `chest init` and `chest add` ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. `chest install`, `chest update`, `chest remove` and `chest import` show a spinner and a summary of each entry's outcome.
+At a terminal, `chest init` and `chest add` ask with lists. Move with ↑ and ↓, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks before it writes anything. Esc or Ctrl+C cancels, writes nothing and exits with 1. `chest install`, `chest update`, `chest remove` and `chest import` show a spinner, then each entry's outcome.
 
 To skip the questions:
 
@@ -47,4 +47,4 @@ To skip the questions:
 - Pass `--yes` to take the defaults and skip the confirmation.
 - Run chest without a terminal, or with `CI` set. chest then asks nothing and prints plain lines, with each entry's outcome on stdout.
 
-chest draws on stderr, in color unless `NO_COLOR` is set.
+chest draws on stderr. Set `NO_COLOR` to turn off colors.

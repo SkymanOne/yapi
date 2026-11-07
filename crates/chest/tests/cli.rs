@@ -1572,9 +1572,9 @@ fn add_prompts_interactively() {
             pty.write("\r").unwrap();
             expect(&pty, 10, "◼ net");
             pty.write(DOWN).unwrap();
-            expect(&pty, 10, "◼ net (fetch");
+            expect(&pty, 10, "◼ net (make web requests");
             pty.write(" ").unwrap();
-            expect(&pty, 10, "◻ net (fetch");
+            expect(&pty, 10, "◻ net (make web requests");
         }
         pty.write("\r").unwrap();
         expect(&pty, 10, "Install?");

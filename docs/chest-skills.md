@@ -28,7 +28,7 @@ A bare `--skill`, after the source, only tells chest that the source is a skill.
 When a package provides several skills or subagents and you pass neither `--path` nor `--skill <name>`, `chest add` lists them with their descriptions, all ticked:
 
 - **Keep them all**: chest writes one entry for the whole package, which gets the skills the package adds when you run `chest update`. A script or `--yes` writes the same entry.
-- **Clear some**: chest writes one entry for each skill you keep, each with its `path`.
+- **Untick some**: chest writes one entry for each skill you keep, each with its `path`.
 
 The summary before you confirm says which of the two chest writes.
 
