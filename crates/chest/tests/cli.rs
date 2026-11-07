@@ -1442,11 +1442,15 @@ fn remove_keeps_handwritten() {
 /// chest in a terminal in the project, with `args`.
 fn pty(scratch: &Scratch, args: &[&str]) -> yapi_mock::pty::Pty {
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+    let mut environment = environment(scratch);
+    // Off macOS, cliclack draws its symbols only under a UTF-8 `LANG`, which
+    // terminals set.
+    environment.push(("LANG".into(), "C.UTF-8".into()));
     yapi_mock::pty::Pty::spawn(
         Path::new(env!("CARGO_BIN_EXE_chest")),
         &args,
         &scratch.project,
-        &environment(scratch),
+        &environment,
         (200, 40),
         false,
     )
