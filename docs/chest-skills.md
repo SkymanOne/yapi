@@ -15,6 +15,23 @@ chest tells a skill from a subagent by looking at the package. Pass `--skill` or
 
 With `--path`, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn't a skill itself works the same way.
 
+To add skills from a repository by name, pass `--skill <name>` once for each. chest looks in the `skills` folder at the root of the source, by folder name or by the `name` in a skill's `SKILL.md`, and writes the entry that `--path skills/<name>` writes:
+
+```sh
+chest add git:github.com/apollographql/skills --skill rust-best-practices
+```
+
+A bare `--skill`, after the source, only tells chest that the source is a skill.
+
+## Pick skills at a terminal
+
+When a package provides several skills or subagents and you pass neither `--path` nor `--skill <name>`, `chest add` lists them with their descriptions, all ticked:
+
+- **Keep them all**: chest writes one entry for the whole package, which gets the skills the package adds when you run `chest update`. A script or `--yes` writes the same entry.
+- **Clear some**: chest writes one entry for each skill you keep, each with its `path`.
+
+The summary before you confirm says which of the two chest writes.
+
 chest installs only skills that are folders with a `SKILL.md`. It skips or refuses a skill that's a single `.md` file, which yapi and Pi also load. A `.md` file outside a `skills` folder is a subagent.
 
 ## Choose folders for your agents
@@ -31,7 +48,7 @@ chest installs only skills that are folders with a `SKILL.md`. It skips or refus
 | OpenCode | `.opencode` | `.agents/skills` | `.opencode/agent` |
 | yapi | `.yapi` | `.agents/skills` | `.yapi/agents` |
 
-At a terminal, `chest init` lists the folders by number, with the ones it found selected. Without a terminal, or with `--yes`, it takes those. When it finds no agent, skills go to `.agents/skills` and subagents to `.yapi/agents`. `--skills`, `--agents` and `--store` set the folders directly.
+At a terminal, `chest init` lists the folders of each kind with the agents that read them, and ticks the ones it found. It shows a summary and asks before it writes `chest.toml`. Without a terminal, or with `--yes`, it takes the ticked folders. When it finds no agent, skills go to `.agents/skills` and subagents to `.yapi/agents`. `--skills`, `--agents` and `--store` set the folders directly.
 
 A folder can be a link to another one, such as `.claude/skills` linking to `../.agents/skills`. chest places each item once, in the folder the link resolves to.
 

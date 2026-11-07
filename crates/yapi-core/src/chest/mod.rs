@@ -146,6 +146,19 @@ pub struct Fetched {
     _work: Option<fetch::Work>,
 }
 
+impl Fetched {
+    /// The skills or subagents of `section` that an entry for the whole
+    /// package installs, each with the name it is placed under and its
+    /// folder or file, in name order. Empty when the package is itself one
+    /// skill.
+    pub fn items(&self, section: Section) -> Result<Vec<(String, PathBuf)>, ChestError> {
+        if !fetch::is_package(section, &self.root) {
+            return Ok(Vec::new());
+        }
+        Ok(fetch::items(&self.root, section, None, "")?.0)
+    }
+}
+
 /// One manifest entry and what the old lock says of it.
 struct Target<'a> {
     id: String,

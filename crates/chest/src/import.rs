@@ -13,7 +13,8 @@ use yapi_core::tools::path::relative;
 use yapi_core::trust::{TrustStore, resolve_trusted};
 use yapi_types::settings::PackageSource;
 
-use crate::{Target, out, say, write};
+use crate::prompt::Prompt;
+use crate::{Target, write};
 
 /// `chest import` options: one of the two sources, and its file.
 #[derive(Args)]
@@ -31,7 +32,7 @@ pub struct ImportArgs {
 }
 
 /// Runs `chest import`.
-pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
+pub fn run(target: &Target, args: &ImportArgs, prompt: &Prompt) -> anyhow::Result<()> {
     let text = if target.path.exists() {
         crate::read(target)?
     } else {
@@ -46,13 +47,13 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
                 Scope::Global => yapi_core::config::agent_dir(),
             })?,
         };
-        settings(target, &path, &mut document)?
+        settings(target, &path, &mut document, prompt)?
     } else {
         let path = args
             .path
             .clone()
             .unwrap_or_else(|| target.base().join("skills-lock.json"));
-        skills_lock(&path, &target.base(), &mut document)?
+        skills_lock(&path, &target.base(), &mut document, prompt)?
     };
     write(target, &document.to_string())?;
     let (entries, them) = match added {
@@ -63,7 +64,7 @@ pub fn run(target: &Target, args: &ImportArgs) -> anyhow::Result<()> {
         target.label(),
         yapi_core::chest::install_command(&target.path, target.scope),
     );
-    say(&format!(
+    prompt.done(&format!(
         "Added {added} {entries} to {manifest}. Run `{install}` to install {them}."
     ));
     Ok(())
@@ -82,8 +83,8 @@ fn add(
     document: &mut ManifestDocument,
     (section, name): (Section, &str),
     entry: &Entry,
-    what: &str,
-    base: &Path,
+    (what, base): (&str, &Path),
+    prompt: &Prompt,
 ) -> anyhow::Result<bool> {
     let manifest = document.manifest();
     let entries = || {
@@ -109,7 +110,7 @@ fn add(
             }),
     };
     if let Some(reason) = reason {
-        say(&format!("warning: skipped {what}: {reason}"));
+        prompt.warn(&format!("warning: skipped {what}: {reason}"));
         return Ok(false);
     }
     document.set_entry(section, name, entry)?;
@@ -123,6 +124,7 @@ fn settings(
     target: &Target,
     path: &Path,
     document: &mut ManifestDocument,
+    prompt: &Prompt,
 ) -> anyhow::Result<usize> {
     // Either form of the settings file, as yapi reads it.
     if !path.exists() {
@@ -193,7 +195,7 @@ fn settings(
         if let Some(filtered) = filtered {
             // Importing without these filters would load more than settings.json does.
             if filtered.extensions.is_some() || filtered.autoload == Some(false) {
-                say(&format!(
+                prompt.warn(&format!(
                     "warning: skipped {spec}: chest has no `extensions` filter or `autoload: false`, so it keeps loading from {file}"
                 ));
                 continue;
@@ -204,14 +206,15 @@ fn settings(
         }
         let name = name_of(&entry);
         if !valid_name(&name) {
-            say(&format!(
+            prompt.warn(&format!(
                 "warning: skipped {spec}: `{name}` is not a valid entry name"
             ));
             continue;
         }
-        if add(document, (Section::Extensions, &name), &entry, &spec, &base)? {
+        let what = (spec.as_str(), base.as_path());
+        if add(document, (Section::Extensions, &name), &entry, what, prompt)? {
             added += 1;
-            out(&format!(
+            prompt.data(&format!(
                 "extensions.{name}  from {spec}. Once chest installs it, remove it from {file} with `{remove} {removed}`."
             ));
         }
@@ -252,7 +255,12 @@ fn name_of(entry: &Entry) -> String {
 /// The skills of a `skills-lock.json` (skills.sh's `LocalSkillLockFile`)
 /// as skill entries, without their hashes, which chest computes its own way.
 /// A skill of a source type chest doesn't know is left out, with a warning.
-fn skills_lock(path: &Path, base: &Path, document: &mut ManifestDocument) -> anyhow::Result<usize> {
+fn skills_lock(
+    path: &Path,
+    base: &Path,
+    document: &mut ManifestDocument,
+    prompt: &Prompt,
+) -> anyhow::Result<usize> {
     let lock = json(path)?;
     if lock.get("version").and_then(Value::as_u64) != Some(1) {
         bail!(
@@ -307,17 +315,23 @@ fn skills_lock(path: &Path, base: &Path, document: &mut ManifestDocument) -> any
                     Some(kind) => format!("chest can't install its sourceType {kind:?}"),
                     None => "it has no sourceType".to_owned(),
                 };
-                say(&format!("warning: skipped {name}: {reason}"));
+                prompt.warn(&format!("warning: skipped {name}: {reason}"));
                 continue;
             }
         }
         if !valid_name(name) {
-            say(&format!("warning: skipped {name}: not a valid entry name"));
+            prompt.warn(&format!("warning: skipped {name}: not a valid entry name"));
             continue;
         }
-        if add(document, (Section::Skills, name), &entry, name, base)? {
+        if add(
+            document,
+            (Section::Skills, name),
+            &entry,
+            (name, base),
+            prompt,
+        )? {
             added += 1;
-            out(&format!("skills.{name}  from {source}"));
+            prompt.data(&format!("skills.{name}  from {source}"));
         }
     }
     Ok(added)

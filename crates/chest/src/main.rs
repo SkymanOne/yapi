@@ -19,10 +19,12 @@ use yapi_core::chest::lock::Locked;
 use yapi_core::chest::manifest::{
     Entry, Manifest, ManifestDocument, PackageMeta, Section, package_meta,
 };
-use yapi_core::chest::{Mode, Outcome, Outdated, Project, Report};
+use yapi_core::chest::{Mode, Outcome, Outdated, Project};
 use yapi_core::packages::npm::{self, Npm};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::home_dir;
+
+use crate::prompt::{Cancelled, Prompt};
 
 #[derive(Parser)]
 #[command(
@@ -135,19 +137,35 @@ impl Target {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // The commands that change things draw their questions and progress at
+    // a terminal. The rest print plain lines.
+    let (title, yes) = match &cli.command {
+        Command::Init(args) => ("chest init", args.yes),
+        Command::Add(args) => ("chest add", args.yes),
+        Command::Remove { .. } => ("chest remove", false),
+        Command::Install { .. } => ("chest install", false),
+        Command::Update { .. } => ("chest update", false),
+        Command::Import(_) => ("chest import", false),
+        _ => ("", true),
+    };
+    let prompt = Prompt::new(yes);
+    prompt.intro(title);
     // A worker of its own keeps held locks fresh while a question waits.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
         .build();
     let result = match runtime {
-        Ok(runtime) => runtime.block_on(run(cli)),
+        Ok(runtime) => runtime.block_on(run(cli, &prompt)),
         Err(err) => Err(err.into()),
     };
     result.unwrap_or_else(|err| {
+        if err.is::<Cancelled>() {
+            return ExitCode::FAILURE;
+        }
         // Errors quote the manifest and lock, and git's stderr keeps its lines.
         let error = printable(&format!("{err:#}"), &['\t', '\n']);
-        let _ = writeln!(std::io::stderr(), "error: {error}");
+        prompt.error(&format!("error: {error}"));
         match err.is::<Usage>() {
             true => ExitCode::from(2),
             false => ExitCode::FAILURE,
@@ -155,7 +173,7 @@ fn main() -> ExitCode {
     })
 }
 
-async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
+async fn run(cli: Cli, prompt: &Prompt) -> anyhow::Result<ExitCode> {
     let scope = if cli.global {
         Scope::Global
     } else {
@@ -197,24 +215,31 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
         _ => false,
     };
     let _held = match writes {
-        true => Some(lock(&target).await?),
+        true => Some(lock(&target, prompt).await?),
         false => None,
     };
     yapi_core::settings::apply_http_proxy();
     let mut npm = Npm::new(npm::config());
     match cli.command {
-        Command::Init(args) => init::run(&target, &args)?,
-        Command::Add(args) => add::run(&target, args, &mut npm).await?,
-        Command::Remove { name } => remove(&target, &name, &mut npm).await?,
+        Command::Init(args) => init::run(&target, &args, prompt)?,
+        Command::Add(args) => add::run(&target, args, &mut npm, prompt).await?,
+        Command::Remove { name } => {
+            remove(&target, &name, &mut npm, prompt).await?;
+            prompt.outro("Done");
+        }
         Command::Install { .. } => {
             let mode = if frozen { Mode::Frozen } else { Mode::Resolve };
-            sync(&target, mode, &mut npm).await?;
+            sync(&target, mode, &mut npm, prompt).await?;
+            prompt.outro("Done");
         }
-        Command::Update { names } => update(&target, names, &mut npm).await?,
+        Command::Update { names } => {
+            update(&target, names, &mut npm, prompt).await?;
+            prompt.outro("Done");
+        }
         Command::List => list(&target)?,
         Command::Outdated => outdated(&target, &mut npm).await?,
         Command::Verify => return verify(&target),
-        Command::Import(args) => import::run(&target, &args)?,
+        Command::Import(args) => import::run(&target, &args, prompt)?,
         Command::Check { path } => {
             return check::run(path.as_deref().unwrap_or(Path::new(".")));
         }
@@ -227,13 +252,13 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
 /// waits. The lock is an empty folder, which git does not list. Its name
 /// differs from the lock `sync` takes on the lock file, even for a manifest
 /// without an extension.
-async fn lock(target: &Target) -> anyhow::Result<FileLock> {
+async fn lock(target: &Target, prompt: &Prompt) -> anyhow::Result<FileLock> {
     let file = target.base().join(format!(".{}", target.name()));
     let path = target.path.display();
     let mut waiting = || {
-        say(&format!(
+        prompt.info(&[format!(
             "Waiting for another chest command that changes {path}..."
-        ))
+        )])
     };
     yapi_core::chest::hold_lock(&file, &mut waiting)
         .await
@@ -296,33 +321,71 @@ pub fn open(target: &Target) -> anyhow::Result<Project> {
     Ok(Project::open(&target.path, target.scope)?)
 }
 
-/// Syncs the manifest as `mode` says and prints what happened.
-pub async fn sync(target: &Target, mode: Mode, npm: &mut Npm) -> anyhow::Result<Project> {
+/// Syncs the manifest as `mode` says and prints what happened: each
+/// entry's outcome on stdout, then notices and warnings on stderr. When
+/// drawn, the outcomes are a marked and coloured summary.
+pub async fn sync(
+    target: &Target,
+    mode: Mode,
+    npm: &mut Npm,
+    prompt: &Prompt,
+) -> anyhow::Result<Project> {
     let mut project = open(target)?;
-    let report = project.sync(mode, npm, &mut |line| say(line)).await?;
-    print_report(&report);
+    let spinner = prompt.spinner(&format!("Checking {}", target.label()));
+    let report = project
+        .sync(mode, npm, &mut |line| spinner.step(line))
+        .await?;
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    let mut lines = Vec::new();
+    for (id, outcome) in &report.entries {
+        let (mark, word) = outcome_mark(*outcome);
+        match counts.iter_mut().find(|(known, _)| *known == word) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((word, 1)),
+        }
+        let line = format!("{word:<9}  {id}");
+        if !prompt.styled() {
+            out(&line);
+            continue;
+        }
+        let line = console::style(format!("{mark} {}", printable(&line, &[])));
+        lines.push(
+            match outcome {
+                Outcome::Installed | Outcome::Replayed => line.green(),
+                Outcome::Unchanged => line,
+                Outcome::Edited | Outcome::Skipped => line.yellow(),
+                Outcome::Removed => line.dim(),
+            }
+            .to_string(),
+        );
+    }
+    let counts: Vec<String> = counts
+        .iter()
+        .map(|(word, count)| format!("{count} {word}"))
+        .collect();
+    let head = match counts.is_empty() {
+        true => "Nothing to install".to_owned(),
+        false => counts.join(", "),
+    };
+    spinner.stop(&head, &lines);
+    for notice in &report.notices {
+        prompt.info(&[format!("note: {notice}")]);
+    }
+    for warning in &report.warnings {
+        prompt.warn(&format!("warning: {warning}"));
+    }
     Ok(project)
 }
 
-/// Prints each entry's outcome on stdout, then notices and warnings on
-/// stderr.
-pub fn print_report(report: &Report) {
-    for (id, outcome) in &report.entries {
-        let word = match outcome {
-            Outcome::Installed => "installed",
-            Outcome::Replayed => "replayed",
-            Outcome::Unchanged => "unchanged",
-            Outcome::Edited => "edited",
-            Outcome::Skipped => "skipped",
-            Outcome::Removed => "removed",
-        };
-        out(&format!("{word:<9}  {id}"));
-    }
-    for notice in &report.notices {
-        say(&format!("note: {notice}"));
-    }
-    for warning in &report.warnings {
-        say(&format!("warning: {warning}"));
+/// The mark and word for an outcome in reports.
+fn outcome_mark(outcome: Outcome) -> (char, &'static str) {
+    match outcome {
+        Outcome::Installed => ('+', "installed"),
+        Outcome::Replayed => ('+', "replayed"),
+        Outcome::Unchanged => ('=', "unchanged"),
+        Outcome::Edited => ('~', "edited"),
+        Outcome::Skipped => ('!', "skipped"),
+        Outcome::Removed => ('-', "removed"),
     }
 }
 
@@ -343,7 +406,7 @@ pub fn source(entry: &Entry) -> String {
     line
 }
 
-async fn remove(target: &Target, name: &str, npm: &mut Npm) -> anyhow::Result<()> {
+async fn remove(target: &Target, name: &str, npm: &mut Npm, prompt: &Prompt) -> anyhow::Result<()> {
     let mut document = ManifestDocument::parse(&read(target)?, target.scope)?;
     let mut found = false;
     for section in Section::ALL {
@@ -353,23 +416,28 @@ async fn remove(target: &Target, name: &str, npm: &mut Npm) -> anyhow::Result<()
         bail!("No entry is named {name}");
     }
     write(target, &document.to_string())?;
-    sync(target, Mode::Resolve, npm).await?;
+    sync(target, Mode::Resolve, npm, prompt).await?;
     Ok(())
 }
 
-async fn update(target: &Target, names: Vec<String>, npm: &mut Npm) -> anyhow::Result<()> {
-    let project = sync(target, Mode::Update(names), npm).await?;
+async fn update(
+    target: &Target,
+    names: Vec<String>,
+    npm: &mut Npm,
+    prompt: &Prompt,
+) -> anyhow::Result<()> {
+    let project = sync(target, Mode::Update(names), npm, prompt).await?;
     for (name, entry) in &project.manifest.extensions {
         if let Some(root) = project.installed_root(name) {
             let meta = match package_meta(&root) {
                 Ok(meta) => meta,
                 Err(err) => {
-                    say(&format!("warning: extensions.{name}: {err}"));
+                    prompt.warn(&format!("warning: extensions.{name}: {err}"));
                     continue;
                 }
             };
             for warning in requests(&project.manifest, entry, &meta) {
-                say(&format!("warning: extensions.{name} {warning}"));
+                prompt.warn(&format!("warning: extensions.{name} {warning}"));
             }
         }
     }
@@ -470,13 +538,19 @@ fn item_description(project: &Project, section: Section, locked: &Locked) -> Opt
     {
         return None;
     }
+    frontmatter(section, copy, "description")
+}
+
+/// The frontmatter value `key` of the skill folder or subagent file at
+/// `item`.
+pub fn frontmatter(section: Section, item: &Path, key: &str) -> Option<String> {
     let file = match section {
-        Section::Skills => copy.join("SKILL.md"),
-        _ => copy.clone(),
+        Section::Skills => item.join("SKILL.md"),
+        _ => item.to_path_buf(),
     };
     let text = std::fs::read_to_string(file).ok()?;
     let (frontmatter, _) = yapi_core::resources::parse_frontmatter(&text).ok()?;
-    frontmatter.get("description")?.as_str().map(str::to_owned)
+    frontmatter.get(key)?.as_str().map(str::to_owned)
 }
 
 async fn outdated(target: &Target, npm: &mut Npm) -> anyhow::Result<()> {

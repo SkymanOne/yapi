@@ -56,16 +56,24 @@ pub fn unknown_capability(file: &str, line: &str) -> String {
 /// How many lines of one of a component's lists chest prints.
 const SHOWN: usize = 10;
 
-/// Prints `line` of the first ten of `items` after `prefix`, then one line
+/// `line` of the first ten of `items` after `prefix`, then one line
 /// counting the rest as `rest`, so that a component cannot flood the
 /// terminal with lists it controls.
-pub fn say_capped(prefix: &str, items: &[String], rest: &str, line: impl Fn(&str) -> String) {
-    for item in items.iter().take(SHOWN) {
-        say(&format!("{prefix}{}", line(item)));
-    }
+pub fn capped(
+    prefix: &str,
+    items: &[String],
+    rest: &str,
+    line: impl Fn(&str) -> String,
+) -> Vec<String> {
+    let mut lines: Vec<String> = items
+        .iter()
+        .take(SHOWN)
+        .map(|item| format!("{prefix}{}", line(item)))
+        .collect();
     if items.len() > SHOWN {
-        say(&format!("{prefix}and {} more {rest}", items.len() - SHOWN));
+        lines.push(format!("{prefix}and {} more {rest}", items.len() - SHOWN));
     }
+    lines
 }
 
 /// The extensions of the package or extension file at `item`, as yapi
@@ -189,14 +197,18 @@ pub fn run(path: &Path) -> anyhow::Result<ExitCode> {
             }
         }
         let rest = format!("unsupported imports in {file}");
-        say_capped("error: ", &found.unsupported, &rest, |import| {
+        let unsupported = capped("error: ", &found.unsupported, &rest, |import| {
             unsupported_import(file, import)
         });
         errors += found.unsupported.len();
         let rest = format!("unknown capability lines in {file}");
-        say_capped("warning: ", &found.unknown, &rest, |line| {
+        let unknown = capped("warning: ", &found.unknown, &rest, |line| {
             unknown_capability(file, line)
         });
+        unsupported
+            .iter()
+            .chain(&unknown)
+            .for_each(|line| say(line));
     }
     for script in &inspected.scripts {
         say(&format!(

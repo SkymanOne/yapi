@@ -75,7 +75,7 @@ git add chest.toml chest.lock .gitignore
 git commit -m "Add project packages"
 ```
 
-`chest init` writes `chest.toml` with folders for the agents it finds. Each `chest add` looks at the package and asks what to grant an extension. Then it writes the entry, installs it, and updates the lock and the `.gitignore` block.
+`chest init` writes `chest.toml` with folders for the agents it finds. Each `chest add` looks at the package, and at a terminal asks which of its skills to add and what to grant an extension. Then it writes the entry, installs it, and updates the lock and the `.gitignore` block.
 
 Anyone who clones the project runs:
 

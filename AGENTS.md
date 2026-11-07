@@ -99,6 +99,7 @@ Traits exist only where implementations vary across a crate or plugin boundary. 
 | Async, HTTP, CLI | `tokio`, `reqwest` with rustls, `tokio-tungstenite` over `reqwest`'s HTTP/1.1 upgrade for WebSockets, `clap` for commands pi does not have (`yapi new`, `yapi import`, `xtask`). Pi's own arguments and commands keep ports of pi's hand-written parsers, whose quirks and messages clap cannot reproduce. |
 | Serialization | `serde`, `serde_json` |
 | TUI | `ratatui-core` text and buffer types, `rustix` termios for raw mode |
+| chest prompts | `cliclack`, the Rust port of `@clack/prompts` that skills.sh uses, at a terminal only |
 | Markdown, diffs, images | `pulldown-cmark`, `similar`, `image` |
 | Time zones, compression | `tz-rs` for the system's time zone database, `ruzstd` for zstd request bodies |
 | Syntax highlighting | None built in; extensions render code blocks through `pi.yapi.registerCodeRenderer` |

@@ -26,7 +26,7 @@ An extension entry lists what it may reach:
 | `all` | Everything above, plus running programs |
 | `none` | Nothing beyond the baseline. The default. |
 
-`chest add` shows the capabilities a package requests and asks about each one. For a native extension, it also asks about the capabilities the build uses that the package doesn't request, read from the build's features and the WebAssembly System Interface (WASI) interfaces it imports. A bare `.wasm` file requests nothing, so chest offers what it uses.
+`chest add` shows the capabilities a package requests, then lists every capability with what it allows. It ticks the ones the package requests and, for a native extension, the ones the build uses, read from the build's features and the WebAssembly System Interface (WASI) interfaces it imports. It never ticks `all`, so you tick that one yourself. A bare `.wasm` file requests nothing, so chest ticks what it uses. Before installing, chest shows the entry with its grants and asks you to confirm.
 
 A request never grants anything by itself. Without a terminal, or with `--yes`, chest grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
 
