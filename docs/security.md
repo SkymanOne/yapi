@@ -32,23 +32,25 @@ Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from
 
 ### Instances and limits
 
-An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because the host can't enforce grants between packages that share a JavaScript realm. Pi extensions whose grants or event policy differ run in separate instances, and each extra instance costs a thread and its own memory limit of 1 GiB.
+An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because the host can't enforce grants between packages that share a JavaScript realm. Each extra instance costs a thread and has its own memory limit of 1 GiB.
 
 Packages from `yapi install` share one instance, and [chest](packages.md#project-packages-with-chest) extensions with other grants or another event policy run in instances of their own. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.
 
 Each instance runs under these limits:
 
 - **Compute per call**: 60s, not counting time spent waiting on yapi
-- **Compute while loading**: 10s per call while an instance starts and while it loads or reloads its extensions, so yapi stops an extension that never yields as it loads rather than waiting for it
+- **Compute while loading**: 10s per call while an instance starts and while it loads or reloads its extensions
 - **Memory**: 1 GiB for each extension instance, and 384 MiB for each codemode instance
 
 An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. When an instance traps, for example by exceeding a limit, yapi restarts it and reloads its extensions. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.
 
 ### How yapi enforces grants
 
-The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. Packages from `yapi install` and `-e` receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants, and the [capability table](chest-manifest.md#what-each-capability-allows) lists what each one allows.
+The host checks an extension's file, process, network, environment and session access against its grants, and routes `pi.events` by them, as [Agent sessions and events](#agent-sessions-and-events) describes. A chest extension receives only the capabilities its manifest entry grants, and the [capability table](chest-manifest.md#what-each-capability-allows) lists what each one allows.
 
-Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. yapi refuses a path that leads out of a package through a symlink, and a path with `.` or `..` in it. For a chest extension, the other packages in its instance are the ones with the same grants and event policy.
+A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as you, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with your installed packages.
+
+Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. yapi refuses a path that leads out of a package through a symlink, and a path with `.` or `..` in it.
 
 Every extension file yapi finds in a chest package, including an `index.ts` or `index.js` that no manifest lists, runs with its entry's capabilities. The file keeps them when `-e` or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but can't match to an entry runs with no capabilities, with a warning.
 
@@ -59,11 +61,11 @@ chest refuses to install an extension whose folder is or holds the project, the 
 
 A file that runs with no capabilities in either case loads no other file as a module. When two manifests give the same file, it runs with only what both allow.
 
-A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as you, outside the sandbox, and inherits yapi's environment, including API keys. A subagent is such a process: a full yapi with your installed packages.
-
 ### Grants for servers, models and tools
 
-Registering servers, reading credentials and calling models each need a specific grant. An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider's credentials with `ctx.modelRegistry.getProviderAuth`, `getApiKey`, `getApiKeyForProvider` or `getApiKeyAndHeaders`, and calls a model with `complete`, `stream`, `streamSimple`, `classify` or `generateImages`, only with the network grant. Without the network grant, `ctx.modelRegistry.refresh` refreshes model lists offline.
+Registering servers, reading credentials and calling models each need a specific grant. An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant.
+
+Reading a provider's credentials with `ctx.modelRegistry.getProviderAuth`, `getApiKey`, `getApiKeyForProvider` or `getApiKeyAndHeaders` needs the network grant. So does calling a model with `complete`, `stream`, `streamSimple`, `classify` or `generateImages`. Without the network grant, `ctx.modelRegistry.refresh` refreshes model lists offline.
 
 Running a tool needs grants too, whether an extension creates a built-in tool such as `createBashTool` or calls a tool with `ctx.executeTool`:
 
@@ -114,10 +116,10 @@ yapi applies what an extension's event handlers return only within the extension
 - A `tool_call` handler changes the call's input only with the session grant and the grants that would let it run that tool itself.
 - Results that add or change messages, context, user input, the system prompt or its options, provider requests, tool results, tool descriptions, compaction or tree summaries, or entries staged at the end of a turn need the session grant. So do results that start another turn or keep warming the prompt cache.
 - Results that only cancel, block or stop need no grant, such as cancelling a compaction, a session switch or a fork, or stopping a run or cache warming. An `input` handler that handles the input itself and a `user_bash` handler that fails a `!` command need no grant either, because they stop work and show text only to you, not to the model.
-- A `user_bash` handler that runs a `!` command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.
+- A `user_bash` handler that runs a `!` command through its own operations, or answers it with its own result, needs every grant, because the extension then decides what runs and what you see as your shell's output.
 - The skill, prompt and theme paths that a `resources_discover` handler names need the session and file grants.
 
-A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension. The warning says what it ignored, such as the input change of a `tool_call` result or the reason of a block, and names an extension from chest by its entry, such as `extensions.guard in chest.toml`.
+A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension, with what it ignored, such as the reason of a block.
 
 The `before_provider_request` and `before_provider_headers` events carry a request's body and headers, which can hold your credentials, so they reach only extensions with the network grant.
 
@@ -129,11 +131,11 @@ Pi's exports that read `auth.json`, write `trust.json` or `settings.json`, or wr
 
 Extensions share Pi's `pi.events` bus. Between extensions with different grants, sharing leaks access both ways: an extension that acts on events lets the sender borrow its grants, and an extension that listens learns what the sender emits.
 
-yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender's policy lets it send the channel and the receiver's policy lets it hear it. A policy lists channels as exact names, prefixes ending in `*`, or `*` for every channel.
+yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender's policy lets it send the channel and the receiver's policy lets it hear it.
 
 Packages from `yapi install`, and chest entries without an `events` key, get the shared policy, `*` both ways, so they hear every other extension's events, as in Pi. A chest entry's `events` key narrows its own policy, as the [event bus reference](chest-manifest.md#event-bus-routing) describes.
 
-When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output once per channel and session. The warning starts with the policy lists that would let the event across, then names both runtimes by their first extension, with their grants. After 8 such warnings between two runtimes, yapi logs that it suppresses the rest.
+When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output, once per channel and session. [An extension misses events](troubleshooting.md#an-extension-misses-events) explains the warning.
 
 ## Project trust
 
@@ -154,7 +156,7 @@ The first time interactive mode starts in a project that has them, yapi asks whe
 
 ### Use the project of another folder
 
-`--project-dir <dir>` takes the project from another folder, as if yapi had started there. yapi loads that folder's `.yapi` files and the `AGENTS.md` or `CLAUDE.md` of that folder and its parents, and applies trust to that folder, including `--approve` and `--no-approve`. The working folder's own `.yapi` folder doesn't load. yapi resolves a relative path against the working folder.
+`--project-dir <dir>` takes the project from another folder, as if yapi had started there. yapi loads that folder's `.yapi` files and the `AGENTS.md` or `CLAUDE.md` of that folder and its parents, and applies trust to that folder, including `--approve` and `--no-approve`. The working folder's own `.yapi` folder doesn't load.
 
 Tools, the session and extensions' `ctx.cwd` stay in the working folder. A native extension finds the project folder with [`project_dir()`](native-extensions.md#where-the-project-is). Subagents use the flag to work in one folder with their parent's project.
 

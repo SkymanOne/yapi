@@ -11,9 +11,11 @@ chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 ```
 
-chest tells a skill from a subagent by looking at the package. Pass `--skill` or `--agent` when it can't tell. With `--path`, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn't a skill itself works the same way.
+chest tells a skill from a subagent by looking at the package. Pass `--skill` or `--agent` when it can't tell.
 
-chest installs skills that are folders with a `SKILL.md`. yapi and Pi also load a skill that's a single `.md` file, but chest doesn't install one. An entry for a whole package skips such files with a warning. An entry that names one fails, and `chest add` refuses a `.md` file in a `skills` folder. A `.md` file anywhere else is a subagent, and `--agent` adds any `.md` file as one.
+With `--path`, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn't a skill itself works the same way.
+
+chest installs only skills that are folders with a `SKILL.md`. It skips or refuses a skill that's a single `.md` file, which yapi and Pi also load. A `.md` file outside a `skills` folder is a subagent.
 
 ## Choose folders for your agents
 
@@ -39,14 +41,7 @@ The first folder of each kind holds the canonical copy of every item. The other 
 
 ## The `.gitignore` block
 
-chest lists every installed path in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`. It rebuilds the block on each install and leaves every other line alone. chest escapes each line so that it matches only its own path, whatever characters a folder name holds.
-
-The block also ignores two kinds of folder that an interrupted install can leave where chest copies:
-
-- **`.*-staging`**: a copy that chest hadn't finished
-- **`.*-old`**: an item's previous copy, when chest stopped while replacing it
-
-The next install removes both.
+chest lists every installed path in a block of the project's `.gitignore`, from `# BEGIN chest (chest.toml)` to `# END chest`. It rebuilds the block on each install and leaves every other line alone. The block also ignores the `.*-staging` and `.*-old` folders that an interrupted install can leave behind, which the next install removes.
 
 ## Keep hand-written skills in the same folders
 
@@ -56,13 +51,9 @@ When someone edits an item after chest installed it, chest leaves the item as it
 
 ## Import from skills.sh
 
-`chest import --skills-lock` turns the skills of a skills.sh `skills-lock.json` into skill entries. It reads the `skills-lock.json` beside the manifest, or the file you name. chest computes its own hashes, so it drops the file's. Run `chest install` after importing.
+`chest import --skills-lock` turns the skills of a skills.sh `skills-lock.json` into skill entries. It reads the `skills-lock.json` beside the manifest, or the file you name. Run `chest install` after importing.
 
-Import takes skills from GitHub, GitLab, other git hosts, local folders and `node_modules`. It skips, with a warning:
-
-- a skill of another `sourceType`
-- a skill the manifest already has, from the same package and folder
-- a different skill whose name the manifest already uses
+Import takes skills from GitHub, GitLab, other git hosts, local folders and `node_modules`. It skips, with a warning, a skill of another `sourceType`, a skill the manifest already has, and a different skill whose name the manifest already uses.
 
 ## What yapi adds
 

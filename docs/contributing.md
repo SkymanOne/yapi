@@ -14,7 +14,7 @@ A build and its checks need these tools:
 - Node.js 22.19 or newer, only to record goldens from Pi or compare with Pi live.
 - A [WebAssembly System Interface (WASI) SDK](https://github.com/WebAssembly/wasi-sdk) and the `wasm32-wasip2` Rust target, only to rebuild the JS runtime with `cargo xtask js-runtime`.
 
-The first build compiles about 420 crates, wasmtime among them, so it takes minutes rather than seconds. Later builds are incremental.
+The first build compiles about 420 crates, wasmtime among them, so it takes minutes rather than seconds.
 
 ## Build and run from source
 

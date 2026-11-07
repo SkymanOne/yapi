@@ -21,7 +21,7 @@ export CHEST_MANIFEST=chest.dev.toml
 chest install
 ```
 
-The manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`. Messages about a manifest name the commands for it, such as `chest --manifest chest.dev.toml install`.
+The manifests of one project, such as `chest.toml` and `chest.dev.toml`, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in `.gitignore`, named after it, such as `# BEGIN chest (chest.dev.toml)`.
 
 ## How yapi reads `CHEST_MANIFEST`
 
@@ -49,7 +49,7 @@ With `-g`, `chest init` looks for each agent's folder in your home folder:
 | OpenCode | `~/.config/opencode` | `~/.config/opencode/skills` | `~/.config/opencode/agent` |
 | yapi | `~/.yapi` | `~/.agents/skills` | `~/.yapi/agent/agents` |
 
-When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`. With `YAPI_CODING_AGENT_DIR` set, yapi's subagents go to the `agents` folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, `chest init` leaves it out and says why, because the global manifest installs only inside your home folder.
+When it finds no agent, skills go to `~/.agents/skills` and subagents to `~/.yapi/agent/agents`. With `YAPI_CODING_AGENT_DIR` set, yapi's subagents go to the `agents` folder inside it instead. When that folder is outside your home folder, `chest init` leaves it out and says why, because the global manifest installs only inside your home folder.
 
 For both the project and the global manifest, chest keeps its download cache and its record of what it placed in `~/.chest`.
 

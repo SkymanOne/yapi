@@ -36,11 +36,11 @@ When your global skills, extensions, prompt templates, themes or MCP servers don
 
 When a global extension registers a provider, project-only runs lose that provider's models. Keep the extension in `projectOnly`, or pick another model.
 
-In print, JSON and RPC modes, the warning `--project-only: the project isn't trusted, so none of its packages load` means the project has files that need trust. Interactive mode asks whether to trust the project instead, and shows Pi's notice that its resources are ignored if you don't. Either way, the run loads the built-in extensions, the paths you pass on the command line and the global items you keep. Trust the project, or pass `--approve` for one run.
+In print, JSON and RPC modes, the warning `--project-only: the project isn't trusted, so none of its packages load` means the project has files that need trust. Trust the project, or pass `--approve` for one run. [Untrusted projects](project-only.md#untrusted-projects) describes what such a run loads.
 
 ## yapi finds two settings files
 
-The error `Both settings.json and settings.toml are in <folder>. Keep one of them.` means that folder holds both forms of its settings file, and yapi won't guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to `settings.toml` can write `settings.json` again, so switch with yapi closed. [Write settings in TOML](configuration.md#write-settings-in-toml) covers the format.
+The error `Both settings.json and settings.toml are in <folder>. Keep one of them.` means that folder holds both files. With yapi closed, merge what you need into one of them and delete the other. [Switch to TOML](configuration.md#switch-to-toml) explains why yapi must be closed.
 
 ## An extension's call is refused
 

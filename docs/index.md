@@ -4,11 +4,11 @@ yapi is a coding agent for the terminal. Given a task and a working folder, it i
 
 ## How yapi relates to Pi
 
-yapi is a Rust reimplementation of [Pi](https://pi.dev) `v1.0.0`. It uses Pi's commands, settings, session files, packages and extension API, so an existing Pi setup works in yapi without changes. It ships as a single native binary and doesn't require Node.js.
+yapi is a Rust reimplementation of [Pi](https://pi.dev) `v1.0.0`. It uses Pi's commands, settings, session files, packages and extension API, so `yapi import pi` brings an existing Pi setup over without conversion. It ships as a single native binary and doesn't require Node.js.
 
 ## Get started with yapi
 
-[Run your first task](quickstart.md) covers installation, connecting a model and a first task. Pi users can bring their existing setup, as [Move from Pi to yapi](migrating.md) describes. After that:
+[Run your first task](quickstart.md) covers installation, connecting a model and a first task. Pi users can copy their setup, as [Move from Pi to yapi](migrating.md) describes. After that:
 
 - [Use yapi in the terminal](interactive.md) to attach files, run commands and direct ongoing work.
 - [Choose a model](models.md) and connect a subscription, API key, cloud provider or local model.

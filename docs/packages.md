@@ -32,7 +32,7 @@ User packages:
     /home/you/extensions/shout.wasm
 ```
 
-`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that's missing, and fails on a git package folder that isn't a checkout of its own, so git never touches an enclosing repository. A git package whose install was cut off, as when yapi was stopped, is cloned again the next time yapi installs it.
+`yapi update --extensions` moves each npm package to the newest version its source's range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref.
 
 The `npm` and `git` folders each hold a `.gitignore` that keeps installed packages out of a project's repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.
 
@@ -51,17 +51,13 @@ yapi installs these into `~/.yapi/agent/tmp/extensions` and reuses them on later
 
 `yapi config` lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in `settings.json`, or in `settings.toml` when that's the folder's file. Tab switches between global settings and the current project, and `yapi config -l` starts with the project. In the Global Resources view, `ctrl+o` keeps the selected item in [project-only runs](project-only.md#keep-items-from-yapi-config).
 
-Before it opens, `yapi config` installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, `yapi config` prints the error and exits. `PI_OFFLINE` skips these installs.
+Before it opens, `yapi config` installs the packages that are missing or outside their range, unless `PI_OFFLINE` is set. If an install fails, it prints the error and exits.
 
 To run with only a project's packages and none of your global ones, start yapi with `--project-only`. [Run yapi with only the project's packages](project-only.md) covers the mode.
 
 ## Project packages with chest
 
-chest keeps a project's skills, subagents and extensions in `chest.toml` and pins them in `chest.lock`, with a content hash for each entry. Use it when a project's packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.
-
-Use `yapi install` for packages you want in every project, as in Pi. [Get started with chest](chest.md) shows how to use chest, and the [chest.toml reference](chest-manifest.md) lists every key.
-
-Each chest extension runs with the capabilities its entry grants, while packages from `yapi install` keep every grant. [How yapi loads a manifest](chest-extensions.md#how-yapi-loads-a-manifest) covers when yapi reads a manifest, what it puts back at startup, and how `yapi config` shows chest's entries.
+chest keeps a project's skills, subagents and extensions in `chest.toml` and pins them in `chest.lock`. yapi runs each chest extension with only the capabilities its entry grants. Use it for packages that belong in a project's repository, and `yapi install` for packages you want in every project, as in Pi. [Choose between chest and `yapi install`](chest.md#choose-between-chest-and-yapi-install) compares the two.
 
 ## Package manifests
 
@@ -79,7 +75,7 @@ Pi's [package documentation](https://github.com/earendil-works/pi/blob/v1.0.0/pa
 
 ## The built-in npm client
 
-yapi has a built-in npm client. It resolves versions with npm's range syntax, verifies integrity hashes and lays out `node_modules` as npm does. It accepts only the package names npm allows, and no name or scope that starts with a dot.
+yapi has a built-in npm client. It resolves versions with npm's range syntax, verifies integrity hashes and lays out `node_modules` as npm does.
 
 A package over any of these limits fails the install and leaves nothing behind:
 

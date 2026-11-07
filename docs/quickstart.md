@@ -1,6 +1,6 @@
 # Run your first task
 
-This guide installs yapi, connects a model and gives yapi its first task in one of your projects. yapi runs in your terminal and works with the files on your machine. It needs a model, which you reach through a subscription, an API key or a local server.
+This guide installs yapi, connects a model and gives yapi its first task in one of your projects. You reach a model through a subscription, an API key or a local server.
 
 ## Install yapi
 
@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 ```
 
-It asks what to install. Press Enter to install `yapi` and `chest`, its package manager, in `~/.local/bin`. [Install yapi](install.md) covers the other methods. Check the installation:
+The script asks what to install. Press Enter to install `yapi` and its package manager, `chest`, in `~/.local/bin`. [Install yapi](install.md) covers the other methods. Check the installation:
 
 ```sh
 yapi --version
@@ -36,7 +36,7 @@ yapi also reads API keys from the environment, such as `ANTHROPIC_API_KEY`. [Cho
 
 ## Give yapi a task
 
-Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn't ask before each tool call. These are four prompts you might send:
+Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn't ask before each tool call. For example:
 
 ```text
 Explain how requests flow through src/server.rs
@@ -66,7 +66,7 @@ These pages pick up where this guide ends:
 - [Use yapi in the terminal](interactive.md) covers keys, commands and queued messages.
 - [Configure yapi](configuration.md) covers settings and project instructions in `AGENTS.md`.
 - [Move from Pi to yapi](migrating.md) shows how to copy a Pi setup with `yapi import pi`.
-- [Get started with chest](chest.md) shows how to pin a project's skills, subagents and extensions so everyone who clones it gets the same set. Skills and subagents work with any agent.
+- [Get started with chest](chest.md) shows how to pin a project's skills, subagents and extensions, so everyone who clones the project gets the same set.
 
 ### Choose how to customize yapi
 

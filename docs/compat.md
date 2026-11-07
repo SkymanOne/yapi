@@ -1,6 +1,6 @@
 # Differences from Pi
 
-yapi follows Pi `v1.0.0` and behaves like Pi except as listed here. Any other difference is a bug. Please [report it](https://github.com/SkymanOne/yapi/issues). The tables cover extensions, packages and installation, the interface and providers, and tools and sessions, each with Pi's behavior, yapi's, and the reason.
+yapi follows Pi `v1.0.0` and behaves like Pi except as listed here. Report any other difference as a bug in the [issue tracker](https://github.com/SkymanOne/yapi/issues). The tables cover extensions, packages and installation, the interface and providers, and tools and sessions, each with Pi's behavior, yapi's, and the reason.
 
 yapi's tests use Pi itself as the reference. End-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and remote procedure call (RPC) sessions. Settings, credentials and session files round-trip byte for byte. [Extensions](extensions.md#compatibility-with-pi) has the extension and package results.
 
@@ -10,7 +10,7 @@ Pi extensions run unchanged, in WebAssembly rather than Node.js. These rows cove
 
 | Area | Pi | yapi |
 |---|---|---|
-| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly: 60s of computing per call and 10s while loading, 1 GiB per instance, restart after a crash. See [How the extension sandbox works](security.md#how-the-extension-sandbox-works). |
+| Runtime | Pi's Node.js process | QuickJS-NG in WebAssembly, with [compute and memory limits](security.md#instances-and-limits) per instance and a restart after a crash. |
 | Node APIs | All of Node | [Shims](extensions.md#how-pi-extensions-run). Sockets, servers, `http` requests, `worker_threads`, `node:sqlite`, `zlib`, `vm` and `child_process.fork` throw when used. `require()` of an ES module fails. |
 | Native addons | Loaded | Installed, never built. Loading one fails. |
 | Pi internals | Every export of Pi's packages | The extension API and its helpers. The other exports of `pi-agent-core` and `pi-coding-agent` behave as in Pi, except those listed under agent sessions and under Pi internals that bypass the host. `pi-ai` has its own row. Built-in tool factories return yapi's tools, or Pi's own when given custom `operations`, a `spawnHook` or a `commandPrefix`. |
@@ -42,7 +42,7 @@ yapi installs Pi's packages with its own client and keeps its own folders:
 | Settings format | `settings.json` | `settings.json`, or the same settings in `settings.toml`, one of them per folder. yapi keeps a TOML file's comments when it writes. See [Write settings in TOML](configuration.md#write-settings-in-toml). |
 | Package installs | `npm install`, with lifecycle scripts | A built-in npm client that skips lifecycle scripts. `npmCommand` applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output. |
 | Git sources | A host or ref may start with `-` | yapi refuses a host or ref that starts with `-`, because git would read it as an option. Clones run as `git clone -- <repo>`. |
-| Sign-ins after `yapi import pi` | Pi keeps its sign-ins in its own `auth.json` and `mcp-auth.json` | `yapi import pi` copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with `/login` or `/mcp login`. |
+| Sign-ins after `yapi import pi` | Pi keeps its sign-ins in its own `auth.json` and `mcp-auth.json` | `yapi import pi` copies API keys but not subscription or MCP sign-ins, because a provider can replace its refresh token on each use and sign the other tool out. See [Sign in again after the import](migrating.md#sign-in-again-after-the-import). |
 | Packages that fail to install | Pi exits at startup, and `/reload` or the session change fails | yapi warns at startup, under `[Extension issues]` in interactive mode, and lists the package there after `/reload` or a session change, which try it again. It runs without the package, so one unreachable source doesn't stop the others. |
 | npm configuration | npm reads all its configuration files and settings | Registries, credentials and `fetch-timeout` from `~/.npmrc`, or the file `npm_config_userconfig` names, and from `npm_config_*` variables. yapi ignores other settings, such as `cafile`. |
 | Log file | `/debug` writes `pi-debug.log` | `--enable-logging`, a yapi-only flag, also appends a running log to `yapi.log` in the agent folder. See [Read yapi's log](troubleshooting.md#read-yapis-log). |

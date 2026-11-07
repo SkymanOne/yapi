@@ -1,6 +1,6 @@
 # Choose a model
 
-yapi supports Pi's providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.
+yapi supports Pi's providers and models, from the same built-in catalog. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.
 
 ## Sign in with a subscription
 
@@ -30,7 +30,7 @@ yapi reads the same environment variables as Pi:
 
 Amazon Bedrock, Google Vertex AI and Cloudflare use their platform's credentials:
 
-- **Amazon Bedrock**: reads `AWS_BEARER_TOKEN_BEDROCK`, or Amazon Web Services (AWS) credentials from the environment, `~/.aws` profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from `AWS_REGION` or the profile. As in the AWS SDK, `AWS_CONTAINER_CREDENTIALS_FULL_URI` must use HTTPS unless it names a loopback address or the Elastic Container Service (ECS) or Elastic Kubernetes Service (EKS) container host.
+- **Amazon Bedrock**: reads `AWS_BEARER_TOKEN_BEDROCK`, or Amazon Web Services (AWS) credentials from the environment, `~/.aws` profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from `AWS_REGION` or the profile.
 - **Google Vertex AI**: reads `GOOGLE_CLOUD_API_KEY`, or Application Default Credentials with `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`.
 - **Cloudflare Workers AI and AI Gateway**: read `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_GATEWAY_ID` for the gateway.
 
@@ -68,13 +68,11 @@ Add providers, models and overrides to `~/.yapi/agent/models.json`. Pi's [models
 
 ## Update the model catalog
 
-Pi publishes catalog updates between releases. yapi fetches them for the providers you've configured: at startup, when the model selector opens, after `/login` and with `yapi update --models`. It keeps them in `~/.yapi/agent/models-store.json` for offline use.
-
-`--offline`, or setting `PI_OFFLINE`, turns off the automatic fetches. `yapi update --models` fetches regardless.
+Pi publishes catalog updates between releases. yapi fetches them for the providers you've configured: at startup, when the model selector opens, after `/login` and with `yapi update --models`. It keeps them in `~/.yapi/agent/models-store.json` for offline use. `--offline`, or setting `PI_OFFLINE`, turns off the automatic fetches, but not `yapi update --models`.
 
 ## Use classifier and image models
 
-The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the `models` global, and extensions through `ctx.modelRegistry.classify()` and `generateImages()`. Codemode lets the model call Model Context Protocol (MCP) tools from a script, as [Call MCP tools through codemode](mcp.md#call-mcp-tools-through-codemode) describes.
+The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. [Codemode](mcp.md#call-mcp-tools-through-codemode) scripts run them through the `models` global, and extensions through `ctx.modelRegistry.classify()` and `generateImages()`.
 
 ## Give credentials to other tools
 

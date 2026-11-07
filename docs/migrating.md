@@ -17,7 +17,7 @@ The command copies Pi's agent folder, `~/.pi/agent` or `PI_CODING_AGENT_DIR`, in
 - the global `AGENTS.md` or `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`
 - sessions, prompt templates, skills, themes, extensions and packages
 
-The import keeps the files yapi already has, except a `settings.json` that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi's files for it, so the two installs never mix. It leaves out Pi's `lastChangelogVersion`, because that holds Pi's version. When yapi keeps its settings in [`settings.toml`](configuration.md#write-settings-in-toml), the import skips Pi's `settings.json` and says so, since one folder can't hold both. Copy the settings you want into `settings.toml` by hand.
+The import keeps every file and package yapi already has, except a `settings.json` that holds only the version yapi recorded on first start. When yapi keeps its settings in [`settings.toml`](configuration.md#write-settings-in-toml), the import skips Pi's `settings.json` and says so. Copy the settings you want into `settings.toml` by hand.
 
 After the import, yapi and Pi work side by side, and each opens the other's session files.
 
@@ -31,7 +31,7 @@ The command lists the providers and servers it left out. Sign in to them again i
 
 To move a project's packages from `.yapi/settings.json` into a manifest with a lock, run `chest import --settings` in the project. It writes an extension entry for each package with `capabilities = ["all"]`, the access Pi gives packages, and prints the `yapi remove -l` command for each one.
 
-Narrow the capabilities, run `chest install`, then remove the packages from `settings.json`. [Import packages from settings.json](chest-extensions.md#import-packages-from-settingsjson) covers the details.
+Narrow the capabilities, run `chest install`, then run the `yapi remove -l` commands it printed. [Import packages from settings.json](chest-extensions.md#import-packages-from-settingsjson) covers the details.
 
 ## Names that change
 

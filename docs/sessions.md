@@ -1,6 +1,6 @@
 # Manage sessions
 
-yapi saves every conversation as a JSON Lines (JSONL) file under `~/.yapi/agent/sessions/`, grouped by project. The format is Pi's, so Pi and yapi open each other's sessions. This page covers resuming, branching, compacting, keeping the prompt cache warm, and exporting and importing sessions.
+yapi saves every conversation as a JSON Lines (JSONL) file under `~/.yapi/agent/sessions/`, grouped by project. Pi and yapi open each other's sessions. This page covers resuming, branching, compacting, keeping the prompt cache warm, and exporting and importing sessions.
 
 ## Continue earlier work
 
@@ -18,7 +18,7 @@ Inside yapi, `/resume` opens the session picker, `/new` starts a fresh session a
 
 ## Branch a session
 
-A session is a tree. When you go back to an earlier message, yapi keeps the abandoned branch, so no work is lost. Three commands work with branches:
+A session is a tree. When you go back to an earlier message, yapi keeps the abandoned branch. Three commands work with branches:
 
 - `/tree` shows every branch and jumps to any earlier point. By default, pressing Escape twice on an empty editor opens it too. The `doubleEscapeAction` setting changes this to `fork` or `none`.
 - `/fork` starts a new session from an earlier message.
@@ -30,7 +30,7 @@ Long sessions fill the model's context window. yapi summarizes older messages au
 
 ## Keep the prompt cache warm
 
-Providers such as Anthropic keep a cached prompt for a limited time, 5 minutes with Anthropic's default retention. yapi can resend the latest request shortly before the cache expires, when yapi expects that to save money. The `cacheWarming` setting, read from global settings only, picks when:
+Providers keep a cached prompt for a limited time, such as 5 minutes with Anthropic's default retention. yapi can resend the latest request shortly before the cache expires, when it expects that to save money. The `cacheWarming` setting, read from global settings only, picks when:
 
 - **`streaming`**: the default, warms while the agent works
 - **`idle`**: also warms between runs

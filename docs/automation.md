@@ -1,6 +1,6 @@
 # Automate yapi
 
-yapi runs without its interface for scripts, editors and other programs. This page covers print mode, JSON mode and remote procedure call (RPC) mode, and the flags that matter when another program drives yapi. The output formats and protocols are Pi's, so Pi's clients work with yapi.
+yapi runs without its interface for scripts, editors and other programs. This page covers print mode, JSON mode and remote procedure call (RPC) mode, and the flags that matter when another program drives yapi. The formats and protocols are Pi's, so Pi's clients work with yapi.
 
 ## Answer once with print mode
 

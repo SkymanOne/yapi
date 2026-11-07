@@ -17,13 +17,15 @@ The two types differ in runtime, isolation and portability:
 | Runs in | Pi and yapi | yapi only |
 | Runtime | QuickJS-NG, a JavaScript interpreter without a just-in-time (JIT) compiler, compiled to WebAssembly | Machine code that Wasmtime compiles from the extension's WebAssembly |
 | Instance | One instance shared by the Pi extensions with the same grants and event policy | An instance of its own |
-| Memory | 1 GiB for each instance, shared by its Pi extensions | 1 GiB for this extension alone |
-| Compute | 60s per call, and 10s while loading. While one Pi extension computes, the others in its instance wait. | 60s per call, and 10s while loading, without blocking other extensions |
+| Memory | Shared by the Pi extensions in its instance | Its own |
+| Compute | While one Pi extension computes, the others in its instance wait | Doesn't block other extensions |
 | After a crash | Its instance restarts and the Pi extensions in it reload | Only this extension restarts |
 | API | Pi's `ExtensionAPI` from Pi 1.0, with the exceptions in [Differences from Pi](compat.md#extension-runtime-and-api) | yapi's Rust SDK, unstable until yapi 1.0 |
 | Dependencies | npm packages in plain JavaScript | Rust crates that build for `wasm32-wasip2` |
 | Build | None. yapi strips TypeScript types on load and caches the result. | `cargo build` for `wasm32-wasip2`. Packages ship the built `.wasm` file. |
 | Size | Source files and their npm dependencies | One `.wasm` file, about 210 KB without the widgets feature |
+
+Both types run under the same [compute and memory limits](security.md#instances-and-limits).
 
 Pi extensions are the better choice when:
 
@@ -42,7 +44,8 @@ Weigh these limits as well:
 
 - A Pi extension that needs Node features the runtime lacks, such as native addons, `net` and `tls` servers or `worker_threads`, can't run in yapi. [Differences from Pi](compat.md#extension-runtime-and-api) lists them.
 - A native extension needs the Rust toolchain to build, and you may need to rebuild it for a new yapi release until 1.0.
-- One package can ship both types. A `yapi` key in `package.json` names the native build for yapi, and the `pi` key names the JavaScript build for Pi. See [Package manifests](packages.md#package-manifests).
+
+One package can ship both types. A `yapi` key in `package.json` names the native build for yapi, and the `pi` key names the JavaScript build for Pi. See [Package manifests](packages.md#package-manifests).
 
 ## Where yapi loads extensions from
 
@@ -71,7 +74,7 @@ A package can say which capabilities it needs, from `fs`, `net`, `env`, `session
 
 A request grants nothing. chest shows it when a project adds the package, and the project's manifest decides what the package gets. A package from `yapi install` gets every grant whatever it requests.
 
-[Request capabilities and events](chest-publish.md#request-capabilities-and-events) shows how consumers see a request, and [What each capability allows](chest-manifest.md#what-each-capability-allows) lists each capability. Test a package under the grants it requests, so yapi doesn't refuse a call it needs once others install it. [How yapi enforces grants](security.md#how-yapi-enforces-grants) covers the checks.
+Test a package under the grants it requests, so yapi doesn't refuse a call it needs once others install it. [What each capability allows](chest-manifest.md#what-each-capability-allows) lists what each capability covers.
 
 ## Write a Pi extension
 
@@ -135,13 +138,15 @@ A renderer follows these rules:
 
 Pi extensions run in `yapi-js`, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js. These details shape how they run:
 
-- `@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui` and `typebox` resolve to copies bundled with yapi. `pi-ai` is Pi's own code, with its wire APIs and image generation on yapi's providers. Its exports that would handle provider credentials throw.
-- `pi-agent-core`, `pi-tui` and the parts of `pi-coding-agent` that run inside an extension, such as session entry helpers, compaction, skills and the interface components, are Pi's own code, loaded the first time an extension uses them. They use yapi's folders. Exports that would reach credentials, project trust, settings or session files without the host throw, as [Differences from Pi](compat.md#extension-runtime-and-api) lists. Built-in tool factories return yapi's tools, which yapi runs, or Pi's own over custom `operations`, as Pi's `ssh` example uses them.
+- `@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core`, `pi-tui` and `typebox` resolve to copies bundled with yapi. `pi-ai` is Pi's own code, with its wire APIs and image generation on yapi's providers.
+- `pi-agent-core`, `pi-tui` and the parts of `pi-coding-agent` that run inside an extension, such as session entry helpers, compaction, skills and the interface components, are Pi's own code, loaded the first time an extension uses them. They use yapi's folders.
+- Exports that would reach provider credentials, project trust, settings or session files without the host throw, as [Differences from Pi](compat.md#extension-runtime-and-api) lists.
+- Built-in tool factories return yapi's tools, which yapi runs, or Pi's own over custom `operations`, as Pi's `ssh` example uses them.
 - yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.
 - Shims provide Node's `fs`, `path`, `os`, `child_process`, `events`, `stream`, `util`, `crypto` hashes, `buffer`, timers, `fetch`, `dns.lookup` and `Intl`. Native addons, `net` and `tls` servers and `worker_threads` fail when used, and the rest of the extension keeps working.
 - Dates use the local time zone, from `TZ` or the system, as in Node.
 - Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.
-- `pi.events` reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi. A chest entry can make it `isolated`, or list the channels it sends and hears, as [Event bus routing](chest-manifest.md#event-bus-routing) describes. [Agent sessions and events](security.md#agent-sessions-and-events) describes the routing.
+- `pi.events` reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi, and a chest entry can narrow that, as [Event bus routing](chest-manifest.md#event-bus-routing) describes.
 
 [Differences from Pi](compat.md#extension-runtime-and-api) lists where the behavior differs.
 

@@ -198,7 +198,7 @@ A pattern is a channel name, a prefix ending in `*` such as `todo:*`, or `*` for
 
 > **Any agent**, except capabilities, which only yapi uses.
 
-For each kind of resource, the first of these that lists it wins: the package's `chest.toml` `[package]`, then `package.json`'s `yapi` key, then its `pi` key. When a `pi` key exists, or `[package]` or `yapi` lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: `skills`, `agents`, `extensions`, `prompts` and `themes`.
+chest finds a package's resources as yapi does, as [Package manifests](packages.md#package-manifests) describes, with `agents` as one more conventional folder.
 
 Capabilities come from `[package]`, else `yapi.capabilities`, else none. Name, version, description and authors come from `[package]`, else from `package.json`.
 
@@ -221,9 +221,16 @@ chest writes the lock, so don't edit it. It holds `version = 1` and one table pe
 | `items` | Without `path`, each item with its name and hash, sorted by name |
 | `[[extension.package]]` | For an npm or git extension, every npm package of its tree, sorted by path, with `path`, `name`, `version`, `tarball` and `integrity` |
 
-Path entries record their path only, with no hash, and `[patch]` entries never appear. A pinned tarball must lie on the registry configured for its name, at the standard `<name>/-/<file>.tgz` path. Tarballs pinned on `registry.npmjs.org` come from the configured registry when that's a mirror.
+Path entries record their path only, with no hash, and `[patch]` entries never appear. [What the lock records](chest-lock.md#what-the-lock-records) covers where a pinned tarball may come from.
 
-The lock is up to date when every entry has a record with the same section and name, the same source kind, location and subpath, and the same `rev`, and its locked npm version still satisfies the entry's range. Capabilities, events and filters never make it stale.
+The lock is up to date when every entry has a record with:
+
+- the same section and name
+- the same source kind, location and subpath
+- the same `rev`
+- a locked npm version that still satisfies the entry's range
+
+Capabilities, events and filters never make it stale.
 
 ### How chest computes the content hash
 
