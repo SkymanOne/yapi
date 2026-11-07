@@ -213,6 +213,40 @@ fn init_detects_agents() {
         text(&refused)
     );
     assert!(!outside.exists());
+    // At a terminal, chest asks which of two or more ticked folders holds
+    // the copy, and lists that one first.
+    let mut pty = pty(&scratch, &["--manifest", "chest.pty.toml", "init"]);
+    expect(&pty, 30, "Where should skills go?");
+    expect(&pty, 1, "(read by Agent Skills, Codex, Cursor");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "● .agents/skills");
+    pty.write(DOWN).unwrap();
+    expect(&pty, 10, "● .claude/skills");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "Where should subagents go?");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "● .claude/agents");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "Write chest.pty.toml?");
+    pty.write("y").unwrap();
+    expect(&pty, 10, "Wrote chest.pty.toml");
+    assert_eq!(exit(pty), 0);
+    let folders = "skills = [\".claude/skills\", \".agents/skills\"]\nagents = [\".claude/agents\", \".cursor/agents\"]\n";
+    let written = read(&scratch.project.join("chest.pty.toml"));
+    assert!(written.contains(folders), "{written}");
+    // Folder flags answer every question, so it writes at once.
+    let flags = ["--manifest", "chest.flags.toml", "init"];
+    let pty = self::pty(
+        &scratch,
+        &[&flags[..], &["--skills", "a", "--agents", "b"]].concat(),
+    );
+    expect(&pty, 30, "Wrote chest.flags.toml");
+    assert_eq!(exit(pty), 0);
+    let written = read(&scratch.project.join("chest.flags.toml"));
+    assert!(
+        written.contains("skills = [\"a\"]\nagents = [\"b\"]\n"),
+        "{written}"
+    );
 }
 
 #[test]
@@ -339,6 +373,42 @@ async fn add_writes_entry() {
         let placed = scratch.project.join(".agents/skills").join(skill);
         assert_eq!(read(&placed.join("SKILL.md")), format!("# {skill}\n"));
     }
+    // `--skill <name>` adds the skill of that folder, or of that `name` in
+    // its SKILL.md, from the `skills` folder: one entry for each name.
+    let word = "---\nname: word\n---\n# docx\n";
+    let skills = [
+        ("skills/docx/SKILL.md", word),
+        ("skills/xlsx/SKILL.md", "# xlsx\n"),
+        ("skills/notes/SKILL.md", "# notes\n"),
+    ];
+    remote.commit(&skills, "v2");
+    let v2 = format!("{}@v2", remote.source);
+    ok(&scratch, &["add", &v2, "--skill", "xlsx"]);
+    ok(
+        &scratch,
+        &["add", &v2, "--skill", "word", "--skill", "notes"],
+    );
+    let manifest = read(&scratch.project.join("chest.toml"));
+    for (name, path) in [
+        ("xlsx", "skills/xlsx"),
+        ("word", "skills/docx"),
+        ("notes", "skills/notes"),
+    ] {
+        let entry = format!("{name} = {{ git = \"{repo}\", rev = \"v2\", path = \"{path}\" }}");
+        assert!(manifest.contains(&entry), "{manifest}");
+    }
+    assert_eq!(
+        read(&scratch.project.join(".agents/skills/word/SKILL.md")),
+        word
+    );
+    // A bare `--skill` still only says what the source is.
+    write(&scratch.dir.join("bare/skills/three/SKILL.md"), "# three\n");
+    ok(&scratch, &["add", "../bare", "--skill", "--name", "solo"]);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("\nsolo = { path = \"../bare\" }\n"),
+        "{manifest}"
+    );
 
     // An npm extension, granted only what --grant lists.
     let package = json!({"name": "ext", "version": "1.0.0", "description": "To\u{1b}[2J\u{1b}[Hdo\u{9b}2J", "pi": {"extensions": ["./index.js"]}, "yapi": {"capabilities": ["fs", "net"]}});
@@ -518,6 +588,7 @@ fn add_existing_entry() {
             "all",
             "--grant",
             "all",
+            "--isolated",
             "--yes",
         ],
     );
@@ -525,6 +596,12 @@ fn add_existing_entry() {
         text(&all).contains("`all` is full access"),
         "{}",
         text(&all)
+    );
+    // `--isolated` writes the policy without a question.
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("rev = \"v2\", capabilities = [\"all\"], events = \"isolated\" }"),
+        "{manifest}"
     );
 }
 
@@ -534,7 +611,12 @@ fn add_rejects_misuse() {
     let remote = skill_remote(&scratch);
     remote.commit(&[("skills/single.md", "# single\n")], "v2");
     write(&scratch.dir.join("loose/skills/single.md"), "# single\n");
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
     init(&scratch);
+    ok(&scratch, &["add", "../ext", "--yes"]);
     let manifest = read(&scratch.project.join("chest.toml"));
     let git = format!("{}@v2", remote.source);
     let single =
@@ -623,6 +705,16 @@ fn add_rejects_misuse() {
             "--grant is for extensions only".into(),
         ),
         (
+            vec!["add", &git, "--path", "skills/pdf", "--isolated"],
+            2,
+            "--isolated is for extensions only".into(),
+        ),
+        (
+            vec!["add", "../ext", "--isolated"],
+            2,
+            "extensions.ext keeps its events, so --isolated can't change them: edit its `events` in chest.toml".into(),
+        ),
+        (
             vec!["-g", "--manifest", "chest.toml", "list"],
             2,
             "the argument '--global' cannot be used with '--manifest <PATH>'".into(),
@@ -643,6 +735,33 @@ fn add_rejects_misuse() {
             vec!["add", &git, "--path", "skills/nope"],
             1,
             format!("{git} has no skills/nope"),
+        ),
+        (
+            vec!["add", &git, "--skill", "nope"],
+            2,
+            format!("{git} has no skill nope: its `skills` folder holds pdf"),
+        ),
+        (
+            vec!["add", "../loose/skills", "--skill", "single"],
+            2,
+            "../loose/skills has no `skills` folder: give the skill's folder as the source"
+                .into(),
+        ),
+        (
+            vec!["add", "--skill", &git],
+            2,
+            "a skill name has no `/` or `:`. To mark the source as a skill, put --skill after it"
+                .into(),
+        ),
+        (
+            vec!["add", &git, "--skill", "pdf", "--path", "skills/pdf"],
+            2,
+            "--skill <name> and --path both pick the item: give one of them".into(),
+        ),
+        (
+            vec!["add", &git, "--skill", "pdf", "--skill", "x", "--name", "x"],
+            2,
+            "--name names one entry: give it with one --skill <name>".into(),
         ),
         (
             vec!["add", "npm:"],
@@ -1320,8 +1439,45 @@ fn remove_keeps_handwritten() {
     assert!(scratch.project.join(".agents/skills/s2/SKILL.md").exists());
 }
 
+/// chest in a terminal in the project, with `args`.
+fn pty(scratch: &Scratch, args: &[&str]) -> yapi_mock::pty::Pty {
+    let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+    let mut environment = environment(scratch);
+    // Off macOS, cliclack draws its symbols only under a UTF-8 `LANG`, which
+    // terminals set.
+    environment.push(("LANG".into(), "C.UTF-8".into()));
+    yapi_mock::pty::Pty::spawn(
+        Path::new(env!("CARGO_BIN_EXE_chest")),
+        &args,
+        &scratch.project,
+        &environment,
+        (200, 40),
+        false,
+    )
+    .unwrap()
+}
+
+/// Waits for chest in `pty` to exit, which it does once the screen settles,
+/// and returns its exit code. A chest killed early would leave its lock.
+fn exit(pty: yapi_mock::pty::Pty) -> i32 {
+    pty.settle();
+    pty.finish().unwrap()
+}
+
+/// Waits for `needle` on the screen, failing with the screen after `secs`.
+fn expect(pty: &yapi_mock::pty::Pty, secs: u64, needle: &str) {
+    let shown = |rows: &[String]| rows.iter().any(|row| row.contains(needle));
+    assert!(
+        pty.wait_for(Duration::from_secs(secs), shown).is_some(),
+        "{needle}: {:#?}",
+        pty.rows()
+    );
+}
+
+const DOWN: &str = "\x1b[B";
+
 #[test]
-fn add_prompts_capabilities() {
+fn add_prompts_interactively() {
     let scratch = scratch("prompts");
     let remote = Remote::new(&scratch.dir);
     let package = json!({
@@ -1340,26 +1496,9 @@ fn add_prompts_capabilities() {
         "v1",
     );
     init(&scratch);
-    // `--grant none` is the empty start, so `none` is never written.
     let source = format!("{}@v1", remote.source);
-    let args = ["add", &source, "--name", "risky", "--grant", "none"].map(str::to_owned);
-    let mut pty = yapi_mock::pty::Pty::spawn(
-        Path::new(env!("CARGO_BIN_EXE_chest")),
-        &args,
-        &scratch.project,
-        &environment(&scratch),
-        (200, 40),
-        false,
-    )
-    .unwrap();
-    let shown =
-        |needle: &'static str| move |rows: &[String]| rows.iter().any(|row| row.contains(needle));
-    assert!(
-        pty.wait_for(Duration::from_secs(30), shown("Grant `all`"))
-            .is_some(),
-        "{:#?}",
-        pty.rows()
-    );
+    let mut pty = pty(&scratch, &["add", &source, "--name", "risky"]);
+    expect(&pty, 30, "Which capabilities should it get?");
     // While the question waits, chest keeps the manifest's lock fresh, which
     // it refreshes every 15s.
     let lock = scratch.project.join(".chest.toml.lock");
@@ -1369,72 +1508,158 @@ fn add_prompts_capabilities() {
         std::thread::sleep(Duration::from_millis(250));
     }
     assert_ne!(modified(), taken, "the lock went stale");
-    // `process` is not a capability, so it is skipped rather than asked about.
-    let skipped = "not capabilities, which were skipped: process";
-    assert!(
-        pty.rows().iter().any(|row| row.contains(skipped)),
-        "{:#?}",
-        pty.rows()
-    );
-    assert!(
-        pty.rows()
-            .iter()
-            .any(|row| row.contains("`all` is full access")),
-        "{:#?}",
-        pty.rows()
-    );
-    let uses = "hello.wasm uses: session (SDK feature `session`)";
-    assert!(
-        pty.rows().iter().any(|row| row.contains(uses)),
-        "{:#?}",
-        pty.rows()
-    );
-    for warning in [
+    for shown in [
+        // `process` is not a capability, so it is skipped rather than offered.
+        "not capabilities, which were skipped: process",
+        "hello.wasm uses: session (SDK feature `session`)",
         "warning: http.wasm imports `wasi:http/outgoing-handler@0.2.6`, which yapi does not support. Network access goes through the SDK's `fetch`.",
         "warning: http.wasm declares the capability `exec:git`, which this version of chest does not know, so it is not checked",
+        // What the extension requests and uses is on offer, but a request
+        // for `all` makes choosing the default.
+        "○ Grant all requested capabilities: session, all (runs unrestricted)",
+        "● Choose capabilities",
     ] {
-        assert!(
-            pty.rows().iter().any(|row| row.contains(warning)),
-            "{:#?}",
-            pty.rows()
-        );
+        expect(&pty, 1, shown);
     }
-    // Declining `all` leaves the capability the extension uses on offer.
-    pty.write("n\r").unwrap();
-    assert!(
-        pty.wait_for(Duration::from_secs(10), shown("Grant `session`"))
-            .is_some(),
-        "{:#?}",
-        pty.rows()
+    pty.write("\r").unwrap();
+    // What it uses starts ticked, and `all` never does.
+    expect(
+        &pty,
+        10,
+        "◼ session (start agent turns and change the session and its files)",
     );
-    pty.write("y\r").unwrap();
-    assert!(
-        pty.wait_for(Duration::from_secs(10), shown("3) isolated"))
-            .is_some(),
-        "{:#?}",
-        pty.rows()
+    expect(&pty, 1, "◻ all");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "How should it share events?");
+    expect(&pty, 1, "(the default: shares events with every extension)");
+    pty.write(DOWN).unwrap();
+    expect(
+        &pty,
+        10,
+        "● declared channels (sends events on risky:*, hears no events)",
     );
-    assert!(
-        pty.rows()
-            .iter()
-            .any(|row| row.contains("2) declared channels: sends risky:*")),
-        "{:#?}",
-        pty.rows()
-    );
-    pty.write("3\r").unwrap();
-    // chest prints its report once the lock and `.gitignore` are written.
-    let installed = shown("installed  extensions.risky");
-    assert!(
-        pty.wait_for(Duration::from_secs(30), installed).is_some(),
-        "{:#?}",
-        pty.rows()
-    );
-    let _ = pty.finish();
+    pty.write(DOWN).unwrap();
+    expect(&pty, 10, "● isolated");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "Install?");
+    expect(&pty, 1, "capabilities: session");
+    pty.write("y").unwrap();
+    // chest reports once the lock and `.gitignore` are written.
+    expect(&pty, 30, "+ installed  extensions.risky");
+    expect(&pty, 10, "Added extensions.risky");
+    assert_eq!(exit(pty), 0);
     let manifest = read(&scratch.project.join("chest.toml"));
     assert!(
         manifest.contains("capabilities = [\"session\"], events = \"isolated\" }"),
         "{manifest}"
     );
+    // Flags that answer every question install at once, without a key.
+    // `--grant none` is the empty start, so `none` is never written.
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
+    let args = ["add", "../ext", "--extension", "--grant", "none"];
+    let pty = self::pty(&scratch, &args);
+    expect(&pty, 30, "+ installed  extensions.ext");
+    expect(&pty, 10, "Added extensions.ext");
+    assert_eq!(exit(pty), 0);
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("\next = { path = \"../ext\" }\n"),
+        "{manifest}"
+    );
+    // A package that requests capabilities is offered them all, which is the
+    // default without `all`, or a choice that starts from them.
+    let table = "[package]\nname = \"two\"\ncapabilities = [\"fs\", \"net\"]\nextensions = [\"index.ts\"]\n";
+    write(&scratch.dir.join("two/chest.toml"), table);
+    write(
+        &scratch.dir.join("two/index.ts"),
+        "export default () => {};\n",
+    );
+    for (keys, granted) in [("", "[\"fs\", \"net\"]"), (DOWN, "[\"fs\"]")] {
+        let mut pty = self::pty(&scratch, &["add", "../two", "--isolated"]);
+        expect(&pty, 30, "● Grant all requested capabilities: fs, net");
+        if !keys.is_empty() {
+            pty.write(keys).unwrap();
+            expect(&pty, 10, "● Choose capabilities");
+            pty.write("\r").unwrap();
+            expect(&pty, 10, "◼ net");
+            pty.write(DOWN).unwrap();
+            expect(&pty, 10, "◼ net (make web requests");
+            pty.write(" ").unwrap();
+            expect(&pty, 10, "◻ net (make web requests");
+        }
+        pty.write("\r").unwrap();
+        expect(&pty, 10, "Install?");
+        pty.write("y").unwrap();
+        expect(&pty, 30, "Added extensions.two");
+        assert_eq!(exit(pty), 0);
+        let manifest = read(&scratch.project.join("chest.toml"));
+        let entry = format!(
+            "two = {{ path = \"../two\", capabilities = {granted}, events = \"isolated\" }}"
+        );
+        assert!(manifest.contains(&entry), "{manifest}");
+        ok(&scratch, &["remove", "two"]);
+    }
+
+    // A folder of several skills offers them all, ticked. Esc cancels
+    // before anything is written.
+    for skill in ["one", "two"] {
+        let text = format!("---\ndescription: The {skill} skill\n---\n# {skill}\n");
+        write(
+            &scratch.dir.join("pack/skills").join(skill).join("SKILL.md"),
+            &text,
+        );
+    }
+    let picker = "Which skills should chest add?";
+    let mut pty = self::pty(&scratch, &["add", "../pack"]);
+    expect(&pty, 30, picker);
+    expect(
+        &pty,
+        1,
+        "Keep all for one entry that gets new skills on update",
+    );
+    expect(&pty, 1, "◼ one (The one skill)");
+    expect(&pty, 1, "◼ two");
+    pty.write("\x1b").unwrap();
+    expect(&pty, 10, "Operation cancelled.");
+    assert_eq!(exit(pty), 1);
+    assert_eq!(read(&scratch.project.join("chest.toml")), manifest);
+    // Keeping them all writes one entry for the whole package, as without a
+    // terminal.
+    let mut pty = self::pty(&scratch, &["add", "../pack"]);
+    expect(&pty, 30, picker);
+    pty.write("\r").unwrap();
+    expect(
+        &pty,
+        10,
+        "1 entry for the whole package, which gets new skills on update",
+    );
+    pty.write("y").unwrap();
+    expect(&pty, 30, "Added skills.pack");
+    assert_eq!(exit(pty), 0);
+    let pack = read(&scratch.project.join("chest.toml"));
+    assert!(pack.contains("\npack = { path = \"../pack\" }\n"), "{pack}");
+    ok(&scratch, &["remove", "pack"]);
+    // Clearing one writes an entry for each skill left, with its path.
+    let mut pty = self::pty(&scratch, &["add", "../pack"]);
+    expect(&pty, 30, picker);
+    pty.write(DOWN).unwrap();
+    expect(&pty, 10, "◼ two (The two skill)");
+    pty.write(" ").unwrap();
+    expect(&pty, 10, "◻ two (The two skill)");
+    pty.write("\r").unwrap();
+    expect(&pty, 10, "skills.one  path ../pack/skills/one");
+    pty.write("y").unwrap();
+    expect(&pty, 30, "Added skills.one");
+    assert_eq!(exit(pty), 0);
+    let one = read(&scratch.project.join("chest.toml"));
+    assert!(
+        one.contains("\none = { path = \"../pack/skills/one\" }\n"),
+        "{one}"
+    );
+    assert!(!one.contains("pack = ") && !one.contains("two"), "{one}");
 }
 
 /// A native extension's build in yapi-ext's fixtures.

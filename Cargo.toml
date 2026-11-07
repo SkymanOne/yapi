@@ -26,6 +26,9 @@ aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sy
 base64 = "0.23"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
+cliclack = "0.5.7"
+# The version cliclack draws with, for chest's own colours.
+console = "0.16"
 crc32fast = "1"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 flate2 = "1"

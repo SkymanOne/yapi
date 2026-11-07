@@ -7,7 +7,7 @@ This page lists every chest command with its flags, the states of an entry, how 
 | Command | Flags | What it does |
 |---|---|---|
 | `chest init` | `--skills a,b`, `--agents a,b`, `--store <dir>`, `--package`, `--yes` | Writes a manifest with folders for the agents found. Refuses an existing manifest unless `--package`, which adds `[package]`. |
-| `chest add <source>` | `--skill`, `--agent`, `--extension`, `--name <name>`, `--path <path>`, `--rev <rev>`, `--version <range>`, `--grant a,b`, `--yes` | Adds an entry and installs it. The source is `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL or a path. A git URL starts with `https://`, `http://`, `ssh://` or `git://`, or takes the form `user@host:path`. Without a section flag, chest infers the section from the package. `--rev` is for git sources and `--version` for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so `--grant` then fails unless it lists the grants the entry has. The same name with another source or section is an error. So is a second name for a source and `path` that an entry of the section already installs, at any version or rev. |
+| `chest add <source>` | `--skill [name]`, `--agent`, `--extension`, `--name <name>`, `--path <path>`, `--rev <rev>`, `--version <range>`, `--grant a,b`, `--isolated`, `--yes` | Adds an entry and installs it. The source is `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL or a path. A git URL starts with `https://`, `http://`, `ssh://` or `git://`, or takes the form `user@host:path`. Without a section flag, chest infers the section from the package. `--skill <name>` adds the skill of that name from the source's `skills` folder, as `--path skills/<name>` does, and repeats for more skills, such as `chest add git:github.com/apollographql/skills --skill rust-best-practices`. `--rev` is for git sources and `--version` for npm ones, and neither may repeat a revision or version the source names. `--isolated` writes `events = "isolated"` on a new extension entry. The same name with the same source updates its version or rev and keeps its grants and events, so `--grant` then fails unless it lists the grants the entry has, and `--isolated` fails unless the entry is isolated. The same name with another source or section is an error. So is a second name for a source and `path` that an entry of the section already installs, at any version or rev. |
 | `chest remove <name>` | | Removes the entry and what chest installed for it. It also removes the entry's `[patch]`, but not the patch's folder, which isn't chest's. |
 | `chest install` | `--frozen` | Installs what the manifest lists, as the lock pins it, and writes the lock. With `--frozen`, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither. |
 | `chest update [names]` | | Moves the named entries, or all of them, to the newest version or commit their source allows, and writes the lock. See [Update entries](chest-lock.md#update-entries). |
@@ -37,4 +37,14 @@ chest reads proxy variables such as `HTTPS_PROXY`, as yapi does. Without them, i
 
 ## Exit codes and prompts
 
-chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error. Questions go to stderr, and chest asks them only at a terminal.
+chest exits with 0 on success, 1 when a command fails or `verify` or `check` finds a mismatch, and 2 on a usage error.
+
+At a terminal, `chest init` and `chest add` ask with lists. Move with ↑ and ↓, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks before it writes anything. Esc or Ctrl+C cancels, writes nothing and exits with 1. `chest install`, `chest update`, `chest remove` and `chest import` show a spinner, then each entry's outcome.
+
+To skip the questions:
+
+- Pass the flags that answer them, such as `--skills` and `--agents` for `chest init`, or `--path`, `--skill <name>`, `--grant` and `--isolated` for `chest add`. When flags answer every question, chest installs or writes at once, without the confirmation.
+- Pass `--yes` to take the defaults and skip the confirmation.
+- Run chest without a terminal, or with `CI` set. chest then asks nothing and prints plain lines, with each entry's outcome on stdout.
+
+chest draws on stderr. Set `NO_COLOR` to turn off colors.

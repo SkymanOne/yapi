@@ -8,6 +8,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 - Add `-P`, short for `--project-only` ([#314](https://github.com/SkymanOne/yapi/pull/314)).
 - Change `install.sh` to ask what to install with an arrow-key menu and show each step as it runs ([#315](https://github.com/SkymanOne/yapi/pull/315)).
+- Change chest's prompts to interactive pickers like skills.sh's, with a skill picker and `--skill <name>` in `chest add` ([#316](https://github.com/SkymanOne/yapi/pull/316)).
 
 ## [0.4.2] - 2026-11-07
 

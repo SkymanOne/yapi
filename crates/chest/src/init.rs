@@ -9,7 +9,7 @@ use yapi_core::chest::manifest::{ManifestDocument, Package};
 use yapi_core::settings::Scope;
 use yapi_core::tools::path::home_dir;
 
-use crate::prompt::Prompt;
+use crate::prompt::{Choice, Prompt};
 use crate::{Target, say, write};
 
 /// `chest init` options.
@@ -29,12 +29,13 @@ pub struct InitArgs {
     package: bool,
     /// Take the defaults without asking.
     #[arg(long)]
-    yes: bool,
+    pub yes: bool,
 }
 
 /// One agent's folders. A project marker is relative to the project, a
 /// home marker to the home folder, as are the global folders.
 struct Agent {
+    name: &'static str,
     markers: &'static [&'static str],
     skills: &'static str,
     agents: Option<&'static str>,
@@ -49,6 +50,7 @@ struct Agent {
 const AGENTS: [Agent; 7] = [
     // Agent Skills (Codex, Cursor, Copilot, OpenCode, pi)
     Agent {
+        name: "Agent Skills",
         markers: &[".agents"],
         skills: ".agents/skills",
         agents: None,
@@ -58,6 +60,7 @@ const AGENTS: [Agent; 7] = [
     },
     // Claude Code
     Agent {
+        name: "Claude Code",
         markers: &[".claude"],
         skills: ".claude/skills",
         agents: Some(".claude/agents"),
@@ -67,6 +70,7 @@ const AGENTS: [Agent; 7] = [
     },
     // Codex
     Agent {
+        name: "Codex",
         markers: &[".codex"],
         skills: ".agents/skills",
         agents: Some(".codex/agents"),
@@ -76,6 +80,7 @@ const AGENTS: [Agent; 7] = [
     },
     // Cursor
     Agent {
+        name: "Cursor",
         markers: &[".cursor"],
         skills: ".agents/skills",
         agents: Some(".cursor/agents"),
@@ -85,6 +90,7 @@ const AGENTS: [Agent; 7] = [
     },
     // GitHub Copilot
     Agent {
+        name: "GitHub Copilot",
         markers: &[".github/agents", ".github/copilot-instructions.md"],
         skills: ".agents/skills",
         agents: Some(".github/agents"),
@@ -94,6 +100,7 @@ const AGENTS: [Agent; 7] = [
     },
     // OpenCode
     Agent {
+        name: "OpenCode",
         markers: &[".opencode"],
         skills: ".agents/skills",
         agents: Some(".opencode/agent"),
@@ -103,6 +110,7 @@ const AGENTS: [Agent; 7] = [
     },
     // yapi
     Agent {
+        name: "yapi",
         markers: &[".yapi"],
         skills: ".agents/skills",
         agents: Some(".yapi/agents"),
@@ -112,14 +120,15 @@ const AGENTS: [Agent; 7] = [
     },
 ];
 
-/// The folders on offer for one kind, in table order without repeats, and
-/// which of them belong to a detected agent.
+/// The folders on offer for one kind, in table order without repeats, each
+/// with the agents that read it, and which of them belong to a detected
+/// agent.
 fn offered(
     scope: Scope,
     base: &Path,
     pick: impl Fn(&Agent, Scope) -> Option<&'static str>,
-) -> (Vec<String>, Vec<usize>) {
-    let mut folders: Vec<String> = Vec::new();
+) -> (Vec<(String, Vec<&'static str>)>, Vec<usize>) {
+    let mut folders: Vec<(String, Vec<&'static str>)> = Vec::new();
     let mut detected = Vec::new();
     for agent in &AGENTS {
         let Some(folder) = pick(agent, scope) else {
@@ -135,11 +144,12 @@ fn offered(
         };
         let index = folders
             .iter()
-            .position(|known| *known == folder)
+            .position(|(known, _)| *known == folder)
             .unwrap_or_else(|| {
-                folders.push(folder);
+                folders.push((folder, Vec::new()));
                 folders.len() - 1
             });
+        folders[index].1.push(agent.name);
         let found = match scope {
             Scope::Project => agent
                 .markers
@@ -155,22 +165,51 @@ fn offered(
     (folders, detected)
 }
 
-fn choose(prompt: &Prompt, kind: &str, folders: &[String], defaults: &[usize]) -> Vec<String> {
-    let names: Vec<String> = folders
+/// The folders for `kind` the person ticks, `found` or else `fallback`
+/// unless asked, with the one that holds the copy first. Asked, they pick
+/// that one among two or more, from the found folder when only one was
+/// found, else the first.
+fn choose(
+    prompt: &Prompt,
+    kind: &str,
+    folders: &[(String, Vec<&str>)],
+    (found, fallback): (Vec<usize>, Vec<usize>),
+) -> anyhow::Result<Vec<String>> {
+    let options: Vec<Choice<usize>> = folders
         .iter()
         .enumerate()
-        .map(|(index, folder)| match defaults.contains(&index) {
-            true => format!("{folder} (found)"),
-            false => folder.clone(),
+        .map(|(index, (folder, agents))| {
+            (
+                index,
+                folder.clone(),
+                format!("read by {}", agents.join(", ")),
+            )
         })
         .collect();
-    let question =
-        format!("Where should {kind} go? The first one holds the copy, the others link to it.");
-    let chosen = prompt.choose_many(&question, &names, defaults);
-    chosen
+    let question = format!("Where should {kind} go?\nOne holds the copy, the others link to it.");
+    let defaults = if found.is_empty() {
+        fallback
+    } else {
+        found.clone()
+    };
+    let mut chosen = prompt.multiselect(&question, &options, defaults, false)?;
+    if let [first, _, ..] = chosen[..] {
+        let default = match found[..] {
+            [only] if chosen.contains(&only) => only,
+            _ => first,
+        };
+        let options: Vec<Choice<usize>> = chosen
+            .iter()
+            .map(|&index| (index, folders[index].0.clone(), String::new()))
+            .collect();
+        let copy = prompt.select("Which folder holds the copy?", &options, default)?;
+        chosen.retain(|&index| index != copy);
+        chosen.insert(0, copy);
+    }
+    Ok(chosen
         .into_iter()
-        .map(|index| folders[index].clone())
-        .collect()
+        .map(|index| folders[index].0.clone())
+        .collect())
 }
 
 /// A TOML string list.
@@ -197,7 +236,7 @@ fn yapi_home_agents() -> Result<String, std::path::PathBuf> {
 }
 
 /// Runs `chest init`.
-pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
+pub fn run(target: &Target, args: &InitArgs, prompt: &Prompt) -> anyhow::Result<()> {
     let exists = target.path.exists();
     if exists && !args.package {
         bail!("{} already exists", target.path.display());
@@ -206,41 +245,42 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
     let mut document = if exists {
         ManifestDocument::parse(&crate::read(target)?, target.scope)?
     } else {
-        let prompt = Prompt::new(args.yes);
-        let skills = args.skills.clone().unwrap_or_else(|| {
-            let (folders, found) = offered(target.scope, &base, |agent, scope| match scope {
-                Scope::Project => Some(agent.skills),
-                Scope::Global => Some(agent.home_skills),
-            });
-            let defaults = if found.is_empty() { vec![0] } else { found };
-            choose(&prompt, "skills", &folders, &defaults)
-        });
-        let agents = args.agents.clone().unwrap_or_else(|| {
-            let (folders, found) = offered(target.scope, &base, |agent, scope| match scope {
-                Scope::Project => agent.agents,
-                Scope::Global => agent.home_agents,
-            });
-            // Without an agent found, subagents go where yapi reads them.
-            let yapi = match target.scope {
-                Scope::Project => Ok(".yapi/agents".to_owned()),
-                Scope::Global => yapi_home_agents(),
-            };
-            if let Err(folder) = &yapi {
-                say(&format!(
+        let skills = match args.skills.clone() {
+            Some(skills) => skills,
+            None => {
+                let (folders, found) = offered(target.scope, &base, |agent, scope| match scope {
+                    Scope::Project => Some(agent.skills),
+                    Scope::Global => Some(agent.home_skills),
+                });
+                choose(prompt, "skills", &folders, (found, vec![0]))?
+            }
+        };
+        let agents = match args.agents.clone() {
+            Some(agents) => agents,
+            None => {
+                let (folders, found) = offered(target.scope, &base, |agent, scope| match scope {
+                    Scope::Project => agent.agents,
+                    Scope::Global => agent.home_agents,
+                });
+                // Without an agent found, subagents go where yapi reads them.
+                let yapi = match target.scope {
+                    Scope::Project => Ok(".yapi/agents".to_owned()),
+                    Scope::Global => yapi_home_agents(),
+                };
+                if let Err(folder) = &yapi {
+                    prompt.info(&[format!(
                     "Left out yapi's subagent folder {}: the global manifest installs only inside your home folder",
                     folder.display()
-                ));
-            }
-            let defaults = match found.is_empty() {
-                true => folders
+                )]);
+                }
+                let fallback = folders
                     .iter()
-                    .position(|folder| yapi.as_ref().is_ok_and(|yapi| folder == yapi))
+                    .position(|(folder, _)| yapi.as_ref().is_ok_and(|yapi| folder == yapi))
                     .into_iter()
-                    .collect(),
-                false => found,
-            };
-            choose(&prompt, "subagents", &folders, &defaults)
-        });
+                    .collect();
+                choose(prompt, "subagents", &folders, (found, fallback))?
+            }
+        };
         let store = args.store.clone().unwrap_or_else(|| match target.scope {
             Scope::Project => ".yapi/chest".into(),
             Scope::Global => "~/.chest/store".into(),
@@ -255,6 +295,21 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
         if !agents.is_empty() {
             text.push_str(&format!("agents = {}\n", list(&agents)));
         }
+        let summary = [
+            ("skills", skills.join(", ")),
+            ("subagents", agents.join(", ")),
+        ];
+        let mut lines: Vec<String> = summary
+            .iter()
+            .filter(|(_, folders)| !folders.is_empty())
+            .map(|(kind, folders)| format!("{kind}: {folders}"))
+            .collect();
+        lines.push(format!("extensions: {store}"));
+        // With both folder flags, chest asked nothing, so it writes at once.
+        if args.skills.is_none() || args.agents.is_none() {
+            prompt.summary(&target.name(), &lines);
+            prompt.confirm(&format!("Write {}?", target.name()))?;
+        }
         let store = yapi_types::json::to_string(&store).unwrap_or_default();
         text.push_str(&format!("extensions = {store}\n"));
         ManifestDocument::parse(&text, target.scope)?
@@ -266,7 +321,10 @@ pub fn run(target: &Target, args: &InitArgs) -> anyhow::Result<()> {
         document.set_package(&scaffold(&base))?;
     }
     write(target, &document.to_string())?;
-    say(&format!("Wrote {}", target.path.display()));
+    match prompt.styled() {
+        true => prompt.outro(&format!("Wrote {}", target.label())),
+        false => say(&format!("Wrote {}", target.path.display())),
+    }
     Ok(())
 }
 

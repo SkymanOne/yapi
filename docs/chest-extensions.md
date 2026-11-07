@@ -26,9 +26,9 @@ An extension entry lists what it may reach:
 | `all` | Everything above, plus running programs |
 | `none` | Nothing beyond the baseline. The default. |
 
-`chest add` shows the capabilities a package requests and asks about each one. For a native extension, it also asks about the capabilities the build uses that the package doesn't request, read from the build's features and the WebAssembly System Interface (WASI) interfaces it imports. A bare `.wasm` file requests nothing, so chest offers what it uses.
+At a terminal, `chest add` asks what to grant. A package requests capabilities in its `capabilities` list, and a native extension also requests what its build uses. When there's a request, chest offers to grant all requested capabilities or to let you choose. Granting is the default, unless the request includes `all`. Choosing lists every capability with what it allows. The requested ones are ticked, except `all`, which you tick yourself. A package that requests nothing goes straight to that list. Then chest shows the entry with its grants and asks before installing.
 
-A request never grants anything by itself. Without a terminal, or with `--yes`, chest grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
+A request never grants anything by itself. Without a terminal, with `--yes`, or with `--grant`, chest asks nothing and grants only what `--grant` lists, which is nothing by default. `--grant` applies to extensions only. `capabilities-defaults` in the manifest adds capabilities to every extension entry of that manifest.
 
 `all` is the only way to run programs. A program runs as you, outside the sandbox, with yapi's environment and API keys. So `all` is full access, and `chest add` says so before it grants it. [What each capability allows](chest-manifest.md#what-each-capability-allows) gives the exact list.
 
@@ -52,7 +52,7 @@ events = "isolated"
 
 Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.
 
-`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. Without a terminal, or with `--yes`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
+`chest add` offers the shared default or `isolated`, plus the package's declared channels when it declares any. `--isolated` answers with `isolated`. Without a terminal, with `--yes`, or with `--grant` alone, chest keeps the shared default. To allow only some channels, list them in the entry's `events` in `chest.toml`. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
 
 ## How yapi loads a manifest
 

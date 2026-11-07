@@ -1,5 +1,5 @@
-//! `chest add`: looks at a package, asks what to grant it, writes its entry
-//! and installs it.
+//! `chest add`: looks at a package, asks which of its items to add and what
+//! to grant it, writes its entries and installs them.
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +11,7 @@ use yapi_core::chest::manifest::{
     ssh_hint, valid_name,
 };
 use yapi_core::chest::startup::{package_identity, same_package};
-use yapi_core::extensions::{EventPolicy, Grants};
+use yapi_core::extensions::{CAPABILITIES, EventPolicy, Grants};
 use yapi_core::packages::npm::{Npm, check_name};
 use yapi_core::packages::resolve::is_extension_file;
 use yapi_core::packages::source::{self, Source, local_path};
@@ -19,25 +19,37 @@ use yapi_core::settings::Scope;
 use yapi_core::tools::path::relative;
 
 use crate::check::{
-    Inspected, extension_file, inspect, say_capped, unknown_capability, unsupported_import,
+    Inspected, capped, extension_file, inspect, unknown_capability, unsupported_import,
 };
-use crate::prompt::Prompt;
-use crate::{Target, Usage, open, read, requests, say, source, sync, write};
+use crate::prompt::{Choice, Prompt};
+use crate::{Target, Usage, frontmatter, open, read, requests, source, sync, write};
 
 /// What `all` means, said before it is granted.
 pub const ALL_WARNING: &str = "`all` is full access: the extension can run programs as you, outside the sandbox, with yapi's environment and API keys.";
 
+/// What `all` means, said at a terminal before it is granted.
+const ALL_DRAWN: &str = "`all` runs the extension unrestricted, outside the sandbox. It can read yapi's environment and API keys.";
+
+/// The warning before `all` is granted, as `prompt` shows it.
+fn all_warning(prompt: &Prompt) -> &'static str {
+    match prompt.styled() {
+        true => ALL_DRAWN,
+        false => ALL_WARNING,
+    }
+}
+
 /// What sharing `pi.events` costs, said before the event choice.
-const EVENTS_TEXT: &str = "By default this extension shares `pi.events` with every other extension. Extensions with more access, including packages from `yapi install`, can act on its events, and it sees theirs.";
+const EVENTS_TEXT: &str = "By default, this extension shares `pi.events` with every other extension, including ones with more access, such as packages from `yapi install`.";
 
 /// `chest add` options.
 #[derive(Args)]
 pub struct AddArgs {
     /// `npm:<name>[@<range>]`, `git:<repo>[@<rev>]`, a git URL, or a path.
     source: String,
-    /// Add it as a skill.
-    #[arg(long, group = "kind")]
-    skill: bool,
+    /// Add it as a skill. With a name, add the skill of that name from the
+    /// package's `skills` folder, once per name given.
+    #[arg(long, group = "kind", num_args = 0..=1, value_name = "NAME", value_parser = skill_name)]
+    skill: Option<Vec<String>>,
     /// Add it as a subagent.
     #[arg(long, group = "kind")]
     agent: bool,
@@ -59,9 +71,125 @@ pub struct AddArgs {
     /// Capabilities to grant, comma-separated, with no question asked.
     #[arg(long, value_delimiter = ',')]
     grant: Vec<String>,
-    /// Ask nothing: grant only `--grant`, and share events.
+    /// Isolate the extension's `pi.events`, with no question asked: it sends
+    /// and hears none. Shared is the default.
     #[arg(long)]
-    yes: bool,
+    isolated: bool,
+    /// Ask nothing: add the whole package, grant only `--grant`, and share
+    /// events unless `--isolated`.
+    #[arg(long)]
+    pub yes: bool,
+}
+
+/// A `--skill` value. A skill name has no `/` or `:`, so a source written
+/// after a bare `--skill` fails instead of becoming a name.
+fn skill_name(value: &str) -> Result<String, String> {
+    match value.contains(['/', ':']) {
+        true => Err("a skill name has no `/` or `:`. To mark the source as a skill, put --skill after it: `chest add <source> --skill`".into()),
+        false => Ok(value.to_owned()),
+    }
+}
+
+/// `entry` narrowed to the item at `inside` its package: that `path` for a
+/// git or npm source, and the item's own path for a path source.
+fn inner(entry: &Entry, target: &Target, inside: &str) -> Entry {
+    let path = match (&entry.git, &entry.npm) {
+        (None, None) => {
+            let package = local_path(entry.path.as_deref().unwrap_or_default(), &target.base());
+            let item = package.join(inside);
+            match target.scope {
+                Scope::Project => relative(&target.base(), &item),
+                Scope::Global => item.to_string_lossy().into_owned(),
+            }
+        }
+        _ => inside.to_owned(),
+    };
+    Entry {
+        path: Some(path),
+        ..entry.clone()
+    }
+}
+
+/// The entries `--skill` names add, one per name, each for the folder of
+/// that name in the `skills` folder of the package at `root`, or for the
+/// one whose SKILL.md has that `name`.
+fn named(
+    args: &AddArgs,
+    target: &Target,
+    (entry, root): (&Entry, &Path),
+    names: &[String],
+) -> anyhow::Result<Vec<(String, Entry)>> {
+    let local = entry.git.is_none() && entry.npm.is_none();
+    let Ok(listing) = std::fs::read_dir(root.join("skills")) else {
+        let pick = match local {
+            true => "give the skill's folder as the source",
+            false => "pick the skill with --path",
+        };
+        return Err(Usage(format!("{} has no `skills` folder: {pick}", args.source)).into());
+    };
+    let mut folders: Vec<(String, Option<String>)> = listing
+        .flatten()
+        .filter(|item| item.path().join("SKILL.md").is_file())
+        .map(|item| {
+            let folder = item.file_name().to_string_lossy().into_owned();
+            (folder, frontmatter(Section::Skills, &item.path(), "name"))
+        })
+        .collect();
+    folders.sort();
+    let mut entries = Vec::new();
+    for name in names {
+        let by_folder = folders.iter().find(|(folder, _)| folder == name);
+        let by_name = || folders.iter().find(|(_, own)| own.as_deref() == Some(name));
+        let Some((folder, _)) = by_folder.or_else(by_name) else {
+            let known: Vec<&str> = folders.iter().map(|(folder, _)| folder.as_str()).collect();
+            let holds = match known.is_empty() {
+                true => "no skills".to_owned(),
+                false => known.join(", "),
+            };
+            return Err(Usage(format!(
+                "{} has no skill {name}: its `skills` folder holds {holds}",
+                args.source
+            ))
+            .into());
+        };
+        let entry = inner(entry, target, &format!("skills/{folder}"));
+        entries.push((args.name.clone().unwrap_or_else(|| name.clone()), entry));
+    }
+    Ok(entries)
+}
+
+/// The entries the person picks from the `items` of the package at `root`,
+/// one per item with its `path`, or `None` when they keep them all, so that
+/// one entry for the whole package installs them, new ones included.
+fn pick(
+    prompt: &Prompt,
+    (section, kind): (Section, &str),
+    items: &[(String, PathBuf)],
+    (entry, root): (&Entry, &Path),
+    target: &Target,
+) -> anyhow::Result<Option<Vec<(String, Entry)>>> {
+    let options: Vec<Choice<usize>> = items
+        .iter()
+        .enumerate()
+        .map(|(index, (name, path))| {
+            let description = frontmatter(section, path, "description");
+            (index, name.clone(), description.unwrap_or_default())
+        })
+        .collect();
+    let question = format!(
+        "Which {kind} should chest add?\nKeep all for one entry that gets new {kind} on update.\nUntick some for one entry each."
+    );
+    let all = (0..items.len()).collect();
+    let chosen = prompt.multiselect(&question, &options, all, true)?;
+    if chosen.len() == items.len() {
+        return Ok(None);
+    }
+    let picks = chosen.into_iter().map(|index| {
+        let (name, path) = &items[index];
+        let name = name.strip_suffix(".md").unwrap_or(name).to_owned();
+        (name, inner(entry, target, &relative(root, path)))
+    });
+    Ok(Some(picks.collect()))
 }
 
 /// The entry `args` describes, before it has a section or name.
@@ -254,40 +382,41 @@ fn infer(root: &Path, entry: &Entry, shown: &str) -> anyhow::Result<Section> {
     bail!("Cannot tell what {shown} provides: pass --skill, --agent or --extension")
 }
 
-/// Prints what the package says about itself.
-fn show(meta: &PackageMeta) {
+/// What the package says about itself.
+fn show(meta: &PackageMeta) -> Vec<String> {
     let mut title = meta.name.clone().unwrap_or_else(|| "This package".into());
     if let Some(version) = &meta.version {
         title.push_str(&format!(" {version}"));
     }
-    say(&title);
+    let mut lines = vec![title];
     if let Some(description) = &meta.description {
-        say(&format!("  {description}"));
+        lines.push(format!("  {description}"));
     }
     if !meta.authors.is_empty() {
-        say(&format!("  by {}", meta.authors.join(", ")));
+        lines.push(format!("  by {}", meta.authors.join(", ")));
     }
-    match meta.capabilities.is_empty() {
-        true => say("  requests no capabilities"),
-        false => say(&format!("  requests: {}", meta.capabilities.join(", "))),
-    }
+    lines.push(match meta.capabilities.is_empty() {
+        true => "  requests no capabilities".into(),
+        false => format!("  requests: {}", meta.capabilities.join(", ")),
+    });
     if let Some(events) = &meta.events {
-        say(&format!(
+        lines.push(format!(
             "  event channels: sends {}, hears {}",
             channels(&events.send),
             channels(&events.receive)
         ));
     }
+    lines
 }
 
-/// Prints what each native extension uses, under what the package
-/// requests.
-fn show_used(inspected: &Inspected) {
+/// What each native extension uses, under what the package requests.
+fn show_used(inspected: &Inspected) -> Vec<String> {
+    let mut lines = Vec::new();
     for (file, found) in &inspected.components {
         let found = match found {
             Ok(found) => found,
             Err(err) => {
-                say(&format!("  {file}: {err}"));
+                lines.push(format!("  {file}: {err}"));
                 continue;
             }
         };
@@ -296,27 +425,26 @@ fn show_used(inspected: &Inspected) {
             .iter()
             .map(|used| format!("{} ({})", used.capability, used.source))
             .collect();
-        match (used.is_empty(), found.metadata) {
-            (true, true) => say(&format!("  {file} uses no capabilities")),
-            (false, _) => say(&format!("  {file} uses: {}", used.join(", "))),
-            (true, false) => say(&format!(
-                "  {file} uses no capabilities its WASI imports show"
-            )),
-        }
+        lines.push(match (used.is_empty(), found.metadata) {
+            (true, true) => format!("  {file} uses no capabilities"),
+            (false, _) => format!("  {file} uses: {}", used.join(", ")),
+            (true, false) => format!("  {file} uses no capabilities its WASI imports show"),
+        });
         if !found.metadata {
-            say(
-                "    it was built without capability metadata, so only its WASI imports show what it uses",
+            lines.push(
+                "    it was built without capability metadata, so only its WASI imports show what it uses".into(),
             );
         }
         let rest = format!("unsupported imports in {file}");
-        say_capped("  warning: ", &found.unsupported, &rest, |import| {
+        lines.extend(capped("  warning: ", &found.unsupported, &rest, |import| {
             unsupported_import(file, import)
-        });
+        }));
         let rest = format!("unknown capability lines in {file}");
-        say_capped("  warning: ", &found.unknown, &rest, |line| {
+        lines.extend(capped("  warning: ", &found.unknown, &rest, |line| {
             unknown_capability(file, line)
-        });
+        }));
     }
+    lines
 }
 
 fn channels(patterns: &[String]) -> String {
@@ -332,32 +460,35 @@ fn channels(patterns: &[String]) -> String {
 fn meaning(capability: &str) -> &'static str {
     match capability {
         "fs" => "read and write files",
-        "net" => "fetch, call models and read provider credentials",
+        "net" => "make web requests, call models and read provider credentials",
         "env" => "read environment variables",
-        "session" => "start turns and change the session",
-        "all" => "everything, including running programs",
+        "session" => "start agent turns and change the session and its files",
+        "all" => "runs unrestricted, outside the sandbox",
         _ => "an unknown capability",
     }
 }
 
 /// The capabilities to grant: `--grant`, which [`run`] checked, where
-/// `none` is the empty start, then each requested or `used` one the person
-/// accepts. Requests that are not capabilities, such as `process`, are
-/// skipped with a warning, so they are never asked about or written.
+/// `none` is the empty start. Asked, without `--grant`, the person grants
+/// those the package requests or `used`, or ticks them, starting from
+/// those, except `all`, which they tick themselves. Requests that are not
+/// capabilities, such as `process`, are skipped with a warning, so they are
+/// never offered or written.
 fn grants(
     prompt: &Prompt,
     args: &AddArgs,
     meta: &PackageMeta,
     used: &[&str],
 ) -> anyhow::Result<Vec<String>> {
-    let mut granted: Vec<String> = args
+    let granted: Vec<String> = args
         .grant
         .iter()
         .filter(|value| *value != "none")
         .cloned()
         .collect();
-    if granted.iter().any(|grant| grant == "all") {
-        say(ALL_WARNING);
+    let all = |grants: &[String]| grants.iter().any(|grant| grant == "all");
+    if all(&granted) {
+        prompt.warn(all_warning(prompt));
     }
     let (valid, invalid): (Vec<&String>, Vec<&String>) = meta
         .capabilities
@@ -365,64 +496,107 @@ fn grants(
         .partition(|capability| Grants::parse(std::slice::from_ref(*capability)).is_ok());
     if !invalid.is_empty() {
         let names: Vec<&str> = invalid.iter().map(|value| value.as_str()).collect();
-        say(&format!(
+        prompt.warn(&format!(
             "warning: the package requests values that are not capabilities, which were skipped: {}",
             names.join(", ")
         ));
     }
-    if !prompt.interactive() {
+    // `--grant` answers the question.
+    if !prompt.interactive() || !args.grant.is_empty() {
         return Ok(granted);
     }
-    let mut offered: Vec<String> = valid.into_iter().cloned().collect();
-    for capability in used {
-        if !offered.iter().any(|offer| offer == capability) {
-            offered.push((*capability).to_owned());
+    let asked = valid
+        .into_iter()
+        .map(String::as_str)
+        .chain(used.iter().copied());
+    let requested: Vec<&str> = CAPABILITIES
+        .into_iter()
+        .filter(|capability| asked.clone().any(|asked| asked == *capability))
+        .collect();
+    // `all` runs unrestricted, so a request never makes it the default.
+    let risky = requested.contains(&"all");
+    let question = "Which capabilities should it get?";
+    let choose = requested.is_empty() || {
+        let mut grant = format!("Grant all requested capabilities: {}", requested.join(", "));
+        if risky {
+            grant.push_str(" (runs unrestricted)");
         }
+        let options = [
+            (false, grant, String::new()),
+            (true, "Choose capabilities".to_owned(), String::new()),
+        ];
+        prompt.select(question, &options, risky)?
+    };
+    let chosen: Vec<String> = match choose {
+        false => requested
+            .iter()
+            .map(|capability| (*capability).to_owned())
+            .collect(),
+        true => {
+            let ticked: Vec<&str> = requested
+                .iter()
+                .copied()
+                .filter(|capability| *capability != "all")
+                .collect();
+            let options: Vec<Choice<&str>> = CAPABILITIES
+                .into_iter()
+                .map(|capability| (capability, capability.into(), meaning(capability).into()))
+                .collect();
+            let question = match requested.is_empty() {
+                true => question,
+                false => "Choose capabilities",
+            };
+            let chosen = prompt.multiselect(question, &options, ticked, false)?;
+            chosen.into_iter().map(str::to_owned).collect()
+        }
+    };
+    if !all(&chosen) {
+        return Ok(chosen);
     }
-    for capability in &offered {
-        // `all` covers the rest.
-        if granted.iter().any(|grant| grant == "all") {
-            break;
-        }
-        if granted.contains(capability) || capability == "none" {
-            continue;
-        }
-        if capability == "all" {
-            say(ALL_WARNING);
-        }
-        if prompt.confirm(&format!("Grant `{capability}` ({})?", meaning(capability))) {
-            granted.push(capability.clone());
-        }
-    }
-    Ok(granted)
+    // `all` covers the rest.
+    prompt.warn(all_warning(prompt));
+    Ok(vec!["all".into()])
 }
 
 /// The event policy the person picks: shared, the declared channels, or
 /// isolated. Shared when chest asks nothing.
-fn events(prompt: &Prompt, meta: &PackageMeta) -> Option<EventPolicy> {
+fn events(prompt: &Prompt, meta: &PackageMeta) -> anyhow::Result<Option<EventPolicy>> {
     if !prompt.interactive() {
-        return None;
+        return Ok(None);
     }
     let declared = meta
         .events
         .clone()
         .filter(|events| *events != EventPolicy::shared());
-    say(&events_text(declared.is_some()));
-    let mut options = vec!["shared, the default".to_owned()];
+    prompt.info(&[events_text(declared.is_some())]);
+    let mut options = vec![(
+        0,
+        "shared".to_owned(),
+        "the default: shares events with every extension".to_owned(),
+    )];
     if let Some(declared) = &declared {
-        options.push(format!(
-            "declared channels: sends {}, hears {}",
-            channels(&declared.send),
-            channels(&declared.receive)
-        ));
+        let on = |verb: &str, patterns: &[String]| match patterns.is_empty() {
+            true => format!("{verb} no events"),
+            false => format!("{verb} events on {}", patterns.join(", ")),
+        };
+        let channels = format!(
+            "{}, {}",
+            on("sends", &declared.send),
+            on("hears", &declared.receive)
+        );
+        options.push((1, "declared channels".to_owned(), channels));
     }
-    options.push("isolated".to_owned());
-    let choice = prompt.choose("How should it share events?", &options, 0);
-    match (choice, &declared) {
+    options.push((
+        2,
+        "isolated".to_owned(),
+        "shares events only with extensions that have exactly its grants".to_owned(),
+    ));
+    let choice = prompt.select("How should it share events?", &options, 0)?;
+    Ok(match (choice, &declared) {
         (0, _) => None,
         (1, Some(declared)) => Some(declared.clone()),
         _ => Some(EventPolicy::isolated()),
-    }
+    })
 }
 
 /// What chest says before it asks how an extension shares events, naming
@@ -438,7 +612,7 @@ fn events_text(declared: bool) -> String {
 
 /// Warns about entries the package's own manifest lists, which chest does
 /// not install for it, with the command that adds them to `target`.
-fn nested(target: &Target, root: &Path, name: &str) {
+fn nested(target: &Target, root: &Path, name: &str, prompt: &Prompt) {
     let Ok(text) = std::fs::read_to_string(root.join("chest.toml")) else {
         return;
     };
@@ -450,7 +624,7 @@ fn nested(target: &Target, root: &Path, name: &str) {
         .map(|(section, name, _)| format!("{}.{name}", section.key()))
         .collect();
     if !listed.is_empty() {
-        say(&format!(
+        prompt.warn(&format!(
             "warning: {name} lists entries of its own, which chest does not install: {}. Add the ones you want with `{} add`.",
             listed.join(", "),
             target.command()
@@ -458,34 +632,70 @@ fn nested(target: &Target, root: &Path, name: &str) {
     }
 }
 
+/// The entry named `name` in any section of `document`.
+fn existing(document: &ManifestDocument, name: &str) -> Option<(Section, Entry)> {
+    [Section::Skills, Section::Agents, Section::Extensions]
+        .into_iter()
+        .find_map(|section| {
+            Some((
+                section,
+                document.manifest().section(section).get(name)?.clone(),
+            ))
+        })
+}
+
 /// Runs `chest add`.
-pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Result<()> {
+pub async fn run(
+    target: &Target,
+    args: AddArgs,
+    npm: &mut Npm,
+    prompt: &Prompt,
+) -> anyhow::Result<()> {
     let requested = Grants::parse(&args.grant).map_err(|err| Usage(format!("--grant: {err}")))?;
     let before = read(target)?;
     let mut document = ManifestDocument::parse(&before, target.scope)?;
-    let mut entry = entry(&args, target)?;
-    let name = args.name.clone().unwrap_or_else(|| default_name(&entry));
-    if !valid_name(&name) {
-        bail!(
+    let package = entry(&args, target)?;
+    let mut names: Vec<String> = Vec::new();
+    for name in args.skill.iter().flatten() {
+        if !names.contains(name) {
+            names.push(name.clone());
+        }
+    }
+    if !names.is_empty() && args.path.is_some() {
+        let message = "--skill <name> and --path both pick the item: give one of them";
+        return Err(Usage(message.into()).into());
+    }
+    if names.len() > 1 && args.name.is_some() {
+        let message = "--name names one entry: give it with one --skill <name>";
+        return Err(Usage(message.into()).into());
+    }
+    // One named skill is the entry `--path skills/<name>` writes.
+    let mut entry = match names.as_slice() {
+        [skill] => inner(&package, target, &format!("skills/{skill}")),
+        _ => package.clone(),
+    };
+    let name = match (&args.name, names.as_slice()) {
+        (Some(name), _) => name.clone(),
+        (None, [skill]) => skill.clone(),
+        _ => default_name(&entry),
+    };
+    let invalid = |name: &str| {
+        anyhow::anyhow!(
             "`{name}` is not a valid entry name: pass --name with lowercase letters, digits, `.`, `_` or `-`"
-        );
+        )
+    };
+    let single = names.len() <= 1;
+    if single && !valid_name(&name) {
+        return Err(invalid(&name));
     }
     let flag = [
-        (args.skill, Section::Skills),
+        (args.skill.is_some(), Section::Skills),
         (args.agent, Section::Agents),
         (args.extension, Section::Extensions),
     ]
     .into_iter()
     .find_map(|(set, section)| set.then_some(section));
-    let existing = [Section::Skills, Section::Agents, Section::Extensions]
-        .into_iter()
-        .find_map(|section| {
-            Some((
-                section,
-                document.manifest().section(section).get(&name)?.clone(),
-            ))
-        });
-    let section = if let Some((section, old)) = existing {
+    if let Some((section, old)) = existing(&document, &name).filter(|_| single) {
         let same = old.git == entry.git && old.npm == entry.npm && old.path == entry.path;
         if !same || flag.is_some_and(|flag| flag != section) {
             bail!(
@@ -496,6 +706,17 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         }
         if !args.grant.is_empty() && section != Section::Extensions {
             return Err(Usage("--grant is for extensions only".into()).into());
+        }
+        if args.isolated && section != Section::Extensions {
+            return Err(Usage("--isolated is for extensions only".into()).into());
+        }
+        if args.isolated && old.events != Some(EventPolicy::isolated()) {
+            return Err(Usage(format!(
+                "{}.{name} keeps its events, so --isolated can't change them: edit its `events` in {}",
+                section.key(),
+                target.label()
+            ))
+            .into());
         }
         let current = Grants::parse(old.capabilities.as_deref().unwrap_or_default());
         if !args.grant.is_empty() && current != Ok(requested) {
@@ -514,90 +735,182 @@ pub async fn run(target: &Target, args: AddArgs, npm: &mut Npm) -> anyhow::Resul
         };
         document.set_entry(section, &name, &updated)?;
         write(target, &document.to_string())?;
-        if let Err(err) = sync(target, Mode::Update(vec![name.clone()]), npm).await {
+        if let Err(err) = sync(target, Mode::Update(vec![name.clone()]), npm, prompt).await {
             write(target, &before)?;
             return Err(err);
         }
+        prompt.outro(&format!("Updated {}.{name}", section.key()));
         return Ok(());
-    } else {
-        let project = open(target)?;
-        let fetched = project.fetch_package(&entry, npm).await?;
-        if let Some(path) = &args.path
-            && item(&fetched.root, &entry).symlink_metadata().is_err()
-        {
-            bail!("{} has no {path}", args.source);
-        }
-        let section = match flag {
-            Some(section) => section,
-            None => infer(
-                &fetched.root,
-                &entry,
-                args.path.as_deref().unwrap_or(&args.source),
-            )?,
-        };
-        // Another entry for the package and `path`, for the whole package
-        // beside one folder of it, or for a path source beside a folder
-        // inside it, would load it twice.
-        let identity = |entry: &Entry| {
-            package_identity(entry).ok_or_else(|| {
-                local_path(entry.path.as_deref().unwrap_or_default(), &target.base())
-            })
-        };
-        let added = identity(&entry);
+    }
+    let project = open(target)?;
+    let spinner = prompt.spinner(&format!("Fetching {}", args.source));
+    let fetched = project.fetch_package(&package, npm).await?;
+    spinner.stop(&format!("Fetched {}", args.source), &[]);
+    if let Some(path) = &args.path
+        && item(&fetched.root, &entry).symlink_metadata().is_err()
+    {
+        bail!("{} has no {path}", args.source);
+    }
+    let section = match flag {
+        Some(section) => section,
+        None => infer(
+            &fetched.root,
+            &entry,
+            args.path.as_deref().unwrap_or(&args.source),
+        )?,
+    };
+    let mut picks = match names.is_empty() {
+        true => None,
+        false => Some(named(&args, target, (&package, &fetched.root), &names)?),
+    };
+    if let Some([(_, only)]) = picks.as_deref() {
+        entry = only.clone();
+    }
+    // A person picks from a package of several items, unless flags name one.
+    let items = match prompt.interactive() && picks.is_none() && args.path.is_none() {
+        true if section != Section::Extensions => fetched.items(section).unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    let picking = items.len() > 1;
+    // Another entry for the package and `path`, for the whole package
+    // beside one folder of it, or for a path source beside a folder inside
+    // it, would load it twice.
+    let identity = |entry: &Entry| {
+        package_identity(entry)
+            .ok_or_else(|| local_path(entry.path.as_deref().unwrap_or_default(), &target.base()))
+    };
+    let conflict = |document: &ManifestDocument, added: &Entry| {
+        let added = identity(added);
         let same = |old: &Entry| match (identity(old), &added) {
             (Ok(old), Ok(added)) => same_package(&old, added),
             (Err(old), Err(added)) => old.starts_with(added) || added.starts_with(&old),
             _ => false,
         };
         let mut entries = document.manifest().section(section).iter();
-        if let Some((other, old)) = entries.find(|(_, old)| same(old)) {
-            bail!(
+        entries.find(|(_, old)| same(old)).map(|(other, old)| {
+            anyhow::anyhow!(
                 "{}.{other} already installs {}: change that entry instead",
                 section.key(),
                 source(old)
-            );
-        }
-        if section == Section::Skills && item(&fetched.root, &entry).is_file() {
+            )
+        })
+    };
+    if single
+        && !picking
+        && let Some(err) = conflict(&document, &entry)
+    {
+        return Err(err);
+    }
+    if section == Section::Skills && item(&fetched.root, &entry).is_file() {
+        let shown = args.path.as_deref().unwrap_or(&args.source);
+        bail!(
+            "{shown} is a single-file skill, and chest installs only skill folders that hold a SKILL.md"
+        );
+    }
+    if section == Section::Extensions {
+        let shown = args.path.as_deref().unwrap_or(&args.source);
+        extension_file(&item(&fetched.root, &entry), shown)?;
+    }
+    let meta = package_meta(&fetched.root)?;
+    prompt.info(&show(&meta));
+    nested(target, &fetched.root, &name, prompt);
+    if section == Section::Extensions {
+        let inspected = inspect(&item(&fetched.root, &entry));
+        if inspected.components.is_empty() && inspected.scripts.is_empty() {
             let shown = args.path.as_deref().unwrap_or(&args.source);
             bail!(
-                "{shown} is a single-file skill, and chest installs only skill folders that hold a SKILL.md"
+                "{shown} holds no extension. An extension folder needs an `index.ts` or `index.js`, an `extensions` folder, or a `package.json` or `chest.toml` that lists extension files it holds."
             );
         }
-        if section == Section::Extensions {
-            let shown = args.path.as_deref().unwrap_or(&args.source);
-            extension_file(&item(&fetched.root, &entry), shown)?;
+        let used = show_used(&inspected);
+        if !used.is_empty() {
+            prompt.info(&used);
         }
-        let meta = package_meta(&fetched.root)?;
-        show(&meta);
-        nested(target, &fetched.root, &name);
-        if section == Section::Extensions {
-            let inspected = inspect(&item(&fetched.root, &entry));
-            if inspected.components.is_empty() && inspected.scripts.is_empty() {
-                let shown = args.path.as_deref().unwrap_or(&args.source);
-                bail!(
-                    "{shown} holds no extension. An extension folder needs an `index.ts` or `index.js`, an `extensions` folder, or a `package.json` or `chest.toml` that lists extension files it holds."
-                );
-            }
-            show_used(&inspected);
-            let prompt = Prompt::new(args.yes);
-            let granted = grants(&prompt, &args, &meta, &inspected.used())?;
-            entry.capabilities = (!granted.is_empty()).then_some(granted);
-            entry.events = events(&prompt, &meta);
-            for warning in requests(&project.manifest, &entry, &meta) {
-                say(&format!("note: {name} {warning}"));
-            }
-        } else if !args.grant.is_empty() {
-            return Err(Usage("--grant is for extensions only".into()).into());
+        let granted = grants(prompt, &args, &meta, &inspected.used())?;
+        entry.capabilities = (!granted.is_empty()).then_some(granted);
+        // `--isolated` answers the events question, and `--grant` keeps the
+        // shared default without one.
+        entry.events = match (args.isolated, args.grant.is_empty()) {
+            (true, _) => Some(EventPolicy::isolated()),
+            (false, true) => events(prompt, &meta)?,
+            (false, false) => None,
+        };
+        for warning in requests(&project.manifest, &entry, &meta) {
+            prompt.info(&[format!("note: {name} {warning}")]);
         }
-        section
+    } else if !args.grant.is_empty() {
+        return Err(Usage("--grant is for extensions only".into()).into());
+    } else if args.isolated {
+        return Err(Usage("--isolated is for extensions only".into()).into());
+    }
+    let (kind, one) = match section {
+        Section::Skills => ("skills", "skill"),
+        _ => ("subagents", "subagent"),
     };
-    document.set_entry(section, &name, &entry)?;
+    if picking {
+        let package = (&package, fetched.root.as_path());
+        picks = pick(prompt, (section, kind), &items, package, target)?;
+    }
+    let whole = picking && picks.is_none();
+    let several = picking || !single;
+    // Flags that answer every question install at once, as `--yes` does.
+    let asked =
+        picking || section == Section::Extensions && args.grant.is_empty() && prompt.interactive();
+    let picks = picks.unwrap_or_else(|| vec![(name.clone(), entry.clone())]);
+    let mut lines = Vec::new();
+    for (name, entry) in &picks {
+        if !valid_name(name) {
+            return Err(invalid(name));
+        }
+        if let Some((section, old)) = existing(&document, name) {
+            bail!(
+                "{}.{name} already comes from {}: choose another --name",
+                section.key(),
+                source(&old)
+            );
+        }
+        if let Some(err) = conflict(&document, entry) {
+            return Err(err);
+        }
+        document.set_entry(section, name, entry)?;
+        lines.push(format!("{}.{name}  {}", section.key(), source(entry)));
+    }
+    match picks.len() {
+        _ if whole => lines.push(format!(
+            "1 entry for the whole package, which gets new {kind} on update"
+        )),
+        1 if several => lines.push(format!("1 entry, for one {one}")),
+        count if several => lines.push(format!("{count} entries, one per {one}")),
+        _ => {}
+    }
+    if section == Section::Extensions {
+        let capabilities = entry.capabilities.as_deref().unwrap_or_default();
+        let events = match &entry.events {
+            None => "shared",
+            Some(events) if *events == EventPolicy::isolated() => "isolated",
+            Some(_) => "declared channels",
+        };
+        lines.push(match capabilities.is_empty() {
+            true => "capabilities: none".to_owned(),
+            false => format!("capabilities: {}", capabilities.join(", ")),
+        });
+        lines.push(format!("events: {events}"));
+    }
+    if asked {
+        prompt.summary(&format!("Add to {}", target.name()), &lines);
+        prompt.confirm("Install?")?;
+    }
     write(target, &document.to_string())?;
-    if let Err(err) = sync(target, Mode::Resolve, npm).await {
+    if let Err(err) = sync(target, Mode::Resolve, npm, prompt).await {
         // The manifest goes back to what it was, so a failed add leaves no entry.
         write(target, &before)?;
         return Err(err);
     }
+    let ids: Vec<String> = picks
+        .iter()
+        .map(|(name, _)| format!("{}.{name}", section.key()))
+        .collect();
+    prompt.outro(&format!("Added {}", ids.join(", ")));
     Ok(())
 }
 
