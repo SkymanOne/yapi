@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-24b8d734.js";
+            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -193,7 +193,7 @@
 <pre><code class="language-text">shout/
 ├── .cargo/config.toml   makes wasm32-wasip2 the default target
 ├── .gitignore
-├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.4.1
+├── Cargo.toml           a cdylib crate that depends on yapi-extension-api 0.4.2
 ├── README.md
 ├── chest.toml           the capabilities the extension asks for
 ├── extensions/          where the built extension goes
@@ -201,12 +201,12 @@
 └── src/lib.rs           the hello example, to replace with your own
 </code></pre>
 <p>The package takes the folder’s name, or the one <code>--name</code> gives. Names use lowercase ASCII letters, digits, <code>-</code> and <code>_</code>, and start with a letter. The same template works with <a href="https://github.com/cargo-generate/cargo-generate">cargo-generate</a>:</p>
-<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.1 \
+<pre><code class="language-sh">cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.2 \
   crates/yapi/templates/extension
 </code></pre>
 <p>To start without the template, create a library crate with <code>crate-type = ["cdylib"]</code> and depend on the SDK version of the yapi release you target:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = "0.4.1"
+yapi-extension-api = "0.4.2"
 </code></pre>
 <p>An extension registers its features in an init function and exports it with <code>extension!</code>. Tools, commands and event handlers are <code>async</code> closures. This <code>src/lib.rs</code> registers a <code>shout</code> tool and a <code>/hello</code> command:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -259,7 +259,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 </div>
 <p>The template starts with <code>session</code>, which its <code>hello</code> code needs:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.4.1", features = ["session"] }
+yapi-extension-api = { version = "0.4.2", features = ["session"] }
 </code></pre>
 <p>Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature doesn’t exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
@@ -515,7 +515,7 @@ impl Component for Confirm {
 <h3 id="pi-tui-widgets"><a class="header" href="#pi-tui-widgets">pi-tui widgets</a></h3>
 <p>The <code>widgets</code> feature adds yapi’s ports of pi-tui’s widgets, which match pi-tui’s output. Turn it on in the SDK dependency:</p>
 <pre><code class="language-toml">[dependencies]
-yapi-extension-api = { version = "0.4.1", features = ["widgets"] }
+yapi-extension-api = { version = "0.4.2", features = ["widgets"] }
 </code></pre>
 <p><code>widgets::tui</code> holds the widgets:</p>
 <ul>
