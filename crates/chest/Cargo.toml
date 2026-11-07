@@ -3,7 +3,7 @@ name = "chest-cli"
 description = "chest: one manifest and lock for agent skills, subagents and yapi extensions"
 # chest's own version, raised apart from yapi's. Each yapi release ships the
 # chest of this version, and the Release workflow publishes it once.
-version = "0.1.2"
+version = "0.1.3"
 edition.workspace = true
 # The oldest Rust that builds it, older than yapi's own. The Release workflow
 # checks it before publishing.
@@ -19,7 +19,7 @@ publish = true
 # downloads the release that built it. Without that archive, cargo-binstall
 # compiles the published crate.
 [package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v0.4.2/yapi-{ target }.tar.gz"
+pkg-url = "{ repo }/releases/download/v0.4.3/yapi-{ target }.tar.gz"
 bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 # cargo-quickinstall's builds come from a third party.

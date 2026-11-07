@@ -32,7 +32,7 @@ The script puts the executables in `~/.local/bin`, and with `yapi` it also insta
 | Option | Variable | Effect |
 |---|---|---|
 | `--only <name>` | `YAPI_INSTALL_ONLY` | Install `yapi`, `chest` or `both` without asking |
-| `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.4.2` |
+| `--version <tag>` | `YAPI_VERSION` | Install that release, such as `v0.4.3` |
 | `--to <dir>` | `YAPI_INSTALL_DIR` | Install into `<dir>` |
 | `--from-source` | `YAPI_FROM_SOURCE=1` | Build the release with Cargo instead of downloading it, as [Build from source](#build-from-source) shows |
 | `--no-docs` | `YAPI_NO_DOCS=1` | Skip the documentation for the model |
@@ -44,11 +44,11 @@ curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 ```
 
-This installs both from `v0.4.2` into `/usr/local/bin`, without the menu:
+This installs both from `v0.4.3` into `/usr/local/bin`, without the menu:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
-  | sh -s -- --only both --version v0.4.2 --to /usr/local/bin
+  | sh -s -- --only both --version v0.4.3 --to /usr/local/bin
 ```
 
 ## Install with cargo-binstall
@@ -116,8 +116,8 @@ To build from the repository instead, name a release's tag. The first command be
 
 ```sh
 repo=https://github.com/SkymanOne/yapi
-cargo install --locked --git "$repo" --tag v0.4.2 yapi
-cargo install --locked --git "$repo" --tag v0.4.2 chest-cli
+cargo install --locked --git "$repo" --tag v0.4.3 yapi
+cargo install --locked --git "$repo" --tag v0.4.3 chest-cli
 ```
 
 Cargo installs the executables in `~/.cargo/bin`. Leave out `--tag` to build the latest commit on `main`.
@@ -126,7 +126,7 @@ To build from a clone, run `cargo install --locked --path crates/yapi` in it, or
 
 ## Check the installation
 
-Each executable prints its version. yapi's version matches the release tag, such as `0.4.2` for `v0.4.2`. chest has a version number of its own. Run the line for each one you installed:
+Each executable prints its version. yapi's version matches the release tag, such as `0.4.3` for `v0.4.3`. chest has a version number of its own. Run the line for each one you installed:
 
 ```sh
 yapi --version
