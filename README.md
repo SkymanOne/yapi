@@ -132,7 +132,7 @@ yapi install git:github.com/SkymanOne/yapi@v0.4.1
 To pin them in a project for yapi and other agents, add them with chest instead:
 
 ```sh
-chest add git:github.com/SkymanOne/yapi@v0.4.1 --skill --name yapi-skills
+chest add git:github.com/SkymanOne/yapi --skill --name yapi-skills
 ```
 
 ## Contribute to yapi

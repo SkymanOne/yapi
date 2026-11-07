@@ -1,8 +1,8 @@
 # yapi-tui
 
-Terminal UI components for [yapi](https://github.com/SkymanOne/yapi), on `ratatui-core`. It ports Pi's pi-tui: widgets such as `SelectList`, `Editor` and `SettingsList`, raw input decoding and an ANSI bridge. Components render styled lines for a width, as in pi-tui.
+The terminal UI of [yapi](https://github.com/SkymanOne/yapi), a Rust coding agent that runs [Pi](https://pi.dev) packages, built on `ratatui-core`. It ports Pi's pi-tui: widgets such as `SelectList`, `Editor` and `SettingsList`, Markdown with LaTeX and Mermaid, and the decoder for raw terminal input. As in pi-tui, a component renders styled lines for a given width, and an ANSI bridge turns its text into those lines.
 
-yapi publishes this crate for the `widgets` feature of [`yapi-extension-api`](https://crates.io/crates/yapi-extension-api). Its API follows yapi's needs and may change in any release before 1.0. The crate needs Rust 1.91 or newer.
+The `widgets` feature of [`yapi-extension-api`](https://crates.io/crates/yapi-extension-api) builds on this crate, so native extensions can draw the same widgets as yapi. Its API follows yapi's needs, so any release before 1.0 can change it. The crate needs Rust 1.91 or newer.
 
 ## License
 
