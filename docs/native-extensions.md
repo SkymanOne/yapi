@@ -1,6 +1,6 @@
 # Write native extensions in Rust
 
-Native extensions are WebAssembly components written in Rust with the [`yapi-extension-api`](https://docs.rs/yapi-extension-api) crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi's JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one `.wasm` file of about 210 KB without the `widgets` feature. This page covers creating, building, testing and sharing an extension, then the SDK's API.
+Native extensions are WebAssembly components written in Rust with the [`yapi-extension-api`](https://docs.rs/yapi-extension-api) crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi's JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime. This page covers creating, building, testing and sharing an extension, then the SDK's API.
 
 The native extension API is unstable until yapi 1.0. The Wasm Interface Type (WIT) world, the Rust SDK and the host requests may change in any release before then, and you may need to rebuild extensions. Pi extensions aren't affected.
 
@@ -75,7 +75,7 @@ fn init(api: &mut Api) {
 yapi_extension_api::extension!(init);
 ```
 
-Build it and copy the result into the package:
+Build the extension, then copy `shout.wasm` from Cargo's target folder into the package's `extensions` folder:
 
 ```sh
 cargo build --release
@@ -109,7 +109,7 @@ A request whose feature the build leaves out fails without reaching yapi, with a
 
 ### Check the build's capabilities
 
-The build records its features in a `yapi:capabilities` custom section. `chest check` reads the section and the WebAssembly System Interface (WASI) interfaces the component imports, where `wasi:filesystem` means `fs`. Then it compares them with the capabilities in the package's `chest.toml` or `package.json`:
+The build records its features in a `yapi:capabilities` custom section. After each build, run `chest check`. It compares the features, and the WebAssembly System Interface (WASI) interfaces the component imports, with the capabilities in the package's `chest.toml` or `package.json`:
 
 ```sh
 cargo build --release
@@ -117,9 +117,7 @@ cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 ```
 
-`chest check` fails when the extension uses a capability the package doesn't request, and warns about one the package requests that no extension uses. It also fails when the component imports `wasi:sockets` or `wasi:http`. yapi doesn't provide `wasi:http`, so such a component doesn't load, and it refuses every `wasi:sockets` call. Reach the network through the SDK's `fetch` with the `net` feature.
-
-A component built without the SDK has no section, so `chest check` sees only its imports. `chest add` shows the same comparison to the person who adds the package. See [Check a native extension](chest-publish.md#check-a-native-extension).
+[Check a native extension](chest-publish.md#check-a-native-extension) lists what `chest check` reports, and `chest add` shows the same comparison to the person who adds the package. yapi doesn't provide `wasi:http`, so a component that imports it doesn't load, and yapi refuses every `wasi:sockets` call. Reach the network through the SDK's `fetch` with the `net` feature.
 
 Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry doesn't grant, because it will deny those calls.
 
@@ -127,7 +125,7 @@ Features declare what an extension uses. They grant nothing: yapi grants capabil
 
 Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls `exec`, `Process`, `send_message` or `append_entry`, and its other requests that need a grant fail at runtime. To move it:
 
-1. Enable the features of the requests it sends: `session` for session changes, `net` for `fetch` and models, `env` for environment variables, `fs` for context files, and `all` for processes, providers, terminal input listeners and autocomplete providers.
+1. Enable the features of the requests it sends, from the table in [Declare capabilities](#declare-capabilities).
 2. List the same capabilities in `capabilities` under `[package]` in `chest.toml`, or `yapi.capabilities` in `package.json`.
 3. Build it and run `chest check`.
 
@@ -160,7 +158,7 @@ yapi records the path in `settings.json` and loads the file in place, so a rebui
 
 ## Share the extension
 
-Share a native extension as a package that contains the built `.wasm` file. A project from `yapi new` is already one. Commit `extensions/shout.wasm` with the sources and push the repository, and others can install it by URL:
+Share a native extension as a package that contains the built `.wasm` file, not only the Rust sources. yapi never compiles code during installation, because a build runs `build.rs` scripts and procedural macros outside the sandbox. A project from `yapi new` is already such a package. Commit `extensions/shout.wasm` with the sources and push the repository, and others can install it by URL:
 
 ```sh
 yapi install git:github.com/your_github_user/shout
@@ -168,7 +166,7 @@ yapi install git:github.com/your_github_user/shout
 
 To publish on npm, run `npm publish`. Others then install it with `yapi install npm:shout`. The template's `package.json` publishes the `extensions` folder and `chest.toml`, which records the capabilities the extension asks for.
 
-A package needs no manifest, because yapi loads every `.wasm` file in its `extensions` folder. A manifest can name the files instead. yapi reads its `yapi` key before the `pi` key, so one package can ship a native build for yapi and a JavaScript build for Pi:
+yapi loads every `.wasm` file in a package's `extensions` folder, so a package needs no manifest. A `yapi` key in `package.json` can name the files instead, and lets one package ship a native build for yapi and a JavaScript build for Pi, as [Package manifests](packages.md#package-manifests) describes:
 
 ```json
 {
@@ -179,9 +177,7 @@ A package needs no manifest, because yapi loads every `.wasm` file in its `exten
 }
 ```
 
-Commit or publish the built `.wasm` file, not only the Rust sources. yapi never compiles code during installation, because a build runs `build.rs` scripts and procedural macros outside the sandbox.
-
-A package can request capabilities and `pi.events` channels as a Pi package does, with `capabilities` and `events` in `[package]` of its `chest.toml` or in the `yapi` key. [Request capabilities](extensions.md#request-capabilities) explains how a project grants them.
+A package requests capabilities and `pi.events` channels as a Pi package does, as [Request capabilities](extensions.md#request-capabilities) shows.
 
 ## What the SDK provides
 
@@ -267,7 +263,7 @@ The SDK's items cover registration, host actions, components and rendering:
 - `Process::next` waits for the next `ProcessEvent`: output on standard output or standard error, then the exit. A dropped `next` future loses no output.
 - `write` waits while the process hasn't taken the previous write. `close_stdin` and `kill` act at once.
 
-Dropping a `Process` kills it, and so does stopping the extension. `Process` needs the `all` feature, and starting one needs the process grant. Packages from `yapi install` have it, and a chest entry gets it only with `all`, since it has no capabilities by default.
+Dropping a `Process` kills it, and so does stopping the extension. `Process` needs the `all` feature, and starting one needs the process grant, which a chest entry gets only with `all`.
 
 A process inherits yapi's environment, so `envAdd` is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits. This runs a build script with one added variable:
 
@@ -314,7 +310,7 @@ fn init(api: &mut Api) {
 
 A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.
 
-Events cross between extensions according to their grants and event policies, as [Agent sessions and events](security.md#agent-sessions-and-events) describes. `on` tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one. An extension built with an older SDK gets no such warnings, and yapi routes its events the same way.
+Events cross between extensions according to their grants and event policies, as [Agent sessions and events](security.md#agent-sessions-and-events) describes. `on` tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one.
 
 ## Interface components
 

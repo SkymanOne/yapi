@@ -47,7 +47,15 @@ Cargo names the file after the crate with underscores in place of dashes. `yapi 
 
 ## `hello`
 
-The smallest complete extension. It registers a `shout` tool that repeats text in capitals, a `/hello` command, a `--shout-suffix` flag that the tool reads, a `session_start` handler that stores an entry in the session, and a `tool_call` handler that blocks empty input:
+The smallest complete extension. It registers:
+
+- a `shout` tool that repeats text in capitals
+- a `/hello` command
+- a `--shout-suffix` flag that the tool reads
+- a `session_start` handler that stores an entry in the session
+- a `tool_call` handler that blocks empty input
+
+This is the `tool_call` handler:
 
 ```rust
 api.on("tool_call", |event, _ctx| async move {
@@ -212,7 +220,7 @@ fn status(ctx: &Context) -> Option<(String, Vec<String>)> {
 }
 ```
 
-`exec` needs the process grant. Packages from `yapi install` have it, and a chest entry gets it only with `all`, since it has no capabilities by default.
+`exec` needs the process grant, which a chest entry gets only with `all`.
 
 ## `event-bus`
 
