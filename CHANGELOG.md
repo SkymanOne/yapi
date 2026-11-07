@@ -7,7 +7,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 ### Additions
 
 - Add `-P`, short for `--project-only` ([#314](https://github.com/SkymanOne/yapi/pull/314)).
-- Change `install.sh` to a Clack-style installer with an arrow-key menu ([#N](https://github.com/SkymanOne/yapi/pull/N)).
+- Change `install.sh` to a Clack-style installer with an arrow-key menu ([#315](https://github.com/SkymanOne/yapi/pull/315)).
 
 ## [0.4.2] - 2026-11-07
 
