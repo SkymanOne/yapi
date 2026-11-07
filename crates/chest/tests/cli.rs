@@ -217,6 +217,7 @@ fn init_detects_agents() {
     // the copy, and lists that one first.
     let mut pty = pty(&scratch, &["--manifest", "chest.pty.toml", "init"]);
     expect(&pty, 30, "Where should skills go?");
+    expect(&pty, 1, "(read by Agent Skills, Codex, Cursor");
     pty.write("\r").unwrap();
     expect(&pty, 10, "● .agents/skills");
     pty.write(DOWN).unwrap();
@@ -1518,12 +1519,21 @@ fn add_prompts_interactively() {
     }
     pty.write("\r").unwrap();
     // What it uses starts ticked, and `all` never does.
-    expect(&pty, 10, "◼ session (start turns and change the session)");
+    expect(
+        &pty,
+        10,
+        "◼ session (start agent turns and change the session and its files)",
+    );
     expect(&pty, 1, "◻ all");
     pty.write("\r").unwrap();
     expect(&pty, 10, "How should it share events?");
+    expect(&pty, 1, "(the default: shares events with every extension)");
     pty.write(DOWN).unwrap();
-    expect(&pty, 10, "● declared channels (sends risky:*, hears none)");
+    expect(
+        &pty,
+        10,
+        "● declared channels (sends events on risky:*, hears no events)",
+    );
     pty.write(DOWN).unwrap();
     expect(&pty, 10, "● isolated");
     pty.write("\r").unwrap();

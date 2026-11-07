@@ -178,7 +178,13 @@ fn choose(
     let options: Vec<Choice<usize>> = folders
         .iter()
         .enumerate()
-        .map(|(index, (folder, agents))| (index, folder.clone(), agents.join(", ")))
+        .map(|(index, (folder, agents))| {
+            (
+                index,
+                folder.clone(),
+                format!("read by {}", agents.join(", ")),
+            )
+        })
         .collect();
     let question = format!("Where should {kind} go?\nOne holds the copy, the others link to it.");
     let defaults = if found.is_empty() {

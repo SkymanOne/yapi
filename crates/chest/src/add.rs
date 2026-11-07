@@ -462,7 +462,7 @@ fn meaning(capability: &str) -> &'static str {
         "fs" => "read and write files",
         "net" => "make web requests, call models and read provider credentials",
         "env" => "read environment variables",
-        "session" => "start turns and change the session",
+        "session" => "start agent turns and change the session and its files",
         "all" => "runs unrestricted, outside the sandbox",
         _ => "an unknown capability",
     }
@@ -569,12 +569,20 @@ fn events(prompt: &Prompt, meta: &PackageMeta) -> anyhow::Result<Option<EventPol
         .clone()
         .filter(|events| *events != EventPolicy::shared());
     prompt.info(&[events_text(declared.is_some())]);
-    let mut options = vec![(0, "shared".to_owned(), "the default".to_owned())];
+    let mut options = vec![(
+        0,
+        "shared".to_owned(),
+        "the default: shares events with every extension".to_owned(),
+    )];
     if let Some(declared) = &declared {
+        let on = |verb: &str, patterns: &[String]| match patterns.is_empty() {
+            true => format!("{verb} no events"),
+            false => format!("{verb} events on {}", patterns.join(", ")),
+        };
         let channels = format!(
-            "sends {}, hears {}",
-            channels(&declared.send),
-            channels(&declared.receive)
+            "{}, {}",
+            on("sends", &declared.send),
+            on("hears", &declared.receive)
         );
         options.push((1, "declared channels".to_owned(), channels));
     }
