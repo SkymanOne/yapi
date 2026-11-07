@@ -53,8 +53,8 @@ A Pi extension is one TypeScript file with a default export:
 Native WebAssembly extensions are unstable until yapi 1.0. The Wasm Interface Type (WIT) world, the Rust SDK and the host requests they use may change in any release before then, and you may need to rebuild extensions. Pi extensions from npm use Pi's extension API and aren't affected.
 
 1. Install the target once: `rustup target add wasm32-wasip2`.
-2. Run `yapi new <name>`. It creates a Cargo project laid out as a package, and `cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.2 crates/yapi/templates/extension` makes the same project. The project holds:
-   - a `cdylib` crate that depends on `yapi-extension-api` 0.4.2 from crates.io and registers a flag, a tool, a command and two event handlers
+2. Run `yapi new <name>`. It creates a Cargo project laid out as a package, and `cargo generate --git https://github.com/SkymanOne/yapi --tag v0.4.3 crates/yapi/templates/extension` makes the same project. The project holds:
+   - a `cdylib` crate that depends on `yapi-extension-api` 0.4.3 from crates.io and registers a flag, a tool, a command and two event handlers
    - a `package.json` naming `extensions/<crate>.wasm`
    - a `chest.toml` requesting the `session` capability
    - `.cargo/config.toml`, making `wasm32-wasip2` the default target
