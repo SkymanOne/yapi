@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -180,13 +180,13 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="run-your-first-task"><a class="header" href="#run-your-first-task">Run your first task</a></h1>
-<p>This guide installs yapi, connects a model and gives yapi its first task in one of your projects. yapi runs in your terminal and works with the files on your machine. It needs a model, which you reach through a subscription, an API key or a local server.</p>
+<p>This guide installs yapi, connects a model and gives yapi its first task in one of your projects. You reach a model through a subscription, an API key or a local server.</p>
 <h2 id="install-yapi"><a class="header" href="#install-yapi">Install yapi</a></h2>
 <p>On Linux or macOS, run the install script:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 </code></pre>
-<p>It asks what to install. Press Enter to install <code>yapi</code> and <code>chest</code>, its package manager, in <code>~/.local/bin</code>. <a href="install.html">Install yapi</a> covers the other methods. Check the installation:</p>
+<p>The script asks what to install. Press Enter to install <code>yapi</code> and its package manager, <code>chest</code>, in <code>~/.local/bin</code>. <a href="install.html">Install yapi</a> covers the other methods. Check the installation:</p>
 <pre><code class="language-sh">yapi --version
 </code></pre>
 <h2 id="start-yapi-in-a-project"><a class="header" href="#start-yapi-in-a-project">Start yapi in a project</a></h2>
@@ -199,7 +199,7 @@ yapi
 <p>Run <code>/login</code>, choose a provider and follow the prompts to sign in with a subscription or save an API key. Run <code>/model</code> to choose another model.</p>
 <p>yapi also reads API keys from the environment, such as <code>ANTHROPIC_API_KEY</code>. <a href="models.html">Choose a model</a> lists every provider.</p>
 <h2 id="give-yapi-a-task"><a class="header" href="#give-yapi-a-task">Give yapi a task</a></h2>
-<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn’t ask before each tool call. These are four prompts you might send:</p>
+<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn’t ask before each tool call. For example:</p>
 <pre><code class="language-text">Explain how requests flow through src/server.rs
 Find why `cargo test` fails and fix it
 @Cargo.toml Which dependencies are outdated?
@@ -218,7 +218,7 @@ Find why `cargo test` fails and fix it
 <li><a href="interactive.html">Use yapi in the terminal</a> covers keys, commands and queued messages.</li>
 <li><a href="configuration.html">Configure yapi</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
 <li><a href="migrating.html">Move from Pi to yapi</a> shows how to copy a Pi setup with <code>yapi import pi</code>.</li>
-<li><a href="chest.html">Get started with chest</a> shows how to pin a project’s skills, subagents and extensions so everyone who clones it gets the same set. Skills and subagents work with any agent.</li>
+<li><a href="chest.html">Get started with chest</a> shows how to pin a project’s skills, subagents and extensions, so everyone who clones the project gets the same set.</li>
 </ul>
 <h3 id="choose-how-to-customize-yapi"><a class="header" href="#choose-how-to-customize-yapi">Choose how to customize yapi</a></h3>
 <p>The table pairs each need with the mechanism to start with:</p>

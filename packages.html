@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -201,7 +201,7 @@ yapi remove npm:@your_scope/your_package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that’s missing, and fails on a git package folder that isn’t a checkout of its own, so git never touches an enclosing repository. A git package whose install was cut off, as when yapi was stopped, is cloned again the next time yapi installs it.</p>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref.</p>
 <p>The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package-for-one-run"><a class="header" href="#try-a-package-for-one-run">Try a package for one run</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
@@ -211,12 +211,10 @@ yapi -e git:github.com/your_user/your_repo
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. It installs an npm package again when its version no longer matches the source’s range, and updates a git source without a ref on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, yapi installs and updates nothing, and skips a source that isn’t installed yet.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
 <p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>, or in <code>settings.toml</code> when that’s the folder’s file. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project. In the Global Resources view, <code>ctrl+o</code> keeps the selected item in <a href="project-only.html#keep-items-from-yapi-config">project-only runs</a>.</p>
-<p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
+<p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, unless <code>PI_OFFLINE</code> is set. If an install fails, it prints the error and exits.</p>
 <p>To run with only a project’s packages and none of your global ones, start yapi with <code>--project-only</code>. <a href="project-only.html">Run yapi with only the project’s packages</a> covers the mode.</p>
 <h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
-<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.</p>
-<p>Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html">Get started with chest</a> shows how to use chest, and the <a href="chest-manifest.html">chest.toml reference</a> lists every key.</p>
-<p>Each chest extension runs with the capabilities its entry grants, while packages from <code>yapi install</code> keep every grant. <a href="chest-extensions.html#how-yapi-loads-a-manifest">How yapi loads a manifest</a> covers when yapi reads a manifest, what it puts back at startup, and how <code>yapi config</code> shows chest’s entries.</p>
+<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>. yapi runs each chest extension with only the capabilities its entry grants. Use it for packages that belong in a project’s repository, and <code>yapi install</code> for packages you want in every project, as in Pi. <a href="chest.html#choose-between-chest-and-yapi-install">Choose between chest and <code>yapi install</code></a> compares the two.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:</p>
 <ol>
@@ -228,7 +226,7 @@ yapi -e git:github.com/your_user/your_repo
 <p>When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind that no source lists provides nothing, as in Pi. Otherwise the package uses the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. A <code>yapi</code> key that holds only <code>capabilities</code> therefore hides neither the <code>pi</code> lists nor the folders. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
 <h2 id="the-built-in-npm-client"><a class="header" href="#the-built-in-npm-client">The built-in npm client</a></h2>
-<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It accepts only the package names npm allows, and no name or scope that starts with a dot.</p>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does.</p>
 <p>A package over any of these limits fails the install and leaves nothing behind:</p>
 <ul>
 <li><strong>Registry metadata</strong>: 256 MiB to download</li>

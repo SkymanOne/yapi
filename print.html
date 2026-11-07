@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -180,9 +180,9 @@
                         <h1 id="yapi"><a class="header" href="#yapi">yapi</a></h1>
 <p>yapi is a coding agent for the terminal. Given a task and a working folder, it inspects files, runs commands, edits code and works through multi-step tasks. This book covers installing and running yapi, connecting models, customizing it with packages and extensions, and pinning a project’s packages with chest.</p>
 <h2 id="how-yapi-relates-to-pi"><a class="header" href="#how-yapi-relates-to-pi">How yapi relates to Pi</a></h2>
-<p>yapi is a Rust reimplementation of <a href="https://pi.dev">Pi</a> <code>v1.0.0</code>. It uses Pi’s commands, settings, session files, packages and extension API, so an existing Pi setup works in yapi without changes. It ships as a single native binary and doesn’t require Node.js.</p>
+<p>yapi is a Rust reimplementation of <a href="https://pi.dev">Pi</a> <code>v1.0.0</code>. It uses Pi’s commands, settings, session files, packages and extension API, so <code>yapi import pi</code> brings an existing Pi setup over without conversion. It ships as a single native binary and doesn’t require Node.js.</p>
 <h2 id="get-started-with-yapi"><a class="header" href="#get-started-with-yapi">Get started with yapi</a></h2>
-<p><a href="#run-your-first-task">Run your first task</a> covers installation, connecting a model and a first task. Pi users can bring their existing setup, as <a href="#move-from-pi-to-yapi">Move from Pi to yapi</a> describes. After that:</p>
+<p><a href="#run-your-first-task">Run your first task</a> covers installation, connecting a model and a first task. Pi users can copy their setup, as <a href="#move-from-pi-to-yapi">Move from Pi to yapi</a> describes. After that:</p>
 <ul>
 <li><a href="#use-yapi-in-the-terminal">Use yapi in the terminal</a> to attach files, run commands and direct ongoing work.</li>
 <li><a href="#choose-a-model-1">Choose a model</a> and connect a subscription, API key, cloud provider or local model.</li>
@@ -205,13 +205,13 @@
 <p><a href="#differences-from-pi">Differences from Pi</a> lists every known difference. <a href="#planned-work">Planned work</a> lists what comes next, and <a href="#performance-compared-with-pi">Performance compared with Pi</a> compares startup time, memory and install size. Report problems in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="run-your-first-task"><a class="header" href="#run-your-first-task">Run your first task</a></h1>
-<p>This guide installs yapi, connects a model and gives yapi its first task in one of your projects. yapi runs in your terminal and works with the files on your machine. It needs a model, which you reach through a subscription, an API key or a local server.</p>
+<p>This guide installs yapi, connects a model and gives yapi its first task in one of your projects. You reach a model through a subscription, an API key or a local server.</p>
 <h2 id="install-yapi"><a class="header" href="#install-yapi">Install yapi</a></h2>
 <p>On Linux or macOS, run the install script:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh
 </code></pre>
-<p>It asks what to install. Press Enter to install <code>yapi</code> and <code>chest</code>, its package manager, in <code>~/.local/bin</code>. <a href="#install-yapi-1">Install yapi</a> covers the other methods. Check the installation:</p>
+<p>The script asks what to install. Press Enter to install <code>yapi</code> and its package manager, <code>chest</code>, in <code>~/.local/bin</code>. <a href="#install-yapi-1">Install yapi</a> covers the other methods. Check the installation:</p>
 <pre><code class="language-sh">yapi --version
 </code></pre>
 <h2 id="start-yapi-in-a-project"><a class="header" href="#start-yapi-in-a-project">Start yapi in a project</a></h2>
@@ -224,7 +224,7 @@ yapi
 <p>Run <code>/login</code>, choose a provider and follow the prompts to sign in with a subscription or save an API key. Run <code>/model</code> to choose another model.</p>
 <p>yapi also reads API keys from the environment, such as <code>ANTHROPIC_API_KEY</code>. <a href="#choose-a-model-1">Choose a model</a> lists every provider.</p>
 <h2 id="give-yapi-a-task"><a class="header" href="#give-yapi-a-task">Give yapi a task</a></h2>
-<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn’t ask before each tool call. These are four prompts you might send:</p>
+<p>Type a task and press Enter. yapi shows each file it reads, each command it runs and each edit it makes. It doesn’t ask before each tool call. For example:</p>
 <pre><code class="language-text">Explain how requests flow through src/server.rs
 Find why `cargo test` fails and fix it
 @Cargo.toml Which dependencies are outdated?
@@ -243,7 +243,7 @@ Find why `cargo test` fails and fix it
 <li><a href="#use-yapi-in-the-terminal">Use yapi in the terminal</a> covers keys, commands and queued messages.</li>
 <li><a href="#configure-yapi">Configure yapi</a> covers settings and project instructions in <code>AGENTS.md</code>.</li>
 <li><a href="#move-from-pi-to-yapi">Move from Pi to yapi</a> shows how to copy a Pi setup with <code>yapi import pi</code>.</li>
-<li><a href="#get-started-with-chest">Get started with chest</a> shows how to pin a project’s skills, subagents and extensions so everyone who clones it gets the same set. Skills and subagents work with any agent.</li>
+<li><a href="#get-started-with-chest">Get started with chest</a> shows how to pin a project’s skills, subagents and extensions, so everyone who clones the project gets the same set.</li>
 </ul>
 <h3 id="choose-how-to-customize-yapi"><a class="header" href="#choose-how-to-customize-yapi">Choose how to customize yapi</a></h3>
 <p>The table pairs each need with the mechanism to start with:</p>
@@ -265,7 +265,7 @@ Find why `cargo test` fails and fix it
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="install-yapi-1"><a class="header" href="#install-yapi-1">Install yapi</a></h1>
-<p>yapi is one executable. Releases ship it with <a href="#get-started-with-chest">chest</a>, the package manager for skills, subagents and extensions, as a second executable. chest also works with other agents and without yapi, so every method on this page installs both or either one alone. This page covers the install script, cargo-binstall, release archives and building from source, then the documentation yapi reads, upgrades and uninstalling.</p>
+<p>Releases ship two executables: <code>yapi</code> and <a href="#get-started-with-chest">chest</a>, the package manager for skills, subagents and extensions. chest also works with other agents and without yapi, so every method on this page installs both or either one alone. This page covers the install script, cargo-binstall, release archives and building from source, then the documentation yapi reads, upgrades and uninstalling.</p>
 <p>Releases include builds for Linux and macOS on x86_64 and arm64, and other platforms can build yapi from source. yapi fully supports Linux and macOS. Windows support is best effort.</p>
 <h2 id="run-the-install-script"><a class="header" href="#run-the-install-script">Run the install script</a></h2>
 <p>The install script installs both executables, or one of them, with one command:</p>
@@ -279,7 +279,7 @@ Find why `cargo test` fails and fix it
   3) chest only
 Choose 1, 2 or 3 [1]:
 </code></pre>
-<p>Press Enter to install both. The script puts the executables in <code>~/.local/bin</code>, and with <code>yapi</code> it also installs the <a href="#documentation-for-the-model">documentation for the model</a>. Without a terminal, such as in CI, it installs both without asking. Releases before chest shipped hold <code>yapi</code> alone, so the script installs only <code>yapi</code> from them and stops with an error when you choose <code>chest</code> alone.</p>
+<p>Press Enter to install both. The script puts the executables in <code>~/.local/bin</code>, and with <code>yapi</code> it also installs the <a href="#documentation-for-the-model">documentation for the model</a>. Without a terminal, such as in CI, it installs both without asking.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -294,7 +294,7 @@ Choose 1, 2 or 3 [1]:
 </tbody>
 </table>
 </div>
-<p>Pass options after <code>sh -s --</code>. This installs <code>chest</code> alone, such as for another agent, without the documentation for the model:</p>
+<p>Pass options after <code>sh -s --</code>. This installs <code>chest</code> alone, such as for another agent:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 </code></pre>
@@ -303,11 +303,11 @@ Choose 1, 2 or 3 [1]:
   | sh -s -- --only both --version v0.4.2 --to /usr/local/bin
 </code></pre>
 <h2 id="install-with-cargo-binstall"><a class="header" href="#install-with-cargo-binstall">Install with cargo-binstall</a></h2>
-<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the release executables into <code>~/.cargo/bin</code>, one per command. The first command installs <code>yapi</code>, and the second installs <code>chest</code> from its crate on crates.io, <code>chest-cli</code>. Run one or both:</p>
+<p><a href="https://github.com/cargo-bins/cargo-binstall">cargo-binstall</a> installs the release executables into <code>~/.cargo/bin</code>. The first command installs <code>yapi</code>, and the second installs <code>chest</code> from its crate on crates.io, <code>chest-cli</code>. Run one or both:</p>
 <pre><code class="language-sh">cargo binstall --git https://github.com/SkymanOne/yapi yapi
 cargo binstall chest-cli
 </code></pre>
-<p>Keep <code>--git</code> for yapi, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the yapi release that the manifest on <code>main</code> names, and the release that built the newest <code>chest-cli</code>. If it reports that the yapi release doesn’t exist, use the install script. For chest, it builds <code>chest-cli</code> from source when the release has no archive for your system.</p>
+<p>Keep <code>--git</code> for yapi, because the <code>yapi</code> crate on crates.io is an unrelated project. cargo-binstall installs the yapi release that the manifest on <code>main</code> names. If it reports that this release doesn’t exist, use the install script.</p>
 <h2 id="install-from-a-release-archive"><a class="header" href="#install-from-a-release-archive">Install from a release archive</a></h2>
 <p>Each <a href="https://github.com/SkymanOne/yapi/releases">release</a> has a <code>yapi-&lt;target&gt;.tar.gz</code> archive per platform, with a <code>.sha256</code> checksum. The archive holds <code>yapi</code>, <code>chest</code> and their license files.</p>
 <div class="table-wrapper">
@@ -331,16 +331,22 @@ curl -fsSLO "$url/yapi-$target.tar.gz.sha256"
 sha256sum -c "yapi-$target.tar.gz.sha256"
 tar xzf "yapi-$target.tar.gz" -C ~/.local/bin yapi chest
 </code></pre>
-<p>To install one executable, end the <code>tar</code> command with only <code>yapi</code> or only <code>chest</code>. On macOS, verify with <code>shasum -a 256 -c</code>. For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>. Systems with an older glibc, or with musl such as Alpine, need to <a href="#build-from-source">build from source</a>. If macOS refuses to open a binary downloaded in a browser, see <a href="#macos-blocks-a-downloaded-binary">macOS blocks a downloaded binary</a>.</p>
+<p>To adapt the commands:</p>
+<ul>
+<li>To install one executable, end the <code>tar</code> command with only <code>yapi</code> or only <code>chest</code>.</li>
+<li>On macOS, verify with <code>shasum -a 256 -c</code>.</li>
+<li>For a specific release, replace <code>latest/download</code> with <code>download/&lt;tag&gt;</code>.</li>
+<li>With an older glibc, or with musl such as Alpine, <a href="#build-from-source">build from source</a> instead.</li>
+</ul>
+<p>If macOS refuses to open a binary downloaded in a browser, see <a href="#macos-blocks-a-downloaded-binary">macOS blocks a downloaded binary</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <p>yapi builds with Rust 1.99 or newer, and chest with Rust 1.91 or newer. Install Rust with <a href="https://rustup.rs">rustup</a>, then build with the install script or with Cargo.</p>
-<p>With <code>--from-source</code>, the install script builds a release’s tag with Cargo instead of downloading its archive. It builds the latest release, or the one <code>--version</code> names, and never the <code>main</code> branch. Then it installs the executables in <code>~/.local/bin</code>, and the documentation for the model with <code>yapi</code>. The first command builds both, the second <code>yapi</code> alone and the third <code>chest</code> alone. Run one:</p>
+<p>With <code>--from-source</code>, the install script builds the latest release’s tag with Cargo, or the tag <code>--version</code> names, and never the <code>main</code> branch. Then it installs the executables in <code>~/.local/bin</code>, and the documentation for the model with <code>yapi</code>. The first command builds both, the second <code>yapi</code> alone and the third <code>chest</code> alone. Run one:</p>
 <pre><code class="language-sh">script=https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh
 curl -fsSL "$script" | sh -s -- --from-source --only both
 curl -fsSL "$script" | sh -s -- --from-source --only yapi
 curl -fsSL "$script" | sh -s -- --from-source --only chest
 </code></pre>
-<p>Without <code>--only</code>, the script asks in a terminal what to build. It builds <code>yapi</code> alone from releases before chest shipped, and stops with an error when you choose <code>chest</code> alone from them.</p>
 <p>Cargo builds chest from its crate on crates.io:</p>
 <pre><code class="language-sh">cargo install --locked chest-cli
 </code></pre>
@@ -352,7 +358,7 @@ cargo install --locked --git "$repo" --tag v0.4.2 chest-cli
 <p>Cargo installs the executables in <code>~/.cargo/bin</code>. Leave out <code>--tag</code> to build the latest commit on <code>main</code>.</p>
 <p>To build from a clone, run <code>cargo install --locked --path crates/yapi</code> in it, or <code>--path crates/chest</code> for chest. If Cargo reports that rustc is too old, run <code>rustup update</code>.</p>
 <h2 id="check-the-installation"><a class="header" href="#check-the-installation">Check the installation</a></h2>
-<p>Each executable prints its version. yapi’s version matches the release’s tag, such as <code>0.4.2</code> for <code>v0.4.2</code>. chest has its own version, which <code>chest --version</code> prints after its name, and each release ships the chest version current at its tag. Run the line for each one you installed:</p>
+<p>Each executable prints its version. yapi’s version matches the release tag, such as <code>0.4.2</code> for <code>v0.4.2</code>. chest has a version number of its own. Run the line for each one you installed:</p>
 <pre><code class="language-sh">yapi --version
 chest --version
 </code></pre>
@@ -405,14 +411,14 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 <li>the global <code>AGENTS.md</code> or <code>CLAUDE.md</code>, <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code></li>
 <li>sessions, prompt templates, skills, themes, extensions and packages</li>
 </ul>
-<p>The import keeps the files yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. It keeps an installed package that yapi already has whole, without any of Pi’s files for it, so the two installs never mix. It leaves out Pi’s <code>lastChangelogVersion</code>, because that holds Pi’s version. When yapi keeps its settings in <a href="#write-settings-in-toml"><code>settings.toml</code></a>, the import skips Pi’s <code>settings.json</code> and says so, since one folder can’t hold both. Copy the settings you want into <code>settings.toml</code> by hand.</p>
+<p>The import keeps every file and package yapi already has, except a <code>settings.json</code> that holds only the version yapi recorded on first start. When yapi keeps its settings in <a href="#write-settings-in-toml"><code>settings.toml</code></a>, the import skips Pi’s <code>settings.json</code> and says so. Copy the settings you want into <code>settings.toml</code> by hand.</p>
 <p>After the import, yapi and Pi work side by side, and each opens the other’s session files.</p>
 <h2 id="sign-in-again-after-the-import"><a class="header" href="#sign-in-again-after-the-import">Sign in again after the import</a></h2>
 <p>The import doesn’t copy subscription sign-ins or MCP server sign-ins. Providers can replace the refresh token on every refresh and reject the old one, so a copy would make yapi and Pi sign each other out.</p>
 <p>The command lists the providers and servers it left out. Sign in to them again in yapi with <code>/login</code>, or with <code>/mcp login</code> for MCP servers.</p>
 <h2 id="move-project-packages-to-chest"><a class="header" href="#move-project-packages-to-chest">Move project packages to chest</a></h2>
 <p>To move a project’s packages from <code>.yapi/settings.json</code> into a manifest with a lock, run <code>chest import --settings</code> in the project. It writes an extension entry for each package with <code>capabilities = ["all"]</code>, the access Pi gives packages, and prints the <code>yapi remove -l</code> command for each one.</p>
-<p>Narrow the capabilities, run <code>chest install</code>, then remove the packages from <code>settings.json</code>. <a href="#import-packages-from-settingsjson">Import packages from settings.json</a> covers the details.</p>
+<p>Narrow the capabilities, run <code>chest install</code>, then run the <code>yapi remove -l</code> commands it printed. <a href="#import-packages-from-settingsjson">Import packages from settings.json</a> covers the details.</p>
 <h2 id="names-that-change"><a class="header" href="#names-that-change">Names that change</a></h2>
 <p>yapi renames its folders, two environment variables and its own commands:</p>
 <div class="table-wrapper">
@@ -443,7 +449,7 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 <li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. yapi saves a pasted image to a temporary file and puts its path in the editor.</li>
 <li>Up recalls earlier prompts.</li>
 </ul>
-<p>A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.</p>
+<p>A prompt or command that you send while extensions start, or while an extension command runs, waits until they finish. yapi then sends it in the order you sent it.</p>
 <h2 id="follow-the-agents-work"><a class="header" href="#follow-the-agents-work">Follow the agent’s work</a></h2>
 <p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
 <p>Messages show Markdown with LaTeX math and Mermaid diagrams. “Mermaid diagrams” in <code>/settings</code> draws diagrams while a message streams, only once it’s complete, or never.</p>
@@ -507,8 +513,8 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 <tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
 <tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
 <tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
-<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage Model Context Protocol (MCP) servers. Built-in extension.</td></tr>
+<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage Model Context Protocol (MCP) servers</td></tr>
 <tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
@@ -518,8 +524,7 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 </tbody>
 </table>
 </div>
-<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
-<p><a href="#report-a-problem">Report a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
+<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output, so read it before you attach it to a bug report. <a href="#report-a-problem">Report a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status
@@ -538,7 +543,7 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="choose-a-model-1"><a class="header" href="#choose-a-model-1">Choose a model</a></h1>
-<p>yapi supports Pi’s providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.</p>
+<p>yapi supports Pi’s providers and models, from the same built-in catalog. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.</p>
 <h2 id="sign-in-with-a-subscription"><a class="header" href="#sign-in-with-a-subscription">Sign in with a subscription</a></h2>
 <p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
 <p>“Sign in with Radius” signs in to Pi’s Radius gateway, whose models come from the gateway’s own catalog. Providers that extensions register can add their own sign-ins. <code>/logout</code> removes a stored credential.</p>
@@ -566,7 +571,7 @@ curl -fsSL "$url/yapi-docs.tar.gz" | tar xzf - -C ~/.yapi/agent/docs
 <h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
 <p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
-<li><strong>Amazon Bedrock</strong>: reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or Amazon Web Services (AWS) credentials from the environment, <code>~/.aws</code> profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from <code>AWS_REGION</code> or the profile. As in the AWS SDK, <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> must use HTTPS unless it names a loopback address or the Elastic Container Service (ECS) or Elastic Kubernetes Service (EKS) container host.</li>
+<li><strong>Amazon Bedrock</strong>: reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or Amazon Web Services (AWS) credentials from the environment, <code>~/.aws</code> profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from <code>AWS_REGION</code> or the profile.</li>
 <li><strong>Google Vertex AI</strong>: reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
 <li><strong>Cloudflare Workers AI and AI Gateway</strong>: read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
@@ -589,10 +594,9 @@ yapi --models "sonnet,gpt-5*"
 <h2 id="add-providers-and-models"><a class="header" href="#add-providers-and-models">Add providers and models</a></h2>
 <p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation describe the format. Extensions can also <a href="#providers-from-extensions">register providers</a>, including ones with their own wire API.</p>
 <h2 id="update-the-model-catalog"><a class="header" href="#update-the-model-catalog">Update the model catalog</a></h2>
-<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you’ve configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use.</p>
-<p><code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches. <code>yapi update --models</code> fetches regardless.</p>
+<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you’ve configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches, but not <code>yapi update --models</code>.</p>
 <h2 id="use-classifier-and-image-models"><a class="header" href="#use-classifier-and-image-models">Use classifier and image models</a></h2>
-<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>. Codemode lets the model call Model Context Protocol (MCP) tools from a script, as <a href="#call-mcp-tools-through-codemode">Call MCP tools through codemode</a> describes.</p>
+<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. <a href="#call-mcp-tools-through-codemode">Codemode</a> scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>.</p>
 <h2 id="give-credentials-to-other-tools"><a class="header" href="#give-credentials-to-other-tools">Give credentials to other tools</a></h2>
 <p><code>yapi auth</code> gives scripts a credential without starting a session. <code>check</code> reports whether a provider is ready, and the <code>print-</code> commands print its API key or bearer token:</p>
 <pre><code class="language-sh">yapi auth check --provider anthropic --json
@@ -602,7 +606,7 @@ yapi auth print-bearer-token --provider openai-codex --min-expiry 30m
 <p><code>print-bearer-token</code> refreshes a token that expires within <code>--min-expiry</code>, which is 30 minutes by default and at least 5 minutes. It fails when the refreshed token doesn’t last that long.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="manage-sessions"><a class="header" href="#manage-sessions">Manage sessions</a></h1>
-<p>yapi saves every conversation as a JSON Lines (JSONL) file under <code>~/.yapi/agent/sessions/</code>, grouped by project. The format is Pi’s, so Pi and yapi open each other’s sessions. This page covers resuming, branching, compacting, keeping the prompt cache warm, and exporting and importing sessions.</p>
+<p>yapi saves every conversation as a JSON Lines (JSONL) file under <code>~/.yapi/agent/sessions/</code>, grouped by project. Pi and yapi open each other’s sessions. This page covers resuming, branching, compacting, keeping the prompt cache warm, and exporting and importing sessions.</p>
 <h2 id="continue-earlier-work"><a class="header" href="#continue-earlier-work">Continue earlier work</a></h2>
 <p>These flags choose which session a run uses, or whether it saves one:</p>
 <pre><code class="language-sh">yapi -c                      # continue the last session in this folder
@@ -613,7 +617,7 @@ yapi --no-session            # don't save this run
 </code></pre>
 <p>Inside yapi, <code>/resume</code> opens the session picker, <code>/new</code> starts a fresh session and <code>/name</code> names the current one.</p>
 <h2 id="branch-a-session"><a class="header" href="#branch-a-session">Branch a session</a></h2>
-<p>A session is a tree. When you go back to an earlier message, yapi keeps the abandoned branch, so no work is lost. Three commands work with branches:</p>
+<p>A session is a tree. When you go back to an earlier message, yapi keeps the abandoned branch. Three commands work with branches:</p>
 <ul>
 <li><code>/tree</code> shows every branch and jumps to any earlier point. By default, pressing Escape twice on an empty editor opens it too. The <code>doubleEscapeAction</code> setting changes this to <code>fork</code> or <code>none</code>.</li>
 <li><code>/fork</code> starts a new session from an earlier message.</li>
@@ -622,7 +626,7 @@ yapi --no-session            # don't save this run
 <h2 id="compact-a-long-session"><a class="header" href="#compact-a-long-session">Compact a long session</a></h2>
 <p>Long sessions fill the model’s context window. yapi summarizes older messages automatically before that happens. <code>/compact</code> runs it on demand, and <code>/settings</code> turns automatic compaction off.</p>
 <h2 id="keep-the-prompt-cache-warm"><a class="header" href="#keep-the-prompt-cache-warm">Keep the prompt cache warm</a></h2>
-<p>Providers such as Anthropic keep a cached prompt for a limited time, 5 minutes with Anthropic’s default retention. yapi can resend the latest request shortly before the cache expires, when yapi expects that to save money. The <code>cacheWarming</code> setting, read from global settings only, picks when:</p>
+<p>Providers keep a cached prompt for a limited time, such as 5 minutes with Anthropic’s default retention. yapi can resend the latest request shortly before the cache expires, when it expects that to save money. The <code>cacheWarming</code> setting, read from global settings only, picks when:</p>
 <ul>
 <li><strong><code>streaming</code></strong>: the default, warms while the agent works</li>
 <li><strong><code>idle</code></strong>: also warms between runs</li>
@@ -664,18 +668,19 @@ yapi --no-session            # don't save this run
 <h2 id="how-the-extension-sandbox-works"><a class="header" href="#how-the-extension-sandbox-works">How the extension sandbox works</a></h2>
 <p>Every extension runs in a WebAssembly instance hosted by Wasmtime, separate from yapi’s own memory. The sandbox limits what extension code can do directly. It doesn’t restrict the built-in tools, child processes or MCP servers.</p>
 <h3 id="instances-and-limits"><a class="header" href="#instances-and-limits">Instances and limits</a></h3>
-<p>An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because the host can’t enforce grants between packages that share a JavaScript realm. Pi extensions whose grants or event policy differ run in separate instances, and each extra instance costs a thread and its own memory limit of 1 GiB.</p>
+<p>An instance is a trust domain. Pi extensions with the same grants and event policy share one QuickJS-NG instance, because the host can’t enforce grants between packages that share a JavaScript realm. Each extra instance costs a thread and has its own memory limit of 1 GiB.</p>
 <p>Packages from <code>yapi install</code> share one instance, and <a href="#project-packages-with-chest">chest</a> extensions with other grants or another event policy run in instances of their own. Each native extension gets an instance of its own, and codemode gets a fresh instance with no grants for every script.</p>
 <p>Each instance runs under these limits:</p>
 <ul>
 <li><strong>Compute per call</strong>: 60s, not counting time spent waiting on yapi</li>
-<li><strong>Compute while loading</strong>: 10s per call while an instance starts and while it loads or reloads its extensions, so yapi stops an extension that never yields as it loads rather than waiting for it</li>
+<li><strong>Compute while loading</strong>: 10s per call while an instance starts and while it loads or reloads its extensions</li>
 <li><strong>Memory</strong>: 1 GiB for each extension instance, and 384 MiB for each codemode instance</li>
 </ul>
 <p>An instance runs one call at a time, so a long computation in one Pi extension delays the other Pi extensions. When an instance traps, for example by exceeding a limit, yapi restarts it and reloads its extensions. If reloading them traps again, the instance stays stopped, and each later call to it fails after one more attempt to restart it.</p>
 <h3 id="how-yapi-enforces-grants"><a class="header" href="#how-yapi-enforces-grants">How yapi enforces grants</a></h3>
-<p>The host checks an extension’s file, process, network, environment and session access against its grants, and routes <code>pi.events</code> by them, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. Packages from <code>yapi install</code> and <code>-e</code> receive all five grants, so an extension can do what it could do in Pi. A chest extension receives only the capabilities its manifest entry grants, and the <a href="#what-each-capability-allows">capability table</a> lists what each one allows.</p>
-<p>Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. yapi refuses a path that leads out of a package through a symlink, and a path with <code>.</code> or <code>..</code> in it. For a chest extension, the other packages in its instance are the ones with the same grants and event policy.</p>
+<p>The host checks an extension’s file, process, network, environment and session access against its grants, and routes <code>pi.events</code> by them, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. A chest extension receives only the capabilities its manifest entry grants, and the <a href="#what-each-capability-allows">capability table</a> lists what each one allows.</p>
+<p>A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as you, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with your installed packages.</p>
+<p>Without the file grant, an extension loads the files of the packages that share its instance, and their dependencies, and nothing else. yapi refuses a path that leads out of a package through a symlink, and a path with <code>.</code> or <code>..</code> in it.</p>
 <p>Every extension file yapi finds in a chest package, including an <code>index.ts</code> or <code>index.js</code> that no manifest lists, runs with its entry’s capabilities. The file keeps them when <code>-e</code> or a project folder loads it too, even through a symlink, and yapi warns about it. A file that yapi loads for a chest package but can’t match to an entry runs with no capabilities, with a warning.</p>
 <p>chest refuses to install an extension whose folder is or holds the project, the home folder or the agent folder, because it could load any file there. yapi doesn’t load such an entry, locked or not, nor a global entry whose folder holds the project yapi runs in. In two more cases, files run with no capabilities:</p>
 <ul>
@@ -683,9 +688,9 @@ yapi --no-session            # don't save this run
 <li><strong>Files of an entry with a stale or missing lock</strong>: every one of them runs with no capabilities when something else loads it.</li>
 </ul>
 <p>A file that runs with no capabilities in either case loads no other file as a module. When two manifests give the same file, it runs with only what both allow.</p>
-<p>A process grant amounts to all the others in practice. The host checks each grant separately, but a process an extension starts runs as you, outside the sandbox, and inherits yapi’s environment, including API keys. A subagent is such a process: a full yapi with your installed packages.</p>
 <h3 id="grants-for-servers-models-and-tools"><a class="header" href="#grants-for-servers-models-and-tools">Grants for servers, models and tools</a></h3>
-<p>Registering servers, reading credentials and calling models each need a specific grant. An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant. It reads a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code>, <code>getApiKey</code>, <code>getApiKeyForProvider</code> or <code>getApiKeyAndHeaders</code>, and calls a model with <code>complete</code>, <code>stream</code>, <code>streamSimple</code>, <code>classify</code> or <code>generateImages</code>, only with the network grant. Without the network grant, <code>ctx.modelRegistry.refresh</code> refreshes model lists offline.</p>
+<p>Registering servers, reading credentials and calling models each need a specific grant. An extension can register a stdio MCP server only with the process grant, and an HTTP server only with the network grant.</p>
+<p>Reading a provider’s credentials with <code>ctx.modelRegistry.getProviderAuth</code>, <code>getApiKey</code>, <code>getApiKeyForProvider</code> or <code>getApiKeyAndHeaders</code> needs the network grant. So does calling a model with <code>complete</code>, <code>stream</code>, <code>streamSimple</code>, <code>classify</code> or <code>generateImages</code>. Without the network grant, <code>ctx.modelRegistry.refresh</code> refreshes model lists offline.</p>
 <p>Running a tool needs grants too, whether an extension creates a built-in tool such as <code>createBashTool</code> or calls a tool with <code>ctx.executeTool</code>:</p>
 <ul>
 <li>The built-in <code>read</code>, <code>write</code>, <code>edit</code> and <code>ls</code> tools need the file grant, and <code>bash</code> needs the process grant.</li>
@@ -728,18 +733,18 @@ yapi --no-session            # don't save this run
 <li>A <code>tool_call</code> handler changes the call’s input only with the session grant and the grants that would let it run that tool itself.</li>
 <li>Results that add or change messages, context, user input, the system prompt or its options, provider requests, tool results, tool descriptions, compaction or tree summaries, or entries staged at the end of a turn need the session grant. So do results that start another turn or keep warming the prompt cache.</li>
 <li>Results that only cancel, block or stop need no grant, such as cancelling a compaction, a session switch or a fork, or stopping a run or cache warming. An <code>input</code> handler that handles the input itself and a <code>user_bash</code> handler that fails a <code>!</code> command need no grant either, because they stop work and show text only to you, not to the model.</li>
-<li>A <code>user_bash</code> handler that runs a <code>!</code> command through its own operations, or answers it with its own result, needs every grant, because the command then runs and shows what the extension decides where you expect your shell.</li>
+<li>A <code>user_bash</code> handler that runs a <code>!</code> command through its own operations, or answers it with its own result, needs every grant, because the extension then decides what runs and what you see as your shell’s output.</li>
 <li>The skill, prompt and theme paths that a <code>resources_discover</code> handler names need the session and file grants.</li>
 </ul>
-<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension. The warning says what it ignored, such as the input change of a <code>tool_call</code> result or the reason of a block, and names an extension from chest by its entry, such as <code>extensions.guard in chest.toml</code>.</p>
+<p>A result that yapi ignores counts as no result, so it never replaces what an extension with the grant returned for the same event. yapi logs a warning in the extension output for each kind of result it ignores, once for each extension, with what it ignored, such as the reason of a block.</p>
 <p>The <code>before_provider_request</code> and <code>before_provider_headers</code> events carry a request’s body and headers, which can hold your credentials, so they reach only extensions with the network grant.</p>
 <h3 id="agent-sessions-and-events"><a class="header" href="#agent-sessions-and-events">Agent sessions and events</a></h3>
 <p>yapi never runs an agent session inside an extension’s instance, because that session would run tools and use credentials outside the extension’s grants. Subagents run as separate yapi processes instead.</p>
 <p>Pi’s exports that read <code>auth.json</code>, write <code>trust.json</code> or <code>settings.json</code>, or write session files directly throw in extensions, so extensions reach credentials, project trust, settings and sessions through the host. Until yapi can limit file grants to paths, an extension with the file grant can still open these files itself, as in Pi.</p>
 <p>Extensions share Pi’s <code>pi.events</code> bus. Between extensions with different grants, sharing leaks access both ways: an extension that acts on events lets the sender borrow its grants, and an extension that listens learns what the sender emits.</p>
-<p>yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender’s policy lets it send the channel and the receiver’s policy lets it hear it. A policy lists channels as exact names, prefixes ending in <code>*</code>, or <code>*</code> for every channel.</p>
+<p>yapi routes each event by the grants and the event policy of the extensions it runs in. An event reaches another extension when both have identical grants, or when the sender’s policy lets it send the channel and the receiver’s policy lets it hear it.</p>
 <p>Packages from <code>yapi install</code>, and chest entries without an <code>events</code> key, get the shared policy, <code>*</code> both ways, so they hear every other extension’s events, as in Pi. A chest entry’s <code>events</code> key narrows its own policy, as the <a href="#event-bus-routing">event bus reference</a> describes.</p>
-<p>When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output once per channel and session. The warning starts with the policy lists that would let the event across, then names both runtimes by their first extension, with their grants. After 8 such warnings between two runtimes, yapi logs that it suppresses the rest.</p>
+<p>When routing keeps an event from an extension that listens on its channel, yapi logs a warning in the extension output, once per channel and session. <a href="#an-extension-misses-events">An extension misses events</a> explains the warning.</p>
 <h2 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h2>
 <p>Some files in a project can change how yapi behaves and can run code. Until you trust the project, yapi loads none of them, and no project extension runs:</p>
 <ul>
@@ -756,13 +761,13 @@ yapi --no-session            # don't save this run
 </ul>
 <p><code>AGENTS.md</code> and <code>CLAUDE.md</code> load whether or not you trust the project. Treat their contents as untrusted input as well.</p>
 <h3 id="use-the-project-of-another-folder"><a class="header" href="#use-the-project-of-another-folder">Use the project of another folder</a></h3>
-<p><code>--project-dir &lt;dir&gt;</code> takes the project from another folder, as if yapi had started there. yapi loads that folder’s <code>.yapi</code> files and the <code>AGENTS.md</code> or <code>CLAUDE.md</code> of that folder and its parents, and applies trust to that folder, including <code>--approve</code> and <code>--no-approve</code>. The working folder’s own <code>.yapi</code> folder doesn’t load. yapi resolves a relative path against the working folder.</p>
+<p><code>--project-dir &lt;dir&gt;</code> takes the project from another folder, as if yapi had started there. yapi loads that folder’s <code>.yapi</code> files and the <code>AGENTS.md</code> or <code>CLAUDE.md</code> of that folder and its parents, and applies trust to that folder, including <code>--approve</code> and <code>--no-approve</code>. The working folder’s own <code>.yapi</code> folder doesn’t load.</p>
 <p>Tools, the session and extensions’ <code>ctx.cwd</code> stay in the working folder. A native extension finds the project folder with <a href="#where-the-project-is"><code>project_dir()</code></a>. Subagents use the flag to work in one folder with their parent’s project.</p>
 <h2 id="report-a-vulnerability"><a class="header" href="#report-a-vulnerability">Report a vulnerability</a></h2>
 <p>Report vulnerabilities privately, as <a href="https://github.com/SkymanOne/yapi/blob/main/SECURITY.md">SECURITY.md</a> describes.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="automate-yapi"><a class="header" href="#automate-yapi">Automate yapi</a></h1>
-<p>yapi runs without its interface for scripts, editors and other programs. This page covers print mode, JSON mode and remote procedure call (RPC) mode, and the flags that matter when another program drives yapi. The output formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
+<p>yapi runs without its interface for scripts, editors and other programs. This page covers print mode, JSON mode and remote procedure call (RPC) mode, and the flags that matter when another program drives yapi. The formats and protocols are Pi’s, so Pi’s clients work with yapi.</p>
 <h2 id="answer-once-with-print-mode"><a class="header" href="#answer-once-with-print-mode">Answer once with print mode</a></h2>
 <p><code>-p</code> sends one message, prints the answer and exits. These three runs take a prompt, piped input and attached files:</p>
 <pre><code class="language-sh">yapi -p "Summarize the open TODOs in src/"
@@ -835,23 +840,6 @@ yapi -p @report.md @chart.png "What does the chart show?"
 <p>When one folder holds both files, every yapi command that reads that folder stops with this error, and so does <code>chest import --settings</code>:</p>
 <pre><code class="language-text">Both settings.json and settings.toml are in /home/you/.yapi/agent. Keep one of them.
 </code></pre>
-<p>In a project, the check waits until you trust the project, because yapi doesn’t read its <code>.yapi</code> folder before then.</p>
-<h3 id="how-the-formats-map"><a class="header" href="#how-the-formats-map">How the formats map</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>JSON</th><th>TOML</th></tr>
-</thead>
-<tbody>
-<tr><td>object</td><td>table</td></tr>
-<tr><td>array</td><td>array</td></tr>
-<tr><td>string, boolean</td><td>string, boolean</td></tr>
-<tr><td>integer, float</td><td>integer, float</td></tr>
-<tr><td><code>null</code></td><td>none: leave the key out</td></tr>
-</tbody>
-</table>
-</div>
-<p>TOML has no <code>null</code>, so a setting yapi sets to <code>null</code> is removed from the file, and a <code>null</code> inside an array can’t be written. No setting takes a date or time, so a TOML date makes yapi report the file as invalid and skip it, as it does for broken JSON. An integer above 9223372036854775807, the largest TOML holds, can’t be written either.</p>
 <p>Here are the same settings in both formats. In <code>settings.json</code>:</p>
 <pre><code class="language-json">{
   "defaultProvider": "anthropic",
@@ -880,23 +868,19 @@ reserveTokens = 16384
 [projectOnly]
 themes = ["*"]
 </code></pre>
-<p>Keys outside a table, such as <code>packages</code>, go before the first <code>[table]</code> header, as TOML requires. When every <code>packages</code> entry is an object, the list can also be an array of tables. The example above can’t use one, because <code>npm:@acme/pi-tools</code> is a string:</p>
-<pre><code class="language-toml">[[packages]]
-source = "git:github.com/acme/skills@v2"
-skills = ["!legacy/**"]
-</code></pre>
 <h3 id="how-yapi-writes-the-file"><a class="header" href="#how-yapi-writes-the-file">How yapi writes the file</a></h3>
-<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. In a list such as <code>packages</code>, each entry that stays keeps its comments, a removed entry takes its own comments along, and a new entry follows the layout of the last one, on a line of its own in a multi-line list. If <code>packages</code> is an array of tables, it stays one until an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>. yapi then writes it as a multi-line inline array. The comments above the first <code>[[packages]]</code> header go above <code>packages</code>, and those above each other header go above its entry. Comments inside a table, on its header line, between its keys, at the end of a line or inside a list, go above its entry too. yapi writes a new array inline, and a new object as a <code>[table]</code> at the top level or as an inline table inside another table. A file keeps its CRLF line endings and its byte order mark.</p>
+<p><code>/settings</code>, <code>yapi config</code>, <code>yapi install</code> and the other commands that change settings keep your comments and layout. They rewrite only keys whose values differ, add new keys and delete removed ones. Comments stay with their key or list entry, and a removed entry takes its comments along. A <code>[[packages]]</code> array of tables becomes an inline array once an entry is a plain source string, such as after <code>yapi install npm:@acme/pi-tools</code>.</p>
 <h3 id="switch-to-toml"><a class="header" href="#switch-to-toml">Switch to TOML</a></h3>
 <p>With yapi closed, write <code>settings.toml</code> with your settings, then delete <code>settings.json</code>. A yapi that’s still running keeps writing the file it loaded, which can bring <code>settings.json</code> back beside the new file.</p>
-<p><code>yapi import pi</code> copies Pi’s <code>settings.json</code>. When yapi’s folder already holds <code>settings.toml</code>, the import skips Pi’s settings and says so. Copy what you need into <code>settings.toml</code> by hand.</p>
 <h2 id="project-packages-from-chest"><a class="header" href="#project-packages-from-chest">Project packages from chest</a></h2>
-<p>yapi loads the <a href="#how-yapi-loads-a-manifest">project packages</a> that chest manifests list. It reads <code>chest.toml</code> in the project folder, or the file that <code>CHEST_MANIFEST</code> names relative to the project folder, such as <code>chest.dev.toml</code>. The lock is the file beside the manifest named with <code>.lock</code>, such as <code>chest.dev.lock</code>.</p>
-<p>For a <code>CHEST_MANIFEST</code> value that’s absolute, starts with <code>~</code> or uses <code>..</code>, yapi warns and reads no project manifest, and the chest command stops with an error. The chest command reads <code>CHEST_MANIFEST</code> too, as <a href="#which-manifest-chest-uses">Which manifest chest uses</a> describes.</p>
-<p><code>~/.chest/chest.toml</code> lists packages for every project. chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
-<p>A project manifest that installs anything loads only in a trusted project, and asks for trust as <code>.yapi</code> files do. A manifest with only a <code>[package]</code> table describes the project as a package and needs no trust.</p>
+<p>yapi loads the <a href="#how-yapi-loads-a-manifest">project packages</a> that two chest manifests list:</p>
+<ul>
+<li><code>chest.toml</code> in the project folder, or the manifest that <a href="#how-yapi-reads-chest_manifest"><code>CHEST_MANIFEST</code></a> names, such as <code>chest.dev.toml</code></li>
+<li><code>~/.chest/chest.toml</code>, which lists packages for every project</li>
+</ul>
+<p>A project manifest that installs anything loads only in a trusted project.</p>
 <h2 id="project-instructions"><a class="header" href="#project-instructions">Project instructions</a></h2>
-<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. In a git worktree inside its main checkout, such as <code>.worktrees/feature</code>, the worktree’s own file replaces the main checkout’s file of the same name. Use them for build commands, conventions and anything else the agent should know about the project.</p>
+<p>yapi reads one instruction file from the working folder and from each parent folder, and adds them to the system prompt. In each folder it takes the first of <code>AGENTS.override.md</code>, <code>AGENTS.md</code> and <code>CLAUDE.md</code> that exists. In a git worktree inside its main checkout, such as <code>.worktrees/feature</code>, the worktree’s own file replaces the main checkout’s file of the same name.</p>
 <h2 id="skills-and-prompt-templates"><a class="header" href="#skills-and-prompt-templates">Skills and prompt templates</a></h2>
 <p>Skills follow the <a href="https://agentskills.io/specification">Agent Skills specification</a>. Each skill is a folder with a <code>SKILL.md</code> file. yapi lists every skill’s name and description in the system prompt, and the model reads the full instructions when a task calls for them. <code>/skill:name</code> loads one directly.</p>
 <p>Prompt templates are Markdown files that become slash commands. Save this as <code>~/.yapi/agent/prompts/review.md</code>:</p>
@@ -917,7 +901,6 @@ Review the staged changes. Focus on ${1:-correctness and error handling}.
 <li>yapi converts BMP, TIFF, ICO, PNM, HDR, DDS and farbfeld images to PNG. This applies to images that arrive with a MIME type: remote procedure call (RPC) and SDK prompts, tool results and the clipboard. <code>@path</code> arguments and the <code>read</code> tool only recognize PNG, JPEG, GIF, WebP and BMP files, so they read other formats as text.</li>
 <li>With <code>"images": {"autoResize": true}</code>, the default, yapi scales larger images down to fit 2000×2000 pixels and 4.5 MiB as base64, or the model’s own limits. It may send a scaled image as JPEG, with a note that gives the model its original size.</li>
 <li>yapi leaves out a prompt or <code>read</code> image that it can’t convert or make fit, with a note that says so. A tool result keeps its original image unchanged.</li>
-<li>yapi converts a pasted clipboard image that isn’t PNG, JPEG, WebP or GIF to PNG when you paste it, ignoring its EXIF orientation.</li>
 <li><code>"images": {"blockImages": true}</code> keeps all images from the model.</li>
 </ul>
 <p>Both settings are also in <code>/settings</code>.</p>
@@ -952,7 +935,7 @@ yapi remove npm:@your_scope/your_package
   /home/you/extensions/shout.wasm [wasm]
     /home/you/extensions/shout.wasm
 </code></pre>
-<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref. It installs a configured git package that’s missing, and fails on a git package folder that isn’t a checkout of its own, so git never touches an enclosing repository. A git package whose install was cut off, as when yapi was stopped, is cloned again the next time yapi installs it.</p>
+<p><code>yapi update --extensions</code> moves each npm package to the newest version its source’s range allows, unless the source names an exact version. It moves each git package to the latest commit of its branch or ref.</p>
 <p>The <code>npm</code> and <code>git</code> folders each hold a <code>.gitignore</code> that keeps installed packages out of a project’s repository. At startup, the terminal interface checks npm packages and git packages without a ref for updates, and lists those that have one.</p>
 <h2 id="try-a-package-for-one-run"><a class="header" href="#try-a-package-for-one-run">Try a package for one run</a></h2>
 <p><code>-e</code> loads a package for one run without adding it to settings:</p>
@@ -962,12 +945,10 @@ yapi -e git:github.com/your_user/your_repo
 <p>yapi installs these into <code>~/.yapi/agent/tmp/extensions</code> and reuses them on later runs. It installs an npm package again when its version no longer matches the source’s range, and updates a git source without a ref on each run. With <code>--offline</code> or <code>PI_OFFLINE</code>, yapi installs and updates nothing, and skips a source that isn’t installed yet.</p>
 <h2 id="turn-resources-on-and-off"><a class="header" href="#turn-resources-on-and-off">Turn resources on and off</a></h2>
 <p><code>yapi config</code> lists every extension, skill, prompt template and theme from your packages, settings and folders. Space toggles one, and yapi saves the choice in <code>settings.json</code>, or in <code>settings.toml</code> when that’s the folder’s file. Tab switches between global settings and the current project, and <code>yapi config -l</code> starts with the project. In the Global Resources view, <code>ctrl+o</code> keeps the selected item in <a href="#keep-items-from-yapi-config">project-only runs</a>.</p>
-<p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, those of your global settings first, then those of a trusted project. If an install fails, <code>yapi config</code> prints the error and exits. <code>PI_OFFLINE</code> skips these installs.</p>
+<p>Before it opens, <code>yapi config</code> installs the packages that are missing or outside their range, unless <code>PI_OFFLINE</code> is set. If an install fails, it prints the error and exits.</p>
 <p>To run with only a project’s packages and none of your global ones, start yapi with <code>--project-only</code>. <a href="#run-yapi-with-only-the-projects-packages">Run yapi with only the project’s packages</a> covers the mode.</p>
 <h2 id="project-packages-with-chest"><a class="header" href="#project-packages-with-chest">Project packages with chest</a></h2>
-<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>, with a content hash for each entry. Use it when a project’s packages belong in its repository and should install the same way for everyone, or when an extension should run with only some capabilities. Skills and subagents work with any agent, and extensions load only in yapi.</p>
-<p>Use <code>yapi install</code> for packages you want in every project, as in Pi. <a href="#get-started-with-chest">Get started with chest</a> shows how to use chest, and the <a href="#chesttoml-reference">chest.toml reference</a> lists every key.</p>
-<p>Each chest extension runs with the capabilities its entry grants, while packages from <code>yapi install</code> keep every grant. <a href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a> covers when yapi reads a manifest, what it puts back at startup, and how <code>yapi config</code> shows chest’s entries.</p>
+<p>chest keeps a project’s skills, subagents and extensions in <code>chest.toml</code> and pins them in <code>chest.lock</code>. yapi runs each chest extension with only the capabilities its entry grants. Use it for packages that belong in a project’s repository, and <code>yapi install</code> for packages you want in every project, as in Pi. <a href="#choose-between-chest-and-yapi-install">Choose between chest and <code>yapi install</code></a> compares the two.</p>
 <h2 id="package-manifests"><a class="header" href="#package-manifests">Package manifests</a></h2>
 <p>yapi reads the <code>pi</code> key of <code>package.json</code> to find a package’s resources. Two more sources can list them, and for each kind of resource the first source that lists it wins:</p>
 <ol>
@@ -979,7 +960,7 @@ yapi -e git:github.com/your_user/your_repo
 <p>When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind that no source lists provides nothing, as in Pi. Otherwise the package uses the conventional folders: <code>extensions</code>, <code>skills</code>, <code>prompts</code> and <code>themes</code>. A <code>yapi</code> key that holds only <code>capabilities</code> therefore hides neither the <code>pi</code> lists nor the folders. yapi loads <code>.wasm</code> files from <code>extensions</code> as native extensions.</p>
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/packages.md">package documentation</a> covers the manifest format.</p>
 <h2 id="the-built-in-npm-client"><a class="header" href="#the-built-in-npm-client">The built-in npm client</a></h2>
-<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does. It accepts only the package names npm allows, and no name or scope that starts with a dot.</p>
+<p>yapi has a built-in npm client. It resolves versions with npm’s range syntax, verifies integrity hashes and lays out <code>node_modules</code> as npm does.</p>
 <p>A package over any of these limits fails the install and leaves nothing behind:</p>
 <ul>
 <li><strong>Registry metadata</strong>: 256 MiB to download</li>
@@ -1039,7 +1020,7 @@ yapi mcp remove docs
 <li><code>--tools read,bash,edit,write,codemode</code> routes the built-in tools through codemode as well.</li>
 <li><code>"codemode": { "mode": "only" }</code> in <code>settings.json</code> offers the tools that scripts can call only through codemode.</li>
 </ul>
-<p>The first prompt doesn’t wait for servers whose tools only codemode reaches. A script that names a server’s tools, such as <code>tools.mcp__docs__search</code>, waits until that server has connected or failed to connect. A script that searches, lists or describes tools waits for every server that’s still connecting. Aborting the turn ends the wait.</p>
+<p>The first prompt doesn’t wait for servers whose tools only codemode reaches. A script that names a server’s tools, such as <code>tools.mcp__docs__search</code>, waits until that server connects or fails, and a script that searches, lists or describes tools waits for every server still connecting. Aborting the turn ends the wait.</p>
 <p>A package that registers its own <code>codemode</code> tool replaces the built-in one, and yapi warns about it at startup.</p>
 <p>Scripts can also use the <code>models</code> global to list the catalog and run classifier and image models with the session’s credentials. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md">codemode documentation</a> describes the scripting API.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1086,15 +1067,15 @@ yapi mcp remove docs
 <blockquote>
 <p><strong>Any agent.</strong> chest doesn’t need yapi to run.</p>
 </blockquote>
-<p>yapi’s <a href="#run-the-install-script">install script</a> installs <code>chest</code> with <code>yapi</code>, or alone. To use chest with another agent and without yapi, install <code>chest</code> alone:</p>
+<p>To use chest without yapi, such as with another agent, install <code>chest</code> alone with yapi’s <a href="#run-the-install-script">install script</a>:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 </code></pre>
-<p>Without <code>--only</code>, the script asks in a terminal whether to install <code>yapi</code>, <code>chest</code> or both. chest is also on crates.io as <code>chest-cli</code>, so cargo-binstall installs the release’s <code>chest</code> and Cargo builds it from source:</p>
+<p>chest is also on crates.io as <code>chest-cli</code>, so cargo-binstall installs the release’s <code>chest</code> and Cargo builds it from source:</p>
 <pre><code class="language-sh">cargo binstall chest-cli
 cargo install --locked chest-cli
 </code></pre>
-<p>chest has its own version number, which <code>chest --version</code> prints, and each yapi release ships one chest version. <a href="#install-yapi-1">Install yapi</a> covers release archives, builds with the install script’s <code>--from-source</code>, upgrades and uninstalling for both executables.</p>
+<p><a href="#install-yapi-1">Install yapi</a> covers the other methods, upgrades and uninstalling for both executables.</p>
 <p>chest has its own npm client, so it needs neither Node.js nor npm. It reads registry settings from <code>~/.npmrc</code> and <code>npm_config_*</code> variables. Git sources need <code>git</code>.</p>
 <h2 id="set-up-a-projects-packages"><a class="header" href="#set-up-a-projects-packages">Set up a project’s packages</a></h2>
 <blockquote>
@@ -1132,8 +1113,9 @@ git commit -m "Add project packages"
 <pre><code class="language-sh">chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 </code></pre>
-<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
-<p>chest installs skills that are folders with a <code>SKILL.md</code>. yapi and Pi also load a skill that’s a single <code>.md</code> file, but chest doesn’t install one. An entry for a whole package skips such files with a warning. An entry that names one fails, and <code>chest add</code> refuses a <code>.md</code> file in a <code>skills</code> folder. A <code>.md</code> file anywhere else is a subagent, and <code>--agent</code> adds any <code>.md</code> file as one.</p>
+<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell.</p>
+<p>With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
+<p>chest installs only skills that are folders with a <code>SKILL.md</code>. It skips or refuses a skill that’s a single <code>.md</code> file, which yapi and Pi also load. A <code>.md</code> file outside a <code>skills</code> folder is a subagent.</p>
 <h2 id="choose-folders-for-your-agents"><a class="header" href="#choose-folders-for-your-agents">Choose folders for your agents</a></h2>
 <p><code>chest init</code> looks for each agent’s folder in the project and offers its skill and subagent folders:</p>
 <div class="table-wrapper">
@@ -1157,24 +1139,13 @@ chest add git:github.com/acme/agents --path reviewer.md
 <h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
 <p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
 <h2 id="the-gitignore-block"><a class="header" href="#the-gitignore-block">The <code>.gitignore</code> block</a></h2>
-<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. chest escapes each line so that it matches only its own path, whatever characters a folder name holds.</p>
-<p>The block also ignores two kinds of folder that an interrupted install can leave where chest copies:</p>
-<ul>
-<li><strong><code>.*-staging</code></strong>: a copy that chest hadn’t finished</li>
-<li><strong><code>.*-old</code></strong>: an item’s previous copy, when chest stopped while replacing it</li>
-</ul>
-<p>The next install removes both.</p>
+<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> and <code>.*-old</code> folders that an interrupted install can leave behind, which the next install removes.</p>
 <h2 id="keep-hand-written-skills-in-the-same-folders"><a class="header" href="#keep-hand-written-skills-in-the-same-folders">Keep hand-written skills in the same folders</a></h2>
 <p>Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it didn’t record when that copy already holds exactly what the lock pins. chest keeps its record in <code>~/.chest/state</code>, outside the project.</p>
 <p>When someone edits an item after chest installed it, chest leaves the item as it is, even when the lock now pins another version, and installs the other entries as usual. <code>chest install</code>, <code>chest update</code> and <code>chest list</code> show the entry as <code>edited</code>, and <code>chest verify</code> reports the item. To get the locked copy back, delete the item and run <code>chest install</code>. <code>chest install --frozen</code> fails on an edited item instead.</p>
 <h2 id="import-from-skillssh"><a class="header" href="#import-from-skillssh">Import from skills.sh</a></h2>
-<p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. chest computes its own hashes, so it drops the file’s. Run <code>chest install</code> after importing.</p>
-<p>Import takes skills from GitHub, GitLab, other git hosts, local folders and <code>node_modules</code>. It skips, with a warning:</p>
-<ul>
-<li>a skill of another <code>sourceType</code></li>
-<li>a skill the manifest already has, from the same package and folder</li>
-<li>a different skill whose name the manifest already uses</li>
-</ul>
+<p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. Run <code>chest install</code> after importing.</p>
+<p>Import takes skills from GitHub, GitLab, other git hosts, local folders and <code>node_modules</code>. It skips, with a warning, a skill of another <code>sourceType</code>, a skill the manifest already has, and a different skill whose name the manifest already uses.</p>
 <h2 id="what-yapi-adds"><a class="header" href="#what-yapi-adds">What yapi adds</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>
@@ -1208,7 +1179,7 @@ chest add git:github.com/acme/pi-todo --grant fs
 </tbody>
 </table>
 </div>
-<p><code>chest add</code> shows the capabilities a package requests and asks about each one. For a native extension it also shows what the build uses, from the features it was built with and the WebAssembly System Interface (WASI) interfaces it imports. It then asks about the ones the package doesn’t request. A bare <code>.wasm</code> file requests nothing, so chest offers what it uses.</p>
+<p><code>chest add</code> shows the capabilities a package requests and asks about each one. For a native extension, it also asks about the capabilities the build uses that the package doesn’t request, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. A bare <code>.wasm</code> file requests nothing, so chest offers what it uses.</p>
 <p>A request never grants anything by itself. Without a terminal, or with <code>--yes</code>, chest grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
 <p><code>all</code> is the only way to run programs. A program runs as you, outside the sandbox, with yapi’s environment and API keys. So <code>all</code> is full access, and <code>chest add</code> says so before it grants it. <a href="#what-each-capability-allows">What each capability allows</a> gives the exact list.</p>
 <h2 id="let-extensions-share-events"><a class="header" href="#let-extensions-share-events">Let extensions share events</a></h2>
@@ -1233,10 +1204,11 @@ events = "isolated"
 <li><code>~/.chest/chest.toml</code>, in every project, except for the entries a <a href="#run-yapi-with-only-the-projects-packages">project-only run</a> leaves out</li>
 </ul>
 <p>A project manifest that installs anything asks for trust, as <code>.yapi</code> files do. A manifest with only a <code>[package]</code> table describes the project as a package and needs no trust. <code>CHEST_MANIFEST</code> can name another project manifest, as <a href="#how-yapi-reads-chest_manifest">How yapi reads CHEST_MANIFEST</a> describes.</p>
-<p>yapi puts back every skill, subagent and extension that the lock pins and that’s missing. It also puts back an entry whose copy holds what an older lock pinned, as after you pull a lock that a teammate’s <code>chest update</code> wrote. chest’s record of what it placed tells yapi which copy it has, so startup reads no file contents. With <code>--offline</code> or <code>PI_OFFLINE</code> set, yapi warns about these entries and leaves them out instead. So an extension never loads from a copy the lock no longer pins, and neither does a skill in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>. A skill’s copy in a folder yapi reads on its own, such as <code>.agents/skills</code>, keeps loading, and the warning says so.</p>
+<p>yapi puts back every skill, subagent and extension that the lock pins and that’s missing. It also puts back an entry whose copy holds what an older lock pinned, such as after you pull a teammate’s <code>chest update</code>.</p>
+<p>With <code>--offline</code> or <code>PI_OFFLINE</code> set, yapi leaves these entries out with a warning instead. So an extension never loads from a copy the lock no longer pins, and neither does a skill in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>. A skill’s copy in a folder yapi reads on its own, such as <code>.agents/skills</code>, keeps loading, and the warning says so.</p>
 <p>yapi leaves out an entry that isn’t locked, or whose lock no longer matches the manifest, and warns you to run <code>chest install</code>, or <code>chest -g install</code> for <code>~/.chest/chest.toml</code>. A manifest without a lock installs nothing, with the same advice. yapi never writes the lock or the <code>.gitignore</code> block.</p>
-<p>An entry under <code>[patch]</code> needs no lock entry. A patched extension loads from its patch. A patched skill loads from where <code>chest install</code> placed it, or else from its patch. For an entry without <code>path</code>, which takes every skill of a package, that holds for each skill the patch’s folder provides.</p>
-<p>yapi loads the installed extensions as packages named <code>chest:&lt;name&gt;</code>. Only chest names packages this way, so yapi ignores a <code>packages</code> entry in settings that starts with <code>chest:</code>. Each chest extension runs with the <a href="#what-each-capability-allows">capabilities</a> its entry grants and with its <a href="#event-bus-routing">event policy</a>. Packages from <code>yapi install</code> keep every grant.</p>
+<p>An entry under <code>[patch]</code> needs no lock entry. A patched extension loads from its patch. A patched skill loads from where <code>chest install</code> placed it, or else from its patch.</p>
+<p>yapi loads the installed extensions as packages named <code>chest:&lt;name&gt;</code>, each with the <a href="#what-each-capability-allows">capabilities</a> and <a href="#event-bus-routing">event policy</a> of its entry. Only chest names packages this way, so yapi ignores a <code>packages</code> entry in settings that starts with <code>chest:</code>.</p>
 <p>When a native extension uses a capability its entry doesn’t grant, yapi warns at startup, because it will deny those calls. <a href="#how-yapi-enforces-grants">How yapi enforces grants</a> covers the checks.</p>
 <p>yapi loads each placed skill from its canonical copy, in the first skills folder. That works even in a folder yapi doesn’t read on its own, such as <code>.claude/skills</code>. A skill in a folder yapi also reads on its own, such as <code>.agents/skills</code>, loads once, as chest’s.</p>
 <p>When two skills share a name, the first one yapi loads keeps it, as in Pi. Load order also decides which extension a tool conflict names. yapi loads resources in this order:</p>
@@ -1249,9 +1221,8 @@ events = "isolated"
 <li>The global folders, such as <code>~/.agents/skills</code> and the agent folder’s <code>skills</code> and <code>extensions</code></li>
 <li>The packages from settings, in Pi’s order</li>
 </ol>
-<p>So a skill that the project’s settings list, such as with <code>"skills": ["../hand-skills"]</code>, keeps its name over a project chest skill.</p>
 <p>yapi never removes placed copies. After you remove an entry from the manifest, or while its lock is stale, its copies in folders yapi reads on its own, such as <code>.agents/skills</code>, keep loading until <code>chest install</code> removes them.</p>
-<p>Before it opens, <code>yapi config</code> puts back missing entries as a run does. It lists chest’s extensions and skills as a run loads them, marked as managed by chest. Space leaves them alone, because the manifest decides what loads. In the Global Resources view, <code>ctrl+o</code> can still keep a global chest item in <a href="#run-yapi-with-only-the-projects-packages">project-only runs</a>. <a href="#project-packages-from-chest">Project packages from chest</a> lists the files.</p>
+<p>Before it opens, <code>yapi config</code> puts back missing entries as a run does. It lists chest’s extensions and skills marked as managed by chest, and Space doesn’t toggle them, because the manifest decides what loads. In the Global Resources view, <code>ctrl+o</code> can still keep a global chest item in <a href="#run-yapi-with-only-the-projects-packages">project-only runs</a>.</p>
 <h2 id="when-a-package-is-installed-both-ways"><a class="header" href="#when-a-package-is-installed-both-ways">When a package is installed both ways</a></h2>
 <p>A package can be a chest entry and also a <code>packages</code> entry in settings, such as after <code>chest import --settings</code> or a <code>yapi install</code> of a package the project’s manifest lists. Two copies would register the same tools, and a tool registered twice stops yapi, as in Pi. So yapi loads an npm or git package once, from the first of these that installs it:</p>
 <ol>
@@ -1260,8 +1231,7 @@ events = "isolated"
 <li><code>~/.chest/chest.toml</code></li>
 <li>Your global settings</li>
 </ol>
-<p>Two entries of one manifest that install the same package count too, and the first one loads. An entry with <code>path</code> takes one folder of its package. It’s the same package as a copy of the whole package, and as an entry with the same source and <code>path</code>, however the <code>path</code> is spelled, such as <code>ext-a</code>, <code>./ext-a</code> or <code>ext-a/</code>. Two entries that take different folders of one repository both load. An entry with a <a href="#patch"><code>[patch]</code></a> counts as the package it names, so when it loads, its patch loads in place of the other copies.</p>
-<p>In a <a href="#run-yapi-with-only-the-projects-packages">project-only run</a>, a global copy counts only when the run keeps something of it: <code>projectOnly.packages</code> keeps it, or a pattern under <code>extensions</code>, <code>skills</code>, <code>prompts</code> or <code>themes</code> matches one of its files. The project’s copies and the global copies that <code>packages</code> keeps come first, in the order above. A global copy that only a pattern keeps comes after them. So a package that <code>packages</code> keeps loads whole, and a pattern that names one copy’s file keeps that copy.</p>
+<p>Two entries of one manifest that install the same package count too, and the first one loads. An entry with <code>path</code> counts as the same package as a copy of the whole package, but two entries that take different folders of one repository both load. An entry with a <a href="#patch"><code>[patch]</code></a> counts as the package it names, so when it loads, its patch loads in place of the other copies.</p>
 <p>yapi leaves out the other copies and warns about each one at startup, with the command that removes it:</p>
 <ul>
 <li><code>yapi remove -l &lt;source&gt;</code> for a copy in the project’s settings, with <code>--approve</code> while your trust in the project isn’t saved</li>
@@ -1270,12 +1240,13 @@ events = "isolated"
 <li><code>chest -g remove &lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code></li>
 </ul>
 <p>Between the project’s settings and yours, Pi’s rule applies, and the project’s entry wins. A path package installed both ways names the same files, so they load once, with the chest entry’s capabilities.</p>
-<p>An extension file that two chest entries give, such as one path in both manifests, loads once too. It gets only the capabilities and event channels that both entries grant, and yapi warns at startup with both entries and what that narrows: the capabilities, with those left, the event channels, or both. To give it what one entry grants, remove the other entry or grant the same in both.</p>
-<p>A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same <code>path</code> that isn’t locked yet. yapi warns at startup with both entries. To give the file its capabilities back, remove the entry that doesn’t load. <code>chest install</code> loads that entry too, so the file then gets only what both entries grant, as above. When that’s less than one of them grants, the warning says what’s left.</p>
+<p>An extension file that two chest entries give, such as one path in both manifests, loads once too, with only the capabilities and event channels that both entries grant. yapi warns at startup with both entries and what it narrowed. To give the file what one entry grants, remove the other entry or grant the same in both.</p>
+<p>A file that a loaded entry gives runs with no capabilities when an entry that yapi leaves out holds it too, such as a second entry with the same <code>path</code> that isn’t locked yet. yapi warns at startup with both entries. To give the file its capabilities back, remove the entry that doesn’t load, or run <code>chest install</code> so that both load and the file gets only what both entries grant.</p>
 <h2 id="import-packages-from-settingsjson"><a class="header" href="#import-packages-from-settingsjson">Import packages from settings.json</a></h2>
 <p><code>chest import --settings</code> turns the packages of <code>.yapi/settings.json</code>, or the <code>settings.toml</code> that replaces it, into extension entries with <code>capabilities = ["all"]</code>, which is what <code>yapi install</code> gives them. It keeps their <code>skills</code>, <code>prompts</code> and <code>themes</code> filters. chest has no <code>extensions</code> filter and no <code>autoload: false</code>. chest leaves out a package that sets either, with a warning, and the package keeps loading from <code>settings.json</code>.</p>
 <p>Each entry is named after the last part of its source. Import skips a package the manifest already has, at any version, and a different package whose name the manifest already uses. To import that one, add it under another name with <code>chest add &lt;source&gt; --name &lt;name&gt;</code>.</p>
-<p>Import leaves <code>settings.json</code> alone. For each package it imports, it prints the <code>yapi remove -l</code> command to run once chest installs it. Run it from the project folder, since <code>-l</code> edits the <code>.yapi/settings.json</code> of the folder you run it in. <code>yapi remove -l</code> changes only a trusted project’s settings, so until you trust the project, the command adds <code>--approve</code>. With <code>-g</code>, it imports the agent folder’s <code>settings.json</code> into <code>~/.chest/chest.toml</code>, which <code>chest -g install</code> installs, and prints <code>yapi remove</code> without <code>-l</code>, which works from any folder.</p>
+<p>Import leaves <code>settings.json</code> alone. For each package it imports, it prints the <code>yapi remove -l</code> command to run once chest installs it. Run the command from the project folder, because <code>-l</code> edits the <code>.yapi/settings.json</code> of the current folder. Until you trust the project, the command includes <code>--approve</code>, because <code>yapi remove -l</code> changes only a trusted project’s settings.</p>
+<p>With <code>-g</code>, import reads the agent folder’s <code>settings.json</code> into <code>~/.chest/chest.toml</code>, which <code>chest -g install</code> installs, and prints <code>yapi remove</code> commands without <code>-l</code>.</p>
 <p>After importing, narrow each entry’s capabilities and run <code>chest install</code> right away. Then run the <code>yapi remove</code> commands that import printed. Until <code>chest install</code> locks an entry, yapi leaves it out:</p>
 <ul>
 <li>An npm or git package loads from the copy in settings, with every capability.</li>
@@ -1300,16 +1271,16 @@ events = "isolated"
 <h2 id="run-chest-in-ci"><a class="header" href="#run-chest-in-ci">Run chest in CI</a></h2>
 <p><code>chest install</code> runs frozen by default when <code>CI</code> holds anything but an empty value, <code>0</code> or <code>false</code>. A fresh clone in CI then gets every skill, subagent and extension exactly as locked. The job fails when someone changed the manifest without updating the lock.</p>
 <h2 id="verify-installed-copies"><a class="header" href="#verify-installed-copies">Verify installed copies</a></h2>
-<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed, checks a path entry’s links against its canonical copy, and reports a path entry whose source is gone. <code>verify</code> exits with 1 when one is missing or doesn’t match.</p>
+<p><code>chest verify</code> checks every installed copy, copy fallback and link against the lock. The lock has no hash for a path entry or for what a <code>[patch]</code> installs, so chest checks those copies against what it installed. It also reports a path entry whose source is gone. <code>verify</code> exits with 1 when an item is missing or doesn’t match.</p>
 <h2 id="update-entries"><a class="header" href="#update-entries">Update entries</a></h2>
 <blockquote>
 <p><strong>Any agent</strong>, except the warning about extension requests, which matters only in yapi.</p>
 </blockquote>
-<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code> when that’s newer than what the range allows. <code>chest update</code> moves the named entries, or all of them, to those versions, installs them and writes the lock. It shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
-<p>An npm entry already at the newest version in its range is listed only when <code>latest</code> is newer, with no update:</p>
+<p><code>chest outdated</code> lists entries whose source has a newer commit for its <code>rev</code>, or a newer npm version in range. It also shows npm’s <code>latest</code> when that’s newer than what the range allows. An npm entry already at the newest version in its range is listed only when <code>latest</code> is newer, with no update:</p>
 <pre><code class="language-text">skills.review  1.2.0  (latest 2.0.0 is outside its range)
 </code></pre>
 <p>To move to it, change the entry’s <code>version</code> and run <code>chest install</code>.</p>
+<p><code>chest update</code> moves the named entries, or all of them, to the versions <code>chest outdated</code> lists, installs them and writes the lock. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source. A copy that someone edited stays as it is while the lock moves on, and its entry shows as <code>edited</code>.</p>
 <p>When an updated extension now requests capabilities or event channels beyond its grants, <code>chest update</code> warns and grants nothing more.</p>
 <h2 id="one-command-at-a-time"><a class="header" href="#one-command-at-a-time">One command at a time</a></h2>
 <p>One chest command at a time changes a manifest or installs from it. Another one waits for as long as the first runs, and says once that it’s waiting. A frozen install fails instead when another command changes the manifest while it runs. A command that stopped without letting go of its lock holds it for 30s at most.</p>
@@ -1330,7 +1301,7 @@ events = "isolated"
 <pre><code class="language-sh">export CHEST_MANIFEST=chest.dev.toml
 chest install
 </code></pre>
-<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>. Messages about a manifest name the commands for it, such as <code>chest --manifest chest.dev.toml install</code>.</p>
+<p>The manifests of one project, such as <code>chest.toml</code> and <code>chest.dev.toml</code>, can share folders. A path that one of them drops stays while another still lists it. Each manifest keeps its own block in <code>.gitignore</code>, named after it, such as <code># BEGIN chest (chest.dev.toml)</code>.</p>
 <h2 id="how-yapi-reads-chest_manifest"><a class="header" href="#how-yapi-reads-chest_manifest">How yapi reads <code>CHEST_MANIFEST</code></a></h2>
 <blockquote>
 <p><strong>yapi only.</strong> Other agents read only the folders chest fills, so the variable means nothing to them.</p>
@@ -1359,7 +1330,7 @@ chest install
 </tbody>
 </table>
 </div>
-<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead, which is where yapi reads them. When that folder is outside your home folder, <code>chest init</code> leaves it out and says why, because the global manifest installs only inside your home folder.</p>
+<p>When it finds no agent, skills go to <code>~/.agents/skills</code> and subagents to <code>~/.yapi/agent/agents</code>. With <code>YAPI_CODING_AGENT_DIR</code> set, yapi’s subagents go to the <code>agents</code> folder inside it instead. When that folder is outside your home folder, <code>chest init</code> leaves it out and says why, because the global manifest installs only inside your home folder.</p>
 <p>For both the project and the global manifest, chest keeps its download cache and its record of what it placed in <code>~/.chest</code>.</p>
 <h2 id="develop-a-package-locally"><a class="header" href="#develop-a-package-locally">Develop a package locally</a></h2>
 <blockquote>
@@ -1387,7 +1358,7 @@ todo = { path = "../pi-todo" }
 export YAPI_PROJECT_ONLY=1
 </code></pre>
 <p><code>YAPI_PROJECT_ONLY</code> accepts <code>1</code>, <code>true</code> or <code>yes</code>, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. <code>/reload</code> keeps the mode on.</p>
-<p>Programs that yapi starts inherit the variable: bash commands, extension processes, stdio MCP servers and subagents that start another yapi. An extension can give a process an environment of its own. If that environment leaves the variable out, the process runs normally.</p>
+<p>Programs that yapi starts inherit the variable: bash commands, extension processes, stdio MCP servers and subagents that start another yapi.</p>
 <p>Only yapi runs follow the mode. <code>yapi install</code> without <code>-l</code> still adds a package to your global settings, and a project-only run then leaves it out. To add a package to the project, use <code>chest add</code> or <code>yapi install -l</code>.</p>
 <h2 id="what-a-project-only-run-loads"><a class="header" href="#what-a-project-only-run-loads">What a project-only run loads</a></h2>
 <p>From a trusted project, yapi loads:</p>
@@ -1407,7 +1378,7 @@ export YAPI_PROJECT_ONLY=1
 <li>the entries of <code>~/.chest/chest.toml</code></li>
 <li>the servers in <code>~/.yapi/agent/mcp.json</code></li>
 </ul>
-<p>Everything else works as usual. Your settings, sign-ins, models, key bindings and trust decisions don’t change. <code>AGENTS.md</code> and <code>CLAUDE.md</code> still load from the project, its parent folders and <code>~/.yapi/agent</code>, and <code>--no-context-files</code> turns them off. <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> load from the project, or else from <code>~/.yapi/agent</code>.</p>
+<p>Your settings, sign-ins, models, key bindings and trust decisions don’t change. <code>AGENTS.md</code> and <code>CLAUDE.md</code> still load from the project, its parent folders and <code>~/.yapi/agent</code>, and <code>--no-context-files</code> turns them off. <code>SYSTEM.md</code> and <code>APPEND_SYSTEM.md</code> load from the project, or else from <code>~/.yapi/agent</code>.</p>
 <p>A trusted project can still load one of your global files on purpose. It can name the file’s path in its own settings, or add an <code>autoload: false</code> entry for a package you installed. You approved those files when you trusted the project.</p>
 <h2 id="keep-some-global-items"><a class="header" href="#keep-some-global-items">Keep some global items</a></h2>
 <p>To keep a global theme, skill or MCP server in project-only runs, list it under <code>projectOnly</code> in your global settings:</p>
@@ -1421,29 +1392,7 @@ export YAPI_PROJECT_ONLY=1
   }
 }
 </code></pre>
-<p>In a <code>settings.toml</code>, the same list is a table:</p>
-<pre><code class="language-toml">[projectOnly]
-packages = ["npm:@acme/pi-themes", "chest:notes"]
-extensions = ["extensions/notify.ts"]
-skills = ["~/.agents/skills/pdf"]
-themes = ["*"]
-mcpServers = ["github", "linear*"]
-</code></pre>
 <p>yapi reads <code>projectOnly</code> only from <code>~/.yapi/agent</code>, never from a project’s settings, so a repository you clone can’t turn your global extensions back on. Every key is optional, and <code>prompts</code> works like <code>extensions</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>To keep</th><th>Add</th></tr>
-</thead>
-<tbody>
-<tr><td>Every global theme</td><td><code>"themes": ["*"]</code></td></tr>
-<tr><td>One package, with everything it provides</td><td><code>"packages": ["npm:@acme/pi-themes"]</code></td></tr>
-<tr><td>One skill from <code>~/.agents/skills</code></td><td><code>"skills": ["~/.agents/skills/pdf"]</code></td></tr>
-<tr><td>One entry of <code>~/.chest/chest.toml</code></td><td><code>"packages": ["chest:notes"]</code></td></tr>
-<tr><td>The GitHub MCP server</td><td><code>"mcpServers": ["github"]</code></td></tr>
-</tbody>
-</table>
-</div>
 <h3 id="keep-whole-packages"><a class="header" href="#keep-whole-packages">Keep whole packages</a></h3>
 <p><code>packages</code> keeps every extension, skill, prompt template and theme a global package provides. Write each source the way your global <code>packages</code> list writes it, such as <code>npm:@acme/pi-themes</code> or <code>git:github.com/acme/tools</code>. Versions don’t count, so <code>npm:@acme/pi-themes</code> also keeps a package installed as <code>npm:@acme/pi-themes@^2</code>.</p>
 <p>Write <code>chest:&lt;name&gt;</code> for an entry of <code>~/.chest/chest.toml</code>, and <code>*</code> to keep every global package and chest entry. <code>*</code> doesn’t cover loose files in your global folders, such as <code>~/.yapi/agent/extensions</code>, which the lists below do.</p>
@@ -1455,7 +1404,7 @@ mcpServers = ["github", "linear*"]
 <li>the whole path, with <code>~</code> for your home folder, such as <code>~/.agents/skills/pdf</code></li>
 </ul>
 <p>A skill’s folder matches too, so <code>~/.agents/skills/pdf</code> keeps <code>~/.agents/skills/pdf/SKILL.md</code>. <code>"themes": ["*"]</code> keeps every global theme, including the ones inside packages, without loading those packages’ extensions.</p>
-<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi uses the system theme. Interactive mode shows Pi’s error, <code>Failed to load theme "&lt;name&gt;": Theme not found: &lt;name&gt;</code>. When <code>~/.yapi/agent/themes</code> holds a theme by that name, a second line points to <code>projectOnly.themes</code>.</p>
+<p>Your <code>theme</code> setting doesn’t keep a theme by itself. If it names a global theme that <code>themes</code> doesn’t keep, yapi uses the system theme. Interactive mode shows Pi’s error, <code>Failed to load theme "&lt;name&gt;": Theme not found: &lt;name&gt;</code>.</p>
 <h3 id="keep-mcp-servers"><a class="header" href="#keep-mcp-servers">Keep MCP servers</a></h3>
 <p><code>mcpServers</code> keeps servers from <code>~/.yapi/agent/mcp.json</code> by name, and accepts patterns such as <code>linear*</code>. A kept server keeps its <code>auth</code>, so a server that sends a token from <code>/login</code> still works. The project’s own servers in <code>.yapi/mcp.json</code> always connect.</p>
 <h3 id="global-packages-yapi-still-installs"><a class="header" href="#global-packages-yapi-still-installs">Global packages yapi still installs</a></h3>
@@ -1468,8 +1417,7 @@ mcpServers = ["github", "linear*"]
 <p>With no <code>projectOnly</code> list, a project-only run downloads nothing for your global packages.</p>
 <h2 id="keep-items-from-yapi-config"><a class="header" href="#keep-items-from-yapi-config">Keep items from yapi config</a></h2>
 <p>You can also build the list in <code>yapi config</code>, which opens on the Global Resources view. Select an extension, skill, prompt template or theme and press <code>ctrl+o</code> to keep it. Kept items show <code>project-only</code>, and <code>ctrl+o</code> again stops keeping the item.</p>
-<p>yapi saves the item’s path inside <code>~/.yapi/agent</code>, or from <code>~</code> for anything else in your home folder. It saves a skill in a folder as that folder, and a single-file skill as the file.</p>
-<p><code>ctrl+o</code> works on chest items, which Space leaves alone. It skips built-in extensions, which load anyway, and items that a pattern or a <code>packages</code> entry already keeps. It does nothing in the project view that Tab opens, because yapi ignores a project’s <code>projectOnly</code>. <code>yapi config</code> doesn’t list packages or MCP servers, so edit <code>packages</code> and <code>mcpServers</code> in the settings file.</p>
+<p><code>ctrl+o</code> works on chest items too, which Space leaves alone. It does nothing in the project view that Tab opens, because yapi ignores a project’s <code>projectOnly</code>. <code>yapi config</code> doesn’t list packages or MCP servers, so edit <code>packages</code> and <code>mcpServers</code> in the settings file.</p>
 <h2 id="check-what-loaded"><a class="header" href="#check-what-loaded">Check what loaded</a></h2>
 <p>The header at startup lists the loaded skills, prompt templates and extensions with their scope, and <code>/mcp</code> lists the MCP servers. If the <code>quietStartup</code> setting hides the header, start yapi with <code>--verbose</code>.</p>
 <h2 id="untrusted-projects"><a class="header" href="#untrusted-projects">Untrusted projects</a></h2>
@@ -1532,7 +1480,7 @@ extensions = ["extensions/index.ts"]
 <blockquote>
 <p><strong>Any agent</strong>, except the parts that only matter in yapi: <code>chest check</code>, <code>chest import --settings</code>, and the extension options <code>--extension</code> and <code>--grant</code> of <code>chest add</code> and <code>--store</code> of <code>chest init</code>.</p>
 </blockquote>
-<p>This page lists every chest command with its flags, then how chest uses a proxy, and its exit codes. Every command takes <code>-g</code>, for the global manifest, or <code>--manifest &lt;path&gt;</code>, but not both. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
+<p>This page lists every chest command with its flags, the states of an entry, how chest uses a proxy, and its exit codes. Every command takes <code>-g</code>, for the global manifest, or <code>--manifest &lt;path&gt;</code>, but not both. Without either, <code>CHEST_MANIFEST</code> names the manifest, else <code>chest.toml</code> in the current folder.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1540,19 +1488,31 @@ extensions = ["extensions/index.ts"]
 </thead>
 <tbody>
 <tr><td><code>chest init</code></td><td><code>--skills a,b</code>, <code>--agents a,b</code>, <code>--store &lt;dir&gt;</code>, <code>--package</code>, <code>--yes</code></td><td>Writes a manifest with folders for the agents found. Refuses an existing manifest unless <code>--package</code>, which adds <code>[package]</code>.</td></tr>
-<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. A git URL starts with <code>https://</code>, <code>http://</code>, <code>ssh://</code> or <code>git://</code>, or takes the form <code>user@host:path</code>, where the path is relative to the remote home. An absolute path takes <code>ssh://</code>, as in <code>ssh://user@host/srv/repo</code>. Without a section flag, chest infers the section from the package. <code>--rev</code> is for git sources and <code>--version</code> for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so <code>--grant</code> then fails unless it lists the grants the entry has. The same name with another source, or in another section, is an error. So is another name for a source and <code>path</code> that an entry of the same section installs, at any version or rev. A whole package and one <code>path</code> of it count as the same source, since both would load. So do a path source and a folder inside it.</td></tr>
+<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. A git URL starts with <code>https://</code>, <code>http://</code>, <code>ssh://</code> or <code>git://</code>, or takes the form <code>user@host:path</code>. Without a section flag, chest infers the section from the package. <code>--rev</code> is for git sources and <code>--version</code> for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so <code>--grant</code> then fails unless it lists the grants the entry has. The same name with another source or section is an error. So is a second name for a source and <code>path</code> that an entry of the section already installs, at any version or rev.</td></tr>
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it. It also removes the entry’s <code>[patch]</code>, but not the patch’s folder, which isn’t chest’s.</td></tr>
 <tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
-<tr><td><code>chest update [names]</code></td><td></td><td>Moves the entries, or all, to the newest version or commit their source allows. Shows an entry whose version, commit or path source didn’t change as <code>unchanged</code>. A path extension shows as <code>unchanged</code> even after its files change, since yapi loads it from its source.</td></tr>
-<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, its state, its capabilities and description. The description is an extension package’s, or the <code>description</code> in the frontmatter of a skill or subagent. <code>installed</code>: in place as the lock pins it. <code>edited</code>: a copy changed since chest installed it, whatever the lock pins now. <code>outdated</code>: in place as an older lock pinned it. <code>stale</code>: not locked, or the lock no longer matches the manifest. <code>patched</code>: under <code>[patch]</code>. <code>missing</code>: locked but not in place. <code>no source</code>: a path entry whose source is gone. <code>chest install</code> then skips it with a warning and installs the other entries. When the folder held several items, chest can’t tell their copies from dropped ones, so it keeps every copy in that section, and lists them, until the folder is back. <code>chest install --frozen</code> fails on it. Restore the folder or remove the entry. yapi acts on the same states at startup. It doesn’t hash copies, so it treats an <code>edited</code> entry as <code>installed</code>, or as <code>outdated</code> when the lock pins another version.</td></tr>
+<tr><td><code>chest update [names]</code></td><td></td><td>Moves the named entries, or all of them, to the newest version or commit their source allows, and writes the lock. See <a href="#update-entries">Update entries</a>.</td></tr>
+<tr><td><code>chest list</code></td><td></td><td>Lists each entry with its locked version or commit, its <a href="#entry-states">state</a>, its capabilities and its description. The description is an extension package’s, or the <code>description</code> in the frontmatter of a skill or subagent.</td></tr>
 <tr><td><code>chest outdated</code></td><td></td><td>Lists entries whose source has something newer.</td></tr>
 <tr><td><code>chest verify</code></td><td></td><td>Checks installed copies against the lock, and copies of path and <code>[patch]</code> entries against what chest installed. Reports a path entry whose source is gone.</td></tr>
 <tr><td><code>chest import</code></td><td><code>--settings</code> or <code>--skills-lock</code>, <code>[path]</code></td><td>Turns the packages of settings.json or settings.toml, or a skills-lock.json, into entries.</td></tr>
-<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default, and a <code>chest.toml</code> or <code>package.json</code> stands for its folder. A <code>.wasm</code> file belongs to the nearest folder above it with either file. Fails when the package’s <code>[package]</code> doesn’t parse, and on a file that isn’t a manifest or a <code>.ts</code>, <code>.js</code> or <code>.wasm</code> extension.</td></tr>
+<tr><td><code>chest check [path]</code></td><td></td><td>Compares the capabilities that the native extensions of the package at <code>path</code>, or the <code>.wasm</code> file, use with the ones the package requests in its <code>chest.toml</code> or <code>package.json</code>. <code>path</code> is the current folder by default. See <a href="#check-a-native-extension">Check a native extension</a>.</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="proxy"><a class="header" href="#proxy">Proxy</a></h2>
+<h2 id="entry-states"><a class="header" href="#entry-states">Entry states</a></h2>
+<p><code>chest list</code> shows each entry in one of these states:</p>
+<ul>
+<li><strong><code>installed</code></strong>: in place as the lock pins it</li>
+<li><strong><code>edited</code></strong>: a copy changed since chest installed it, whatever the lock pins now</li>
+<li><strong><code>outdated</code></strong>: in place as an older lock pinned it</li>
+<li><strong><code>stale</code></strong>: not locked, or the lock no longer matches the manifest</li>
+<li><strong><code>patched</code></strong>: under <code>[patch]</code></li>
+<li><strong><code>missing</code></strong>: locked but not in place</li>
+<li><strong><code>no source</code></strong>: a path entry whose source is gone. <code>chest install</code> skips it with a warning and installs the other entries, and <code>chest install --frozen</code> fails on it. Restore the folder or remove the entry.</li>
+</ul>
+<p>yapi acts on the same states at startup. It doesn’t hash copies, so it treats an <code>edited</code> entry as <code>installed</code>, or as <code>outdated</code> when the lock pins another version.</p>
+<h2 id="use-a-proxy"><a class="header" href="#use-a-proxy">Use a proxy</a></h2>
 <p>chest reads proxy variables such as <code>HTTPS_PROXY</code>, as yapi does. Without them, it uses the <code>httpProxy</code> setting in yapi’s global <code>settings.json</code>, like yapi.</p>
 <h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
 <p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error. Questions go to stderr, and chest asks them only at a terminal.</p>
@@ -1768,7 +1728,7 @@ todo = { path = "../pi-todo" }
 <blockquote>
 <p><strong>Any agent</strong>, except capabilities, which only yapi uses.</p>
 </blockquote>
-<p>For each kind of resource, the first of these that lists it wins: the package’s <code>chest.toml</code> <code>[package]</code>, then <code>package.json</code>’s <code>yapi</code> key, then its <code>pi</code> key. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: <code>skills</code>, <code>agents</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code>.</p>
+<p>chest finds a package’s resources as yapi does, as <a href="#package-manifests">Package manifests</a> describes, with <code>agents</code> as one more conventional folder.</p>
 <p>Capabilities come from <code>[package]</code>, else <code>yapi.capabilities</code>, else none. Name, version, description and authors come from <code>[package]</code>, else from <code>package.json</code>.</p>
 <p>chest reports a package’s <code>chest.toml</code> that doesn’t parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
 <h2 id="chestlock"><a class="header" href="#chestlock"><code>chest.lock</code></a></h2>
@@ -1793,8 +1753,15 @@ todo = { path = "../pi-todo" }
 </tbody>
 </table>
 </div>
-<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. A pinned tarball must lie on the registry configured for its name, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from the configured registry when that’s a mirror.</p>
-<p>The lock is up to date when every entry has a record with the same section and name, the same source kind, location and subpath, and the same <code>rev</code>, and its locked npm version still satisfies the entry’s range. Capabilities, events and filters never make it stale.</p>
+<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. <a href="#what-the-lock-records">What the lock records</a> covers where a pinned tarball may come from.</p>
+<p>The lock is up to date when every entry has a record with:</p>
+<ul>
+<li>the same section and name</li>
+<li>the same source kind, location and subpath</li>
+<li>the same <code>rev</code></li>
+<li>a locked npm version that still satisfies the entry’s range</li>
+</ul>
+<p>Capabilities, events and filters never make it stale.</p>
 <h3 id="how-chest-computes-the-content-hash"><a class="header" href="#how-chest-computes-the-content-hash">How chest computes the content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>
@@ -1872,8 +1839,8 @@ skills = ["tools/skills/*"]
 <tr><td>Runs in</td><td>Pi and yapi</td><td>yapi only</td></tr>
 <tr><td>Runtime</td><td>QuickJS-NG, a JavaScript interpreter without a just-in-time (JIT) compiler, compiled to WebAssembly</td><td>Machine code that Wasmtime compiles from the extension’s WebAssembly</td></tr>
 <tr><td>Instance</td><td>One instance shared by the Pi extensions with the same grants and event policy</td><td>An instance of its own</td></tr>
-<tr><td>Memory</td><td>1 GiB for each instance, shared by its Pi extensions</td><td>1 GiB for this extension alone</td></tr>
-<tr><td>Compute</td><td>60s per call, and 10s while loading. While one Pi extension computes, the others in its instance wait.</td><td>60s per call, and 10s while loading, without blocking other extensions</td></tr>
+<tr><td>Memory</td><td>Shared by the Pi extensions in its instance</td><td>Its own</td></tr>
+<tr><td>Compute</td><td>While one Pi extension computes, the others in its instance wait</td><td>Doesn’t block other extensions</td></tr>
 <tr><td>After a crash</td><td>Its instance restarts and the Pi extensions in it reload</td><td>Only this extension restarts</td></tr>
 <tr><td>API</td><td>Pi’s <code>ExtensionAPI</code> from Pi 1.0, with the exceptions in <a href="#extension-runtime-and-api">Differences from Pi</a></td><td>yapi’s Rust SDK, unstable until yapi 1.0</td></tr>
 <tr><td>Dependencies</td><td>npm packages in plain JavaScript</td><td>Rust crates that build for <code>wasm32-wasip2</code></td></tr>
@@ -1882,6 +1849,7 @@ skills = ["tools/skills/*"]
 </tbody>
 </table>
 </div>
+<p>Both types run under the same <a href="#instances-and-limits">compute and memory limits</a>.</p>
 <p>Pi extensions are the better choice when:</p>
 <ul>
 <li>the extension should also run in Pi, or already exists as a Pi package</li>
@@ -1899,8 +1867,8 @@ skills = ["tools/skills/*"]
 <ul>
 <li>A Pi extension that needs Node features the runtime lacks, such as native addons, <code>net</code> and <code>tls</code> servers or <code>worker_threads</code>, can’t run in yapi. <a href="#extension-runtime-and-api">Differences from Pi</a> lists them.</li>
 <li>A native extension needs the Rust toolchain to build, and you may need to rebuild it for a new yapi release until 1.0.</li>
-<li>One package can ship both types. A <code>yapi</code> key in <code>package.json</code> names the native build for yapi, and the <code>pi</code> key names the JavaScript build for Pi. See <a href="#package-manifests">Package manifests</a>.</li>
 </ul>
+<p>One package can ship both types. A <code>yapi</code> key in <code>package.json</code> names the native build for yapi, and the <code>pi</code> key names the JavaScript build for Pi. See <a href="#package-manifests">Package manifests</a>.</p>
 <h2 id="where-yapi-loads-extensions-from"><a class="header" href="#where-yapi-loads-extensions-from">Where yapi loads extensions from</a></h2>
 <p>yapi loads extensions from three places:</p>
 <ul>
@@ -1920,7 +1888,7 @@ skills = ["tools/skills/*"]
 }
 </code></pre>
 <p>A request grants nothing. chest shows it when a project adds the package, and the project’s manifest decides what the package gets. A package from <code>yapi install</code> gets every grant whatever it requests.</p>
-<p><a href="#request-capabilities-and-events">Request capabilities and events</a> shows how consumers see a request, and <a href="#what-each-capability-allows">What each capability allows</a> lists each capability. Test a package under the grants it requests, so yapi doesn’t refuse a call it needs once others install it. <a href="#how-yapi-enforces-grants">How yapi enforces grants</a> covers the checks.</p>
+<p>Test a package under the grants it requests, so yapi doesn’t refuse a call it needs once others install it. <a href="#what-each-capability-allows">What each capability allows</a> lists what each capability covers.</p>
 <h2 id="write-a-pi-extension"><a class="header" href="#write-a-pi-extension">Write a Pi extension</a></h2>
 <p>Extensions use Pi’s API. Save this as <code>~/.yapi/agent/extensions/hello.ts</code>. It registers a <code>/hello</code> command that greets the name you pass:</p>
 <pre><code class="language-typescript">import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -1974,13 +1942,15 @@ export default function (pi: ExtensionAPI) {
 <h2 id="how-pi-extensions-run"><a class="header" href="#how-pi-extensions-run">How Pi extensions run</a></h2>
 <p>Pi extensions run in <code>yapi-js</code>, a QuickJS-NG runtime compiled to WebAssembly, so yapi needs no Node.js. These details shape how they run:</p>
 <ul>
-<li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi. <code>pi-ai</code> is Pi’s own code, with its wire APIs and image generation on yapi’s providers. Its exports that would handle provider credentials throw.</li>
-<li><code>pi-agent-core</code>, <code>pi-tui</code> and the parts of <code>pi-coding-agent</code> that run inside an extension, such as session entry helpers, compaction, skills and the interface components, are Pi’s own code, loaded the first time an extension uses them. They use yapi’s folders. Exports that would reach credentials, project trust, settings or session files without the host throw, as <a href="#extension-runtime-and-api">Differences from Pi</a> lists. Built-in tool factories return yapi’s tools, which yapi runs, or Pi’s own over custom <code>operations</code>, as Pi’s <code>ssh</code> example uses them.</li>
+<li><code>@earendil-works/pi-coding-agent</code>, <code>pi-ai</code>, <code>pi-agent-core</code>, <code>pi-tui</code> and <code>typebox</code> resolve to copies bundled with yapi. <code>pi-ai</code> is Pi’s own code, with its wire APIs and image generation on yapi’s providers.</li>
+<li><code>pi-agent-core</code>, <code>pi-tui</code> and the parts of <code>pi-coding-agent</code> that run inside an extension, such as session entry helpers, compaction, skills and the interface components, are Pi’s own code, loaded the first time an extension uses them. They use yapi’s folders.</li>
+<li>Exports that would reach provider credentials, project trust, settings or session files without the host throw, as <a href="#extension-runtime-and-api">Differences from Pi</a> lists.</li>
+<li>Built-in tool factories return yapi’s tools, which yapi runs, or Pi’s own over custom <code>operations</code>, as Pi’s <code>ssh</code> example uses them.</li>
 <li>yapi resolves modules as Node does and strips TypeScript types, with a cache keyed by file content.</li>
 <li>Shims provide Node’s <code>fs</code>, <code>path</code>, <code>os</code>, <code>child_process</code>, <code>events</code>, <code>stream</code>, <code>util</code>, <code>crypto</code> hashes, <code>buffer</code>, timers, <code>fetch</code>, <code>dns.lookup</code> and <code>Intl</code>. Native addons, <code>net</code> and <code>tls</code> servers and <code>worker_threads</code> fail when used, and the rest of the extension keeps working.</li>
 <li>Dates use the local time zone, from <code>TZ</code> or the system, as in Node.</li>
 <li>Interface components render inside the runtime. yapi paints their last frame, so a slow extension never blocks the interface.</li>
-<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi. A chest entry can make it <code>isolated</code>, or list the channels it sends and hears, as <a href="#event-bus-routing">Event bus routing</a> describes. <a href="#agent-sessions-and-events">Agent sessions and events</a> describes the routing.</li>
+<li><code>pi.events</code> reaches extensions in other runtimes according to their grants and event policies. By default an extension sends and hears every channel, as in Pi, and a chest entry can narrow that, as <a href="#event-bus-routing">Event bus routing</a> describes.</li>
 </ul>
 <p><a href="#extension-runtime-and-api">Differences from Pi</a> lists where the behavior differs.</p>
 <h2 id="what-happens-when-an-extension-crashes"><a class="header" href="#what-happens-when-an-extension-crashes">What happens when an extension crashes</a></h2>
@@ -2001,7 +1971,7 @@ export default function (pi: ExtensionAPI) {
 <p>Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider documentation</a> describes the configuration.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="write-native-extensions-in-rust"><a class="header" href="#write-native-extensions-in-rust">Write native extensions in Rust</a></h1>
-<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of about 210 KB without the <code>widgets</code> feature. This page covers creating, building, testing and sharing an extension, then the SDK’s API.</p>
+<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime. This page covers creating, building, testing and sharing an extension, then the SDK’s API.</p>
 <p>The native extension API is unstable until yapi 1.0. The Wasm Interface Type (WIT) world, the Rust SDK and the host requests may change in any release before then, and you may need to rebuild extensions. Pi extensions aren’t affected.</p>
 <h2 id="create-an-extension"><a class="header" href="#create-an-extension">Create an extension</a></h2>
 <p>The SDK needs Rust 1.88 or newer, or 1.91 with the <code>widgets</code> feature. Add the <code>wasm32-wasip2</code> target to your Rust toolchain:</p>
@@ -2057,7 +2027,7 @@ fn init(api: &amp;mut Api) {
 
 yapi_extension_api::extension!(init);
 <span class="boring">}</span></code></pre>
-<p>Build it and copy the result into the package:</p>
+<p>Build the extension, then copy <code>shout.wasm</code> from Cargo’s target folder into the package’s <code>extensions</code> folder:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 </code></pre>
@@ -2085,18 +2055,17 @@ yapi-extension-api = { version = "0.4.2", features = ["session"] }
 <p>Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature doesn’t exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
 <h3 id="check-the-builds-capabilities"><a class="header" href="#check-the-builds-capabilities">Check the build’s capabilities</a></h3>
-<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WebAssembly System Interface (WASI) interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
+<p>The build records its features in a <code>yapi:capabilities</code> custom section. After each build, run <code>chest check</code>. It compares the features, and the WebAssembly System Interface (WASI) interfaces the component imports, with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 </code></pre>
-<p><code>chest check</code> fails when the extension uses a capability the package doesn’t request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi doesn’t provide <code>wasi:http</code>, so such a component doesn’t load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature.</p>
-<p>A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="#check-a-native-extension">Check a native extension</a>.</p>
+<p><a href="#check-a-native-extension">Check a native extension</a> lists what <code>chest check</code> reports, and <code>chest add</code> shows the same comparison to the person who adds the package. yapi doesn’t provide <code>wasi:http</code>, so a component that imports it doesn’t load, and yapi refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature.</p>
 <p>Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry doesn’t grant, because it will deny those calls.</p>
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>
 <ol>
-<li>Enable the features of the requests it sends: <code>session</code> for session changes, <code>net</code> for <code>fetch</code> and models, <code>env</code> for environment variables, <code>fs</code> for context files, and <code>all</code> for processes, providers, terminal input listeners and autocomplete providers.</li>
+<li>Enable the features of the requests it sends, from the table in <a href="#declare-capabilities">Declare capabilities</a>.</li>
 <li>List the same capabilities in <code>capabilities</code> under <code>[package]</code> in <code>chest.toml</code>, or <code>yapi.capabilities</code> in <code>package.json</code>.</li>
 <li>Build it and run <code>chest check</code>.</li>
 </ol>
@@ -2115,11 +2084,11 @@ yapi install . -l
 </code></pre>
 <p>yapi records the path in <code>settings.json</code> and loads the file in place, so a rebuild takes effect after <code>/reload</code> or a restart. <code>yapi list</code> shows the extension, <code>yapi remove &lt;path&gt;</code> uninstalls it and <code>yapi config</code> turns it off.</p>
 <h2 id="share-the-extension"><a class="header" href="#share-the-extension">Share the extension</a></h2>
-<p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
+<p>Share a native extension as a package that contains the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox. A project from <code>yapi new</code> is already such a package. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/your_github_user/shout
 </code></pre>
 <p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes the <code>extensions</code> folder and <code>chest.toml</code>, which records the capabilities the extension asks for.</p>
-<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
+<p>yapi loads every <code>.wasm</code> file in a package’s <code>extensions</code> folder, so a package needs no manifest. A <code>yapi</code> key in <code>package.json</code> can name the files instead, and lets one package ship a native build for yapi and a JavaScript build for Pi, as <a href="#package-manifests">Package manifests</a> describes:</p>
 <pre><code class="language-json">{
   "name": "shout",
   "version": "0.1.0",
@@ -2127,8 +2096,7 @@ yapi install . -l
   "yapi": { "extensions": ["./dist/shout.wasm"] }
 }
 </code></pre>
-<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox.</p>
-<p>A package can request capabilities and <code>pi.events</code> channels as a Pi package does, with <code>capabilities</code> and <code>events</code> in <code>[package]</code> of its <code>chest.toml</code> or in the <code>yapi</code> key. <a href="#request-capabilities">Request capabilities</a> explains how a project grants them.</p>
+<p>A package requests capabilities and <code>pi.events</code> channels as a Pi package does, as <a href="#request-capabilities">Request capabilities</a> shows.</p>
 <h2 id="what-the-sdk-provides"><a class="header" href="#what-the-sdk-provides">What the SDK provides</a></h2>
 <p>The SDK’s items cover registration, host actions, components and rendering:</p>
 <div class="table-wrapper">
@@ -2219,7 +2187,7 @@ yapi install . -l
 <li><code>Process::next</code> waits for the next <code>ProcessEvent</code>: output on standard output or standard error, then the exit. A dropped <code>next</code> future loses no output.</li>
 <li><code>write</code> waits while the process hasn’t taken the previous write. <code>close_stdin</code> and <code>kill</code> act at once.</li>
 </ul>
-<p>Dropping a <code>Process</code> kills it, and so does stopping the extension. <code>Process</code> needs the <code>all</code> feature, and starting one needs the process grant. Packages from <code>yapi install</code> have it, and a chest entry gets it only with <code>all</code>, since it has no capabilities by default.</p>
+<p>Dropping a <code>Process</code> kills it, and so does stopping the extension. <code>Process</code> needs the <code>all</code> feature, and starting one needs the process grant, which a chest entry gets only with <code>all</code>.</p>
 <p>A process inherits yapi’s environment, so <code>envAdd</code> is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits. This runs a build script with one added variable:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2254,7 +2222,7 @@ fn init(api: &amp;mut Api) {
 <p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. Other extensions receive a JSON copy of the data after <code>emit</code> returns, in the order the extension emitted it.</p>
 <p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again.</p>
 <p>A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
-<p>Events cross between extensions according to their grants and event policies, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. <code>on</code> tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one. An extension built with an older SDK gets no such warnings, and yapi routes its events the same way.</p>
+<p>Events cross between extensions according to their grants and event policies, as <a href="#agent-sessions-and-events">Agent sessions and events</a> describes. <code>on</code> tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one.</p>
 <h2 id="interface-components"><a class="header" href="#interface-components">Interface components</a></h2>
 <p>A component implements the <code>Component</code> trait. <code>render</code> returns the lines to show at a width, as text with ANSI escape sequences. The optional <code>handle_input</code> receives raw terminal input while the component has focus, and <code>handle_mouse</code> receives mouse events in fullscreen mode and returns whether it took them. This component asks a yes or no question:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -2497,7 +2465,15 @@ yapi -e target/wasm32-wasip2/release/permission_gate.wasm
 </code></pre>
 <p>Cargo names the file after the crate with underscores in place of dashes. <code>yapi install</code> takes the same path to keep the extension.</p>
 <h2 id="hello"><a class="header" href="#hello"><code>hello</code></a></h2>
-<p>The smallest complete extension. It registers a <code>shout</code> tool that repeats text in capitals, a <code>/hello</code> command, a <code>--shout-suffix</code> flag that the tool reads, a <code>session_start</code> handler that stores an entry in the session, and a <code>tool_call</code> handler that blocks empty input:</p>
+<p>The smallest complete extension. It registers:</p>
+<ul>
+<li>a <code>shout</code> tool that repeats text in capitals</li>
+<li>a <code>/hello</code> command</li>
+<li>a <code>--shout-suffix</code> flag that the tool reads</li>
+<li>a <code>session_start</code> handler that stores an entry in the session</li>
+<li>a <code>tool_call</code> handler that blocks empty input</li>
+</ul>
+<p>This is the <code>tool_call</code> handler:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.on("tool_call", |event, _ctx| async move {
@@ -2646,7 +2622,7 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
     // ...
 }
 <span class="boring">}</span></code></pre>
-<p><code>exec</code> needs the process grant. Packages from <code>yapi install</code> have it, and a chest entry gets it only with <code>all</code>, since it has no capabilities by default.</p>
+<p><code>exec</code> needs the process grant, which a chest entry gets only with <code>all</code>.</p>
 <h2 id="event-bus"><a class="header" href="#event-bus"><code>event-bus</code></a></h2>
 <p>Extensions talking over Pi’s <code>pi.events</code>. A listener shows every <code>my:notification</code> event, from this extension or any other, native or Pi.</p>
 <p><code>/emit [message]</code> emits one, and so does the start of a session. <code>/mute</code> stops the listener with its <code>Subscription</code>, and starts it again. Pi’s example has no <code>/mute</code>.</p>
@@ -2841,7 +2817,7 @@ api.on("session_start", |_event, ctx| async move {
 <p>The helper scripts need Python 3 and <code>yapi</code> on <code>PATH</code>, or its path in <code>--yapi</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="differences-from-pi"><a class="header" href="#differences-from-pi">Differences from Pi</a></h1>
-<p>yapi follows Pi <code>v1.0.0</code> and behaves like Pi except as listed here. Any other difference is a bug. Please <a href="https://github.com/SkymanOne/yapi/issues">report it</a>. The tables cover extensions, packages and installation, the interface and providers, and tools and sessions, each with Pi’s behavior, yapi’s, and the reason.</p>
+<p>yapi follows Pi <code>v1.0.0</code> and behaves like Pi except as listed here. Report any other difference as a bug in the <a href="https://github.com/SkymanOne/yapi/issues">issue tracker</a>. The tables cover extensions, packages and installation, the interface and providers, and tools and sessions, each with Pi’s behavior, yapi’s, and the reason.</p>
 <p>yapi’s tests use Pi itself as the reference. End-to-end scenarios compare yapi with output recorded from Pi: terminal screens, JSON event streams, print mode runs and remote procedure call (RPC) sessions. Settings, credentials and session files round-trip byte for byte. <a href="#compatibility-with-pi">Extensions</a> has the extension and package results.</p>
 <h2 id="extension-runtime-and-api"><a class="header" href="#extension-runtime-and-api">Extension runtime and API</a></h2>
 <p>Pi extensions run unchanged, in WebAssembly rather than Node.js. These rows cover where their runtime and API differ:</p>
@@ -2851,7 +2827,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><th>Area</th><th>Pi</th><th>yapi</th></tr>
 </thead>
 <tbody>
-<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly: 60s of computing per call and 10s while loading, 1 GiB per instance, restart after a crash. See <a href="#how-the-extension-sandbox-works">How the extension sandbox works</a>.</td></tr>
+<tr><td>Runtime</td><td>Pi’s Node.js process</td><td>QuickJS-NG in WebAssembly, with <a href="#instances-and-limits">compute and memory limits</a> per instance and a restart after a crash.</td></tr>
 <tr><td>Node APIs</td><td>All of Node</td><td><a href="#how-pi-extensions-run">Shims</a>. Sockets, servers, <code>http</code> requests, <code>worker_threads</code>, <code>node:sqlite</code>, <code>zlib</code>, <code>vm</code> and <code>child_process.fork</code> throw when used. <code>require()</code> of an ES module fails.</td></tr>
 <tr><td>Native addons</td><td>Loaded</td><td>Installed, never built. Loading one fails.</td></tr>
 <tr><td>Pi internals</td><td>Every export of Pi’s packages</td><td>The extension API and its helpers. The other exports of <code>pi-agent-core</code> and <code>pi-coding-agent</code> behave as in Pi, except those listed under agent sessions and under Pi internals that bypass the host. <code>pi-ai</code> has its own row. Built-in tool factories return yapi’s tools, or Pi’s own when given custom <code>operations</code>, a <code>spawnHook</code> or a <code>commandPrefix</code>.</td></tr>
@@ -2887,7 +2863,7 @@ api.on("session_start", |_event, ctx| async move {
 <tr><td>Settings format</td><td><code>settings.json</code></td><td><code>settings.json</code>, or the same settings in <code>settings.toml</code>, one of them per folder. yapi keeps a TOML file’s comments when it writes. See <a href="#write-settings-in-toml">Write settings in TOML</a>.</td></tr>
 <tr><td>Package installs</td><td><code>npm install</code>, with lifecycle scripts</td><td>A built-in npm client that skips lifecycle scripts. <code>npmCommand</code> applies to npm sources only. Its output always goes to stderr and it reads no input, where Pi does this only when stdout carries JSON or RPC output.</td></tr>
 <tr><td>Git sources</td><td>A host or ref may start with <code>-</code></td><td>yapi refuses a host or ref that starts with <code>-</code>, because git would read it as an option. Clones run as <code>git clone -- &lt;repo&gt;</code>.</td></tr>
-<tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, and lists the ones it left out. A provider can replace its refresh token on each use, so one shared copy would sign the other tool out. Sign in again with <code>/login</code> or <code>/mcp login</code>.</td></tr>
+<tr><td>Sign-ins after <code>yapi import pi</code></td><td>Pi keeps its sign-ins in its own <code>auth.json</code> and <code>mcp-auth.json</code></td><td><code>yapi import pi</code> copies API keys but not subscription or MCP sign-ins, because a provider can replace its refresh token on each use and sign the other tool out. See <a href="#sign-in-again-after-the-import">Sign in again after the import</a>.</td></tr>
 <tr><td>Packages that fail to install</td><td>Pi exits at startup, and <code>/reload</code> or the session change fails</td><td>yapi warns at startup, under <code>[Extension issues]</code> in interactive mode, and lists the package there after <code>/reload</code> or a session change, which try it again. It runs without the package, so one unreachable source doesn’t stop the others.</td></tr>
 <tr><td>npm configuration</td><td>npm reads all its configuration files and settings</td><td>Registries, credentials and <code>fetch-timeout</code> from <code>~/.npmrc</code>, or the file <code>npm_config_userconfig</code> names, and from <code>npm_config_*</code> variables. yapi ignores other settings, such as <code>cafile</code>.</td></tr>
 <tr><td>Log file</td><td><code>/debug</code> writes <code>pi-debug.log</code></td><td><code>--enable-logging</code>, a yapi-only flag, also appends a running log to <code>yapi.log</code> in the agent folder. See <a href="#read-yapis-log">Read yapi’s log</a>.</td></tr>
@@ -2957,9 +2933,9 @@ api.on("session_start", |_event, ctx| async move {
 <h2 id="a-package-registry"><a class="header" href="#a-package-registry">A package registry</a></h2>
 <p>A central registry of yapi packages will let <code>chest.toml</code> name packages and versions instead of npm or git sources.</p>
 <h2 id="stable-native-extension-api"><a class="header" href="#stable-native-extension-api">Stable native extension API</a></h2>
-<p>The native extension API is unstable until yapi 1.0. The Rust SDK and host requests may change in any release before then, and you may need to rebuild extensions. yapi 1.0 will stabilize them. Asynchronous host calls will move to WebAssembly System Interface (WASI) Preview 3 as a new version of the Wasm Interface Type (WIT) world.</p>
+<p>yapi 1.0 will stabilize the native extension API: the Rust SDK and the host requests, which may change in any release until then. Asynchronous host calls will move to WebAssembly System Interface (WASI) Preview 3 as a new version of the Wasm Interface Type (WIT) world.</p>
 <h2 id="platform-support"><a class="header" href="#platform-support">Platform support</a></h2>
-<p>yapi fully supports Linux and macOS, and Windows support is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.</p>
+<p>Windows support is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance-compared-with-pi"><a class="header" href="#performance-compared-with-pi">Performance compared with Pi</a></h1>
 <p><code>cargo xtask bench</code> measures yapi against Pi on the same machine: startup time, keystroke latency, memory and install size. This page gives the latest results on Linux and macOS, defines each measure, describes the method and shows how to run the benchmark yourself.</p>
@@ -3016,7 +2992,14 @@ api.on("session_start", |_event, ctx| async move {
 <li><strong>Memory, 10,000-line session open</strong>: the session of the keystroke measure, opened with <code>--session</code>.</li>
 <li><strong>Memory after 20 turns with tool calls</strong>: 20 prompts typed into the editor. A local mock provider answers each with a tool call, alternately <code>read</code> on a 1,000-line file and <code>bash</code> running <code>seq 1 3000</code>, and then with a Markdown answer holding a list and a code block. The mock checks that both programs make the same 40 requests.</li>
 <li><strong>Memory with 10 small JS extensions</strong>: 10 TypeScript extensions in the agent folder, each registering a tool, a command and an event handler.</li>
-<li><strong>Memory with Pi’s example extensions</strong>: 57 of the 70 single-file example extensions that ship in Pi’s npm package, loaded together from the agent folder. The benchmark leaves out the other 13: five replace the footer, header or editor, where the benchmark looks for the first paint, three start commands, timers or file watchers when a session starts, one commits to the working folder’s repository on exit, and four override a built-in tool that another example also overrides, which Pi refuses to load together.</li>
+<li><strong>Memory with Pi’s example extensions</strong>: 57 of the 70 single-file example extensions that ship in Pi’s npm package, loaded together from the agent folder. The benchmark leaves out the other 13:
+<ul>
+<li>five that replace the footer, header or editor, where the benchmark looks for the first paint</li>
+<li>three that start commands, timers or file watchers when a session starts</li>
+<li>one that commits to the working folder’s repository on exit</li>
+<li>four that override a built-in tool that another example also overrides, which Pi refuses to load together</li>
+</ul>
+</li>
 <li><strong>Install size</strong>: yapi’s release executable, which the release profile strips. For Pi, the published npm package and its dependencies installed with <code>--ignore-scripts</code> (121.8 MB, including prebuilt native modules for every platform), plus the Node.js executable it needs (124.8 MB on Linux).</li>
 </ul>
 <p>For every measure with extensions, a first start fills the compile caches, and the benchmark doesn’t measure it.</p>
@@ -3059,9 +3042,9 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <h2 id="global-skills-or-extensions-are-missing"><a class="header" href="#global-skills-or-extensions-are-missing">Global skills or extensions are missing</a></h2>
 <p>When your global skills, extensions, prompt templates, themes or MCP servers don’t load, the run may be <a href="#run-yapi-with-only-the-projects-packages">project-only</a>. <code>echo $YAPI_PROJECT_ONLY</code> shows whether your shell turns the mode on, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. To keep some global items in the mode, list them in the <code>projectOnly</code> setting, or press <code>ctrl+o</code> on them in <code>yapi config</code>.</p>
 <p>When a global extension registers a provider, project-only runs lose that provider’s models. Keep the extension in <code>projectOnly</code>, or pick another model.</p>
-<p>In print, JSON and RPC modes, the warning <code>--project-only: the project isn't trusted, so none of its packages load</code> means the project has files that need trust. Interactive mode asks whether to trust the project instead, and shows Pi’s notice that its resources are ignored if you don’t. Either way, the run loads the built-in extensions, the paths you pass on the command line and the global items you keep. Trust the project, or pass <code>--approve</code> for one run.</p>
+<p>In print, JSON and RPC modes, the warning <code>--project-only: the project isn't trusted, so none of its packages load</code> means the project has files that need trust. Trust the project, or pass <code>--approve</code> for one run. <a href="#untrusted-projects">Untrusted projects</a> describes what such a run loads.</p>
 <h2 id="yapi-finds-two-settings-files"><a class="header" href="#yapi-finds-two-settings-files">yapi finds two settings files</a></h2>
-<p>The error <code>Both settings.json and settings.toml are in &lt;folder&gt;. Keep one of them.</code> means that folder holds both forms of its settings file, and yapi won’t guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to <code>settings.toml</code> can write <code>settings.json</code> again, so switch with yapi closed. <a href="#write-settings-in-toml">Write settings in TOML</a> covers the format.</p>
+<p>The error <code>Both settings.json and settings.toml are in &lt;folder&gt;. Keep one of them.</code> means that folder holds both files. With yapi closed, merge what you need into one of them and delete the other. <a href="#switch-to-toml">Switch to TOML</a> explains why yapi must be closed.</p>
 <h2 id="an-extensions-call-is-refused"><a class="header" href="#an-extensions-call-is-refused">An extension’s call is refused</a></h2>
 <p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant.</p>
 <p>Packages from <code>yapi install</code> have every grant. For an extension from a <a href="#grant-capabilities">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="#what-each-capability-allows">What each capability allows</a> lists each capability.</p>
@@ -3100,7 +3083,7 @@ cargo xtask bench --pi pi-install/node_modules/.bin/pi --pi-install pi-install
 <li>Node.js 22.19 or newer, only to record goldens from Pi or compare with Pi live.</li>
 <li>A <a href="https://github.com/WebAssembly/wasi-sdk">WebAssembly System Interface (WASI) SDK</a> and the <code>wasm32-wasip2</code> Rust target, only to rebuild the JS runtime with <code>cargo xtask js-runtime</code>.</li>
 </ul>
-<p>The first build compiles about 420 crates, wasmtime among them, so it takes minutes rather than seconds. Later builds are incremental.</p>
+<p>The first build compiles about 420 crates, wasmtime among them, so it takes minutes rather than seconds.</p>
 <h2 id="build-and-run-from-source"><a class="header" href="#build-and-run-from-source">Build and run from source</a></h2>
 <p>Clone the repository and run the <code>yapi</code> binary from it:</p>
 <pre><code class="language-sh">git clone https://github.com/SkymanOne/yapi yapi

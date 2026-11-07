@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="write-native-extensions-in-rust"><a class="header" href="#write-native-extensions-in-rust">Write native extensions in Rust</a></h1>
-<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime, and builds to one <code>.wasm</code> file of about 210 KB without the <code>widgets</code> feature. This page covers creating, building, testing and sharing an extension, then the SDK’s API.</p>
+<p>Native extensions are WebAssembly components written in Rust with the <a href="https://docs.rs/yapi-extension-api"><code>yapi-extension-api</code></a> crate. Like Pi extensions, they register tools, commands, flags, event handlers and interface components, and they use Pi’s JSON shapes for events and results. Each one runs in a WebAssembly instance of its own, with no JavaScript runtime. This page covers creating, building, testing and sharing an extension, then the SDK’s API.</p>
 <p>The native extension API is unstable until yapi 1.0. The Wasm Interface Type (WIT) world, the Rust SDK and the host requests may change in any release before then, and you may need to rebuild extensions. Pi extensions aren’t affected.</p>
 <h2 id="create-an-extension"><a class="header" href="#create-an-extension">Create an extension</a></h2>
 <p>The SDK needs Rust 1.88 or newer, or 1.91 with the <code>widgets</code> feature. Add the <code>wasm32-wasip2</code> target to your Rust toolchain:</p>
@@ -236,7 +236,7 @@ fn init(api: &amp;mut Api) {
 
 yapi_extension_api::extension!(init);
 <span class="boring">}</span></code></pre>
-<p>Build it and copy the result into the package:</p>
+<p>Build the extension, then copy <code>shout.wasm</code> from Cargo’s target folder into the package’s <code>extensions</code> folder:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 </code></pre>
@@ -264,18 +264,17 @@ yapi-extension-api = { version = "0.4.2", features = ["session"] }
 <p>Use the version shown here or a newer one. Older releases may lack the capability features, and cargo then reports that the feature doesn’t exist.</p>
 <p>A request whose feature the build leaves out fails without reaching yapi, with a message such as <code>request `session.appendEntry` needs the `session` feature of yapi-extension-api</code>. <code>exec</code>, <code>Process</code>, <code>send_message</code> and <code>append_entry</code> exist only with their features. Requests that need a grant only for some payloads, such as <code>tool.execute</code> and <code>ui.editorSubmit</code>, need no feature, and yapi checks them as they run.</p>
 <h3 id="check-the-builds-capabilities"><a class="header" href="#check-the-builds-capabilities">Check the build’s capabilities</a></h3>
-<p>The build records its features in a <code>yapi:capabilities</code> custom section. <code>chest check</code> reads the section and the WebAssembly System Interface (WASI) interfaces the component imports, where <code>wasi:filesystem</code> means <code>fs</code>. Then it compares them with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
+<p>The build records its features in a <code>yapi:capabilities</code> custom section. After each build, run <code>chest check</code>. It compares the features, and the WebAssembly System Interface (WASI) interfaces the component imports, with the capabilities in the package’s <code>chest.toml</code> or <code>package.json</code>:</p>
 <pre><code class="language-sh">cargo build --release
 cp target/wasm32-wasip2/release/shout.wasm extensions/
 chest check
 </code></pre>
-<p><code>chest check</code> fails when the extension uses a capability the package doesn’t request, and warns about one the package requests that no extension uses. It also fails when the component imports <code>wasi:sockets</code> or <code>wasi:http</code>. yapi doesn’t provide <code>wasi:http</code>, so such a component doesn’t load, and it refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature.</p>
-<p>A component built without the SDK has no section, so <code>chest check</code> sees only its imports. <code>chest add</code> shows the same comparison to the person who adds the package. See <a href="chest-publish.html#check-a-native-extension">Check a native extension</a>.</p>
+<p><a href="chest-publish.html#check-a-native-extension">Check a native extension</a> lists what <code>chest check</code> reports, and <code>chest add</code> shows the same comparison to the person who adds the package. yapi doesn’t provide <code>wasi:http</code>, so a component that imports it doesn’t load, and yapi refuses every <code>wasi:sockets</code> call. Reach the network through the SDK’s <code>fetch</code> with the <code>net</code> feature.</p>
 <p>Features declare what an extension uses. They grant nothing: yapi grants capabilities from the manifest that installs the package, and refuses requests beyond them. At startup, yapi warns about a native extension from a chest manifest that uses a capability its entry doesn’t grant, because it will deny those calls.</p>
 <h3 id="move-to-capability-features"><a class="header" href="#move-to-capability-features">Move to capability features</a></h3>
 <p>Earlier versions of the SDK have no capability features and send every request. An extension that moves to this version stops building where it calls <code>exec</code>, <code>Process</code>, <code>send_message</code> or <code>append_entry</code>, and its other requests that need a grant fail at runtime. To move it:</p>
 <ol>
-<li>Enable the features of the requests it sends: <code>session</code> for session changes, <code>net</code> for <code>fetch</code> and models, <code>env</code> for environment variables, <code>fs</code> for context files, and <code>all</code> for processes, providers, terminal input listeners and autocomplete providers.</li>
+<li>Enable the features of the requests it sends, from the table in <a href="#declare-capabilities">Declare capabilities</a>.</li>
 <li>List the same capabilities in <code>capabilities</code> under <code>[package]</code> in <code>chest.toml</code>, or <code>yapi.capabilities</code> in <code>package.json</code>.</li>
 <li>Build it and run <code>chest check</code>.</li>
 </ol>
@@ -294,11 +293,11 @@ yapi install . -l
 </code></pre>
 <p>yapi records the path in <code>settings.json</code> and loads the file in place, so a rebuild takes effect after <code>/reload</code> or a restart. <code>yapi list</code> shows the extension, <code>yapi remove &lt;path&gt;</code> uninstalls it and <code>yapi config</code> turns it off.</p>
 <h2 id="share-the-extension"><a class="header" href="#share-the-extension">Share the extension</a></h2>
-<p>Share a native extension as a package that contains the built <code>.wasm</code> file. A project from <code>yapi new</code> is already one. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
+<p>Share a native extension as a package that contains the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox. A project from <code>yapi new</code> is already such a package. Commit <code>extensions/shout.wasm</code> with the sources and push the repository, and others can install it by URL:</p>
 <pre><code class="language-sh">yapi install git:github.com/your_github_user/shout
 </code></pre>
 <p>To publish on npm, run <code>npm publish</code>. Others then install it with <code>yapi install npm:shout</code>. The template’s <code>package.json</code> publishes the <code>extensions</code> folder and <code>chest.toml</code>, which records the capabilities the extension asks for.</p>
-<p>A package needs no manifest, because yapi loads every <code>.wasm</code> file in its <code>extensions</code> folder. A manifest can name the files instead. yapi reads its <code>yapi</code> key before the <code>pi</code> key, so one package can ship a native build for yapi and a JavaScript build for Pi:</p>
+<p>yapi loads every <code>.wasm</code> file in a package’s <code>extensions</code> folder, so a package needs no manifest. A <code>yapi</code> key in <code>package.json</code> can name the files instead, and lets one package ship a native build for yapi and a JavaScript build for Pi, as <a href="packages.html#package-manifests">Package manifests</a> describes:</p>
 <pre><code class="language-json">{
   "name": "shout",
   "version": "0.1.0",
@@ -306,8 +305,7 @@ yapi install . -l
   "yapi": { "extensions": ["./dist/shout.wasm"] }
 }
 </code></pre>
-<p>Commit or publish the built <code>.wasm</code> file, not only the Rust sources. yapi never compiles code during installation, because a build runs <code>build.rs</code> scripts and procedural macros outside the sandbox.</p>
-<p>A package can request capabilities and <code>pi.events</code> channels as a Pi package does, with <code>capabilities</code> and <code>events</code> in <code>[package]</code> of its <code>chest.toml</code> or in the <code>yapi</code> key. <a href="extensions.html#request-capabilities">Request capabilities</a> explains how a project grants them.</p>
+<p>A package requests capabilities and <code>pi.events</code> channels as a Pi package does, as <a href="extensions.html#request-capabilities">Request capabilities</a> shows.</p>
 <h2 id="what-the-sdk-provides"><a class="header" href="#what-the-sdk-provides">What the SDK provides</a></h2>
 <p>The SDK’s items cover registration, host actions, components and rendering:</p>
 <div class="table-wrapper">
@@ -398,7 +396,7 @@ yapi install . -l
 <li><code>Process::next</code> waits for the next <code>ProcessEvent</code>: output on standard output or standard error, then the exit. A dropped <code>next</code> future loses no output.</li>
 <li><code>write</code> waits while the process hasn’t taken the previous write. <code>close_stdin</code> and <code>kill</code> act at once.</li>
 </ul>
-<p>Dropping a <code>Process</code> kills it, and so does stopping the extension. <code>Process</code> needs the <code>all</code> feature, and starting one needs the process grant. Packages from <code>yapi install</code> have it, and a chest entry gets it only with <code>all</code>, since it has no capabilities by default.</p>
+<p>Dropping a <code>Process</code> kills it, and so does stopping the extension. <code>Process</code> needs the <code>all</code> feature, and starting one needs the process grant, which a chest entry gets only with <code>all</code>.</p>
 <p>A process inherits yapi’s environment, so <code>envAdd</code> is how an extension gives it a variable without the environment grant. yapi adds the variables itself, and the extension never sees the values the process inherits. This runs a build script with one added variable:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -433,7 +431,7 @@ fn init(api: &amp;mut Api) {
 <p><code>emit</code> runs the extension’s own handlers for the channel before it returns, in the order they subscribed, as Pi does. Other extensions receive a JSON copy of the data after <code>emit</code> returns, in the order the extension emitted it.</p>
 <p><code>on</code> returns a <code>Subscription</code>, and <code>Subscription::unsubscribe</code> stops the handler. Dropping the <code>Subscription</code> keeps the handler. A handler runs to completion before the next one starts, so a handler that waits for host work starts it with <code>spawn</code>. When the extension loads again for another session, yapi drops every handler and the init function subscribes again.</p>
 <p>A busy runtime holds at most 64 events from other runtimes. yapi drops later ones until it catches up and logs a warning, so a stuck extension never holds up the others or the interface.</p>
-<p>Events cross between extensions according to their grants and event policies, as <a href="security.html#agent-sessions-and-events">Agent sessions and events</a> describes. <code>on</code> tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one. An extension built with an older SDK gets no such warnings, and yapi routes its events the same way.</p>
+<p>Events cross between extensions according to their grants and event policies, as <a href="security.html#agent-sessions-and-events">Agent sessions and events</a> describes. <code>on</code> tells yapi which channels have handlers, so that yapi can warn when its routing keeps an event from one.</p>
 <h2 id="interface-components"><a class="header" href="#interface-components">Interface components</a></h2>
 <p>A component implements the <code>Component</code> trait. <code>render</code> returns the lines to show at a width, as text with ANSI escape sequences. The optional <code>handle_input</code> receives raw terminal input while the component has focus, and <code>handle_mouse</code> receives mouse events in fullscreen mode and returns whether it took them. This component asks a yes or no question:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]

@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -390,7 +390,7 @@ todo = { path = "../pi-todo" }
 <blockquote>
 <p><strong>Any agent</strong>, except capabilities, which only yapi uses.</p>
 </blockquote>
-<p>For each kind of resource, the first of these that lists it wins: the package’s <code>chest.toml</code> <code>[package]</code>, then <code>package.json</code>’s <code>yapi</code> key, then its <code>pi</code> key. When a <code>pi</code> key exists, or <code>[package]</code> or <code>yapi</code> lists some kind, a kind none of them lists provides nothing. Otherwise the conventional folders apply: <code>skills</code>, <code>agents</code>, <code>extensions</code>, <code>prompts</code> and <code>themes</code>.</p>
+<p>chest finds a package’s resources as yapi does, as <a href="packages.html#package-manifests">Package manifests</a> describes, with <code>agents</code> as one more conventional folder.</p>
 <p>Capabilities come from <code>[package]</code>, else <code>yapi.capabilities</code>, else none. Name, version, description and authors come from <code>[package]</code>, else from <code>package.json</code>.</p>
 <p>chest reports a package’s <code>chest.toml</code> that doesn’t parse, or a <code>[package]</code> with an unknown key, and <code>chest check</code> and <code>chest add</code> fail on it. yapi warns about it and resolves the package as if the file were absent.</p>
 <h2 id="chestlock"><a class="header" href="#chestlock"><code>chest.lock</code></a></h2>
@@ -415,8 +415,15 @@ todo = { path = "../pi-todo" }
 </tbody>
 </table>
 </div>
-<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. A pinned tarball must lie on the registry configured for its name, at the standard <code>&lt;name&gt;/-/&lt;file&gt;.tgz</code> path. Tarballs pinned on <code>registry.npmjs.org</code> come from the configured registry when that’s a mirror.</p>
-<p>The lock is up to date when every entry has a record with the same section and name, the same source kind, location and subpath, and the same <code>rev</code>, and its locked npm version still satisfies the entry’s range. Capabilities, events and filters never make it stale.</p>
+<p>Path entries record their path only, with no hash, and <code>[patch]</code> entries never appear. <a href="chest-lock.html#what-the-lock-records">What the lock records</a> covers where a pinned tarball may come from.</p>
+<p>The lock is up to date when every entry has a record with:</p>
+<ul>
+<li>the same section and name</li>
+<li>the same source kind, location and subpath</li>
+<li>the same <code>rev</code></li>
+<li>a locked npm version that still satisfies the entry’s range</li>
+</ul>
+<p>Capabilities, events and filters never make it stale.</p>
 <h3 id="how-chest-computes-the-content-hash"><a class="header" href="#how-chest-computes-the-content-hash">How chest computes the content hash</a></h3>
 <p>The hash is <code>sha256-</code> followed by lowercase hex:</p>
 <ol>

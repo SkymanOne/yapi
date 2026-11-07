@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -188,8 +188,9 @@
 <pre><code class="language-sh">chest add git:github.com/anthropics/skills --path skills/pdf
 chest add git:github.com/acme/agents --path reviewer.md
 </code></pre>
-<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell. With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
-<p>chest installs skills that are folders with a <code>SKILL.md</code>. yapi and Pi also load a skill that’s a single <code>.md</code> file, but chest doesn’t install one. An entry for a whole package skips such files with a warning. An entry that names one fails, and <code>chest add</code> refuses a <code>.md</code> file in a <code>skills</code> folder. A <code>.md</code> file anywhere else is a subagent, and <code>--agent</code> adds any <code>.md</code> file as one.</p>
+<p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell.</p>
+<p>With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
+<p>chest installs only skills that are folders with a <code>SKILL.md</code>. It skips or refuses a skill that’s a single <code>.md</code> file, which yapi and Pi also load. A <code>.md</code> file outside a <code>skills</code> folder is a subagent.</p>
 <h2 id="choose-folders-for-your-agents"><a class="header" href="#choose-folders-for-your-agents">Choose folders for your agents</a></h2>
 <p><code>chest init</code> looks for each agent’s folder in the project and offers its skill and subagent folders:</p>
 <div class="table-wrapper">
@@ -213,24 +214,13 @@ chest add git:github.com/acme/agents --path reviewer.md
 <h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
 <p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
 <h2 id="the-gitignore-block"><a class="header" href="#the-gitignore-block">The <code>.gitignore</code> block</a></h2>
-<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. chest escapes each line so that it matches only its own path, whatever characters a folder name holds.</p>
-<p>The block also ignores two kinds of folder that an interrupted install can leave where chest copies:</p>
-<ul>
-<li><strong><code>.*-staging</code></strong>: a copy that chest hadn’t finished</li>
-<li><strong><code>.*-old</code></strong>: an item’s previous copy, when chest stopped while replacing it</li>
-</ul>
-<p>The next install removes both.</p>
+<p>chest lists every installed path in a block of the project’s <code>.gitignore</code>, from <code># BEGIN chest (chest.toml)</code> to <code># END chest</code>. It rebuilds the block on each install and leaves every other line alone. The block also ignores the <code>.*-staging</code> and <code>.*-old</code> folders that an interrupted install can leave behind, which the next install removes.</p>
 <h2 id="keep-hand-written-skills-in-the-same-folders"><a class="header" href="#keep-hand-written-skills-in-the-same-folders">Keep hand-written skills in the same folders</a></h2>
 <p>Hand-written skills can live in the same folders. chest replaces or removes an item only when it installed the item itself on this machine and the item still holds what chest installed. It also takes over a copy it didn’t record when that copy already holds exactly what the lock pins. chest keeps its record in <code>~/.chest/state</code>, outside the project.</p>
 <p>When someone edits an item after chest installed it, chest leaves the item as it is, even when the lock now pins another version, and installs the other entries as usual. <code>chest install</code>, <code>chest update</code> and <code>chest list</code> show the entry as <code>edited</code>, and <code>chest verify</code> reports the item. To get the locked copy back, delete the item and run <code>chest install</code>. <code>chest install --frozen</code> fails on an edited item instead.</p>
 <h2 id="import-from-skillssh"><a class="header" href="#import-from-skillssh">Import from skills.sh</a></h2>
-<p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. chest computes its own hashes, so it drops the file’s. Run <code>chest install</code> after importing.</p>
-<p>Import takes skills from GitHub, GitLab, other git hosts, local folders and <code>node_modules</code>. It skips, with a warning:</p>
-<ul>
-<li>a skill of another <code>sourceType</code></li>
-<li>a skill the manifest already has, from the same package and folder</li>
-<li>a different skill whose name the manifest already uses</li>
-</ul>
+<p><code>chest import --skills-lock</code> turns the skills of a skills.sh <code>skills-lock.json</code> into skill entries. It reads the <code>skills-lock.json</code> beside the manifest, or the file you name. Run <code>chest install</code> after importing.</p>
+<p>Import takes skills from GitHub, GitLab, other git hosts, local folders and <code>node_modules</code>. It skips, with a warning, a skill of another <code>sourceType</code>, a skill the manifest already has, and a different skill whose name the manifest already uses.</p>
 <h2 id="what-yapi-adds"><a class="header" href="#what-yapi-adds">What yapi adds</a></h2>
 <blockquote>
 <p><strong>yapi only.</strong></p>

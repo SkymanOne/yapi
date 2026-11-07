@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -222,15 +222,15 @@
 <blockquote>
 <p><strong>Any agent.</strong> chest doesn’t need yapi to run.</p>
 </blockquote>
-<p>yapi’s <a href="install.html#run-the-install-script">install script</a> installs <code>chest</code> with <code>yapi</code>, or alone. To use chest with another agent and without yapi, install <code>chest</code> alone:</p>
+<p>To use chest without yapi, such as with another agent, install <code>chest</code> alone with yapi’s <a href="install.html#run-the-install-script">install script</a>:</p>
 <pre><code class="language-sh">curl -fsSL https://raw.githubusercontent.com/SkymanOne/yapi/main/install.sh \
   | sh -s -- --only chest
 </code></pre>
-<p>Without <code>--only</code>, the script asks in a terminal whether to install <code>yapi</code>, <code>chest</code> or both. chest is also on crates.io as <code>chest-cli</code>, so cargo-binstall installs the release’s <code>chest</code> and Cargo builds it from source:</p>
+<p>chest is also on crates.io as <code>chest-cli</code>, so cargo-binstall installs the release’s <code>chest</code> and Cargo builds it from source:</p>
 <pre><code class="language-sh">cargo binstall chest-cli
 cargo install --locked chest-cli
 </code></pre>
-<p>chest has its own version number, which <code>chest --version</code> prints, and each yapi release ships one chest version. <a href="install.html">Install yapi</a> covers release archives, builds with the install script’s <code>--from-source</code>, upgrades and uninstalling for both executables.</p>
+<p><a href="install.html">Install yapi</a> covers the other methods, upgrades and uninstalling for both executables.</p>
 <p>chest has its own npm client, so it needs neither Node.js nor npm. It reads registry settings from <code>~/.npmrc</code> and <code>npm_config_*</code> variables. Git sources need <code>git</code>.</p>
 <h2 id="set-up-a-projects-packages"><a class="header" href="#set-up-a-projects-packages">Set up a project’s packages</a></h2>
 <blockquote>

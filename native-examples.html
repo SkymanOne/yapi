@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -230,7 +230,15 @@ yapi -e target/wasm32-wasip2/release/permission_gate.wasm
 </code></pre>
 <p>Cargo names the file after the crate with underscores in place of dashes. <code>yapi install</code> takes the same path to keep the extension.</p>
 <h2 id="hello"><a class="header" href="#hello"><code>hello</code></a></h2>
-<p>The smallest complete extension. It registers a <code>shout</code> tool that repeats text in capitals, a <code>/hello</code> command, a <code>--shout-suffix</code> flag that the tool reads, a <code>session_start</code> handler that stores an entry in the session, and a <code>tool_call</code> handler that blocks empty input:</p>
+<p>The smallest complete extension. It registers:</p>
+<ul>
+<li>a <code>shout</code> tool that repeats text in capitals</li>
+<li>a <code>/hello</code> command</li>
+<li>a <code>--shout-suffix</code> flag that the tool reads</li>
+<li>a <code>session_start</code> handler that stores an entry in the session</li>
+<li>a <code>tool_call</code> handler that blocks empty input</li>
+</ul>
+<p>This is the <code>tool_call</code> handler:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>api.on("tool_call", |event, _ctx| async move {
@@ -379,7 +387,7 @@ ctx.custom(|done| TodoList { todos, done }, CustomOptions::default()).await;
     // ...
 }
 <span class="boring">}</span></code></pre>
-<p><code>exec</code> needs the process grant. Packages from <code>yapi install</code> have it, and a chest entry gets it only with <code>all</code>, since it has no capabilities by default.</p>
+<p><code>exec</code> needs the process grant, which a chest entry gets only with <code>all</code>.</p>
 <h2 id="event-bus"><a class="header" href="#event-bus"><code>event-bus</code></a></h2>
 <p>Extensions talking over Pi’s <code>pi.events</code>. A listener shows every <code>my:notification</code> event, from this extension or any other, native or Pi.</p>
 <p><code>/emit [message]</code> emits one, and so does the start of a session. <code>/mute</code> stops the listener with its <code>Subscription</code>, and starts it again. Pi’s example has no <code>/mute</code>.</p>

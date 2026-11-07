@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -180,7 +180,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="choose-a-model"><a class="header" href="#choose-a-model">Choose a model</a></h1>
-<p>yapi supports Pi’s providers and models, from the same built-in catalog. A model generates the responses, and a provider is the service or account that gives access to it. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.</p>
+<p>yapi supports Pi’s providers and models, from the same built-in catalog. This page covers signing in, API keys, cloud and local providers, selecting a model, adding providers and handing credentials to other tools.</p>
 <h2 id="sign-in-with-a-subscription"><a class="header" href="#sign-in-with-a-subscription">Sign in with a subscription</a></h2>
 <p>Run <code>/login</code> and choose “Sign in with an account” to use a Claude Pro or Max, ChatGPT Plus or Pro, GitHub Copilot, Kimi For Coding, Meta, SuperGrok or X Premium account, or to create an OpenRouter key. yapi opens the browser sign-in, or shows a device code, and refreshes the token when it expires.</p>
 <p>“Sign in with Radius” signs in to Pi’s Radius gateway, whose models come from the gateway’s own catalog. Providers that extensions register can add their own sign-ins. <code>/logout</code> removes a stored credential.</p>
@@ -208,7 +208,7 @@
 <h2 id="use-a-cloud-provider"><a class="header" href="#use-a-cloud-provider">Use a cloud provider</a></h2>
 <p>Amazon Bedrock, Google Vertex AI and Cloudflare use their platform’s credentials:</p>
 <ul>
-<li><strong>Amazon Bedrock</strong>: reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or Amazon Web Services (AWS) credentials from the environment, <code>~/.aws</code> profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from <code>AWS_REGION</code> or the profile. As in the AWS SDK, <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> must use HTTPS unless it names a loopback address or the Elastic Container Service (ECS) or Elastic Kubernetes Service (EKS) container host.</li>
+<li><strong>Amazon Bedrock</strong>: reads <code>AWS_BEARER_TOKEN_BEDROCK</code>, or Amazon Web Services (AWS) credentials from the environment, <code>~/.aws</code> profiles (including single sign-on and assumed roles), container credentials or instance metadata. It takes the region from <code>AWS_REGION</code> or the profile.</li>
 <li><strong>Google Vertex AI</strong>: reads <code>GOOGLE_CLOUD_API_KEY</code>, or Application Default Credentials with <code>GOOGLE_CLOUD_PROJECT</code> and <code>GOOGLE_CLOUD_LOCATION</code>.</li>
 <li><strong>Cloudflare Workers AI and AI Gateway</strong>: read <code>CLOUDFLARE_API_KEY</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>, and <code>CLOUDFLARE_GATEWAY_ID</code> for the gateway.</li>
 </ul>
@@ -231,10 +231,9 @@ yapi --models "sonnet,gpt-5*"
 <h2 id="add-providers-and-models"><a class="header" href="#add-providers-and-models">Add providers and models</a></h2>
 <p>Add providers, models and overrides to <code>~/.yapi/agent/models.json</code>. Pi’s <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/models.md">models</a> and <a href="https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/custom-provider.md">custom provider</a> documentation describe the format. Extensions can also <a href="extensions.html#providers-from-extensions">register providers</a>, including ones with their own wire API.</p>
 <h2 id="update-the-model-catalog"><a class="header" href="#update-the-model-catalog">Update the model catalog</a></h2>
-<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you’ve configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use.</p>
-<p><code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches. <code>yapi update --models</code> fetches regardless.</p>
+<p>Pi publishes catalog updates between releases. yapi fetches them for the providers you’ve configured: at startup, when the model selector opens, after <code>/login</code> and with <code>yapi update --models</code>. It keeps them in <code>~/.yapi/agent/models-store.json</code> for offline use. <code>--offline</code>, or setting <code>PI_OFFLINE</code>, turns off the automatic fetches, but not <code>yapi update --models</code>.</p>
 <h2 id="use-classifier-and-image-models"><a class="header" href="#use-classifier-and-image-models">Use classifier and image models</a></h2>
-<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. Codemode scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>. Codemode lets the model call Model Context Protocol (MCP) tools from a script, as <a href="mcp.html#call-mcp-tools-through-codemode">Call MCP tools through codemode</a> describes.</p>
+<p>The catalog also lists classifiers, which answer typed questions about JSON data, and image models on OpenRouter. <a href="mcp.html#call-mcp-tools-through-codemode">Codemode</a> scripts run them through the <code>models</code> global, and extensions through <code>ctx.modelRegistry.classify()</code> and <code>generateImages()</code>.</p>
 <h2 id="give-credentials-to-other-tools"><a class="header" href="#give-credentials-to-other-tools">Give credentials to other tools</a></h2>
 <p><code>yapi auth</code> gives scripts a credential without starting a session. <code>check</code> reports whether a provider is ready, and the <code>print-</code> commands print its API key or bearer token:</p>
 <pre><code class="language-sh">yapi auth check --provider anthropic --json

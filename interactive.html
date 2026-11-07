@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -189,7 +189,7 @@
 <li>Ctrl+V pastes text, an image, or on macOS the paths of copied files. yapi saves a pasted image to a temporary file and puts its path in the editor.</li>
 <li>Up recalls earlier prompts.</li>
 </ul>
-<p>A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.</p>
+<p>A prompt or command that you send while extensions start, or while an extension command runs, waits until they finish. yapi then sends it in the order you sent it.</p>
 <h2 id="follow-the-agents-work"><a class="header" href="#follow-the-agents-work">Follow the agent’s work</a></h2>
 <p>yapi shows each tool call as it runs. Ctrl+O expands or collapses tool output, and Ctrl+T shows or hides thinking.</p>
 <p>Messages show Markdown with LaTeX math and Mermaid diagrams. “Mermaid diagrams” in <code>/settings</code> draws diagrams while a message streams, only once it’s complete, or never.</p>
@@ -253,8 +253,8 @@
 <tr><td><code>/copy</code>, <code>/export</code></td><td>Copy the last answer or export the session to HTML</td></tr>
 <tr><td><code>/login</code>, <code>/logout</code></td><td>Manage provider credentials</td></tr>
 <tr><td><code>/import</code></td><td>Copy a session file into the session folder and resume it</td></tr>
-<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server. Built-in extension.</td></tr>
-<tr><td><code>/mcp</code></td><td>Manage Model Context Protocol (MCP) servers. Built-in extension.</td></tr>
+<tr><td><code>/llama</code></td><td>Load, unload and download models on a llama.cpp server</td></tr>
+<tr><td><code>/mcp</code></td><td>Manage Model Context Protocol (MCP) servers</td></tr>
 <tr><td><code>/trust</code></td><td>Change whether the project’s <code>.yapi</code> folder is trusted</td></tr>
 <tr><td><code>/reload</code></td><td>Reload settings, keybindings, skills, themes and extensions from disk</td></tr>
 <tr><td><code>/hotkeys</code></td><td>Show every key binding</td></tr>
@@ -264,8 +264,7 @@
 </tbody>
 </table>
 </div>
-<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output. Read it before you attach it to a bug report.</p>
-<p><a href="troubleshooting.html#report-a-problem">Report a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
+<p><code>/llama</code> and <code>/mcp</code> come from built-in extensions, so <code>-ne</code> removes them. The <code>/debug</code> log can hold private data from messages and extension output, so read it before you attach it to a bug report. <a href="troubleshooting.html#report-a-problem">Report a problem</a> describes what <code>/bug</code> writes and what it posts.</p>
 <h2 id="run-a-shell-command"><a class="header" href="#run-a-shell-command">Run a shell command</a></h2>
 <p>Start a message with <code>!</code> to run a shell command and add its output to the conversation:</p>
 <pre><code class="language-text">!git status

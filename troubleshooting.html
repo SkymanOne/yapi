@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2ee817f.js";
+            window.path_to_searchindex_js = "searchindex-6c1c2ed6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -198,9 +198,9 @@
 <h2 id="global-skills-or-extensions-are-missing"><a class="header" href="#global-skills-or-extensions-are-missing">Global skills or extensions are missing</a></h2>
 <p>When your global skills, extensions, prompt templates, themes or MCP servers don’t load, the run may be <a href="project-only.html">project-only</a>. <code>echo $YAPI_PROJECT_ONLY</code> shows whether your shell turns the mode on, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. To keep some global items in the mode, list them in the <code>projectOnly</code> setting, or press <code>ctrl+o</code> on them in <code>yapi config</code>.</p>
 <p>When a global extension registers a provider, project-only runs lose that provider’s models. Keep the extension in <code>projectOnly</code>, or pick another model.</p>
-<p>In print, JSON and RPC modes, the warning <code>--project-only: the project isn't trusted, so none of its packages load</code> means the project has files that need trust. Interactive mode asks whether to trust the project instead, and shows Pi’s notice that its resources are ignored if you don’t. Either way, the run loads the built-in extensions, the paths you pass on the command line and the global items you keep. Trust the project, or pass <code>--approve</code> for one run.</p>
+<p>In print, JSON and RPC modes, the warning <code>--project-only: the project isn't trusted, so none of its packages load</code> means the project has files that need trust. Trust the project, or pass <code>--approve</code> for one run. <a href="project-only.html#untrusted-projects">Untrusted projects</a> describes what such a run loads.</p>
 <h2 id="yapi-finds-two-settings-files"><a class="header" href="#yapi-finds-two-settings-files">yapi finds two settings files</a></h2>
-<p>The error <code>Both settings.json and settings.toml are in &lt;folder&gt;. Keep one of them.</code> means that folder holds both forms of its settings file, and yapi won’t guess which one you meant. Merge what you need into one of them and delete the other. A yapi that was running while you switched to <code>settings.toml</code> can write <code>settings.json</code> again, so switch with yapi closed. <a href="configuration.html#write-settings-in-toml">Write settings in TOML</a> covers the format.</p>
+<p>The error <code>Both settings.json and settings.toml are in &lt;folder&gt;. Keep one of them.</code> means that folder holds both files. With yapi closed, merge what you need into one of them and delete the other. <a href="configuration.html#switch-to-toml">Switch to TOML</a> explains why yapi must be closed.</p>
 <h2 id="an-extensions-call-is-refused"><a class="header" href="#an-extensions-call-is-refused">An extension’s call is refused</a></h2>
 <p>An error such as “Network access is not permitted for this extension” means the extension lacks a grant. A Pi extension without the file grant that reads or writes a file through <code>node:fs</code> gets an <code>EACCES</code> error saying that file access needs the <code>fs</code> grant.</p>
 <p>Packages from <code>yapi install</code> have every grant. For an extension from a <a href="chest-extensions.html#grant-capabilities">chest</a> manifest, add the capability its call needs to the <code>capabilities</code> of its entry. <a href="chest-manifest.html#what-each-capability-allows">What each capability allows</a> lists each capability.</p>
