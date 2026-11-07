@@ -25,7 +25,7 @@ The script downloads the latest release for your system and verifies its SHA-256
 └
 ```
 
-Choose with the arrow keys and press Enter, or press Enter alone to install both. Ctrl+C cancels. In a terminal without single-key input, such as with `TERM=dumb`, the script asks for 1, 2 or 3 instead. `NO_COLOR` turns off its colors.
+Move with ↑ and ↓ and press Enter. Enter alone installs both, and Ctrl+C cancels. When the terminal can't read single keys, such as with `TERM=dumb`, the script asks for 1, 2 or 3 instead. Set `NO_COLOR` to turn off colors.
 
 The script puts the executables in `~/.local/bin`, and with `yapi` it also installs the [documentation for the model](#documentation-for-the-model). Without a terminal, such as in CI, it installs both without asking.
 
