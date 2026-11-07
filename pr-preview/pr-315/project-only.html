@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c42828fa.js";
+            window.path_to_searchindex_js = "searchindex-3c9c5df2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -187,8 +187,8 @@
 <p>Only what you installed stays out. Your settings, sign-ins and instruction files such as <code>~/.yapi/agent/AGENTS.md</code> still apply, so your project-only run can still differ from a teammate’s.</p>
 <p>This page covers turning the mode on, what loads, keeping global items such as a theme, and checking what loaded.</p>
 <h2 id="turn-on-project-only-mode"><a class="header" href="#turn-on-project-only-mode">Turn on project-only mode</a></h2>
-<p>Pass the flag for one run, or set <code>YAPI_PROJECT_ONLY</code> for every run in a shell:</p>
-<pre><code class="language-sh">yapi --project-only
+<p>Pass <code>--project-only</code>, or <code>-P</code> for short, for one run, or set <code>YAPI_PROJECT_ONLY</code> for every run in a shell:</p>
+<pre><code class="language-sh">yapi -P
 export YAPI_PROJECT_ONLY=1
 </code></pre>
 <p><code>YAPI_PROJECT_ONLY</code> accepts <code>1</code>, <code>true</code> or <code>yes</code>, and <code>unset YAPI_PROJECT_ONLY</code> turns it off. <code>/reload</code> keeps the mode on.</p>
