@@ -5,7 +5,7 @@
 ```sh
 cargo install --locked chest-cli
 chest init
-chest add git:github.com/SkymanOne/yapi@v0.4.1 --skill --name yapi-skills
+chest add git:github.com/SkymanOne/yapi --skill --name yapi-skills
 ```
 
 `chest init` writes a manifest with a folder for each agent it finds, and `chest add` adds the skills from yapi's repository and installs them. To install a release build instead of compiling chest, run `cargo binstall chest-cli`. The crate installs the `chest` executable and needs Rust 1.91 or newer. The [chest guide](https://skymanone.github.io/yapi/chest.html) covers the manifest, the lock and every command.
