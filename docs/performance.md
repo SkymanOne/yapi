@@ -48,7 +48,11 @@ Each row of the tables measures one of these:
 - **Memory, 10,000-line session open**: the session of the keystroke measure, opened with `--session`.
 - **Memory after 20 turns with tool calls**: 20 prompts typed into the editor. A local mock provider answers each with a tool call, alternately `read` on a 1,000-line file and `bash` running `seq 1 3000`, and then with a Markdown answer holding a list and a code block. The mock checks that both programs make the same 40 requests.
 - **Memory with 10 small JS extensions**: 10 TypeScript extensions in the agent folder, each registering a tool, a command and an event handler.
-- **Memory with Pi's example extensions**: 57 of the 70 single-file example extensions that ship in Pi's npm package, loaded together from the agent folder. The benchmark leaves out the other 13: five replace the footer, header or editor, where the benchmark looks for the first paint, three start commands, timers or file watchers when a session starts, one commits to the working folder's repository on exit, and four override a built-in tool that another example also overrides, which Pi refuses to load together.
+- **Memory with Pi's example extensions**: 57 of the 70 single-file example extensions that ship in Pi's npm package, loaded together from the agent folder. The benchmark leaves out the other 13:
+  - five that replace the footer, header or editor, where the benchmark looks for the first paint
+  - three that start commands, timers or file watchers when a session starts
+  - one that commits to the working folder's repository on exit
+  - four that override a built-in tool that another example also overrides, which Pi refuses to load together
 - **Install size**: yapi's release executable, which the release profile strips. For Pi, the published npm package and its dependencies installed with `--ignore-scripts` (121.8 MB, including prebuilt native modules for every platform), plus the Node.js executable it needs (124.8 MB on Linux).
 
 For every measure with extensions, a first start fills the compile caches, and the benchmark doesn't measure it.

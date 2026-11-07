@@ -19,8 +19,8 @@ A central registry of yapi packages will let `chest.toml` name packages and vers
 
 ## Stable native extension API
 
-The native extension API is unstable until yapi 1.0. The Rust SDK and host requests may change in any release before then, and you may need to rebuild extensions. yapi 1.0 will stabilize them. Asynchronous host calls will move to WebAssembly System Interface (WASI) Preview 3 as a new version of the Wasm Interface Type (WIT) world.
+yapi 1.0 will stabilize the native extension API: the Rust SDK and the host requests, which may change in any release until then. Asynchronous host calls will move to WebAssembly System Interface (WASI) Preview 3 as a new version of the Wasm Interface Type (WIT) world.
 
 ## Platform support
 
-yapi fully supports Linux and macOS, and Windows support is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.
+Windows support is best effort. Windows-specific features, such as a PowerShell tool and native console input, will follow once the core is stable.
