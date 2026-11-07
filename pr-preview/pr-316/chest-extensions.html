@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b4cf3b52.js";
+            window.path_to_searchindex_js = "searchindex-2348afea.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -206,7 +206,7 @@ chest add git:github.com/acme/pi-todo --grant fs
 </tbody>
 </table>
 </div>
-<p><code>chest add</code> shows the capabilities a package requests, then lists every capability with what it allows. It ticks the ones the package requests and, for a native extension, the ones the build uses, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. It never ticks <code>all</code>, so you tick that one yourself. A bare <code>.wasm</code> file requests nothing, so chest ticks what it uses. Before installing, chest shows the entry with its grants and asks you to confirm.</p>
+<p>At a terminal, <code>chest add</code> asks what to grant. A package requests capabilities in its <code>capabilities</code>, and a native extension also requests what its build uses, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. When there’s a request, chest first offers to grant all requested capabilities or to choose. Granting is the default unless the request includes <code>all</code>. Choosing lists every capability with what it allows, with the requested ones ticked except <code>all</code>, which you tick yourself. A package that requests nothing goes straight to that list. Before installing, chest shows the entry with its grants and asks you to confirm.</p>
 <p>A request never grants anything by itself. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, chest asks nothing and grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
 <p><code>all</code> is the only way to run programs. A program runs as you, outside the sandbox, with yapi’s environment and API keys. So <code>all</code> is full access, and <code>chest add</code> says so before it grants it. <a href="chest-manifest.html#what-each-capability-allows">What each capability allows</a> gives the exact list.</p>
 <h2 id="let-extensions-share-events"><a class="header" href="#let-extensions-share-events">Let extensions share events</a></h2>
