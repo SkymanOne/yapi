@@ -587,6 +587,7 @@ fn add_existing_entry() {
             "all",
             "--grant",
             "all",
+            "--isolated",
             "--yes",
         ],
     );
@@ -594,6 +595,12 @@ fn add_existing_entry() {
         text(&all).contains("`all` is full access"),
         "{}",
         text(&all)
+    );
+    // `--isolated` writes the policy without a question.
+    let manifest = read(&scratch.project.join("chest.toml"));
+    assert!(
+        manifest.contains("rev = \"v2\", capabilities = [\"all\"], events = \"isolated\" }"),
+        "{manifest}"
     );
 }
 
@@ -603,7 +610,12 @@ fn add_rejects_misuse() {
     let remote = skill_remote(&scratch);
     remote.commit(&[("skills/single.md", "# single\n")], "v2");
     write(&scratch.dir.join("loose/skills/single.md"), "# single\n");
+    write(
+        &scratch.dir.join("ext/index.ts"),
+        "export default () => {};\n",
+    );
     init(&scratch);
+    ok(&scratch, &["add", "../ext", "--yes"]);
     let manifest = read(&scratch.project.join("chest.toml"));
     let git = format!("{}@v2", remote.source);
     let single =
@@ -690,6 +702,16 @@ fn add_rejects_misuse() {
             vec!["add", &git, "--path", "skills/pdf", "--grant", "fs"],
             2,
             "--grant is for extensions only".into(),
+        ),
+        (
+            vec!["add", &git, "--path", "skills/pdf", "--isolated"],
+            2,
+            "--isolated is for extensions only".into(),
+        ),
+        (
+            vec!["add", "../ext", "--isolated"],
+            2,
+            "extensions.ext keeps its events, so --isolated can't change them: edit its `events` in chest.toml".into(),
         ),
         (
             vec!["-g", "--manifest", "chest.toml", "list"],

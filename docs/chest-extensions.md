@@ -52,7 +52,7 @@ events = "isolated"
 
 Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.
 
-`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. Without a terminal, with `--yes`, or with `--grant`, it keeps the shared default. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
+`chest add` offers the shared default, the channels the package declares, when it declares any, or `isolated`. `--isolated` picks `isolated` without the question. Otherwise, without a terminal, with `--yes`, or with `--grant`, chest keeps the shared default. To list channels, edit the entry's `events` in `chest.toml`. [Event bus routing](chest-manifest.md#event-bus-routing) has the rules.
 
 ## How yapi loads a manifest
 

@@ -60,8 +60,12 @@ pub struct AddArgs {
     /// Capabilities to grant, comma-separated, with no question asked.
     #[arg(long, value_delimiter = ',')]
     grant: Vec<String>,
+    /// Isolate the extension's `pi.events`, with no question asked: it sends
+    /// and hears none. Shared is the default.
+    #[arg(long)]
+    isolated: bool,
     /// Ask nothing: add the whole package, grant only `--grant`, and share
-    /// events.
+    /// events unless `--isolated`.
     #[arg(long)]
     pub yes: bool,
 }
@@ -656,6 +660,17 @@ pub async fn run(
         if !args.grant.is_empty() && section != Section::Extensions {
             return Err(Usage("--grant is for extensions only".into()).into());
         }
+        if args.isolated && section != Section::Extensions {
+            return Err(Usage("--isolated is for extensions only".into()).into());
+        }
+        if args.isolated && old.events != Some(EventPolicy::isolated()) {
+            return Err(Usage(format!(
+                "{}.{name} keeps its events, so --isolated can't change them: edit its `events` in {}",
+                section.key(),
+                target.label()
+            ))
+            .into());
+        }
         let current = Grants::parse(old.capabilities.as_deref().unwrap_or_default());
         if !args.grant.is_empty() && current != Ok(requested) {
             return Err(Usage(format!(
@@ -766,15 +781,20 @@ pub async fn run(
         }
         let granted = grants(prompt, &args, &meta, &inspected.used())?;
         entry.capabilities = (!granted.is_empty()).then_some(granted);
-        // `--grant` settles the extension's access, events included.
-        if args.grant.is_empty() {
-            entry.events = events(prompt, &meta)?;
-        }
+        // `--isolated` answers the events question, and `--grant` keeps the
+        // shared default without one.
+        entry.events = match (args.isolated, args.grant.is_empty()) {
+            (true, _) => Some(EventPolicy::isolated()),
+            (false, true) => events(prompt, &meta)?,
+            (false, false) => None,
+        };
         for warning in requests(&project.manifest, &entry, &meta) {
             prompt.info(&[format!("note: {name} {warning}")]);
         }
     } else if !args.grant.is_empty() {
         return Err(Usage("--grant is for extensions only".into()).into());
+    } else if args.isolated {
+        return Err(Usage("--isolated is for extensions only".into()).into());
     }
     let (kind, one) = match section {
         Section::Skills => ("skills", "skill"),
