@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2348afea.js";
+            window.path_to_searchindex_js = "searchindex-3c71f01e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -198,7 +198,7 @@ chest add git:github.com/acme/agents --path reviewer.md
 <p>When a package provides several skills or subagents and you pass neither <code>--path</code> nor <code>--skill &lt;name&gt;</code>, <code>chest add</code> lists them with their descriptions, all ticked:</p>
 <ul>
 <li><strong>Keep them all</strong>: chest writes one entry for the whole package, which gets the skills the package adds when you run <code>chest update</code>. A script or <code>--yes</code> writes the same entry.</li>
-<li><strong>Clear some</strong>: chest writes one entry for each skill you keep, each with its <code>path</code>.</li>
+<li><strong>Untick some</strong>: chest writes one entry for each skill you keep, each with its <code>path</code>.</li>
 </ul>
 <p>The summary before you confirm says which of the two chest writes.</p>
 <p>chest installs only skills that are folders with a <code>SKILL.md</code>. It skips or refuses a skill that’s a single <code>.md</code> file, which yapi and Pi also load. A <code>.md</code> file outside a <code>skills</code> folder is a subagent.</p>

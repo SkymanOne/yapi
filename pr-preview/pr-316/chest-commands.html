@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2348afea.js";
+            window.path_to_searchindex_js = "searchindex-3c71f01e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -219,14 +219,14 @@
 <p>chest reads proxy variables such as <code>HTTPS_PROXY</code>, as yapi does. Without them, it uses the <code>httpProxy</code> setting in yapi’s global <code>settings.json</code>, like yapi.</p>
 <h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
 <p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error.</p>
-<p>At a terminal, <code>chest init</code> and <code>chest add</code> ask their questions as lists you move through with the arrow keys, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks you to confirm before it writes anything. Esc or Ctrl+C at a question cancels the command, which writes nothing and exits with 1. <code>chest install</code>, <code>chest update</code>, <code>chest remove</code> and <code>chest import</code> show a spinner and a summary of each entry’s outcome.</p>
+<p>At a terminal, <code>chest init</code> and <code>chest add</code> ask with lists. Move with ↑ and ↓, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks before it writes anything. Esc or Ctrl+C cancels, writes nothing and exits with 1. <code>chest install</code>, <code>chest update</code>, <code>chest remove</code> and <code>chest import</code> show a spinner, then each entry’s outcome.</p>
 <p>To skip the questions:</p>
 <ul>
 <li>Pass the flags that answer them, such as <code>--skills</code> and <code>--agents</code> for <code>chest init</code>, or <code>--path</code>, <code>--skill &lt;name&gt;</code>, <code>--grant</code> and <code>--isolated</code> for <code>chest add</code>. When flags answer every question, chest installs or writes at once, without the confirmation.</li>
 <li>Pass <code>--yes</code> to take the defaults and skip the confirmation.</li>
 <li>Run chest without a terminal, or with <code>CI</code> set. chest then asks nothing and prints plain lines, with each entry’s outcome on stdout.</li>
 </ul>
-<p>chest draws on stderr, in color unless <code>NO_COLOR</code> is set.</p>
+<p>chest draws on stderr. Set <code>NO_COLOR</code> to turn off colors.</p>
 
                     </main>
 
