@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3c9c5df2.js";
+            window.path_to_searchindex_js = "searchindex-6d146668.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -244,7 +244,7 @@ chest add npm:@acme/pi-subagent --grant all
 git add chest.toml chest.lock .gitignore
 git commit -m "Add project packages"
 </code></pre>
-<p><code>chest init</code> writes <code>chest.toml</code> with folders for the agents it finds. Each <code>chest add</code> looks at the package and asks what to grant an extension. Then it writes the entry, installs it, and updates the lock and the <code>.gitignore</code> block.</p>
+<p><code>chest init</code> writes <code>chest.toml</code> with folders for the agents it finds. Each <code>chest add</code> looks at the package, and at a terminal asks which of its skills to add and what to grant an extension. Then it writes the entry, installs it, and updates the lock and the <code>.gitignore</code> block.</p>
 <p>Anyone who clones the project runs:</p>
 <pre><code class="language-sh">chest install
 </code></pre>

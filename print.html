@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-3c9c5df2.js";
+            window.path_to_searchindex_js = "searchindex-6d146668.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -1092,7 +1092,7 @@ chest add npm:@acme/pi-subagent --grant all
 git add chest.toml chest.lock .gitignore
 git commit -m "Add project packages"
 </code></pre>
-<p><code>chest init</code> writes <code>chest.toml</code> with folders for the agents it finds. Each <code>chest add</code> looks at the package and asks what to grant an extension. Then it writes the entry, installs it, and updates the lock and the <code>.gitignore</code> block.</p>
+<p><code>chest init</code> writes <code>chest.toml</code> with folders for the agents it finds. Each <code>chest add</code> looks at the package, and at a terminal asks which of its skills to add and what to grant an extension. Then it writes the entry, installs it, and updates the lock and the <code>.gitignore</code> block.</p>
 <p>Anyone who clones the project runs:</p>
 <pre><code class="language-sh">chest install
 </code></pre>
@@ -1118,6 +1118,17 @@ chest add git:github.com/acme/agents --path reviewer.md
 </code></pre>
 <p>chest tells a skill from a subagent by looking at the package. Pass <code>--skill</code> or <code>--agent</code> when it can’t tell.</p>
 <p>With <code>--path</code>, an entry installs one item. Without it, the entry installs every skill or subagent the package provides. A local folder that isn’t a skill itself works the same way.</p>
+<p>To add skills from a repository by name, pass <code>--skill &lt;name&gt;</code> once for each. chest looks in the <code>skills</code> folder at the root of the source, by folder name or by the <code>name</code> in a skill’s <code>SKILL.md</code>, and writes the entry that <code>--path skills/&lt;name&gt;</code> writes:</p>
+<pre><code class="language-sh">chest add git:github.com/apollographql/skills --skill rust-best-practices
+</code></pre>
+<p>A bare <code>--skill</code>, after the source, only tells chest that the source is a skill.</p>
+<h2 id="pick-skills-at-a-terminal"><a class="header" href="#pick-skills-at-a-terminal">Pick skills at a terminal</a></h2>
+<p>When a package provides several skills or subagents and you pass neither <code>--path</code> nor <code>--skill &lt;name&gt;</code>, <code>chest add</code> lists them with their descriptions, all ticked:</p>
+<ul>
+<li><strong>Keep them all</strong>: chest writes one entry for the whole package, which gets the skills the package adds when you run <code>chest update</code>. A script or <code>--yes</code> writes the same entry.</li>
+<li><strong>Untick some</strong>: chest writes one entry for each skill you keep, each with its <code>path</code>.</li>
+</ul>
+<p>The summary before you confirm says which of the two chest writes.</p>
 <p>chest installs only skills that are folders with a <code>SKILL.md</code>. It skips or refuses a skill that’s a single <code>.md</code> file, which yapi and Pi also load. A <code>.md</code> file outside a <code>skills</code> folder is a subagent.</p>
 <h2 id="choose-folders-for-your-agents"><a class="header" href="#choose-folders-for-your-agents">Choose folders for your agents</a></h2>
 <p><code>chest init</code> looks for each agent’s folder in the project and offers its skill and subagent folders:</p>
@@ -1137,7 +1148,7 @@ chest add git:github.com/acme/agents --path reviewer.md
 </tbody>
 </table>
 </div>
-<p>At a terminal, <code>chest init</code> lists the folders by number, with the ones it found selected. Without a terminal, or with <code>--yes</code>, it takes those. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
+<p>At a terminal, <code>chest init</code> lists the folders of each kind with the agents that read them, and ticks the ones it found. When you tick two or more folders of a kind, it asks which one holds the copy and lists that one first. Then it shows a summary and asks before it writes <code>chest.toml</code>. With both <code>--skills</code> and <code>--agents</code>, it asks nothing and writes the file at once. Without a terminal, or with <code>--yes</code>, it takes the ticked folders. When it finds no agent, skills go to <code>.agents/skills</code> and subagents to <code>.yapi/agents</code>. <code>--skills</code>, <code>--agents</code> and <code>--store</code> set the folders directly.</p>
 <p>A folder can be a link to another one, such as <code>.claude/skills</code> linking to <code>../.agents/skills</code>. chest places each item once, in the folder the link resolves to.</p>
 <h2 id="how-chest-copies-and-links-items"><a class="header" href="#how-chest-copies-and-links-items">How chest copies and links items</a></h2>
 <p>The first folder of each kind holds the canonical copy of every item. The other folders get relative links to it, or a copy where chest can’t make a link.</p>
@@ -1182,8 +1193,8 @@ chest add git:github.com/acme/pi-todo --grant fs
 </tbody>
 </table>
 </div>
-<p><code>chest add</code> shows the capabilities a package requests and asks about each one. For a native extension, it also asks about the capabilities the build uses that the package doesn’t request, read from the build’s features and the WebAssembly System Interface (WASI) interfaces it imports. A bare <code>.wasm</code> file requests nothing, so chest offers what it uses.</p>
-<p>A request never grants anything by itself. Without a terminal, or with <code>--yes</code>, chest grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
+<p>At a terminal, <code>chest add</code> asks what to grant. A package requests capabilities in its <code>capabilities</code> list, and a native extension also requests what its build uses. When there’s a request, chest offers to grant all requested capabilities or to let you choose. Granting is the default, unless the request includes <code>all</code>. Choosing lists every capability with what it allows. The requested ones are ticked, except <code>all</code>, which you tick yourself. A package that requests nothing goes straight to that list. Then chest shows the entry with its grants and asks before installing.</p>
+<p>A request never grants anything by itself. Without a terminal, with <code>--yes</code>, or with <code>--grant</code>, chest asks nothing and grants only what <code>--grant</code> lists, which is nothing by default. <code>--grant</code> applies to extensions only. <code>capabilities-defaults</code> in the manifest adds capabilities to every extension entry of that manifest.</p>
 <p><code>all</code> is the only way to run programs. A program runs as you, outside the sandbox, with yapi’s environment and API keys. So <code>all</code> is full access, and <code>chest add</code> says so before it grants it. <a href="#what-each-capability-allows">What each capability allows</a> gives the exact list.</p>
 <h2 id="let-extensions-share-events"><a class="header" href="#let-extensions-share-events">Let extensions share events</a></h2>
 <p>Extensions share <code>pi.events</code> by default, as in Pi, so cooperating Pi extensions keep working whatever their grants. Sharing has a cost between extensions with different grants. One that acts on events lets the sender borrow its access, and one that listens learns what others send.</p>
@@ -1199,7 +1210,7 @@ capabilities = ["net"]
 events = "isolated"
 </code></pre>
 <p>Extensions with identical grants always hear each other. Across different grants, an event reaches an extension only when the sender may send its channel and the receiver may hear it.</p>
-<p><code>chest add</code> offers the shared default, the channels the package declares, when it declares any, or <code>isolated</code>. Without a terminal, or with <code>--yes</code>, it keeps the shared default. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
+<p><code>chest add</code> offers the shared default or <code>isolated</code>, plus the package’s declared channels when it declares any. <code>--isolated</code> answers with <code>isolated</code>. Without a terminal, with <code>--yes</code>, or with <code>--grant</code> alone, chest keeps the shared default. To allow only some channels, list them in the entry’s <code>events</code> in <code>chest.toml</code>. <a href="#event-bus-routing">Event bus routing</a> has the rules.</p>
 <h2 id="how-yapi-loads-a-manifest"><a class="header" href="#how-yapi-loads-a-manifest">How yapi loads a manifest</a></h2>
 <p>At startup and on <code>/reload</code>, yapi reads two manifests:</p>
 <ul>
@@ -1491,7 +1502,7 @@ extensions = ["extensions/index.ts"]
 </thead>
 <tbody>
 <tr><td><code>chest init</code></td><td><code>--skills a,b</code>, <code>--agents a,b</code>, <code>--store &lt;dir&gt;</code>, <code>--package</code>, <code>--yes</code></td><td>Writes a manifest with folders for the agents found. Refuses an existing manifest unless <code>--package</code>, which adds <code>[package]</code>.</td></tr>
-<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. A git URL starts with <code>https://</code>, <code>http://</code>, <code>ssh://</code> or <code>git://</code>, or takes the form <code>user@host:path</code>. Without a section flag, chest infers the section from the package. <code>--rev</code> is for git sources and <code>--version</code> for npm ones, and neither may repeat a revision or version the source names. The same name with the same source updates its version or rev and keeps its grants, so <code>--grant</code> then fails unless it lists the grants the entry has. The same name with another source or section is an error. So is a second name for a source and <code>path</code> that an entry of the section already installs, at any version or rev.</td></tr>
+<tr><td><code>chest add &lt;source&gt;</code></td><td><code>--skill [name]</code>, <code>--agent</code>, <code>--extension</code>, <code>--name &lt;name&gt;</code>, <code>--path &lt;path&gt;</code>, <code>--rev &lt;rev&gt;</code>, <code>--version &lt;range&gt;</code>, <code>--grant a,b</code>, <code>--isolated</code>, <code>--yes</code></td><td>Adds an entry and installs it. The source is <code>npm:&lt;name&gt;[@&lt;range&gt;]</code>, <code>git:&lt;repo&gt;[@&lt;rev&gt;]</code>, a git URL or a path. A git URL starts with <code>https://</code>, <code>http://</code>, <code>ssh://</code> or <code>git://</code>, or takes the form <code>user@host:path</code>. Without a section flag, chest infers the section from the package. <code>--skill &lt;name&gt;</code> adds the skill of that name from the source’s <code>skills</code> folder, as <code>--path skills/&lt;name&gt;</code> does, and repeats for more skills, such as <code>chest add git:github.com/apollographql/skills --skill rust-best-practices</code>. <code>--rev</code> is for git sources and <code>--version</code> for npm ones, and neither may repeat a revision or version the source names. <code>--isolated</code> writes <code>events = "isolated"</code> on a new extension entry. The same name with the same source updates its version or rev and keeps its grants and events, so <code>--grant</code> then fails unless it lists the grants the entry has, and <code>--isolated</code> fails unless the entry is isolated. The same name with another source or section is an error. So is a second name for a source and <code>path</code> that an entry of the section already installs, at any version or rev.</td></tr>
 <tr><td><code>chest remove &lt;name&gt;</code></td><td></td><td>Removes the entry and what chest installed for it. It also removes the entry’s <code>[patch]</code>, but not the patch’s folder, which isn’t chest’s.</td></tr>
 <tr><td><code>chest install</code></td><td><code>--frozen</code></td><td>Installs what the manifest lists, as the lock pins it, and writes the lock. With <code>--frozen</code>, installs exactly what the lock pins and fails on any difference between the manifest and the lock, writing neither.</td></tr>
 <tr><td><code>chest update [names]</code></td><td></td><td>Moves the named entries, or all of them, to the newest version or commit their source allows, and writes the lock. See <a href="#update-entries">Update entries</a>.</td></tr>
@@ -1518,7 +1529,15 @@ extensions = ["extensions/index.ts"]
 <h2 id="use-a-proxy"><a class="header" href="#use-a-proxy">Use a proxy</a></h2>
 <p>chest reads proxy variables such as <code>HTTPS_PROXY</code>, as yapi does. Without them, it uses the <code>httpProxy</code> setting in yapi’s global <code>settings.json</code>, like yapi.</p>
 <h2 id="exit-codes-and-prompts"><a class="header" href="#exit-codes-and-prompts">Exit codes and prompts</a></h2>
-<p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error. Questions go to stderr, and chest asks them only at a terminal.</p>
+<p>chest exits with 0 on success, 1 when a command fails or <code>verify</code> or <code>check</code> finds a mismatch, and 2 on a usage error.</p>
+<p>At a terminal, <code>chest init</code> and <code>chest add</code> ask with lists. Move with ↑ and ↓, tick with Space and answer with Enter. Once chest has asked something, it shows a summary and asks before it writes anything. Esc or Ctrl+C cancels, writes nothing and exits with 1. <code>chest install</code>, <code>chest update</code>, <code>chest remove</code> and <code>chest import</code> show a spinner, then each entry’s outcome.</p>
+<p>To skip the questions:</p>
+<ul>
+<li>Pass the flags that answer them, such as <code>--skills</code> and <code>--agents</code> for <code>chest init</code>, or <code>--path</code>, <code>--skill &lt;name&gt;</code>, <code>--grant</code> and <code>--isolated</code> for <code>chest add</code>. When flags answer every question, chest installs or writes at once, without the confirmation.</li>
+<li>Pass <code>--yes</code> to take the defaults and skip the confirmation.</li>
+<li>Run chest without a terminal, or with <code>CI</code> set. chest then asks nothing and prints plain lines, with each entry’s outcome on stdout.</li>
+</ul>
+<p>chest draws on stderr. Set <code>NO_COLOR</code> to turn off colors.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="chesttoml-reference"><a class="header" href="#chesttoml-reference">chest.toml reference</a></h1>
 <blockquote>
