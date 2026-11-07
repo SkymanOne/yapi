@@ -34,7 +34,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6d146668.js";
+            window.path_to_searchindex_js = "searchindex-6813dbd4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d65e4bdb.js"></script>
@@ -196,14 +196,14 @@
 </div>
 <h2 id="install-the-skills"><a class="header" href="#install-the-skills">Install the skills</a></h2>
 <p>In yapi or Pi, install the repository at a release tag as a package:</p>
-<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.4.2
+<pre><code class="language-sh">yapi install git:github.com/SkymanOne/yapi@v0.4.3
 </code></pre>
 <p>yapi clones the repository but loads only its <code>skills</code> folder. A package installed at a tag stays at that tag through <code>yapi update --extensions</code>, so install a newer tag to update the skills. Installed without a tag, the package follows the <code>main</code> branch.</p>
 <p>To use the skills without the rest of the repository, copy their folders into a skills folder, such as <code>~/.yapi/agent/skills/</code>, <code>~/.agents/skills/</code> or, for Claude Code, <code>~/.claude/skills/</code>:</p>
 <pre><code class="language-sh">cp -r skills/yapi skills/yapi-extension ~/.agents/skills/
 </code></pre>
 <p>With <a href="chest-skills.html">chest</a>, add the skills to a project’s <code>chest.toml</code>, for yapi and any other agent that reads its skill folders. chest pins the commit and installs every skill the repository provides:</p>
-<pre><code class="language-sh">chest add git:github.com/SkymanOne/yapi@v0.4.2 --skill --name yapi-skills
+<pre><code class="language-sh">chest add git:github.com/SkymanOne/yapi@v0.4.3 --skill --name yapi-skills
 </code></pre>
 <p><code>--path skills/yapi</code> picks one skill instead. Add <code>-g</code> to install them for every project.</p>
 <h2 id="use-the-skills"><a class="header" href="#use-the-skills">Use the skills</a></h2>
