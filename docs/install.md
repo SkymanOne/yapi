@@ -19,7 +19,7 @@ The script downloads the latest release for your system and verifies its SHA-256
 ┌   yapi installer
 │
 ◆  What to install?
-│  ● yapi and chest
+│  ● yapi and chest (the coding agent and its package manager)
 │  ○ yapi only
 │  ○ chest only
 └

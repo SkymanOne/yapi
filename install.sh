@@ -127,17 +127,27 @@ label() {
     esac
 }
 
-# The arrow-key menu of what to install, as $choice sets it.
+# What choice $1 of what to install puts on the system.
+hint() {
+    case "$1" in
+        1) echo 'the coding agent and its package manager' ;;
+        2) echo 'the coding agent, without chest' ;;
+        *) echo 'the package manager, without yapi' ;;
+    esac
+}
+
+# The arrow-key menu of what to install, as $choice sets it, in the colors
+# of a Clack prompt that is asking: the focused choice has its hint.
 draw_menu() {
     printf '%s◆%s  What to install?\n' "$cyan" "$off"
     for n in 1 2 3; do
         if [ "$n" = "$choice" ]; then
-            printf '%s  %s● %s%s\n' "$bar" "$cyan" "$(label "$n")" "$off"
+            printf '%s│%s  %s●%s %s %s(%s)%s\n' "$cyan" "$off" "$green" "$off" "$(label "$n")" "$dim" "$(hint "$n")" "$off"
         else
-            printf '%s  %s○ %s%s\n' "$bar" "$dim" "$(label "$n")" "$off"
+            printf '%s│%s  %s○ %s%s\n' "$cyan" "$off" "$dim" "$(label "$n")" "$off"
         fi
     done
-    printf '%s└%s\n' "$dim" "$off"
+    printf '%s└%s\n' "$cyan" "$off"
 }
 
 # Asks with the arrow-key menu, the terminal in raw mode, and sets $choice.
@@ -240,7 +250,7 @@ warn() {
 # Ctrl+C in the view.
 cancelled() {
     case "$asking" in
-        menu) printf '%s[5A\r%s[J%s■%s  What to install?\n%s  %s%s%s\n' "$esc" "$esc" "$red" "$off" "$bar" "$dim" "$(label "$choice")" "$off" ;;
+        menu) printf '%s[5A\r%s[J%s■%s  What to install?\n%s│%s  %s%s%s\n' "$esc" "$esc" "$red" "$off" "$red" "$off" "$dim" "$(label "$choice")" "$off" ;;
         line) echo ;;
     esac
     end_step "${red}■${off}"
@@ -298,7 +308,7 @@ if [ -z "$only" ] && [ -t 1 ] && (: </dev/tty) 2>/dev/null; then
     if [ -z "$choice" ]; then
         printf '%s◆%s  What to install?\n' "$cyan" "$off"
         for n in 1 2 3; do
-            printf '%s  %s) %s\n' "$bar" "$n" "$(label "$n")"
+            printf '%s  %s) %s %s(%s)%s\n' "$bar" "$n" "$(label "$n")" "$dim" "$(hint "$n")" "$off"
         done
         tries=0 asking=line
         while [ -z "$choice" ]; do
