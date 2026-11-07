@@ -21,7 +21,7 @@ fn init(api: &mut Api) {
 yapi_extension_api::extension!(init);
 ```
 
-Run `yapi new <name>` to create a package that's ready to build, or set your own crate's type to `cdylib`. Build it for `wasm32-wasip2`, then load the result with `yapi -e <file>.wasm`. The [native extensions guide](https://skymanone.github.io/yapi/native-extensions.html) covers the API, and the [examples](https://github.com/SkymanOne/yapi/tree/main/guest/examples) show nineteen complete extensions.
+Run `yapi new <name>` to create a package that's ready to build, or set your own crate's type to `cdylib`. Set the target to `wasm32-wasip2`, and then load the compiled binary with `yapi -e <file>.wasm`. The [native extensions guide](https://skymanone.github.io/yapi/native-extensions.html) covers the API, and the [examples](https://github.com/SkymanOne/yapi/tree/main/guest/examples) show nineteen complete extensions.
 
 The `widgets` feature adds yapi's ports of pi-tui's widgets, such as `SelectList` and `Editor`, from [`yapi-tui`](https://crates.io/crates/yapi-tui).
 
