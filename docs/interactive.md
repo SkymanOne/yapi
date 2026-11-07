@@ -12,7 +12,7 @@ Type a request and press Enter to send it. Shift+Enter adds a line, and Ctrl+G o
 - Ctrl+V pastes text, an image, or on macOS the paths of copied files. yapi saves a pasted image to a temporary file and puts its path in the editor.
 - Up recalls earlier prompts.
 
-A prompt or command sent while extensions are still starting, or while an extension command runs, waits its turn. yapi sends it once they finish, in the order you sent it.
+A prompt or command that you send while extensions start, or while an extension command runs, waits until they finish. yapi then sends it in the order you sent it.
 
 ## Follow the agent's work
 
@@ -70,8 +70,8 @@ Type `/` to list commands. Prompt templates, skills (`/skill:name`) and extensio
 | `/copy`, `/export` | Copy the last answer or export the session to HTML |
 | `/login`, `/logout` | Manage provider credentials |
 | `/import` | Copy a session file into the session folder and resume it |
-| `/llama` | Load, unload and download models on a llama.cpp server. Built-in extension. |
-| `/mcp` | Manage Model Context Protocol (MCP) servers. Built-in extension. |
+| `/llama` | Load, unload and download models on a llama.cpp server |
+| `/mcp` | Manage Model Context Protocol (MCP) servers |
 | `/trust` | Change whether the project's `.yapi` folder is trusted |
 | `/reload` | Reload settings, keybindings, skills, themes and extensions from disk |
 | `/hotkeys` | Show every key binding |
@@ -79,9 +79,7 @@ Type `/` to list commands. Prompt templates, skills (`/skill:name`) and extensio
 | `/bug` | Report a bug as a zip file, and optionally as a public GitHub issue |
 | `/quit` | Quit yapi |
 
-`/llama` and `/mcp` come from built-in extensions, so `-ne` removes them. The `/debug` log can hold private data from messages and extension output. Read it before you attach it to a bug report.
-
-[Report a problem](troubleshooting.md#report-a-problem) describes what `/bug` writes and what it posts.
+`/llama` and `/mcp` come from built-in extensions, so `-ne` removes them. The `/debug` log can hold private data from messages and extension output, so read it before you attach it to a bug report. [Report a problem](troubleshooting.md#report-a-problem) describes what `/bug` writes and what it posts.
 
 ## Run a shell command
 
