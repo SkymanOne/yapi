@@ -581,7 +581,7 @@ fn events(prompt: &Prompt, meta: &PackageMeta) -> anyhow::Result<Option<EventPol
     options.push((
         2,
         "isolated".to_owned(),
-        "only with extensions that have the same grants".to_owned(),
+        "shares events only with extensions that have exactly its grants".to_owned(),
     ));
     let choice = prompt.select("How should it share events?", &options, 0)?;
     Ok(match (choice, &declared) {
