@@ -10,10 +10,10 @@ This page covers turning the mode on, what loads, keeping global items such as a
 
 ## Turn on project-only mode
 
-Pass the flag for one run, or set `YAPI_PROJECT_ONLY` for every run in a shell:
+Pass `--project-only`, or `-P` for short, for one run, or set `YAPI_PROJECT_ONLY` for every run in a shell:
 
 ```sh
-yapi --project-only
+yapi -P
 export YAPI_PROJECT_ONLY=1
 ```
 
