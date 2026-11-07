@@ -6,7 +6,7 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ### Additions
 
-- Change chest's prompts to interactive pickers like skills.sh's, with a skill picker and `--skill <name>` in `chest add` ([#TBD](https://github.com/SkymanOne/yapi/pull/TBD)).
+- Change chest's prompts to interactive pickers like skills.sh's, with a skill picker and `--skill <name>` in `chest add` ([#316](https://github.com/SkymanOne/yapi/pull/316)).
 
 ## [0.4.2] - 2026-11-07
 
