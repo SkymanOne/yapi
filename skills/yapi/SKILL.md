@@ -131,13 +131,17 @@ Pi packages run unchanged. Their extensions run in a WebAssembly sandbox, so cod
 | Command | Effect |
 |---|---|
 | `chest init` | Write `chest.toml` with folders for the agents found |
-| `chest add git:github.com/acme/skills --path skills/pdf` | Add a skill from git |
+| `chest add git:github.com/acme/skills --skill pdf` | Add the skill named `pdf` from the repository's `skills` folder |
+| `chest add git:github.com/acme/skills --path tools/pdf` | Add the skill at a path in the repository |
+| `chest add git:github.com/acme/skills --skill` | Add every skill the repository provides, as one entry |
 | `chest add npm:@acme/ext --grant fs` | Add an extension and grant only what it needs |
 | `chest install` | Install as `chest.lock` pins |
 | `chest install --frozen` | In CI, fail on drift and write nothing |
 | `chest verify` | Check installed copies against the lock |
 
-Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and it's full access. See [Get started with chest](https://skymanone.github.io/yapi/chest.html) and [Grant capabilities](https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities).
+At a terminal, `chest init` and `chest add` ask which folders, skills and capabilities to use, and wait for an answer. A tmux pane or another terminal that a harness opens for commands counts. Pass `--yes` so chest takes the defaults and asks nothing. Under `--yes`, an extension gets only what `--grant` lists, so pass both. Without a terminal, or with `CI` set, chest asks nothing either.
+
+Skills and subagents work with any agent. Extensions, capabilities and events work only in yapi. `all` is the only capability that runs programs, and an extension with it runs unrestricted, outside the sandbox. See [Get started with chest](https://skymanone.github.io/yapi/chest.html) and [Grant capabilities](https://skymanone.github.io/yapi/chest-extensions.html#grant-capabilities).
 
 `yapi --project-only` (or `-P`), or `YAPI_PROJECT_ONLY=1` in the environment, loads only the project's packages, skills and MCP servers. Global ones are skipped unless the `projectOnly` setting in `~/.yapi/agent/settings.json` keeps them. See [Run yapi with only the project's packages](https://skymanone.github.io/yapi/project-only.html).
 

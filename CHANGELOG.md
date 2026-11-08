@@ -4,6 +4,10 @@ Notable changes to yapi, in the format of [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Additions
+
+- Change the system prompt to point the model to the pages on chest and project-only runs, so it can answer about them ([#318](https://github.com/SkymanOne/yapi/pull/318)).
+
 ## [0.4.3] - 2026-11-07
 
 ### Additions

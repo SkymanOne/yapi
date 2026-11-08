@@ -47,18 +47,24 @@ fn rules(options: &SystemPromptOptions) -> String {
 }
 
 /// pi's `docs` section, naming yapi, with where the docs are: yapi's main
-/// page, and pi's docs and examples.
+/// page, pi's docs and examples, and the pages on chest and project-only runs.
 fn docs(docs: &crate::docs::Locations) -> String {
+    // The chest and -P entries stay terse: before the first response, the
+    // footer's context percentage counts this text, and scenarios match pi's.
     format!(
         "yapi documentation (read only when the user asks about yapi itself, its SDK, extensions, themes, skills, or TUI):
 - Main documentation: {}
 - Additional docs: {}
 - Examples: {} (extensions, custom tools, SDK)
 - When reading yapi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md), chest ({chest}), -P ({project_only})
 - When working on yapi topics, read the docs and examples, and follow .md cross-references before implementing
 - Always read yapi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)",
-        docs.main, docs.pi_docs, docs.pi_examples,
+        docs.main,
+        docs.pi_docs,
+        docs.pi_examples,
+        chest = docs.chest,
+        project_only = docs.project_only,
     )
 }
 
@@ -211,6 +217,8 @@ mod tests {
             main: "/agent/docs/index.md".into(),
             pi_docs: "/agent/docs/pi/docs".into(),
             pi_examples: "/agent/docs/pi/examples".into(),
+            chest: "/agent/docs/chest.md".into(),
+            project_only: "/agent/docs/project-only.md".into(),
         };
         options
             .tool_snippets
@@ -234,6 +242,9 @@ mod tests {
         );
         assert!(sections["docs"].starts_with(
             "<docs>\nyapi documentation (read only when the user asks about yapi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /agent/docs/index.md\n- Additional docs: /agent/docs/pi/docs\n- Examples: /agent/docs/pi/examples (extensions, custom tools, SDK)\n"
+        ));
+        assert!(sections["docs"].contains(
+            " (docs/codemode.md), chest (/agent/docs/chest.md), -P (/agent/docs/project-only.md)\n"
         ));
         assert_eq!(sections["cwd"], "<cwd>\n/work\n</cwd>");
     }

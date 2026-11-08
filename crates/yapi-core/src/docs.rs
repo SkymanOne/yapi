@@ -40,6 +40,10 @@ pub struct Locations {
     pub pi_docs: String,
     /// pi's examples, pi's `getExamplesPath`.
     pub pi_examples: String,
+    /// yapi's chest page, which pi's docs have no counterpart of.
+    pub chest: String,
+    /// yapi's page on project-only runs, which pi's docs have no counterpart of.
+    pub project_only: String,
 }
 
 impl Locations {
@@ -52,12 +56,16 @@ impl Locations {
                 main: dir.join("index.md").display().to_string(),
                 pi_docs: dir.join("pi").join("docs").display().to_string(),
                 pi_examples: dir.join("pi").join("examples").display().to_string(),
+                chest: dir.join("chest.md").display().to_string(),
+                project_only: dir.join("project-only.md").display().to_string(),
             }
         } else {
             Locations {
                 main: BOOK_URL.to_owned(),
                 pi_docs: format!("{PI_URL}/docs"),
                 pi_examples: format!("{PI_URL}/examples"),
+                chest: format!("{BOOK_URL}chest.html"),
+                project_only: format!("{BOOK_URL}project-only.html"),
             }
         }
     }
@@ -128,6 +136,11 @@ mod tests {
             published.pi_examples,
             "https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/examples"
         );
+        assert_eq!(published.chest, "https://nikolish.in/yapi/chest.html");
+        assert_eq!(
+            published.project_only,
+            "https://nikolish.in/yapi/project-only.html"
+        );
         std::fs::create_dir_all(agent.join("docs")).unwrap();
         std::fs::write(agent.join("docs").join(VERSION_FILE), "0.0.1\n").unwrap();
         assert_eq!(
@@ -147,6 +160,11 @@ mod tests {
         assert_eq!(
             local.pi_examples,
             docs.join("pi").join("examples").display().to_string()
+        );
+        assert_eq!(local.chest, docs.join("chest.md").display().to_string());
+        assert_eq!(
+            local.project_only,
+            docs.join("project-only.md").display().to_string()
         );
         std::fs::remove_dir_all(&agent).unwrap();
     }
